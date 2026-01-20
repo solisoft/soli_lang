@@ -43,6 +43,10 @@ pub enum TokenKind {
     Async,
     Await,
     Match,
+    Case,
+    When,
+    End,
+    Unless,
 
     // Module keywords
     Import,
@@ -87,6 +91,7 @@ pub enum TokenKind {
     Dot,
     Colon,
     Semicolon,
+    Question,
     Arrow,    // ->
     FatArrow, // =>
     Spread,   // ...
@@ -128,6 +133,10 @@ impl TokenKind {
             "async" => Some(TokenKind::Async),
             "await" => Some(TokenKind::Await),
             "match" => Some(TokenKind::Match),
+            "case" => Some(TokenKind::Case),
+            "when" => Some(TokenKind::When),
+            "end" => Some(TokenKind::End),
+            "unless" => Some(TokenKind::Unless),
             "import" => Some(TokenKind::Import),
             "export" => Some(TokenKind::Export),
             "from" => Some(TokenKind::From),
@@ -180,6 +189,10 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Async => write!(f, "async"),
             TokenKind::Await => write!(f, "await"),
             TokenKind::Match => write!(f, "match"),
+            TokenKind::Case => write!(f, "case"),
+            TokenKind::When => write!(f, "when"),
+            TokenKind::End => write!(f, "end"),
+            TokenKind::Unless => write!(f, "unless"),
             TokenKind::Import => write!(f, "import"),
             TokenKind::Export => write!(f, "export"),
             TokenKind::From => write!(f, "from"),
@@ -216,6 +229,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Dot => write!(f, "."),
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Semicolon => write!(f, ";"),
+            TokenKind::Question => write!(f, "?"),
             TokenKind::Arrow => write!(f, "->"),
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Spread => write!(f, "..."),

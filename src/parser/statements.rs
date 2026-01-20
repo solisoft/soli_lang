@@ -181,6 +181,63 @@ impl Parser {
     fn expression_statement(&mut self) -> ParseResult<Stmt> {
         let start_span = self.current_span();
         let expr = self.expression()?;
+
+        // Check for postfix if: expr if (cond)
+        if self.check(&TokenKind::If) {
+            self.advance(); // consume if
+            self.expect(&TokenKind::LeftParen)?;
+            let cond = self.expression()?;
+            self.expect(&TokenKind::RightParen)?;
+
+            // Consume optional semicolon for postfix if
+            if self.check(&TokenKind::Semicolon) {
+                self.advance();
+            }
+
+            let span = start_span.merge(&self.previous_span());
+
+            return Ok(Stmt::new(
+                StmtKind::If {
+                    condition: cond,
+                    then_branch: Box::new(Stmt::new(StmtKind::Expression(expr.clone()), expr.span)),
+                    else_branch: None,
+                },
+                span,
+            ));
+        }
+
+        // Check for postfix unless: expr unless (cond)
+        if self.check(&TokenKind::Unless) {
+            self.advance(); // consume unless
+            self.expect(&TokenKind::LeftParen)?;
+            let cond = self.expression()?;
+            self.expect(&TokenKind::RightParen)?;
+
+            // Consume optional semicolon for postfix unless
+            if self.check(&TokenKind::Semicolon) {
+                self.advance();
+            }
+
+            let condition_expr = Expr::new(
+                ExprKind::Unary {
+                    operator: crate::ast::expr::UnaryOp::Not,
+                    operand: Box::new(cond),
+                },
+                start_span.merge(&self.previous_span()),
+            );
+
+            let span = start_span.merge(&self.previous_span());
+
+            return Ok(Stmt::new(
+                StmtKind::If {
+                    condition: condition_expr,
+                    then_branch: Box::new(Stmt::new(StmtKind::Expression(expr.clone()), expr.span)),
+                    else_branch: None,
+                },
+                span,
+            ));
+        }
+
         self.expect(&TokenKind::Semicolon)?;
         let span = start_span.merge(&self.previous_span());
 

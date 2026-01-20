@@ -46,6 +46,7 @@ enum NativeId {
     Unshift,
     Slice,
     ToString,
+    Str,
     ToInt,
     ToFloat,
     Upcase,
@@ -105,6 +106,7 @@ impl NativeId {
             NativeId::Unshift => Some(2),
             NativeId::Slice => Some(3),
             NativeId::ToString => Some(1),
+            NativeId::Str => Some(1),
             NativeId::ToInt => Some(1),
             NativeId::ToFloat => Some(1),
             NativeId::Upcase => Some(1),
@@ -304,6 +306,7 @@ impl VM {
                 )),
             },
             NativeId::ToString => Ok(VMValue::String(Rc::new(format!("{}", args[0])))),
+            NativeId::Str => Ok(VMValue::String(Rc::new(format!("{}", args[0])))),
             NativeId::ToInt => match &args[0] {
                 VMValue::Int(n) => Ok(VMValue::Int(*n)),
                 VMValue::Float(n) => Ok(VMValue::Int(*n as i64)),
@@ -1728,6 +1731,125 @@ impl VM {
                         }
                     }
                 }
+
+                OpCode::TypeCheck => {
+                    let type_idx = self.read_u16();
+                    let type_name = self.read_string_constant(type_idx)?;
+                    let value = self.pop()?;
+
+                    let matches = match &value {
+                        VMValue::Int(_) => type_name == "Int",
+                        VMValue::Float(_) => type_name == "Float",
+                        VMValue::Bool(_) => type_name == "Bool",
+                        VMValue::String(_) => type_name == "String",
+                        VMValue::Null => type_name == "Void",
+                        VMValue::Instance(inst) => inst.borrow().class.borrow().name == type_name,
+                        VMValue::Array(_) => type_name == "Array",
+                        VMValue::Hash(_) => type_name == "Hash",
+                        _ => false,
+                    };
+
+                    self.push(VMValue::Bool(matches));
+                }
+
+                OpCode::ArrayLen => {
+                    let array_val = self.pop()?;
+                    match array_val {
+                        VMValue::Array(arr) => {
+                            let len = arr.borrow().len() as i64;
+                            self.push(VMValue::Int(len));
+                        }
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "array_len requires an array",
+                                Span::default(),
+                            ));
+                        }
+                    }
+                }
+
+                OpCode::GetPropertyStr => {
+                    let name_idx = self.read_u16();
+                    let name = self.read_string_constant(name_idx)?;
+                    let object = self.pop()?;
+
+                    match object {
+                        VMValue::Instance(inst) => {
+                            let field_value = inst.borrow().get(&name);
+                            self.push(field_value.unwrap_or(VMValue::Null));
+                        }
+                        VMValue::Hash(hash) => {
+                            let hash = hash.borrow();
+                            let key = VMValue::String(Rc::new(name));
+                            let val = hash.iter().find(|(k, _)| k == &key);
+                            match val {
+                                Some((_, v)) => self.push(v.clone()),
+                                None => self.push(VMValue::Null),
+                            }
+                        }
+                        _ => {
+                            return Err(RuntimeError::new(
+                                format!("Cannot get property '{}' on {}", name, object.type_name()),
+                                Span::default(),
+                            ));
+                        }
+                    }
+                }
+
+                OpCode::GetFieldStr => {
+                    let name_idx = self.read_u16();
+                    let name = self.read_string_constant(name_idx)?;
+                    let instance = self.pop()?;
+
+                    match instance {
+                        VMValue::Instance(inst) => {
+                            let field_value = inst.borrow().get(&name);
+                            match field_value {
+                                Some(v) => self.push(v.clone()),
+                                None => {
+                                    return Err(RuntimeError::new(
+                                        format!("Field '{}' not found", name),
+                                        Span::default(),
+                                    ));
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err(RuntimeError::new(
+                                format!("Cannot get field '{}' on non-instance", name),
+                                Span::default(),
+                            ));
+                        }
+                    }
+                }
+
+                OpCode::BuildArrayFromStack => {
+                    let count = self.read_u16() as usize;
+                    let mut elements = Vec::with_capacity(count);
+                    for _ in 0..count {
+                        elements.push(self.pop()?);
+                    }
+                    elements.reverse();
+                    self.push(VMValue::Array(Rc::new(RefCell::new(elements))));
+                }
+
+                OpCode::BuildHashFromStack => {
+                    let pair_count = self.read_u16() as usize;
+                    let mut pairs = Vec::with_capacity(pair_count);
+                    for _ in 0..pair_count {
+                        let value = self.pop()?;
+                        let key = self.pop()?;
+                        pairs.push((key, value));
+                    }
+                    self.push(VMValue::Hash(Rc::new(RefCell::new(pairs))));
+                }
+
+                OpCode::StoreBinding => {
+                    let _name_idx = self.read_u16();
+                    // Binding storage is handled at a higher level
+                    // This opcode would need access to a bindings map
+                    // For now, this is a placeholder
+                }
             }
         }
     }
@@ -1970,7 +2092,10 @@ impl VM {
         // Check if we have enough arguments
         if arg_count < arity {
             return Err(RuntimeError::new(
-                format!("Expected at least {} arguments but got {}", arity, arg_count),
+                format!(
+                    "Expected at least {} arguments but got {}",
+                    arity, arg_count
+                ),
                 Span::default(),
             ));
         }
@@ -1978,7 +2103,10 @@ impl VM {
         // Check if we have too many arguments
         if arg_count > full_arity {
             return Err(RuntimeError::new(
-                format!("Expected at most {} arguments but got {}", full_arity, arg_count),
+                format!(
+                    "Expected at most {} arguments but got {}",
+                    full_arity, arg_count
+                ),
                 Span::default(),
             ));
         }

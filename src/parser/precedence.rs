@@ -7,23 +7,25 @@ use crate::lexer::TokenKind;
 pub enum Precedence {
     None = 0,
     Assignment = 1, // =
-    Or = 2,         // ||
-    And = 3,        // &&
-    Equality = 4,   // == !=
-    Comparison = 5, // < > <= >=
-    Pipeline = 6,   // |>
-    Term = 7,       // + -
-    Factor = 8,     // * / %
-    Unary = 9,      // ! -
-    Call = 10,      // . () []
-    Primary = 11,
+    Ternary = 2,    // ? :
+    Or = 3,         // ||
+    And = 4,        // &&
+    Equality = 5,   // == !=
+    Comparison = 6, // < > <= >=
+    Pipeline = 7,   // |>
+    Term = 8,       // + -
+    Factor = 9,     // * / %
+    Unary = 10,     // ! -
+    Call = 11,      // . () []
+    Primary = 12,
 }
 
 impl Precedence {
     pub fn next(self) -> Precedence {
         match self {
             Precedence::None => Precedence::Assignment,
-            Precedence::Assignment => Precedence::Or,
+            Precedence::Assignment => Precedence::Ternary,
+            Precedence::Ternary => Precedence::Or,
             Precedence::Or => Precedence::And,
             Precedence::And => Precedence::Equality,
             Precedence::Equality => Precedence::Comparison,
@@ -41,6 +43,7 @@ impl Precedence {
 pub fn get_precedence(kind: &TokenKind) -> Precedence {
     match kind {
         TokenKind::Equal => Precedence::Assignment,
+        TokenKind::Question => Precedence::Ternary,
         TokenKind::Or => Precedence::Or,
         TokenKind::And => Precedence::And,
         TokenKind::EqualEqual | TokenKind::BangEqual => Precedence::Equality,

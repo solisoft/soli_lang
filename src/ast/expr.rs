@@ -101,6 +101,13 @@ pub enum ExprKind {
         body: Vec<Stmt>,
     },
 
+    /// Ternary/conditional expression: cond ? then_expr : else_expr
+    If {
+        condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Option<Box<Expr>>,
+    },
+
     /// Pattern matching: match x { pattern => expr, ... }
     Match {
         expression: Box<Expr>,

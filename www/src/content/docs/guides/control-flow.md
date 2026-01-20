@@ -440,6 +440,66 @@ if ([1, 2, 3]) {
 }
 ```
 
+## Postfix Conditionals
+
+Ruby-style postfix `if` and `unless` allow you to write conditionals at the end of statements.
+
+### Postfix If
+
+```rust
+let x = 10;
+print("big") if (x > 5);
+// Equivalent to: if (x > 5) { print("big"); }
+```
+
+### Postfix Unless
+
+```rust
+let y = 3;
+print("small") unless (y > 5);
+// Equivalent to: if (!(y > 5)) { print("small"); }
+```
+
+### Examples
+
+```rust
+let file = open("data.txt");
+close(file) if (file != null);
+
+let result = validate(input);
+process(result) unless (result.hasErrors());
+```
+
+## Ternary Operator
+
+The ternary operator provides a concise way to express simple conditionals:
+
+```rust
+let x = 10;
+let size = x > 5 ? "large" : "small";
+// "large"
+```
+
+### Nested Ternary
+
+```rust
+let grade = 85;
+let letter = grade >= 90 ? "A"
+             : grade >= 80 ? "B"
+             : grade >= 70 ? "C"
+             : "F";
+// "B"
+```
+
+### With Expressions
+
+```rust
+let a = 5;
+let b = 10;
+let max = a > b ? a : b;
+let message = a > 0 && b > 0 ? "both positive" : "not both positive";
+```
+
 ## Best Practices
 
 1. **Avoid deep nesting**: Extract complex conditions into functions

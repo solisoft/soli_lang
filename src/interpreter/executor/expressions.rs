@@ -118,6 +118,22 @@ impl Interpreter {
 
             ExprKind::Lambda { params, body, .. } => self.evaluate_lambda(params, body, expr.span),
 
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let cond_value = self.evaluate(condition)?;
+                if cond_value.is_truthy() {
+                    self.evaluate(then_branch)
+                } else {
+                    match else_branch {
+                        Some(else_expr) => self.evaluate(else_expr),
+                        None => Ok(Value::Null),
+                    }
+                }
+            }
+
             ExprKind::InterpolatedString(parts) => {
                 let mut result = String::new();
                 for part in parts {

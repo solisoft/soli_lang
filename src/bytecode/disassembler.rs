@@ -94,6 +94,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize, output: &mut String
         | OpCode::GetIterator
         | OpCode::SpreadArray
         | OpCode::SpreadHash
+        | OpCode::ArrayLen
         | OpCode::Print => {
             writeln!(output, "{:?}", opcode).unwrap();
             offset + 1
@@ -151,7 +152,16 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize, output: &mut String
             offset + 3
         }
 
-        OpCode::BuildArray | OpCode::BuildHash | OpCode::IteratorNext | OpCode::LoadDefault => {
+        OpCode::BuildArray
+        | OpCode::BuildHash
+        | OpCode::IteratorNext
+        | OpCode::LoadDefault
+        | OpCode::TypeCheck
+        | OpCode::GetPropertyStr
+        | OpCode::GetFieldStr
+        | OpCode::BuildArrayFromStack
+        | OpCode::BuildHashFromStack
+        | OpCode::StoreBinding => {
             let count = chunk.read_u16(offset + 1);
             writeln!(output, "{:?} {}", opcode, count).unwrap();
             offset + 3

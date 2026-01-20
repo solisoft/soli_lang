@@ -145,6 +145,29 @@ pub enum OpCode {
     /// Call a native function: NATIVE_CALL <native_index:u16> <arg_count:u8>
     NativeCall,
 
+    // ============ Pattern Matching ============
+    /// Check if value is of a type: TYPE_CHECK <type_index:u16>
+    /// Pops value, pushes bool result
+    TypeCheck,
+    /// Get array length: ARRAY_LEN
+    /// Pops array, pushes int length
+    ArrayLen,
+    /// Get property by string constant: GET_PROPERTY_STR <name_index:u16>
+    /// Pops object, pushes property value (or null if not found)
+    GetPropertyStr,
+    /// Get instance field by string constant: GET_FIELD_STR <name_index:u16>
+    /// Pops instance, pushes field value
+    GetFieldStr,
+    /// Create array from stack elements: BUILD_ARRAY_FROM_STACK <count:u16>
+    /// Pops count elements, pushes new array
+    BuildArrayFromStack,
+    /// Create hash from stack key-value pairs: BUILD_HASH_FROM_STACK <pair_count:u16>
+    /// Pops 2*pair_count elements, pushes new hash
+    BuildHashFromStack,
+    /// Store binding: STORE_BINDING <name_index:u16>
+    /// Pops value, stores in bindings map
+    StoreBinding,
+
     // ============ Debugging ============
     /// Print top of stack (for debugging)
     Print,
@@ -183,6 +206,7 @@ impl OpCode {
             | OpCode::GetIterator
             | OpCode::SpreadArray
             | OpCode::SpreadHash
+            | OpCode::ArrayLen
             | OpCode::Print => 0,
 
             // 1 byte operand
@@ -210,7 +234,13 @@ impl OpCode {
             | OpCode::BuildArray
             | OpCode::BuildHash
             | OpCode::IteratorNext
-            | OpCode::LoadDefault => 2,
+            | OpCode::LoadDefault
+            | OpCode::TypeCheck
+            | OpCode::GetPropertyStr
+            | OpCode::GetFieldStr
+            | OpCode::BuildArrayFromStack
+            | OpCode::BuildHashFromStack
+            | OpCode::StoreBinding => 2,
 
             // 3 byte operand (2 bytes + 1 byte)
             OpCode::Invoke | OpCode::SuperInvoke | OpCode::New | OpCode::NativeCall => 3,

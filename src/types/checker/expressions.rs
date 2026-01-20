@@ -105,6 +105,30 @@ impl TypeChecker {
                 body,
             } => self.check_lambda_expr(body, params, return_type),
 
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let cond_type = self.check_expr(condition)?;
+                if !matches!(cond_type, Type::Bool) {
+                    return Err(TypeError::mismatch(
+                        "Bool".to_string(),
+                        format!("{}", cond_type),
+                        condition.span,
+                    ));
+                }
+
+                let then_type = self.check_expr(then_branch)?;
+
+                if let Some(else_branch) = else_branch {
+                    let else_type = self.check_expr(else_branch)?;
+                    Ok(self.widen_types(&then_type, &else_type))
+                } else {
+                    Ok(then_type)
+                }
+            }
+
             ExprKind::InterpolatedString(parts) => {
                 for part in parts {
                     if let crate::ast::expr::InterpolatedPart::Expression(expr) = part {

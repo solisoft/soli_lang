@@ -340,6 +340,22 @@ impl Parser {
             TokenKind::Greater => self.binary_expr(left, BinaryOp::Greater, precedence),
             TokenKind::GreaterEqual => self.binary_expr(left, BinaryOp::GreaterEqual, precedence),
 
+            // Ternary operator: cond ? then_expr : else_expr
+            TokenKind::Question => {
+                let then_expr = self.expression()?;
+                self.expect(&TokenKind::Colon)?;
+                let else_expr = self.parse_precedence(precedence)?;
+                let span = start_span.merge(&else_expr.span);
+                Ok(Expr::new(
+                    ExprKind::If {
+                        condition: Box::new(left),
+                        then_branch: Box::new(then_expr),
+                        else_branch: Some(Box::new(else_expr)),
+                    },
+                    span,
+                ))
+            }
+
             // Logical operators
             TokenKind::And => {
                 let right = self.parse_precedence(precedence.next())?;

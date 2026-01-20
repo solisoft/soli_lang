@@ -104,6 +104,7 @@ impl Compiler {
             "unshift",
             "slice",
             "to_string",
+            "str",
             "to_int",
             "to_float",
             "upcase",
@@ -621,6 +622,31 @@ impl Compiler {
                 self.compile_lambda(params, body)?;
             }
 
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.compile_expression(condition)?;
+
+                let else_jump = self.emit_jump(OpCode::JumpIfFalse, line);
+                self.patch_jump(else_jump);
+
+                self.compile_expression(then_branch)?;
+
+                if else_branch.is_some() {
+                    let end_jump = self.emit_jump(OpCode::Jump, line);
+                    let else_start = self.current_offset();
+
+                    self.patch_jump(else_jump);
+                    self.compile_expression(else_branch.as_ref().unwrap())?;
+
+                    self.patch_jump(end_jump);
+                } else {
+                    self.patch_jump(else_jump);
+                }
+            }
+
             ExprKind::InterpolatedString(parts) => {
                 // Compile each part and concatenate
                 let mut first = true;
@@ -660,15 +686,14 @@ impl Compiler {
 
                 self.compile_expression(expression)?;
 
-                let mut jump_offsets = Vec::new();
+                let mut pattern_jump_offsets = Vec::new();
+                let mut end_jump_offsets = Vec::new();
 
                 for arm in arms {
-                    let arm_start = self.current.function.chunk.current_offset();
-
                     self.compile_match_pattern(&arm.pattern, line)?;
 
                     let jump_offset = self.emit_jump(OpCode::JumpIfFalse, line);
-                    jump_offsets.push(jump_offset);
+                    pattern_jump_offsets.push(jump_offset);
 
                     if let Some(guard) = &arm.guard {
                         self.compile_expression(guard)?;
@@ -678,13 +703,16 @@ impl Compiler {
 
                     if arm != arms.last().unwrap() {
                         let next_jump = self.emit_jump(OpCode::Jump, line);
-                        jump_offsets.push(next_jump);
+                        end_jump_offsets.push(next_jump);
                     }
+                }
 
-                    self.patch_jump(jump_offset);
-                    if arm != arms.last().unwrap() {
-                        self.patch_jump(jump_offsets[jump_offsets.len() - 2]);
-                    }
+                for offset in pattern_jump_offsets {
+                    self.patch_jump(offset);
+                }
+
+                for offset in end_jump_offsets {
+                    self.patch_jump(offset);
                 }
             }
             ExprKind::ListComprehension { .. } => {
@@ -716,34 +744,48 @@ impl Compiler {
             }
 
             MatchPattern::Variable(_name) => {
-                self.emit_op(OpCode::Pop, line);
+                self.emit_op(OpCode::Dup, line);
                 self.emit_op(OpCode::True, line);
                 Ok(())
             }
 
-            MatchPattern::Typed { .. } => {
+            MatchPattern::Typed { type_name, .. } => {
+                let type_idx = self.add_constant(Constant::String(type_name.clone()));
+                self.emit_op(OpCode::TypeCheck, line);
+                self.emit_u16(type_idx, line);
+                Ok(())
+            }
+
+            MatchPattern::Array { .. } => {
+                self.emit_op(OpCode::Dup, line);
+                let type_idx = self.add_constant(Constant::String("Array".to_string()));
+                self.emit_op(OpCode::TypeCheck, line);
+                self.emit_u16(type_idx, line);
+                let fail_jump = self.emit_jump(OpCode::JumpIfFalse, line);
                 self.emit_op(OpCode::Pop, line);
                 self.emit_op(OpCode::False, line);
+                self.patch_jump(fail_jump);
                 Ok(())
             }
 
             MatchPattern::Literal(literal) => self.compile_literal_comparison(literal, line),
 
-            MatchPattern::Array { .. } => {
-                self.emit_op(OpCode::Pop, line);
-                self.emit_op(OpCode::False, line);
-                Ok(())
-            }
-
             MatchPattern::Hash { .. } => {
+                self.emit_op(OpCode::Dup, line);
+                let type_idx = self.add_constant(Constant::String("Hash".to_string()));
+                self.emit_op(OpCode::TypeCheck, line);
+                self.emit_u16(type_idx, line);
+                let fail_jump = self.emit_jump(OpCode::JumpIfFalse, line);
                 self.emit_op(OpCode::Pop, line);
                 self.emit_op(OpCode::False, line);
+                self.patch_jump(fail_jump);
                 Ok(())
             }
 
-            MatchPattern::Destructuring { .. } => {
-                self.emit_op(OpCode::Pop, line);
-                self.emit_op(OpCode::False, line);
+            MatchPattern::Destructuring { type_name, .. } => {
+                let type_idx = self.add_constant(Constant::String(type_name.clone()));
+                self.emit_op(OpCode::TypeCheck, line);
+                self.emit_u16(type_idx, line);
                 Ok(())
             }
 
