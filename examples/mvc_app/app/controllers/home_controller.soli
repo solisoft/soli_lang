@@ -3,25 +3,8 @@
 // GET /
 fn index(req: Any) -> Any {
     return render("home/index", {
-        "title": "Home",
-        "message": "Welcome to the Soli MVC framework!",
-        "stats": {
-            "active_users": 1240,
-            "server_uptime": "99.9%",
-            "requests_today": 45200
-        }
-    });
-}
-
-// GET /about
-fn about(req: Any) -> Any {
-    return render("home/about", {
-        "title": "About",
-        "team": [
-            {"name": "Alice Johnson", "role": "Lead Developer"},
-            {"name": "Bob Smith", "role": "Designer"},
-            {"name": "Charlie Brown", "role": "Product Manager"}
-        ]
+        "title": "Welcome",
+        "message": "The Modern MVC Framework for Soli"
     });
 }
 
@@ -29,8 +12,8 @@ fn about(req: Any) -> Any {
 fn health(req: Any) -> Any {
     return {
         "status": 200,
-        "headers": {"Content-Type": "text/plain"},
-        "body": "OK"
+        "headers": {"Content-Type": "text/json"},
+        "body": "{\"status\":\"ok\"}"
     };
 }
 

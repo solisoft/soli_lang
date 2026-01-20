@@ -1,0 +1,25 @@
+<h1>Routing</h1>
+<p class="lead">Define how your application responds to client requests in <code>config/routes.soli</code>.</p>
+
+<h2>Basic Routes</h2>
+<p>Map HTTP verbs to controller actions:</p>
+
+<pre><code class="language-soli">get("/about", "home#about");
+post("/users", "users#create");
+put("/users/:id", "users#update");
+delete("/users/:id", "users#delete");</code></pre>
+
+<h2>Resource Routing</h2>
+<p>Automatically generate standard RESTful routes for a resource:</p>
+
+<pre><code class="language-soli">resources("photos", null);</code></pre>
+
+<p>This creates paths like <code>/photos</code>, <code>/photos/new</code>, <code>/photos/:id</code>, etc.</p>
+
+<h2>Scoped Middleware</h2>
+<p>Apply middleware to specific groups of routes:</p>
+
+<pre><code class="language-soli">middleware("auth", -> {
+    get("/dashboard", "dashboard#index");
+    resources("settings", null);
+});</code></pre>

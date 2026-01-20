@@ -6,7 +6,7 @@ TAILWIND_PID=$!
 
 # Start Soli server
 echo "Starting Soli server..."
-../../target/debug/soli serve .
+soli serve .
 
 # Kill Tailwind watcher when Soli server exits
 kill $TAILWIND_PID

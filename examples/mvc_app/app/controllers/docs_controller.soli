@@ -1,0 +1,34 @@
+// Documentation Controller
+// Handles displaying documentation pages
+
+fn index(req: Any) -> Any {
+    return redirect("/docs/introduction");
+}
+
+fn introduction(req: Any) -> Any {
+    return render("docs/introduction", {
+        "title": "Introduction",
+        "section": "getting_started"
+    }, "layouts/docs");
+}
+
+fn installation(req: Any) -> Any {
+    return render("docs/installation", {
+        "title": "Installation",
+        "section": "getting_started"
+    }, "layouts/docs");
+}
+
+fn routing(req: Any) -> Any {
+    return render("docs/routing", {
+        "title": "Routing",
+        "section": "core_concepts"
+    }, "layouts/docs");
+}
+
+fn controllers(req: Any) -> Any {
+    return render("docs/controllers", {
+        "title": "Controllers",
+        "section": "core_concepts"
+    }, "layouts/docs");
+}

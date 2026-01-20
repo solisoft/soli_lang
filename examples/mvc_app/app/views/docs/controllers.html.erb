@@ -1,0 +1,29 @@
+<h1>Controllers</h1>
+<p class="lead">Controllers are the glue between your routes and views.</p>
+
+<h2>Example Controller</h2>
+<p>Controllers are defined in <code>app/controllers/</code> and contain functions for each action:</p>
+
+<pre><code class="language-soli">// app/controllers/posts_controller.soli
+
+fn index(req: Any) -> Any {
+    let posts = Post.all();
+    return render("posts/index", { "posts": posts });
+}
+
+fn show(req: Any) -> Any {
+    let id = req.params["id"];
+    let post = Post.find(id);
+    return render("posts/show", { "post": post });
+}</code></pre>
+
+<h2>Parameters</h2>
+<p>Access request parameters via <code>req.params</code>:</p>
+
+<pre><code class="language-soli">let id = req.params["id"];
+let query = req.params["q"];</code></pre>
+
+<h2>Rendering</h2>
+<p>Use the <code>render</code> helper to render a view template. You can optionally specify a layout (default is "application").</p>
+
+<pre><code class="language-soli">return render("home/index", { "title": "Home" });</code></pre>

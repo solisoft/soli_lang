@@ -1,94 +1,98 @@
-<div class="relative bg-white overflow-hidden shadow-xl sm:rounded-lg">
-    <div class="absolute inset-0">
-        <img class="h-full w-full object-cover" src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?ixlib=rb-1.2.1&auto=format&fit=crop&w=2850&q=80" alt="Team working">
-        <div class="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 mix-blend-multiply opacity-90"></div>
+<div class="pt-24 pb-16 sm:pt-32 sm:pb-24 lg:pb-32 text-center">
+    <h1 class="mx-auto max-w-4xl font-display text-5xl font-medium tracking-tight text-white sm:text-7xl">
+        The Web Framework <br>
+        <span class="relative whitespace-nowrap text-indigo-400">
+            <span class="relative">for Perfectionists</span>
+        </span>
+    </h1>
+    <p class="mx-auto mt-6 max-w-2xl text-lg tracking-tight text-gray-100">
+        Build high-performance, maintainable web applications with Soli. <br>
+        Expressive syntax, compiled speed, and developer joy included.
+    </p>
+    <div class="mt-10 flex justify-center gap-x-6">
+        <a href="https://docs.solilang.org/getting-started" class="group rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all">
+            Get Started <span aria-hidden="true" class="ml-1 inline-block transition-transform group-hover:translate-x-1">&toea;</span>
+        </a>
+        <a href="https://docs.solilang.org" class="rounded-full bg-indigo-600/10 px-5 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-inset ring-indigo-500/20 hover:bg-indigo-600/20 transition-all">
+            Read the docs
+        </a>
     </div>
-    <div class="relative max-w-7xl mx-auto py-24 px-4 sm:py-32 sm:px-6 lg:px-8">
-        <h1 class="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">Soli MVC Framework</h1>
-        <p class="mt-6 text-xl text-indigo-100 max-w-3xl">
-            Build fast, reliable, and scalable web applications with Solilang. 
-            <%= message %>
+
+    <!-- Code Preview -->
+    <div class="mt-16 sm:mt-24 flow-root">
+        <div class="mx-auto max-w-3xl rounded-xl bg-gray-900/80 shadow-2xl ring-1 ring-white/10 sm:rounded-2xl">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-white/5 bg-white/5 sm:rounded-t-2xl">
+                <div class="flex gap-1.5">
+                    <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                </div>
+                <div class="flex-1 text-center text-xs font-mono text-gray-500">app/controllers/home.soli</div>
+            </div>
+            <div class="px-6 py-4 text-left overflow-x-auto">
+<pre class="text-sm leading-6"><code class="language-soli"><span class="text-purple-400">fn</span> <span class="text-blue-400">index</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">let</span> users = <span class="text-yellow-200">User</span>.<span class="text-blue-400">where</span>({ <span class="text-green-300">"active"</span>: <span class="text-purple-400">true</span> })
+                    .<span class="text-blue-400">limit</span>(<span class="text-purple-400">10</span>)
+                    .<span class="text-blue-400">get</span>();
+
+    <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-300">"home/index"</span>, {
+        <span class="text-green-300">"users"</span>: users,
+        <span class="text-green-300">"time"</span>: <span class="text-yellow-200">Time</span>.<span class="text-blue-400">now</span>()
+    });
+}</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mx-auto max-w-7xl px-6 lg:px-8 py-24 sm:py-32">
+    <div class="mx-auto max-w-2xl lg:text-center">
+        <h2 class="text-base font-semibold leading-7 text-indigo-400">Deploy faster</h2>
+        <p class="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">Everything you need to ship</p>
+        <p class="mt-6 text-lg leading-8 text-gray-300">
+            Soli includes everything you need to build amazing web applications. No more stitching together ten different libraries.
         </p>
-        <div class="mt-10 max-w-sm sm:flex sm:max-w-none">
-            <div class="space-y-4 sm:space-y-0 sm:mx-auto sm:inline-grid sm:grid-cols-2 sm:gap-5">
-                <a href="/users" class="flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-primary bg-white hover:bg-indigo-50 sm:px-8">
-                    View Users
-                </a>
-                <a href="/about" class="flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-500 bg-opacity-60 hover:bg-opacity-70 sm:px-8">
-                    Learn More
-                </a>
-            </div>
-        </div>
     </div>
-</div>
-
-<!-- Stats Section -->
-<div class="mt-10">
-    <h3 class="text-lg leading-6 font-medium text-gray-900">System Overview</h3>
-    <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
-        <div class="px-4 py-5 bg-white shadow rounded-lg overflow-hidden sm:p-6 transition transform hover:-translate-y-1 hover:shadow-lg">
-            <dt class="text-sm font-medium text-gray-500 truncate">Active Users</dt>
-            <dd class="mt-1 text-3xl font-semibold text-gray-900"><%= stats["active_users"] %></dd>
-        </div>
-        <div class="px-4 py-5 bg-white shadow rounded-lg overflow-hidden sm:p-6 transition transform hover:-translate-y-1 hover:shadow-lg">
-            <dt class="text-sm font-medium text-gray-500 truncate">Requests Today</dt>
-            <dd class="mt-1 text-3xl font-semibold text-gray-900"><%= stats["requests_today"] %></dd>
-        </div>
-        <div class="px-4 py-5 bg-white shadow rounded-lg overflow-hidden sm:p-6 transition transform hover:-translate-y-1 hover:shadow-lg">
-            <dt class="text-sm font-medium text-gray-500 truncate">Server Uptime</dt>
-            <dd class="mt-1 text-3xl font-semibold text-gray-900"><%= stats["server_uptime"] %></dd>
-        </div>
-    </dl>
-</div>
-
-<!-- Features Section -->
-<div class="py-12 bg-white mt-12 rounded-lg shadow-sm">
-    <div class="max-w-xl mx-auto px-4 sm:px-6 lg:max-w-7xl lg:px-8">
-        <h2 class="sr-only">A better way to send money</h2>
-        <dl class="space-y-10 lg:space-y-0 lg:grid lg:grid-cols-3 lg:gap-8">
-            <div>
-                <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white">
-                    <!-- Heroicon name: outline/globe-alt -->
-                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                    </svg>
-                </div>
-                <div class="mt-5">
-                    <dt class="text-lg leading-6 font-medium text-gray-900">Global Scale</dt>
-                    <dd class="mt-2 text-base text-gray-500">
-                        Designed to handle traffic from anywhere in the world with low latency and high availability.
-                    </dd>
-                </div>
+    <div class="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none">
+        <dl class="grid max-w-xl grid-cols-1 gap-x-8 gap-y-16 lg:max-w-none lg:grid-cols-3">
+            <div class="flex flex-col">
+                <dt class="flex items-center gap-x-3 text-base font-semibold leading-7 text-white">
+                    <div class="h-10 w-10 flex items-center justify-center rounded-lg bg-indigo-500/10">
+                        <svg class="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                        </svg>
+                    </div>
+                    Blazing Fast
+                </dt>
+                <dd class="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-300">
+                    <p class="flex-auto">Compiled to native machine code for incredible performance. Handle thousands of requests with minimal resources.</p>
+                </dd>
             </div>
-
-            <div>
-                <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white">
-                    <!-- Heroicon name: outline/scale -->
-                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                    </svg>
-                </div>
-                <div class="mt-5">
-                    <dt class="text-lg leading-6 font-medium text-gray-900">Blazing Fast</dt>
-                    <dd class="mt-2 text-base text-gray-500">
-                        Built on top of the Solilang VM, ensuring your application runs at peak performance.
-                    </dd>
-                </div>
+            <div class="flex flex-col">
+                <dt class="flex items-center gap-x-3 text-base font-semibold leading-7 text-white">
+                    <div class="h-10 w-10 flex items-center justify-center rounded-lg bg-indigo-500/10">
+                        <svg class="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                        </svg>
+                    </div>
+                    Secure by Default
+                </dt>
+                <dd class="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-300">
+                    <p class="flex-auto">Built-in CSRF protection, SQL injection prevention, and secure session handling. Sleep soundly at night.</p>
+                </dd>
             </div>
-
-            <div>
-                <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white">
-                    <!-- Heroicon name: outline/lightning-bolt -->
-                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                </div>
-                <div class="mt-5">
-                    <dt class="text-lg leading-6 font-medium text-gray-900">Developer Friendly</dt>
-                    <dd class="mt-2 text-base text-gray-500">
-                        Intuitive APIs and modern tooling make development a breeze.
-                    </dd>
-                </div>
+            <div class="flex flex-col">
+                <dt class="flex items-center gap-x-3 text-base font-semibold leading-7 text-white">
+                    <div class="h-10 w-10 flex items-center justify-center rounded-lg bg-indigo-500/10">
+                        <svg class="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+                        </svg>
+                    </div>
+                    Full Stack Capable
+                </dt>
+                <dd class="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-300">
+                    <p class="flex-auto">From database ORM to WebSocket support, background jobs to mailers. It's all in the box.</p>
+                </dd>
             </div>
         </dl>
     </div>
