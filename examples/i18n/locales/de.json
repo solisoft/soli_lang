@@ -1,0 +1,42 @@
+{
+    "app": {
+        "title": "Meine Anwendung",
+        "welcome": "Willkommen auf unserer Website!",
+        "goodbye": "Vielen Dank für Ihren Besuch!"
+    },
+    "greeting": {
+        "name": "Hallo {name}!"
+    },
+    "cart": {
+        "items": "Sie haben {count} {items} in Ihrem Warenkorb"
+    },
+    "date": {
+        "format": "{day}.{month}.{year}"
+    },
+    "price": {
+        "format": "{amount} {currency}"
+    },
+    "profile": {
+        "message": "{name} ist {age} Jahre alt und wohnt in {city}"
+    },
+    "common": {
+        "ok": "OK",
+        "cancel": "Abbrechen",
+        "save": "Speichern",
+        "delete": "Löschen",
+        "edit": "Bearbeiten",
+        "submit": "Absenden"
+    },
+    "nav": {
+        "home": "Startseite",
+        "about": "Über uns",
+        "contact": "Kontakt",
+        "products": "Produkte",
+        "services": "Dienstleistungen"
+    },
+    "errors": {
+        "not_found": "Seite nicht gefunden",
+        "server_error": "Etwas ist schief gelaufen",
+        "validation_error": "Bitte überprüfen Sie Ihre Eingabe"
+    }
+}

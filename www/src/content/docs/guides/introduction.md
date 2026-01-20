@@ -85,7 +85,27 @@ Soli is great for:
 - Data transformation pipelines
 - Teaching OOP and type systems
 - Prototyping ideas quickly
+- Building internationalized applications
+- Full-stack web development with Soli MVC
+- Real-time applications with WebSocket support
+
+## Standard Library Features
+
+Soli includes practical features for real-world development:
+
+- **Date & Time**: Comprehensive datetime support with `DateTime` and `Duration` classes
+- **Internationalization**: Translation, pluralization, and locale-aware formatting
+- **HTTP Client & Server**: Built-in HTTP functions and web server capabilities
+- **WebSockets**: Real-time bidirectional communication for chat, notifications, and live updates
+- **Database**: SoliDB integration for document storage
+- **File I/O**: Read/write files with text and binary support
+- **Cryptography**: Secure password hashing with Argon2
 
 ## Next Steps
 
 Ready to get started? Head to the [Installation](/guides/installation/) guide to set up Soli on your machine.
+
+Want to learn specific features? Check out:
+- [Date & Time](/guides/datetime/) - Working with dates and times
+- [Internationalization](/guides/internationalization/) - Building multi-language applications
+- [WebSockets](/guides/websocket/) - Real-time bidirectional communication

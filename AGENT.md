@@ -94,6 +94,32 @@ import "./utils/math.soli";
 print(math.add(1, 2));
 ```
 
+### Exception Handling (try/catch/throw)
+```soli
+// Basic try/catch
+try {
+    throw "Something went wrong";
+    print("After throw");
+} catch (error) {
+    print("Caught: " + str(error));
+}
+
+// Try/catch/finally
+try {
+    risky_operation();
+} catch (e) {
+    print("Error: " + str(e));
+} finally {
+    print("Always runs");
+}
+
+// Throwing custom errors
+throw ValueError.new("Invalid input");
+throw RuntimeError.new("Something failed");
+
+// Built-in error types: Error, ValueError, TypeError, KeyError, IndexError, RuntimeError
+```
+
 ## Built-in Functions (Web-Focused)
 
 ### Arrays
@@ -123,11 +149,15 @@ print(math.add(1, 2));
 - `render(template_name, data)` - render template with data
 - `partial(template_name, data)` - include partial
 
+### HTML/Escaping
+- `html_escape(string)` - escape `<`, `>`, `&`, `"`, `'` for safe HTML output
+- `html_unescape(string)` - convert HTML entities back to characters
+- `sanitize_html(string)` - remove dangerous tags/attributes (XSS prevention)
+
 ## What Soli Does NOT Have
 
 - No async/await (uses futures with auto-resolve)
 - No pattern matching
-- No exception handling (try/catch/throw)
 - No generics (beyond Array<T> and Hash<K, V>)
 - No macros
 - No decorators
@@ -200,7 +230,6 @@ post("/users", fn() {
 - `.soli` - Soli source files
 
 ## Example: Simple Web Handler
-
 ```soli
 // Fetch users and render template
 fn get_users() -> Any {
@@ -212,6 +241,19 @@ fn get_users() -> Any {
 let data = fetch_json("/api/users")
     |> then(fn(r) r.json())
     |> then(fn(users) users.filter(fn(u) u["active"]));
+```
+
+## Example: Safe HTML Rendering (XSS Prevention)
+```soli
+fn render_comment(author: String, content: String) -> String {
+    let safe_author = html_escape(author);
+    let safe_content = sanitize_html(content);
+    return "<div class=\"comment\"><strong>" + safe_author + ":</strong> " + safe_content + "</div>";
+}
+
+let comment = render_comment("<script>evil()</script>Alice", "<p>Hello!</p><script>steal()</script>");
+print(comment);
+// Output: <div class="comment"><strong>&lt;script&gt;evil()&lt;/script&gt;Alice:</strong> <p>Hello!</p></div>
 ```
 
 ## Key Design Decisions

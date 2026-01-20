@@ -148,7 +148,19 @@ pub fn register_middleware_with_options(
 
 /// Get all registered middleware in execution order (must be called from interpreter thread).
 pub fn get_middleware() -> Vec<Middleware> {
-    MIDDLEWARE.with(|mw| mw.borrow().clone())
+    MIDDLEWARE.with(|mw| {
+        let mw = mw.borrow();
+        if mw.is_empty() {
+            Vec::new()
+        } else {
+            mw.clone()
+        }
+    })
+}
+
+/// Check if there's any middleware registered (fast path).
+pub fn has_middleware() -> bool {
+    MIDDLEWARE.with(|mw| !mw.borrow().is_empty())
 }
 
 /// Get a middleware by name (must be called from interpreter thread).
@@ -246,7 +258,7 @@ pub fn scan_middleware_files(middleware_dir: &Path) -> Result<Vec<PathBuf>, Runt
         })?;
 
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "soli") {
+        if path.extension().is_some_and(|ext| ext == "soli") {
             files.push(path);
         }
     }
@@ -271,7 +283,7 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
     let mut pending_global_only: Option<bool> = None;
     let mut pending_scope_only: Option<bool> = None;
 
-    for (line_number, line) in lines.iter().enumerate() {
+    for (_line_number, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
 
         // Check for order comment

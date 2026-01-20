@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{self, Write};
+use std::io;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -33,6 +33,7 @@ struct CallFrame {
 }
 
 /// Native function identifiers.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 enum NativeId {
@@ -67,6 +68,11 @@ enum NativeId {
     Now,
     Keys,
     Values,
+    Entries,
+    HasKey,
+    Delete,
+    Merge,
+    Clear,
     // HTTP functions
     HttpGet,
     HttpPost,
@@ -83,11 +89,15 @@ enum NativeId {
     // File I/O functions
     Barf,
     Slurp,
+    // HTML functions
+    HtmlEscape,
+    HtmlUnescape,
+    SanitizeHtml,
 }
 
 impl NativeId {
     fn from_u16(val: u16) -> Option<Self> {
-        if val <= NativeId::Slurp as u16 {
+        if val <= NativeId::SanitizeHtml as u16 {
             Some(unsafe { std::mem::transmute(val) })
         } else {
             None
@@ -127,6 +137,11 @@ impl NativeId {
             NativeId::Now => Some(0),
             NativeId::Keys => Some(1),
             NativeId::Values => Some(1),
+            NativeId::Entries => Some(1),
+            NativeId::HasKey => Some(2),
+            NativeId::Delete => Some(2),
+            NativeId::Merge => Some(2),
+            NativeId::Clear => Some(1),
             // HTTP functions
             NativeId::HttpGet => Some(1),
             NativeId::HttpPost => Some(2),
@@ -143,6 +158,10 @@ impl NativeId {
             // File I/O functions
             NativeId::Barf => None,  // variadic: 2-3 args
             NativeId::Slurp => None, // variadic: 1-2 args
+            // HTML functions
+            NativeId::HtmlEscape => Some(1),
+            NativeId::HtmlUnescape => Some(1),
+            NativeId::SanitizeHtml => Some(1),
         }
     }
 }
@@ -157,6 +176,24 @@ pub struct VM {
     globals: HashMap<String, VMValue>,
     /// Open upvalues (stack slot -> upvalue)
     open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
+    /// Exception handler stack
+    exception_handlers: Vec<ExceptionHandler>,
+    /// Current exception being thrown (if any)
+    current_exception: Option<VMValue>,
+}
+
+/// An exception handler on the stack.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct ExceptionHandler {
+    /// IP to jump to for catch block (0 if no catch)
+    catch_ip: usize,
+    /// IP to jump to for finally block (0 if no finally)
+    finally_ip: usize,
+    /// Stack depth at handler entry (for unwinding)
+    stack_depth: usize,
+    /// Number of local slots to pop on entry
+    local_slots: usize,
 }
 
 impl VM {
@@ -167,6 +204,8 @@ impl VM {
             frames: Vec::with_capacity(FRAMES_MAX),
             globals: HashMap::new(),
             open_upvalues: Vec::new(),
+            exception_handlers: Vec::new(),
+            current_exception: None,
         }
     }
 
@@ -524,6 +563,82 @@ impl VM {
                     Err(RuntimeError::new("values requires a hash", Span::default()))
                 }
             }
+            NativeId::Entries => {
+                if let VMValue::Hash(hash) = &args[0] {
+                    let pairs: Vec<VMValue> = hash
+                        .borrow()
+                        .iter()
+                        .map(|(k, v)| {
+                            VMValue::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()])))
+                        })
+                        .collect();
+                    Ok(VMValue::Array(Rc::new(RefCell::new(pairs))))
+                } else {
+                    Err(RuntimeError::new(
+                        "entries requires a hash",
+                        Span::default(),
+                    ))
+                }
+            }
+            NativeId::HasKey => match (&args[0], &args[1]) {
+                (VMValue::Hash(hash), key) => {
+                    let exists = hash.borrow().iter().any(|(k, _)| k == key);
+                    Ok(VMValue::Bool(exists))
+                }
+                _ => Err(RuntimeError::new(
+                    "has_key requires (hash, key)",
+                    Span::default(),
+                )),
+            },
+            NativeId::Delete => match (&args[0], &args[1]) {
+                (VMValue::Hash(hash), key) => {
+                    let mut hash = hash.borrow_mut();
+                    let removed = hash.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+                    hash.retain(|(k, _)| k != key);
+                    Ok(removed.unwrap_or(VMValue::Null))
+                }
+                _ => Err(RuntimeError::new(
+                    "delete requires (hash, key)",
+                    Span::default(),
+                )),
+            },
+            NativeId::Merge => match (&args[0], &args[1]) {
+                (VMValue::Hash(hash1), VMValue::Hash(hash2)) => {
+                    let mut result: Vec<(VMValue, VMValue)> = hash1.borrow().clone();
+                    for (k2, v2) in hash2.borrow().iter() {
+                        let mut found = false;
+                        for (k1, v1) in result.iter_mut() {
+                            if k1 == k2 {
+                                *v1 = v2.clone();
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            result.push((k2.clone(), v2.clone()));
+                        }
+                    }
+                    Ok(VMValue::Hash(Rc::new(RefCell::new(result))))
+                }
+                _ => Err(RuntimeError::new(
+                    "merge requires (hash, hash)",
+                    Span::default(),
+                )),
+            },
+            NativeId::Clear => match &args[0] {
+                VMValue::Hash(hash) => {
+                    hash.borrow_mut().clear();
+                    Ok(VMValue::Null)
+                }
+                VMValue::Array(arr) => {
+                    arr.borrow_mut().clear();
+                    Ok(VMValue::Null)
+                }
+                _ => Err(RuntimeError::new(
+                    "clear requires hash or array",
+                    Span::default(),
+                )),
+            },
 
             // HTTP functions
             NativeId::HttpGet => {
@@ -967,6 +1082,199 @@ impl VM {
                         Ok(VMValue::String(Rc::new(content)))
                     }
                 }
+            }
+            NativeId::HtmlEscape => {
+                let s = match &args[0] {
+                    VMValue::String(s) => s.as_str(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "html_escape requires a string",
+                            Span::default(),
+                        ))
+                    }
+                };
+                let escaped = s
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;")
+                    .replace('"', "&quot;")
+                    .replace('\'', "&#39;");
+                Ok(VMValue::String(Rc::new(escaped)))
+            }
+            NativeId::HtmlUnescape => {
+                let s = match &args[0] {
+                    VMValue::String(s) => s.as_str(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "html_unescape requires a string",
+                            Span::default(),
+                        ))
+                    }
+                };
+                let mut result = s.to_string();
+                let replacements = [
+                    ("&amp;", "&"),
+                    ("&lt;", "<"),
+                    ("&gt;", ">"),
+                    ("&quot;", "\""),
+                    ("&#39;", "'"),
+                    ("&apos;", "'"),
+                    ("&nbsp;", " "),
+                ];
+                for (from, to) in replacements {
+                    result = result.replace(from, to);
+                }
+                Ok(VMValue::String(Rc::new(result)))
+            }
+            NativeId::SanitizeHtml => {
+                let s = match &args[0] {
+                    VMValue::String(s) => s.as_str(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "sanitize_html requires a string",
+                            Span::default(),
+                        ))
+                    }
+                };
+                let mut result = String::new();
+                let mut in_tag = false;
+                let mut current_tag = String::new();
+                let mut tag_buffer = String::new();
+                let mut chars = s.chars().peekable();
+
+                while let Some(c) = chars.next() {
+                    if c == '<' {
+                        if in_tag {
+                            result.push_str(&current_tag);
+                        }
+                        in_tag = true;
+                        current_tag = String::new();
+                        tag_buffer.clear();
+                        tag_buffer.push(c);
+                    } else if c == '>' {
+                        if in_tag {
+                            tag_buffer.push(c);
+                            let tag = tag_buffer.trim().to_lowercase();
+                            let is_closing = tag.starts_with("</");
+                            let is_self_closing = tag.ends_with("/>")
+                                || matches!(
+                                    tag.strip_suffix(">").and_then(|t| t.strip_suffix('/')),
+                                    Some(_)
+                                );
+                            let tag_name = if is_closing {
+                                tag.trim_start_matches('<')
+                                    .trim_start_matches('/')
+                                    .trim_end_matches('>')
+                                    .split_whitespace()
+                                    .next()
+                                    .unwrap_or("")
+                            } else {
+                                tag.trim_start_matches('<')
+                                    .trim_end_matches('/')
+                                    .trim_end_matches('>')
+                                    .split_whitespace()
+                                    .next()
+                                    .unwrap_or("")
+                            };
+                            let allowed_tags = [
+                                "p",
+                                "br",
+                                "b",
+                                "i",
+                                "u",
+                                "em",
+                                "strong",
+                                "a",
+                                "ul",
+                                "ol",
+                                "li",
+                                "blockquote",
+                                "code",
+                                "pre",
+                                "h1",
+                                "h2",
+                                "h3",
+                                "h4",
+                                "h5",
+                                "h6",
+                                "span",
+                                "div",
+                                "img",
+                            ];
+                            let is_allowed = allowed_tags.contains(&tag_name);
+                            let _is_script = tag_name == "script"
+                                || tag_name == "style"
+                                || tag_name == "iframe"
+                                || tag_name == "object"
+                                || tag_name == "embed"
+                                || tag_name == "form"
+                                || tag_name == "input";
+                            let is_dangerous_attr = tag.contains("javascript:")
+                                || tag.contains("onload=")
+                                || tag.contains("onerror=")
+                                || tag.contains("onclick=");
+                            if is_allowed && !is_dangerous_attr {
+                                let cleaned_tag = if is_closing {
+                                    format!("</{}>", tag_name)
+                                } else if is_self_closing {
+                                    format!("<{}/>", tag_name)
+                                } else {
+                                    let attrs: Vec<&str> = tag
+                                        .strip_prefix('<')
+                                        .and_then(|s| s.strip_suffix('>').or(Some(s)))
+                                        .unwrap_or("")
+                                        .split_whitespace()
+                                        .skip(1)
+                                        .collect();
+                                    let safe_attrs: Vec<String> = attrs
+                                        .iter()
+                                        .filter_map(|&attr| {
+                                            let parts: Vec<&str> = attr.splitn(2, '=').collect();
+                                            if parts.len() == 2 {
+                                                let attr_name = parts[0].to_lowercase();
+                                                let attr_value =
+                                                    parts[1].trim_matches('"').trim_matches('\'');
+                                                let safe_attrs = [
+                                                    "href", "src", "title", "alt", "class", "id",
+                                                    "style",
+                                                ];
+                                                if safe_attrs.contains(&attr_name.as_str())
+                                                    && !attr_value
+                                                        .to_lowercase()
+                                                        .contains("javascript:")
+                                                {
+                                                    Some(format!("{}={}", attr_name, parts[1]))
+                                                } else {
+                                                    None
+                                                }
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect();
+                                    if safe_attrs.is_empty() {
+                                        format!("<{}>", tag_name)
+                                    } else {
+                                        format!("<{} {}>", tag_name, safe_attrs.join(" "))
+                                    }
+                                };
+                                result.push_str(&cleaned_tag);
+                            }
+                            in_tag = false;
+                            current_tag.clear();
+                        } else {
+                            result.push(c);
+                        }
+                    } else if in_tag {
+                        tag_buffer.push(c);
+                    } else {
+                        result.push(c);
+                    }
+                }
+                if in_tag {
+                    result.push_str(&current_tag);
+                }
+                Ok(VMValue::String(Rc::new(result)))
             }
         }
     }
@@ -1850,7 +2158,105 @@ impl VM {
                     // This opcode would need access to a bindings map
                     // For now, this is a placeholder
                 }
+
+                // ============ Exception Handling ============
+                OpCode::Try => {
+                    let catch_offset = self.read_u16() as usize;
+                    let finally_offset = self.read_u16() as usize;
+
+                    let handler = ExceptionHandler {
+                        catch_ip: catch_offset,
+                        finally_ip: finally_offset,
+                        stack_depth: self.stack.len(),
+                        local_slots: 0,
+                    };
+                    self.exception_handlers.push(handler);
+                }
+
+                OpCode::TryEnd => {
+                    // Normal exit from try block - pop the handler
+                    // But don't pop if there's a finally (finally will do it)
+                    if let Some(handler) = self.exception_handlers.last() {
+                        if handler.finally_ip == 0 {
+                            self.exception_handlers.pop();
+                        }
+                    }
+                }
+
+                OpCode::Throw => {
+                    let error = self.pop()?;
+                    self.throw_exception(error)?;
+                }
+
+                OpCode::Rethrow => {
+                    // Re-throw the current exception
+                    if let Some(ref error) = self.current_exception {
+                        self.throw_exception(error.clone())?;
+                    } else {
+                        return Err(RuntimeError::new(
+                            "No exception to rethrow",
+                            Span::default(),
+                        ));
+                    }
+                }
+
+                OpCode::PopTry => {
+                    // Pop the exception handler (called after catch/finally)
+                    self.exception_handlers.pop();
+                }
             }
+        }
+    }
+
+    /// Throw an exception and find the appropriate handler.
+    fn throw_exception(&mut self, error: VMValue) -> VMResult<()> {
+        self.current_exception = Some(error.clone());
+
+        // Unwind stack until we find a handler
+        while let Some(handler) = self.exception_handlers.pop() {
+            // Check if we have a catch handler
+            if handler.catch_ip > 0 {
+                // Unwind to handler's stack depth
+                self.unwind_stack(handler.stack_depth);
+
+                // Push the exception value
+                self.push(error);
+
+                // Jump to catch block
+                self.current_frame_mut().ip = handler.catch_ip;
+
+                return Ok(());
+            }
+            // Check if we have a finally handler
+            else if handler.finally_ip > 0 {
+                // Unwind to handler's stack depth
+                self.unwind_stack(handler.stack_depth);
+
+                // Push the exception value (for potential rethrow in finally)
+                self.push(error.clone());
+
+                // Jump to finally block
+                self.current_frame_mut().ip = handler.finally_ip;
+
+                return Ok(());
+            }
+            // No catch or finally, continue unwinding
+        }
+
+        // No handler found - propagate the error
+        Err(RuntimeError::new(
+            format!("Unhandled exception: {}", error),
+            Span::default(),
+        ))
+    }
+
+    /// Unwind the stack to the given depth, closing upvalues.
+    fn unwind_stack(&mut self, target_depth: usize) {
+        // Close upvalues
+        while self.stack.len() > target_depth {
+            let slot = self.stack.len() - 1;
+            self.close_upvalues(slot);
+            self.stack.pop();
         }
     }
 

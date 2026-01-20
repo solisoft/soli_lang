@@ -8,18 +8,41 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
 /// A registered route with its handler.
+/// For worker threads, we use a separate struct without middleware Values.
 #[derive(Clone)]
 pub struct Route {
     pub method: String,
     pub path_pattern: String,
-    pub handler: Value,
-    pub middleware: Vec<Value>, // Scoped middleware for this route
+    pub handler_name: String,  // Store function name instead of Value
+    pub middleware: Vec<Value>,
+}
+
+/// A worker-safe route struct without middleware Values.
+/// Used to pass routes to worker threads.
+#[derive(Clone)]
+pub struct WorkerRoute {
+    pub method: String,
+    pub path_pattern: String,
+    pub handler_name: String,
 }
 
 // Route registry stored in thread-local storage.
-// Routes contain Value (which uses Rc), so they must be accessed from the interpreter thread only.
+// Routes contain handler names that are looked up in each worker's interpreter.
 thread_local! {
     pub static ROUTES: RefCell<Vec<Route>> = RefCell::new(Vec::new());
+}
+
+// Track if routes are "direct" (http_server_get/post) vs MVC (get/post DSL)
+static DIRECT_ROUTES_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Mark that we're using direct route registration (http_server_get/post)
+pub fn set_direct_routes_mode() {
+    DIRECT_ROUTES_MODE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Check if we're using direct route registration
+pub fn is_direct_routes_mode() -> bool {
+    DIRECT_ROUTES_MODE.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// Clear all registered routes (useful for testing or restarting).
@@ -32,53 +55,79 @@ pub fn clear_routes() {
 pub fn clear_routes_for_prefix(prefix: &str) {
     ROUTES.with(|routes| {
         routes.borrow_mut().retain(|r| {
-            // For root path, only remove exact matches or paths starting with the prefix
             if prefix == "/" {
-                // For home controller, remove routes that are exactly "/" or start with "/:" or "/<action>"
-                // but keep routes like "/users" (other controllers)
                 let path = &r.path_pattern;
                 if path == "/" {
                     return false;
                 }
-                // Check if it's a home controller route (starts with /: or /word where word is not a controller)
-                // We can't reliably detect this, so for home controller we just clear exact "/" match
                 return true;
             }
-            // For other controllers, remove routes starting with the prefix
             !r.path_pattern.starts_with(prefix)
         });
     });
 }
 
-/// Register a route with a handler value directly.
+/// Register a route with a handler name.
 /// Used by the MVC framework to register derived routes.
-pub fn register_route_with_handler(method: &str, path: &str, handler: Value) {
-    register_route(method, path, handler, Vec::new());
+pub fn register_route_with_handler(method: &str, path: &str, handler_name: String) {
+    register_route(method, path, handler_name, Vec::new());
 }
 
 /// Register a route with a handler and scoped middleware.
-/// Used by the MVC framework when middleware is explicitly provided.
 pub fn register_route_with_middleware(
     method: &str,
     path: &str,
-    handler: Value,
+    handler_name: String,
     middleware: Vec<Value>,
 ) {
-    register_route(method, path, handler, middleware);
+    register_route(method, path, handler_name, middleware);
 }
 
-/// Get all registered routes (must be called from interpreter thread).
+/// Get all registered routes.
 pub fn get_routes() -> Vec<Route> {
     ROUTES.with(|routes| routes.borrow().clone())
 }
 
+/// Convert routes to worker-safe routes (without middleware Values).
+pub fn routes_to_worker_routes(routes: &[Route]) -> Vec<WorkerRoute> {
+    routes
+        .iter()
+        .map(|r| WorkerRoute {
+            method: r.method.clone(),
+            path_pattern: r.path_pattern.clone(),
+            handler_name: r.handler_name.clone(),
+        })
+        .collect()
+}
+
+/// Set routes in the current thread's storage.
+/// Used by worker threads to initialize their route tables from the main thread.
+pub fn set_routes(routes: Vec<Route>) {
+    ROUTES.with(|r| *r.borrow_mut() = routes);
+}
+
+/// Set worker routes in the current thread's storage (for worker threads).
+pub fn set_worker_routes(routes: Vec<WorkerRoute>) {
+    // Convert WorkerRoute back to Route (with empty middleware for workers)
+    let routes: Vec<Route> = routes
+        .into_iter()
+        .map(|r| Route {
+            method: r.method,
+            path_pattern: r.path_pattern,
+            handler_name: r.handler_name,
+            middleware: Vec::new(),
+        })
+        .collect();
+    ROUTES.with(|r| *r.borrow_mut() = routes);
+}
+
 /// Register a route.
-fn register_route(method: &str, path: &str, handler: Value, middleware: Vec<Value>) {
+fn register_route(method: &str, path: &str, handler_name: String, middleware: Vec<Value>) {
     ROUTES.with(|routes| {
         routes.borrow_mut().push(Route {
             method: method.to_string(),
             path_pattern: path.to_string(),
-            handler,
+            handler_name,
             middleware,
         });
     });
@@ -87,6 +136,11 @@ fn register_route(method: &str, path: &str, handler: Value, middleware: Vec<Valu
 /// Match a path against a pattern and extract parameters.
 /// Pattern format: "/users/:id" matches "/users/123" with params {"id": "123"}
 pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> {
+    // Fast path: exact match (no params)
+    if pattern == path {
+        return Some(HashMap::new());
+    }
+
     let pattern_parts: Vec<&str> = pattern.split('/').collect();
     let path_parts: Vec<&str> = path.split('/').collect();
 
@@ -97,9 +151,7 @@ pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> 
     let mut params = HashMap::new();
 
     for (pat, actual) in pattern_parts.iter().zip(path_parts.iter()) {
-        if pat.starts_with(':') {
-            // This is a parameter
-            let param_name = &pat[1..];
+        if let Some(param_name) = pat.strip_prefix(':') {
             params.insert(param_name.to_string(), actual.to_string());
         } else if pat != actual {
             // Literal mismatch
@@ -232,7 +284,7 @@ pub fn extract_response(response: &Value) -> (u16, HashMap<String, String>, Stri
 
 /// Register HTTP server functions in the given environment.
 pub fn register_server_builtins(env: &mut Environment) {
-    // http_server_get(path, handler) - Register GET route
+    // http_server_get(path, handler_name) - Register GET route
     env.define(
         "http_server_get".to_string(),
         Value::NativeFunction(NativeFunction::new("http_server_get", Some(2), |args| {
@@ -246,22 +298,23 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            let handler = match &args[1] {
-                Value::Function(_) => args[1].clone(),
+            let handler_name = match &args[1] {
+                Value::String(s) => s.clone(),
                 other => {
                     return Err(format!(
-                        "http_server_get() expects function handler, got {}",
+                        "http_server_get() expects string handler name, got {}",
                         other.type_name()
                     ))
                 }
             };
 
-            register_route("GET", &path, handler, Vec::new());
+            set_direct_routes_mode();
+            register_route("GET", &path, handler_name, Vec::new());
             Ok(Value::Null)
         })),
     );
 
-    // http_server_post(path, handler) - Register POST route
+    // http_server_post(path, handler_name) - Register POST route
     env.define(
         "http_server_post".to_string(),
         Value::NativeFunction(NativeFunction::new("http_server_post", Some(2), |args| {
@@ -275,22 +328,22 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            let handler = match &args[1] {
-                Value::Function(_) => args[1].clone(),
+            let handler_name = match &args[1] {
+                Value::String(s) => s.clone(),
                 other => {
                     return Err(format!(
-                        "http_server_post() expects function handler, got {}",
+                        "http_server_post() expects string handler name, got {}",
                         other.type_name()
                     ))
                 }
             };
 
-            register_route("POST", &path, handler, Vec::new());
+            register_route("POST", &path, handler_name, Vec::new());
             Ok(Value::Null)
         })),
     );
 
-    // http_server_put(path, handler) - Register PUT route
+    // http_server_put(path, handler_name) - Register PUT route
     env.define(
         "http_server_put".to_string(),
         Value::NativeFunction(NativeFunction::new("http_server_put", Some(2), |args| {
@@ -304,22 +357,22 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            let handler = match &args[1] {
-                Value::Function(_) => args[1].clone(),
+            let handler_name = match &args[1] {
+                Value::String(s) => s.clone(),
                 other => {
                     return Err(format!(
-                        "http_server_put() expects function handler, got {}",
+                        "http_server_put() expects string handler name, got {}",
                         other.type_name()
                     ))
                 }
             };
 
-            register_route("PUT", &path, handler, Vec::new());
+            register_route("PUT", &path, handler_name, Vec::new());
             Ok(Value::Null)
         })),
     );
 
-    // http_server_delete(path, handler) - Register DELETE route
+    // http_server_delete(path, handler_name) - Register DELETE route
     env.define(
         "http_server_delete".to_string(),
         Value::NativeFunction(NativeFunction::new("http_server_delete", Some(2), |args| {
@@ -333,22 +386,22 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            let handler = match &args[1] {
-                Value::Function(_) => args[1].clone(),
+            let handler_name = match &args[1] {
+                Value::String(s) => s.clone(),
                 other => {
                     return Err(format!(
-                        "http_server_delete() expects function handler, got {}",
+                        "http_server_delete() expects string handler name, got {}",
                         other.type_name()
                     ))
                 }
             };
 
-            register_route("DELETE", &path, handler, Vec::new());
+            register_route("DELETE", &path, handler_name, Vec::new());
             Ok(Value::Null)
         })),
     );
 
-    // http_server_route(method, path, handler) - Register generic route
+    // http_server_route(method, path, handler_name) - Register generic route
     env.define(
         "http_server_route".to_string(),
         Value::NativeFunction(NativeFunction::new("http_server_route", Some(3), |args| {
@@ -372,17 +425,17 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            let handler = match &args[2] {
-                Value::Function(_) => args[2].clone(),
+            let handler_name = match &args[2] {
+                Value::String(s) => s.clone(),
                 other => {
                     return Err(format!(
-                        "http_server_route() expects function handler, got {}",
+                        "http_server_route() expects string handler name, got {}",
                         other.type_name()
                     ))
                 }
             };
 
-            register_route(&method, &path, handler, Vec::new());
+            register_route(&method, &path, handler_name, Vec::new());
             Ok(Value::Null)
         })),
     );

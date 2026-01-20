@@ -57,6 +57,7 @@ impl Interpreter {
                     match self.execute(body)? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                         ControlFlow::Normal => {}
+                        ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
                     }
                 }
                 Ok(ControlFlow::Normal)
@@ -113,8 +114,96 @@ impl Interpreter {
                 self.execute(inner)
             }
 
-            StmtKind::Throw(_) | StmtKind::Try { .. } => {
-                unimplemented!("Exception handling not yet implemented")
+            StmtKind::Throw(value) => {
+                let error_value = self.evaluate(value)?;
+                Ok(ControlFlow::Throw(error_value))
+            }
+
+            StmtKind::Try {
+                try_block,
+                catch_var,
+                catch_block,
+                finally_block,
+            } => {
+                // Execute try block
+                match self.execute(try_block)? {
+                    ControlFlow::Normal => {
+                        // Try block completed normally
+                    }
+                    ControlFlow::Return(v) => {
+                        // Execute finally if present, then return
+                        if let Some(finally_blk) = finally_block {
+                            self.execute(finally_blk)?;
+                        }
+                        return Ok(ControlFlow::Return(v));
+                    }
+                    ControlFlow::Throw(error) => {
+                        // Exception occurred in try block
+                        if let Some(catch_blk) = catch_block {
+                            // Create new environment for catch block
+                            let mut catch_env =
+                                Environment::with_enclosing(self.environment.clone());
+
+                            // If catch variable is specified, define it
+                            if let Some(var_name) = catch_var {
+                                catch_env.define(var_name.clone(), error.clone());
+                            }
+
+                            // Execute catch block in new environment
+                            let previous = std::mem::replace(
+                                &mut self.environment,
+                                Rc::new(RefCell::new(catch_env)),
+                            );
+                            let catch_result = self.execute(catch_blk);
+                            self.environment = previous;
+
+                            match catch_result {
+                                Ok(ControlFlow::Normal) => {
+                                    // Catch block completed normally
+                                }
+                                Ok(ControlFlow::Return(v)) => {
+                                    // Execute finally if present, then return
+                                    if let Some(finally_blk) = finally_block {
+                                        self.execute(finally_blk)?;
+                                    }
+                                    return Ok(ControlFlow::Return(v));
+                                }
+                                Ok(ControlFlow::Throw(new_error)) => {
+                                    // Rethrow from catch block
+                                    if let Some(finally_blk) = finally_block {
+                                        self.execute(finally_blk)?;
+                                    }
+                                    return Ok(ControlFlow::Throw(new_error));
+                                }
+                                Err(e) => {
+                                    // Error in catch block
+                                    if let Some(finally_blk) = finally_block {
+                                        self.execute(finally_blk)?;
+                                    }
+                                    return Err(e);
+                                }
+                            }
+                        } else {
+                            // No catch block - rethrow
+                            if let Some(finally_blk) = finally_block {
+                                self.execute(finally_blk)?;
+                            }
+                            return Ok(ControlFlow::Throw(error));
+                        }
+                    }
+                }
+
+                // If we get here, try block completed normally (or catch handled exception)
+                // Execute finally if present
+                if let Some(finally_blk) = finally_block {
+                    match self.execute(finally_blk)? {
+                        ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
+                        ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
+                        ControlFlow::Normal => {}
+                    }
+                }
+
+                Ok(ControlFlow::Normal)
             }
         }
     }
@@ -140,6 +229,7 @@ impl Interpreter {
                     match result? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                         ControlFlow::Normal => {}
+                        ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
                     }
                 }
                 Ok(ControlFlow::Normal)

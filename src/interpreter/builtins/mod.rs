@@ -1,6 +1,7 @@
 //! Built-in functions for Soli.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::rc::Rc;
@@ -469,6 +470,252 @@ pub fn register_builtins(env: &mut Environment) {
         })),
     );
 
+    // split(string, delimiter) - Split string by delimiter, return array
+    env.define(
+        "split".to_string(),
+        Value::NativeFunction(NativeFunction::new("split", Some(2), |args| {
+            match (&args[0], &args[1]) {
+                (Value::String(s), Value::String(delim)) => {
+                    let parts: Vec<Value> = s
+                        .split(delim.as_str())
+                        .map(|p| Value::String(p.to_string()))
+                        .collect();
+                    Ok(Value::Array(Rc::new(RefCell::new(parts))))
+                }
+                _ => Err("split requires (string, string)".to_string()),
+            }
+        })),
+    );
+
+    // join(array, delimiter) - Join array elements with delimiter
+    env.define(
+        "join".to_string(),
+        Value::NativeFunction(NativeFunction::new("join", Some(2), |args| {
+            match (&args[0], &args[1]) {
+                (Value::Array(arr), Value::String(delim)) => {
+                    let parts: Vec<String> = arr
+                        .borrow()
+                        .iter()
+                        .map(|v| format!("{}", v))
+                        .collect();
+                    Ok(Value::String(parts.join(delim.as_str())))
+                }
+                _ => Err("join requires (array, string)".to_string()),
+            }
+        })),
+    );
+
+    // contains(string, substring) - Check if string contains substring
+    env.define(
+        "contains".to_string(),
+        Value::NativeFunction(NativeFunction::new("contains", Some(2), |args| {
+            match (&args[0], &args[1]) {
+                (Value::String(s), Value::String(sub)) => {
+                    Ok(Value::Bool(s.contains(sub.as_str())))
+                }
+                _ => Err("contains requires (string, string)".to_string()),
+            }
+        })),
+    );
+
+    // index_of(string, substring) - Find index of substring (-1 if not found)
+    env.define(
+        "index_of".to_string(),
+        Value::NativeFunction(NativeFunction::new("index_of", Some(2), |args| {
+            match (&args[0], &args[1]) {
+                (Value::String(s), Value::String(sub)) => {
+                    if let Some(idx) = s.find(sub.as_str()) {
+                        Ok(Value::Int(idx as i64))
+                    } else {
+                        Ok(Value::Int(-1))
+                    }
+                }
+                _ => Err("index_of requires (string, string)".to_string()),
+            }
+        })),
+    );
+
+    // substring(string, start, end) - Get substring from start to end
+    env.define(
+        "substring".to_string(),
+        Value::NativeFunction(NativeFunction::new("substring", Some(3), |args| {
+            match (&args[0], &args[1], &args[2]) {
+                (Value::String(s), Value::Int(start), Value::Int(end)) => {
+                    let start_usize = if *start < 0 { 0 } else { *start as usize };
+                    let end_usize = if *end > s.len() as i64 { s.len() as i64 } else { *end } as usize;
+                    if start_usize >= end_usize || start_usize >= s.len() {
+                        return Ok(Value::String(String::new()));
+                    }
+                    Ok(Value::String(s[start_usize..end_usize].to_string()))
+                }
+                _ => Err("substring requires (string, int, int)".to_string()),
+            }
+        })),
+    );
+
+    // upcase(string) - Convert to uppercase
+    env.define(
+        "upcase".to_string(),
+        Value::NativeFunction(NativeFunction::new("upcase", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => Ok(Value::String(s.to_uppercase())),
+                other => Err(format!("upcase expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
+    // downcase(string) - Convert to lowercase
+    env.define(
+        "downcase".to_string(),
+        Value::NativeFunction(NativeFunction::new("downcase", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => Ok(Value::String(s.to_lowercase())),
+                other => Err(format!("downcase expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
+    // trim(string) - Remove whitespace from both ends
+    env.define(
+        "trim".to_string(),
+        Value::NativeFunction(NativeFunction::new("trim", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => Ok(Value::String(s.trim().to_string())),
+                other => Err(format!("trim expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
+    // html_escape(string) - Escape HTML special characters
+    env.define(
+        "html_escape".to_string(),
+        Value::NativeFunction(NativeFunction::new("html_escape", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => {
+                    let escaped = s
+                        .replace('&', "&amp;")
+                        .replace('<', "&lt;")
+                        .replace('>', "&gt;")
+                        .replace('"', "&quot;")
+                        .replace('\'', "&#39;");
+                    Ok(Value::String(escaped))
+                }
+                other => Err(format!("html_escape expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
+    // html_unescape(string) - Unescape HTML entities
+    env.define(
+        "html_unescape".to_string(),
+        Value::NativeFunction(NativeFunction::new("html_unescape", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => {
+                    let mut result = s.clone();
+                    let replacements = [
+                        ("&amp;", "&"),
+                        ("&lt;", "<"),
+                        ("&gt;", ">"),
+                        ("&quot;", "\""),
+                        ("&#39;", "'"),
+                        ("&apos;", "'"),
+                        ("&nbsp;", " "),
+                    ];
+                    for (from, to) in replacements {
+                        result = result.replace(from, to);
+                    }
+                    Ok(Value::String(result))
+                }
+                other => Err(format!("html_unescape expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
+    // sanitize_html(string) - Remove dangerous HTML tags and attributes
+    env.define(
+        "sanitize_html".to_string(),
+        Value::NativeFunction(NativeFunction::new("sanitize_html", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => {
+                    let mut result = String::new();
+                    let mut in_tag = false;
+                    let mut tag_buffer = String::new();
+
+                    for c in s.chars() {
+                        if c == '<' {
+                            in_tag = true;
+                            tag_buffer.clear();
+                            tag_buffer.push(c);
+                        } else if c == '>' {
+                            if in_tag {
+                                tag_buffer.push(c);
+                                let tag = tag_buffer.trim().to_lowercase();
+                                let is_closing = tag.starts_with("</");
+                                let is_self_closing = tag.ends_with("/>");
+                                let tag_name = if is_closing {
+                                    tag.trim_start_matches('<').trim_start_matches('/').trim_end_matches('>').split_whitespace().next().unwrap_or("")
+                                } else {
+                                    tag.trim_start_matches('<').trim_end_matches('/').trim_end_matches('>').split_whitespace().next().unwrap_or("")
+                                };
+                                let allowed_tags = ["p", "br", "b", "i", "u", "em", "strong", "a", "ul", "ol", "li", "blockquote", "code", "pre", "h1", "h2", "h3", "h4", "h5", "h6", "span", "div", "img"];
+                                let is_allowed = allowed_tags.contains(&tag_name);
+                                let is_dangerous_attr = tag.contains("javascript:") || tag.contains("onload=") || tag.contains("onerror=") || tag.contains("onclick=");
+                                if is_allowed && !is_dangerous_attr {
+                                    let cleaned_tag = if is_closing {
+                                        format!("</{}>", tag_name)
+                                    } else if is_self_closing {
+                                        format!("<{}/>", tag_name)
+                                    } else {
+                                        let attrs: Vec<&str> = tag
+                                            .strip_prefix('<')
+                                            .and_then(|t| t.strip_suffix('>').or(Some(t)))
+                                            .unwrap_or("")
+                                            .split_whitespace()
+                                            .skip(1)
+                                            .collect();
+                                        let safe_attrs = ["href", "src", "title", "alt", "class", "id", "style"];
+                                        let safe_attrs_result: Vec<String> = attrs.iter().filter_map(|&attr| {
+                                            let parts: Vec<&str> = attr.splitn(2, '=').collect();
+                                            if parts.len() == 2 {
+                                                let attr_name = parts[0].to_lowercase();
+                                                let attr_value = parts[1].trim_matches('"').trim_matches('\'');
+                                                if safe_attrs.contains(&attr_name.as_str()) && !attr_value.to_lowercase().contains("javascript:") {
+                                                    Some(format!("{}={}", attr_name, parts[1]))
+                                                } else {
+                                                    None
+                                                }
+                                            } else {
+                                                None
+                                            }
+                                        }).collect();
+                                        if safe_attrs_result.is_empty() {
+                                            format!("<{}>", tag_name)
+                                        } else {
+                                            format!("<{} {}>", tag_name, safe_attrs_result.join(" "))
+                                        }
+                                    };
+                                    result.push_str(&cleaned_tag);
+                                }
+                                in_tag = false;
+                            } else {
+                                result.push(c);
+                            }
+                        } else if in_tag {
+                            tag_buffer.push(c);
+                        } else {
+                            result.push(c);
+                        }
+                    }
+                    if in_tag {
+                        result.push_str(&tag_buffer);
+                    }
+                    Ok(Value::String(result))
+                }
+                other => Err(format!("sanitize_html expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
     // Register HTTP client functions
     http::register_http_builtins(env);
 
@@ -495,4 +742,120 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register router functions
     router::register_router_builtins(env);
+
+    // Register Error class and error types
+    register_error_classes(env);
+}
+
+/// Register the Error class and built-in error types.
+fn register_error_classes(env: &mut Environment) {
+    use crate::interpreter::value::Class;
+
+    // Create the Error base class
+    let error_class = Class {
+        name: "Error".to_string(),
+        superclass: None,
+        methods: HashMap::new(),
+        static_methods: HashMap::new(),
+        constructor: None,
+    };
+    env.define(
+        "Error".to_string(),
+        Value::Class(Rc::new(error_class)),
+    );
+
+    // ValueError class
+    let value_error_class = Class {
+        name: "ValueError".to_string(),
+        superclass: Some(Rc::new(Class {
+            name: "Error".to_string(),
+            superclass: None,
+            methods: HashMap::new(),
+            static_methods: HashMap::new(),
+            constructor: None,
+        })),
+        methods: HashMap::new(),
+        static_methods: HashMap::new(),
+        constructor: None,
+    };
+    env.define(
+        "ValueError".to_string(),
+        Value::Class(Rc::new(value_error_class)),
+    );
+
+    // TypeError class
+    let type_error_class = Class {
+        name: "TypeError".to_string(),
+        superclass: Some(Rc::new(Class {
+            name: "Error".to_string(),
+            superclass: None,
+            methods: HashMap::new(),
+            static_methods: HashMap::new(),
+            constructor: None,
+        })),
+        methods: HashMap::new(),
+        static_methods: HashMap::new(),
+        constructor: None,
+    };
+    env.define(
+        "TypeError".to_string(),
+        Value::Class(Rc::new(type_error_class)),
+    );
+
+    // KeyError class (for hash key not found)
+    let key_error_class = Class {
+        name: "KeyError".to_string(),
+        superclass: Some(Rc::new(Class {
+            name: "Error".to_string(),
+            superclass: None,
+            methods: HashMap::new(),
+            static_methods: HashMap::new(),
+            constructor: None,
+        })),
+        methods: HashMap::new(),
+        static_methods: HashMap::new(),
+        constructor: None,
+    };
+    env.define(
+        "KeyError".to_string(),
+        Value::Class(Rc::new(key_error_class)),
+    );
+
+    // IndexError class (for array index out of bounds)
+    let index_error_class = Class {
+        name: "IndexError".to_string(),
+        superclass: Some(Rc::new(Class {
+            name: "Error".to_string(),
+            superclass: None,
+            methods: HashMap::new(),
+            static_methods: HashMap::new(),
+            constructor: None,
+        })),
+        methods: HashMap::new(),
+        static_methods: HashMap::new(),
+        constructor: None,
+    };
+    env.define(
+        "IndexError".to_string(),
+        Value::Class(Rc::new(index_error_class)),
+    );
+
+    // RuntimeError class
+    let runtime_error_class = Class {
+        name: "RuntimeError".to_string(),
+        superclass: Some(Rc::new(Class {
+            name: "Error".to_string(),
+            superclass: None,
+            methods: HashMap::new(),
+            static_methods: HashMap::new(),
+            constructor: None,
+        })),
+        methods: HashMap::new(),
+        static_methods: HashMap::new(),
+        constructor: None,
+    };
+    env.define(
+        "RuntimeError".to_string(),
+        Value::Class(Rc::new(runtime_error_class)),
+    );
 }

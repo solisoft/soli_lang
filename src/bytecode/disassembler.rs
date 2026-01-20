@@ -95,7 +95,11 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize, output: &mut String
         | OpCode::SpreadArray
         | OpCode::SpreadHash
         | OpCode::ArrayLen
-        | OpCode::Print => {
+        | OpCode::Print
+        | OpCode::TryEnd
+        | OpCode::Throw
+        | OpCode::Rethrow
+        | OpCode::PopTry => {
             writeln!(output, "{:?}", opcode).unwrap();
             offset + 1
         }
@@ -161,7 +165,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize, output: &mut String
         | OpCode::GetFieldStr
         | OpCode::BuildArrayFromStack
         | OpCode::BuildHashFromStack
-        | OpCode::StoreBinding => {
+        | OpCode::StoreBinding
+        | OpCode::Try => {
             let count = chunk.read_u16(offset + 1);
             writeln!(output, "{:?} {}", opcode, count).unwrap();
             offset + 3

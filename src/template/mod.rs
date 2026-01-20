@@ -18,7 +18,6 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::interpreter::value::Value;
-use layout::render_with_layout;
 use parser::parse_template;
 use renderer::render_nodes;
 use std::rc::Rc;
@@ -81,7 +80,7 @@ impl TemplateCache {
         let content = render_nodes(&nodes, data, Some(&partial_renderer))?;
 
         // Apply layout if specified
-        let result = match layout {
+        match layout {
             Some(Some(layout_name)) => {
                 // Use specified layout
                 self.render_with_named_layout(&content, data, layout_name, &partial_renderer)
@@ -99,9 +98,7 @@ impl TemplateCache {
                     self.render_with_named_layout(&content, data, "application", &partial_renderer)
                 }
             }
-        };
-
-        result
+        }
     }
 
     /// Render a partial template (no layout).
@@ -260,19 +257,7 @@ impl TemplateCache {
 }
 
 /// Create a response hash for rendered HTML content.
-///
-/// If live reload is enabled, this function will automatically inject
-/// the live reload script into the HTML body.
 pub fn html_response(body: String, status: i64) -> Value {
-    use std::rc::Rc;
-
-    // Inject live reload script if enabled
-    let body = if crate::serve::live_reload::is_live_reload_enabled() {
-        crate::serve::live_reload::inject_live_reload_script(&body)
-    } else {
-        body
-    };
-
     let headers = Value::Hash(Rc::new(RefCell::new(vec![(
         Value::String("Content-Type".to_string()),
         Value::String("text/html; charset=utf-8".to_string()),

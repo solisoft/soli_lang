@@ -171,6 +171,19 @@ pub enum OpCode {
     // ============ Debugging ============
     /// Print top of stack (for debugging)
     Print,
+
+    // ============ Exception Handling ============
+    /// Push exception handler info: TRY <catch_offset:u16> <finally_offset:u16>
+    /// catch_offset and finally_offset are 0 if not present
+    Try,
+    /// End try block: TRY_END
+    TryEnd,
+    /// Throw an exception (pops value from stack): THROW
+    Throw,
+    /// Re-throw current exception: RETHROW
+    Rethrow,
+    /// Pop exception handler: POP_TRY
+    PopTry,
 }
 
 impl OpCode {
@@ -207,7 +220,11 @@ impl OpCode {
             | OpCode::SpreadArray
             | OpCode::SpreadHash
             | OpCode::ArrayLen
-            | OpCode::Print => 0,
+            | OpCode::Print
+            | OpCode::TryEnd
+            | OpCode::Throw
+            | OpCode::Rethrow
+            | OpCode::PopTry => 0,
 
             // 1 byte operand
             OpCode::Call | OpCode::GetUpvalue | OpCode::SetUpvalue => 1,
@@ -240,7 +257,8 @@ impl OpCode {
             | OpCode::GetFieldStr
             | OpCode::BuildArrayFromStack
             | OpCode::BuildHashFromStack
-            | OpCode::StoreBinding => 2,
+            | OpCode::StoreBinding
+            | OpCode::Try => 2,
 
             // 3 byte operand (2 bytes + 1 byte)
             OpCode::Invoke | OpCode::SuperInvoke | OpCode::New | OpCode::NativeCall => 3,
@@ -249,10 +267,78 @@ impl OpCode {
 
     /// Convert from u8 to OpCode.
     pub fn from_u8(byte: u8) -> Option<OpCode> {
-        if byte <= OpCode::Print as u8 {
-            Some(unsafe { std::mem::transmute(byte) })
-        } else {
-            None
+        match byte {
+            0 => Some(OpCode::Constant),
+            1 => Some(OpCode::Null),
+            2 => Some(OpCode::True),
+            3 => Some(OpCode::False),
+            4 => Some(OpCode::Pop),
+            5 => Some(OpCode::Dup),
+            6 => Some(OpCode::GetLocal),
+            7 => Some(OpCode::SetLocal),
+            8 => Some(OpCode::GetGlobal),
+            9 => Some(OpCode::SetGlobal),
+            10 => Some(OpCode::DefineGlobal),
+            11 => Some(OpCode::GetUpvalue),
+            12 => Some(OpCode::SetUpvalue),
+            13 => Some(OpCode::CloseUpvalue),
+            14 => Some(OpCode::Add),
+            15 => Some(OpCode::Subtract),
+            16 => Some(OpCode::Multiply),
+            17 => Some(OpCode::Divide),
+            18 => Some(OpCode::Modulo),
+            19 => Some(OpCode::Negate),
+            20 => Some(OpCode::Equal),
+            21 => Some(OpCode::NotEqual),
+            22 => Some(OpCode::Less),
+            23 => Some(OpCode::LessEqual),
+            24 => Some(OpCode::Greater),
+            25 => Some(OpCode::GreaterEqual),
+            26 => Some(OpCode::Not),
+            27 => Some(OpCode::Jump),
+            28 => Some(OpCode::JumpIfFalse),
+            29 => Some(OpCode::JumpIfTrue),
+            30 => Some(OpCode::JumpIfFalseNoPop),
+            31 => Some(OpCode::JumpIfTrueNoPop),
+            32 => Some(OpCode::Loop),
+            33 => Some(OpCode::Call),
+            34 => Some(OpCode::Invoke),
+            35 => Some(OpCode::SuperInvoke),
+            36 => Some(OpCode::Return),
+            37 => Some(OpCode::Closure),
+            38 => Some(OpCode::LoadDefault),
+            39 => Some(OpCode::Class),
+            40 => Some(OpCode::Inherit),
+            41 => Some(OpCode::Method),
+            42 => Some(OpCode::StaticMethod),
+            43 => Some(OpCode::GetProperty),
+            44 => Some(OpCode::SetProperty),
+            45 => Some(OpCode::GetThis),
+            46 => Some(OpCode::GetSuper),
+            47 => Some(OpCode::New),
+            48 => Some(OpCode::BuildArray),
+            49 => Some(OpCode::BuildHash),
+            50 => Some(OpCode::Index),
+            51 => Some(OpCode::IndexSet),
+            52 => Some(OpCode::SpreadArray),
+            53 => Some(OpCode::SpreadHash),
+            54 => Some(OpCode::GetIterator),
+            55 => Some(OpCode::IteratorNext),
+            56 => Some(OpCode::NativeCall),
+            57 => Some(OpCode::TypeCheck),
+            58 => Some(OpCode::ArrayLen),
+            59 => Some(OpCode::GetPropertyStr),
+            60 => Some(OpCode::GetFieldStr),
+            61 => Some(OpCode::BuildArrayFromStack),
+            62 => Some(OpCode::BuildHashFromStack),
+            63 => Some(OpCode::StoreBinding),
+            64 => Some(OpCode::Print),
+            65 => Some(OpCode::Try),
+            66 => Some(OpCode::TryEnd),
+            67 => Some(OpCode::Throw),
+            68 => Some(OpCode::Rethrow),
+            69 => Some(OpCode::PopTry),
+            _ => None,
         }
     }
 }
@@ -285,9 +371,83 @@ mod tests {
 
     #[test]
     fn test_opcode_roundtrip() {
-        for i in 0..=OpCode::Print as u8 {
-            let op = OpCode::from_u8(i).expect("valid opcode");
-            assert_eq!(i, op as u8);
+        let opcodes = [
+            OpCode::Constant,
+            OpCode::Null,
+            OpCode::True,
+            OpCode::False,
+            OpCode::Pop,
+            OpCode::Dup,
+            OpCode::GetLocal,
+            OpCode::SetLocal,
+            OpCode::GetGlobal,
+            OpCode::SetGlobal,
+            OpCode::DefineGlobal,
+            OpCode::GetUpvalue,
+            OpCode::SetUpvalue,
+            OpCode::CloseUpvalue,
+            OpCode::Add,
+            OpCode::Subtract,
+            OpCode::Multiply,
+            OpCode::Divide,
+            OpCode::Modulo,
+            OpCode::Negate,
+            OpCode::Equal,
+            OpCode::NotEqual,
+            OpCode::Less,
+            OpCode::LessEqual,
+            OpCode::Greater,
+            OpCode::GreaterEqual,
+            OpCode::Not,
+            OpCode::Jump,
+            OpCode::JumpIfFalse,
+            OpCode::JumpIfTrue,
+            OpCode::JumpIfFalseNoPop,
+            OpCode::JumpIfTrueNoPop,
+            OpCode::Loop,
+            OpCode::Call,
+            OpCode::Invoke,
+            OpCode::SuperInvoke,
+            OpCode::Return,
+            OpCode::Closure,
+            OpCode::LoadDefault,
+            OpCode::Class,
+            OpCode::Inherit,
+            OpCode::Method,
+            OpCode::StaticMethod,
+            OpCode::GetProperty,
+            OpCode::SetProperty,
+            OpCode::GetThis,
+            OpCode::GetSuper,
+            OpCode::New,
+            OpCode::BuildArray,
+            OpCode::BuildHash,
+            OpCode::Index,
+            OpCode::IndexSet,
+            OpCode::SpreadArray,
+            OpCode::SpreadHash,
+            OpCode::GetIterator,
+            OpCode::IteratorNext,
+            OpCode::NativeCall,
+            OpCode::TypeCheck,
+            OpCode::ArrayLen,
+            OpCode::GetPropertyStr,
+            OpCode::GetFieldStr,
+            OpCode::BuildArrayFromStack,
+            OpCode::BuildHashFromStack,
+            OpCode::StoreBinding,
+            OpCode::Print,
+            OpCode::Try,
+            OpCode::TryEnd,
+            OpCode::Throw,
+            OpCode::Rethrow,
+            OpCode::PopTry,
+        ];
+
+        for op in opcodes {
+            let byte: u8 = op.into();
+            let roundtrip = OpCode::from_u8(byte);
+            assert_eq!(Some(op), roundtrip, "Failed for {:?}", op);
         }
     }
 

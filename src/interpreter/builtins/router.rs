@@ -1,6 +1,4 @@
-use crate::interpreter::builtins::server::{
-    register_route_with_handler, register_route_with_middleware,
-};
+use crate::interpreter::builtins::server::register_route_with_middleware;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 use std::cell::RefCell;
@@ -91,6 +89,16 @@ pub fn register_controller_action(controller: &str, action: &str, handler: Value
     });
 }
 
+/// Get all controller actions (for propagating to workers).
+pub fn get_controllers() -> HashMap<String, HashMap<String, Value>> {
+    CONTROLLERS.with(|c| c.borrow().clone())
+}
+
+/// Set controller actions in current thread (for worker initialization).
+pub fn set_controllers(controllers: HashMap<String, HashMap<String, Value>>) {
+    CONTROLLERS.with(|c| *c.borrow_mut() = controllers);
+}
+
 /// Resolve "controller#action" or "action" to a function value.
 /// This is used by WebSocket handlers to look up the handler function.
 pub fn resolve_handler(
@@ -152,79 +160,76 @@ pub fn register_router_builtins(env: &mut Environment) {
 
                     // Register standard routes immediately
                     // Index: GET base_path
-                    if let Ok(handler) = resolve_handler("index", Some(&controller)) {
-                        register_route_with_middleware(
-                            "GET",
-                            &base_path,
-                            handler,
-                            middleware.clone(),
-                        );
-                    }
+                    let handler_name = format!("{}#index", controller);
+                    register_route_with_middleware(
+                        "GET",
+                        &base_path,
+                        handler_name,
+                        middleware.clone(),
+                    );
+
                     // Create: POST base_path
-                    if let Ok(handler) = resolve_handler("create", Some(&controller)) {
-                        register_route_with_middleware(
-                            "POST",
-                            &base_path,
-                            handler,
-                            middleware.clone(),
-                        );
-                    }
+                    let handler_name = format!("{}#create", controller);
+                    register_route_with_middleware(
+                        "POST",
+                        &base_path,
+                        handler_name,
+                        middleware.clone(),
+                    );
 
                     // New: GET base_path/new
-                    if let Ok(handler) = resolve_handler("new", Some(&controller)) {
-                        register_route_with_middleware(
-                            "GET",
-                            &format!("{}/new", base_path),
-                            handler,
-                            middleware.clone(),
-                        );
-                    }
+                    let handler_name = format!("{}#new", controller);
+                    register_route_with_middleware(
+                        "GET",
+                        &format!("{}/new", base_path),
+                        handler_name,
+                        middleware.clone(),
+                    );
 
                     // Member routes base path
                     let member_path = format!("{}/:id", base_path);
 
                     // Show: GET member_path
-                    if let Ok(handler) = resolve_handler("show", Some(&controller)) {
-                        register_route_with_middleware(
-                            "GET",
-                            &member_path,
-                            handler,
-                            middleware.clone(),
-                        );
-                    }
+                    let handler_name = format!("{}#show", controller);
+                    register_route_with_middleware(
+                        "GET",
+                        &member_path,
+                        handler_name,
+                        middleware.clone(),
+                    );
+
                     // Update: PUT/PATCH member_path
-                    if let Ok(handler) = resolve_handler("update", Some(&controller)) {
-                        register_route_with_middleware(
-                            "PUT",
-                            &member_path,
-                            handler.clone(),
-                            middleware.clone(),
-                        );
-                        register_route_with_middleware(
-                            "PATCH",
-                            &member_path,
-                            handler,
-                            middleware.clone(),
-                        );
-                    }
+                    let handler_name = format!("{}#update", controller);
+                    register_route_with_middleware(
+                        "PUT",
+                        &member_path,
+                        handler_name.clone(),
+                        middleware.clone(),
+                    );
+                    register_route_with_middleware(
+                        "PATCH",
+                        &member_path,
+                        handler_name,
+                        middleware.clone(),
+                    );
+
                     // Destroy: DELETE member_path
-                    if let Ok(handler) = resolve_handler("destroy", Some(&controller)) {
-                        register_route_with_middleware(
-                            "DELETE",
-                            &member_path,
-                            handler,
-                            middleware.clone(),
-                        );
-                    }
+                    let handler_name = format!("{}#destroy", controller);
+                    register_route_with_middleware(
+                        "DELETE",
+                        &member_path,
+                        handler_name,
+                        middleware.clone(),
+                    );
+
                     // Edit: GET member_path/edit
-                    if let Ok(handler) = resolve_handler("edit", Some(&controller)) {
-                        register_route_with_middleware(
-                            "GET",
-                            &format!("{}/edit", member_path),
-                            handler,
-                            middleware.clone(),
-                        );
-                    }
+                    let handler_name = format!("{}#edit", controller);
+                    register_route_with_middleware(
+                        "GET",
+                        &format!("{}/edit", member_path),
+                        handler_name,
+                        middleware.clone(),
+                    );
 
                     // Push new scope for nested resources
                     // Child base: /users/:user_id
@@ -293,7 +298,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                     }
                 };
 
-                let handler = resolve_handler(&action, current.controller.as_deref())?;
+                let handler = action.clone();
                 // Pass scoped middleware from current context
                 let middleware = current.middleware.clone();
                 register_route_with_middleware(&method, &full_path, handler, middleware);

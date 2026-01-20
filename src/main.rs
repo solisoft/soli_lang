@@ -21,6 +21,8 @@ enum Command {
         folder: String,
         port: u16,
         live_reload: bool,
+        mode: ExecutionMode,
+        workers: usize,
     },
 }
 
@@ -36,7 +38,9 @@ fn print_usage() {
     eprintln!("Soli v0.1.0 - Solilang Interpreter");
     eprintln!();
     eprintln!("Usage: soli [options] [script.soli]");
-    eprintln!("       soli serve <folder> [--port PORT] [--no-live-reload]");
+    eprintln!(
+        "       soli serve <folder> [--port PORT] [--workers N] [--no-live-reload] [--mode MODE]"
+    );
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  serve <folder>  Start MVC server from a project folder");
@@ -44,12 +48,13 @@ fn print_usage() {
     eprintln!("Options:");
     eprintln!("  --tree-walk     Use tree-walking interpreter (default)");
     eprintln!("  --bytecode      Use bytecode VM (faster)");
-    #[cfg(feature = "jit")]
     eprintln!("  --jit           Use JIT compilation (fastest)");
     eprintln!("  --disassemble   Print bytecode disassembly before execution");
     eprintln!("  --no-type-check Skip type checking");
     eprintln!("  --port PORT     Port for serve command (default: 3000)");
+    eprintln!("  --workers N     Number of worker threads (default: 8)");
     eprintln!("  --no-live-reload  Disable browser auto-refresh on file changes");
+    eprintln!("  --mode MODE     Execution mode for serve: tree-walk, bytecode (default), jit");
     eprintln!("  --help, -h      Show this help message");
     eprintln!();
     eprintln!("Examples:");
@@ -59,13 +64,15 @@ fn print_usage() {
     eprintln!("  soli --disassemble fib.soli   Show bytecode and run");
     eprintln!("  soli serve my_app             Start MVC server");
     eprintln!("  soli serve my_app --port 8080 Start MVC server on port 8080");
+    eprintln!("  soli serve my_app --workers 16 Start MVC server with 16 workers");
     eprintln!("  soli serve my_app --no-live-reload  Disable browser auto-refresh");
+    eprintln!("  soli serve my_app --mode bytecode  Use bytecode VM for MVC server");
 }
 
 fn parse_args() -> Options {
     let args: Vec<String> = env::args().skip(1).collect();
     let mut options = Options {
-        mode: ExecutionMode::TreeWalk,
+        mode: ExecutionMode::Bytecode,
         disassemble: false,
         command: Command::Repl,
         no_type_check: false,
@@ -88,6 +95,8 @@ fn parse_args() -> Options {
                 // Check for options
                 let mut port = 3000u16;
                 let mut live_reload = true;
+                let mut serve_mode = ExecutionMode::Bytecode;
+                let mut workers = 8usize;
                 i += 1;
                 while i < args.len() {
                     if args[i] == "--port" {
@@ -101,8 +110,51 @@ fn parse_args() -> Options {
                             eprintln!("Invalid port number: {}", args[i]);
                             process::exit(64);
                         });
+                    } else if args[i] == "--workers" {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("--workers requires a number");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        workers = args[i].parse().unwrap_or_else(|_| {
+                            eprintln!("Invalid workers number: {}", args[i]);
+                            process::exit(64);
+                        });
                     } else if args[i] == "--no-live-reload" {
                         live_reload = false;
+                    } else if args[i] == "--mode" {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("--mode requires a mode argument");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        serve_mode = match args[i].as_str() {
+                            "tree-walk" => ExecutionMode::TreeWalk,
+                            "bytecode" => ExecutionMode::Bytecode,
+                            "jit" => {
+                                #[cfg(feature = "jit")]
+                                {
+                                    ExecutionMode::Jit
+                                }
+                                #[cfg(not(feature = "jit"))]
+                                {
+                                    eprintln!(
+                                        "JIT mode not available - recompile with --features jit"
+                                    );
+                                    process::exit(64);
+                                }
+                            }
+                            _ => {
+                                eprintln!(
+                                    "Unknown mode: {} (valid: tree-walk, bytecode, jit)",
+                                    args[i]
+                                );
+                                print_usage();
+                                process::exit(64);
+                            }
+                        };
                     } else if args[i].starts_with('-') {
                         eprintln!("Unknown option for serve: {}", args[i]);
                         print_usage();
@@ -115,6 +167,8 @@ fn parse_args() -> Options {
                     folder,
                     port,
                     live_reload,
+                    mode: serve_mode,
+                    workers,
                 };
                 return options;
             }
@@ -164,11 +218,13 @@ fn main() {
             folder,
             port,
             live_reload,
-        } => run_serve(folder, *port, *live_reload),
+            mode,
+            workers,
+        } => run_serve(folder, *port, *live_reload, *mode, *workers),
     }
 }
 
-fn run_serve(folder: &str, port: u16, live_reload: bool) {
+fn run_serve(folder: &str, port: u16, live_reload: bool, mode: ExecutionMode, workers: usize) {
     let path = Path::new(folder);
 
     if !path.exists() {
@@ -181,7 +237,9 @@ fn run_serve(folder: &str, port: u16, live_reload: bool) {
         process::exit(1);
     }
 
-    if let Err(e) = solilang::serve::serve_folder_with_options(path, port, live_reload) {
+    if let Err(e) =
+        solilang::serve::serve_folder_with_options_and_mode(path, port, live_reload, mode, workers)
+    {
         eprintln!("Error: {}", e);
         process::exit(70);
     }

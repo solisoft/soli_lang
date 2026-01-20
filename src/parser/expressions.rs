@@ -790,8 +790,6 @@ impl Parser {
     }
 
     fn parse_hash_pattern_fields(&mut self) -> ParseResult<Vec<(String, MatchPattern)>> {
-        use crate::lexer::TokenKind::*;
-
         let mut fields = Vec::new();
 
         if self.check(&TokenKind::RightBrace) {
@@ -816,8 +814,6 @@ impl Parser {
     }
 
     fn parse_array_pattern(&mut self) -> ParseResult<MatchPattern> {
-        use crate::lexer::TokenKind::*;
-
         if self.check(&TokenKind::RightBracket) {
             self.advance();
             return Ok(MatchPattern::Array {
@@ -860,8 +856,6 @@ impl Parser {
     }
 
     fn parse_hash_pattern(&mut self) -> ParseResult<MatchPattern> {
-        use crate::lexer::TokenKind::*;
-
         if self.check(&TokenKind::RightBrace) {
             self.advance();
             return Ok(MatchPattern::Hash {

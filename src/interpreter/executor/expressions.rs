@@ -142,7 +142,7 @@ impl Interpreter {
                             result.push_str(&s);
                         }
                         crate::ast::expr::InterpolatedPart::Expression(expr) => {
-                            let value = self.evaluate(&expr)?;
+                            let value = self.evaluate(expr)?;
                             result.push_str(&value.to_string());
                         }
                     }
@@ -286,8 +286,12 @@ impl Interpreter {
             ExprKind::Spread(_) => {
                 unimplemented!("Spread expressions not yet implemented")
             }
-            ExprKind::Throw(_) => {
-                unimplemented!("Throw expressions not yet implemented")
+            ExprKind::Throw(value) => {
+                let error_value = self.evaluate(value)?;
+                Err(RuntimeError::General {
+                    message: format!("{}", error_value),
+                    span: expr.span,
+                })
             }
         }
     }
@@ -713,8 +717,15 @@ impl Interpreter {
 
                 // Check if this is the http_server_listen marker
                 if let Some(port) = is_server_listen_marker(&result) {
-                    // Run the HTTP server (this blocks until server stops)
-                    return self.run_http_server(port);
+                    // Only start server in main thread, not in worker threads
+                    let thread_name = std::thread::current().name().map(|s| s.to_string());
+                    let is_main_thread = thread_name
+                        .as_ref()
+                        .map_or(false, |n| n == "main" || n.starts_with("tokio-runtime"));
+                    if is_main_thread {
+                        // Run the HTTP server (this blocks until server stops)
+                        return self.run_http_server(port);
+                    }
                 }
 
                 Ok(result)
@@ -841,6 +852,10 @@ impl Interpreter {
                     match self.execute_block(&func.body, call_env)? {
                         ControlFlow::Return(v) => result.push(v),
                         ControlFlow::Normal => result.push(Value::Null),
+                        ControlFlow::Throw(_) => {
+                            // Propagate the exception
+                            return Err(RuntimeError::new("Exception in array method", span));
+                        }
                     }
                 }
 
@@ -885,6 +900,9 @@ impl Interpreter {
                     let result_value = match self.execute_block(&func.body, call_env)? {
                         ControlFlow::Return(v) => v,
                         ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in array filter", span));
+                        }
                     };
 
                     if result_value.is_truthy() {
@@ -929,7 +947,12 @@ impl Interpreter {
                     call_env.define(param_name, item.clone());
 
                     // Call the function (discard return value)
-                    let _ = self.execute_block(&func.body, call_env)?;
+                    match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(_) | ControlFlow::Normal => {}
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in array each", span));
+                        }
+                    }
                 }
 
                 // Return the original array for chaining
@@ -1010,6 +1033,9 @@ impl Interpreter {
                             }
                         }
                         ControlFlow::Normal => {}
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in hash map", span));
+                        }
                     }
                 }
 
@@ -1057,6 +1083,9 @@ impl Interpreter {
                     let result_value = match self.execute_block(&func.body, call_env)? {
                         ControlFlow::Return(v) => v,
                         ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in hash filter", span));
+                        }
                     };
 
                     if result_value.is_truthy() {
@@ -1104,7 +1133,12 @@ impl Interpreter {
                     }
 
                     // Call the function (discard return value)
-                    let _ = self.execute_block(&func.body, call_env)?;
+                    match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(_) | ControlFlow::Normal => {}
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in hash each", span));
+                        }
+                    }
                 }
 
                 // Return the original hash for chaining

@@ -99,8 +99,7 @@ pub fn run_with_path(
     let mut program = parser::Parser::new(tokens).parse()?;
 
     // Module resolution (if we have imports and a source path)
-    if source_path.is_some() && has_imports(&program) {
-        let path = source_path.unwrap();
+    if let Some(path) = source_path.filter(|_| has_imports(&program)) {
         let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
         let mut resolver = module::ModuleResolver::new(base_dir);
         program = resolver

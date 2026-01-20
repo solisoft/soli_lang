@@ -25,7 +25,10 @@ fn log_request(req: Any) -> Any {
     let method = req["method"];
     let path = req["path"];
 
-    print("[LOG] " + method + " " + path);
+    // Only log non-health check requests to avoid benchmark noise
+    if (path != "/health") {
+        print("[LOG] " + method + " " + path);
+    }
 
     // Continue with unmodified request
     return {

@@ -87,6 +87,12 @@ impl Chunk {
         self.code[offset + 1] = (jump_distance >> 8) as u8;
     }
 
+    /// Patch a u16 value at the given offset.
+    pub fn patch_u16(&mut self, offset: usize, value: u16) {
+        self.code[offset] = (value & 0xff) as u8;
+        self.code[offset + 1] = (value >> 8) as u8;
+    }
+
     /// Get the line number at a given offset.
     pub fn get_line(&self, offset: usize) -> u32 {
         if offset < self.lines.len() {

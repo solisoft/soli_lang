@@ -175,8 +175,41 @@ impl TypeChecker {
                 self.check_stmt(inner)
             }
 
-            StmtKind::Throw(_) | StmtKind::Try { .. } => {
-                unimplemented!("Exception handling not yet implemented")
+            StmtKind::Throw(value) => {
+                // throw expressions can throw any type
+                self.check_expr(value)?;
+                Ok(())
+            }
+
+            StmtKind::Try {
+                try_block,
+                catch_var,
+                catch_block,
+                finally_block,
+            } => {
+                // Check try block
+                self.check_stmt(try_block)?;
+
+                // Check catch block if present
+                if let Some(catch_blk) = catch_block {
+                    // In catch block, the catch variable (if any) has type Any
+                    if let Some(var_name) = catch_var {
+                        self.env.push_scope();
+                        self.env.define(var_name.clone(), Type::Any);
+                        self.check_stmt(catch_blk)?;
+                        self.env.pop_scope();
+                    } else {
+                        self.check_stmt(catch_blk)?;
+                    }
+                }
+
+                // Check finally block if present
+                if let Some(finally_blk) = finally_block {
+                    self.check_stmt(finally_blk)?;
+                }
+
+                // try/catch/finally doesn't return a value
+                Ok(())
             }
         }
     }

@@ -1,0 +1,42 @@
+{
+    "app": {
+        "title": "My Application",
+        "welcome": "Welcome to our website!",
+        "goodbye": "Thank you for visiting!"
+    },
+    "greeting": {
+        "name": "Hello {name}!"
+    },
+    "cart": {
+        "items": "You have {count} {items} in your cart"
+    },
+    "date": {
+        "format": "{day}/{month}/{year}"
+    },
+    "price": {
+        "format": "{amount} {currency}"
+    },
+    "profile": {
+        "message": "{name} is {age} years old and lives in {city}"
+    },
+    "common": {
+        "ok": "OK",
+        "cancel": "Cancel",
+        "save": "Save",
+        "delete": "Delete",
+        "edit": "Edit",
+        "submit": "Submit"
+    },
+    "nav": {
+        "home": "Home",
+        "about": "About",
+        "contact": "Contact",
+        "products": "Products",
+        "services": "Services"
+    },
+    "errors": {
+        "not_found": "Page not found",
+        "server_error": "Something went wrong",
+        "validation_error": "Please check your input"
+    }
+}

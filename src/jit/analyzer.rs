@@ -198,6 +198,14 @@ impl Analyzer {
                         "Iterator operations not yet supported in JIT",
                     );
                 }
+
+                // Default case - unsupported operations
+                _ => {
+                    return AnalysisResult::not_jitable(&format!(
+                        "Unsupported opcode for JIT: {:?}",
+                        opcode
+                    ));
+                }
             }
         }
 

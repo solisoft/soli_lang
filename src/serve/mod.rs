@@ -19,6 +19,7 @@ pub use middleware::{
     scan_middleware_files, Middleware, MiddlewareResult,
 };
 pub use router::{derive_routes_from_controller, ControllerRoute};
+pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
 pub use websocket::{
     clear_websocket_routes, get_websocket_routes, match_websocket_route, register_websocket_route,
     WebSocketConnection, WebSocketEvent, WebSocketHandlerAction, WebSocketRegistry,
@@ -26,21 +27,19 @@ pub use websocket::{
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
+use std::time::Duration;
 
 use bytes::Bytes;
-use futures_util::future::Either;
+use crossbeam::channel;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
 use http_body_util::Full;
 use hyper::body::Incoming;
-use hyper::header::HeaderValue;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{header, Request, Response, StatusCode};
@@ -54,11 +53,12 @@ use uuid::Uuid;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
     build_request_hash, extract_response, get_routes, match_path, parse_query_string,
-    register_route_with_handler,
+    register_route_with_handler, routes_to_worker_routes, set_worker_routes, WorkerRoute,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
-use crate::interpreter::Interpreter;
+use crate::interpreter::{Interpreter, Value};
 use crate::span::Span;
+use crate::ExecutionMode;
 
 /// Request data sent to interpreter thread
 struct RequestData {
@@ -89,6 +89,23 @@ pub fn serve_folder_with_options(
     port: u16,
     live_reload: bool,
 ) -> Result<(), RuntimeError> {
+    serve_folder_with_options_and_mode(folder, port, live_reload, ExecutionMode::Bytecode, 8)
+}
+
+/// Serve an MVC application from a folder with configurable options and execution mode.
+pub fn serve_folder_with_options_and_mode(
+    folder: &Path,
+    port: u16,
+    live_reload: bool,
+    mode: ExecutionMode,
+    workers: usize,
+) -> Result<(), RuntimeError> {
+    // Set up panic hook to catch worker panics
+    std::panic::set_hook(Box::new(|panic_info| {
+        let msg = panic_info.to_string();
+        eprintln!("PANIC: {}", msg);
+    }));
+
     // Validate folder structure
     let app_dir = folder.join("app");
     let controllers_dir = app_dir.join("controllers");
@@ -104,8 +121,9 @@ pub fn serve_folder_with_options(
     }
 
     println!("Starting MVC server from {}", folder.display());
+    println!("Execution mode: {:?}", mode);
 
-    // Create interpreter
+    // Create interpreter or bytecode compiler based on mode
     let mut interpreter = Interpreter::new();
 
     // Load models first (shared code)
@@ -234,9 +252,8 @@ pub fn serve_folder_with_options(
     // Public directory for static files
     let public_dir = folder.join("public");
 
-    // Start HTTP server with hyper
-    run_hyper_server(
-        interpreter,
+    // Always use hyper-based MVC server
+    run_hyper_server_worker_pool(
         port,
         controllers_dir,
         models_dir,
@@ -244,6 +261,8 @@ pub fn serve_folder_with_options(
         public_dir,
         file_tracker,
         live_reload,
+        mode,
+        workers,
     )
 }
 
@@ -420,12 +439,15 @@ fn load_controller(
             func_value.clone(),
         );
 
+        // Create full handler name: controller#action
+        let full_handler_name = format!("{}#{}", controller_key, route.function_name);
+
         println!(
             "  {} {} -> {}()",
             route.method, route.path, route.function_name
         );
 
-        register_route_with_handler(&route.method, &route.path, func_value);
+        register_route_with_handler(&route.method, &route.path, full_handler_name);
     }
 
     Ok(())
@@ -485,22 +507,35 @@ fn track_view_files(views_dir: &Path, file_tracker: &mut FileTracker) -> Result<
     track_recursive(views_dir, file_tracker)
 }
 
-/// Run the MVC HTTP server using hyper (high-performance async).
-fn run_hyper_server(
-    mut interpreter: Interpreter,
+/// Work queue for distributing requests to workers
+struct WorkQueue {
+    tx: channel::Sender<RequestData>,
+    rx: channel::Receiver<RequestData>,
+}
+
+impl WorkQueue {
+    fn new() -> Self {
+        let (tx, rx) = channel::unbounded();
+        Self { tx, rx }
+    }
+
+    fn sender(&self) -> channel::Sender<RequestData> {
+        self.tx.clone()
+    }
+}
+
+/// Run the MVC HTTP server with a worker pool for parallel request processing.
+fn run_hyper_server_worker_pool(
     port: u16,
-    _controllers_dir: PathBuf,
+    controllers_dir: PathBuf,
     models_dir: PathBuf,
     middleware_dir: PathBuf,
     public_dir: PathBuf,
-    mut file_tracker: FileTracker,
+    file_tracker: FileTracker,
     live_reload: bool,
+    _mode: ExecutionMode,
+    num_workers: usize,
 ) -> Result<(), RuntimeError> {
-    // Channel for sending requests to the interpreter (main) thread
-    // Use std::sync::mpsc for the interpreter side since it needs blocking_recv
-    let (request_tx, request_rx) = std::sync::mpsc::channel::<RequestData>();
-
-    // Create broadcast channel for live reload if enabled
     let reload_tx = if live_reload {
         let (tx, _) = broadcast::channel::<()>(16);
         Some(tx)
@@ -509,20 +544,15 @@ fn run_hyper_server(
     };
     let reload_tx_for_tokio = reload_tx.clone();
 
-    // Create WebSocket registry
     let ws_registry = Arc::new(WebSocketRegistry::new());
 
-    // Create channel for sending WebSocket events to the interpreter thread
-    // Use std::sync::mpsc for the interpreter side since it needs blocking_recv
-    let (ws_event_tx, ws_event_rx) = std::sync::mpsc::channel::<WebSocketEventData>();
-
-    // Clone for the interpreter loop
-    let ws_registry_for_interpreter = ws_registry.clone();
-
-    // Wrap the sender in an Arc with tokio's Mutex so it can be shared across tokio tasks
-    // tokio::sync::Mutex is Send + Sync
+    let (ws_event_tx, ws_event_rx) = channel::unbounded();
     let ws_event_tx_arc = Arc::new(tokio::sync::Mutex::new(Some(ws_event_tx)));
     let ws_event_tx_for_tokio = ws_event_tx_arc.clone();
+
+    let work_queue = Arc::new(WorkQueue::new());
+    let work_queue_for_tokio = work_queue.clone();
+    let work_queue_for_workers = work_queue.clone();
 
     println!("\nServer listening on http://0.0.0.0:{}", port);
     println!("Hot reload enabled - edit controllers/middleware/views to see changes");
@@ -532,12 +562,12 @@ fn run_hyper_server(
     if public_dir.exists() {
         println!("Static files served from {}", public_dir.display());
     }
-    println!("Using hyper async HTTP server\n");
+    println!("Using hyper async HTTP server with {} worker threads\n", num_workers);
 
-    // Spawn tokio runtime on a separate thread
-    let request_tx_clone = request_tx.clone();
     let public_dir_clone = public_dir.clone();
     let ws_registry_for_tokio = ws_registry.clone();
+
+    // Spawn tokio runtime for HTTP server
     thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -554,11 +584,10 @@ fn run_hyper_server(
                     Err(_) => continue,
                 };
                 let io = TokioIo::new(stream);
-                let request_tx = request_tx_clone.clone();
+                let request_tx = work_queue_for_tokio.sender();
                 let reload_tx = reload_tx_for_tokio.clone();
                 let public_dir = public_dir_clone.clone();
-                let ws_registry = ws_registry_for_tokio.clone();
-                // Clone the Arc for this task
+                let _ws_registry = ws_registry_for_tokio.clone();
                 let ws_event_tx_arc = ws_event_tx_for_tokio.clone();
 
                 tokio::spawn(async move {
@@ -569,10 +598,9 @@ fn run_hyper_server(
                         let ws_event_tx_arc = ws_event_tx_arc.clone();
 
                         async move {
-                            // Get the sender from the Arc using tokio lock
                             let guard = ws_event_tx_arc.lock().await;
                             let has_sender = guard.is_some();
-                            drop(guard); // Release the lock
+                            drop(guard);
 
                             if !has_sender {
                                 return Ok(Response::builder()
@@ -580,7 +608,6 @@ fn run_hyper_server(
                                     .body(Full::new(Bytes::from("Server shutting down")))
                                     .unwrap());
                             }
-                            // Get the sender again and clone immediately
                             let guard = ws_event_tx_arc.lock().await;
                             let ws_event_tx = if let Some(ref tx) = *guard {
                                 tx.clone()
@@ -590,7 +617,7 @@ fn run_hyper_server(
                                     .body(Full::new(Bytes::from("Server shutting down")))
                                     .unwrap());
                             };
-                            drop(guard); // Release the lock before await
+                            drop(guard);
                             handle_hyper_request(
                                 req,
                                 request_tx,
@@ -603,29 +630,160 @@ fn run_hyper_server(
                     });
 
                     if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
-                        if !e.to_string().contains("connection closed") {
-                            eprintln!("Connection error: {}", e);
-                        }
+                        // Silently ignore connection errors
                     }
                 });
             }
         });
     });
 
-    // Run interpreter loop on main thread (interpreter is not Send)
-    // Also pass WebSocket registry and event channel
-    interpreter_loop(
-        &mut interpreter,
-        &mut file_tracker,
-        &models_dir,
-        &middleware_dir,
-        request_rx,
-        reload_tx,
-        Some(ws_registry_for_interpreter),
-        Some(ws_event_rx),
-    );
+    // Spawn worker threads
+    let mut workers = Vec::new();
+    // Get routes in main thread and convert to worker-safe formats
+    let routes = get_routes();
+    let worker_routes = routes_to_worker_routes(&routes);
+    for i in 0..num_workers {
+        let work_queue = work_queue_for_workers.clone();
+        let models_dir = models_dir.clone();
+        let middleware_dir = middleware_dir.clone();
+        let ws_event_rx = ws_event_rx.clone();
+        let ws_registry = ws_registry.clone();
+        let reload_tx = reload_tx.clone();
+        let worker_routes = worker_routes.clone();
+        let controllers_dir = controllers_dir.clone();
+
+        let builder = thread::Builder::new().name(format!("worker-{}", i));
+        let handler = builder.spawn(move || {
+            // Panic catch wrapper
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut interpreter = Interpreter::new();
+
+                worker_loop(i, work_queue, models_dir, middleware_dir, ws_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir);
+            }));
+            
+            if result.is_err() {
+                eprintln!("Worker {} panicked", i);
+            }
+        });
+
+        match handler {
+            Ok(h) => workers.push(h),
+            Err(e) => eprintln!("Failed to spawn worker {}: {}", i, e),
+        }
+    }
+    println!("Started {} worker threads", workers.len());
+
+    // Wait for workers (they run forever until killed)
+    for (i, worker) in workers.into_iter().enumerate() {
+        match worker.join() {
+            Ok(_) => eprintln!("Worker {} exited normally", i),
+            Err(e) => eprintln!("Worker {} panicked: {:?}", i, e),
+        }
+    }
 
     Ok(())
+}
+
+/// Worker loop - processes requests from work queue
+fn worker_loop(
+    worker_id: usize,
+    work_queue: Arc<WorkQueue>,
+    models_dir: PathBuf,
+    middleware_dir: PathBuf,
+    ws_event_rx: channel::Receiver<WebSocketEventData>,
+    ws_registry: Arc<WebSocketRegistry>,
+    reload_tx: Option<broadcast::Sender<()>>,
+    interpreter: &mut Interpreter,
+    routes: Vec<WorkerRoute>,
+    controllers_dir: PathBuf,
+) {
+    // Initialize routes in this worker thread
+    set_worker_routes(routes);
+
+    // Load controllers in this worker so functions are defined in environment
+    if let Ok(entries) = std::fs::read_dir(&controllers_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "soli") {
+                if let Err(e) = execute_file(interpreter, &path) {
+                    eprintln!("Worker {}: Error loading {}: {}", worker_id, path.display(), e);
+                }
+
+                // Also register controller actions in this worker
+                if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
+                    if name.ends_with("_controller") {
+                        let source = std::fs::read_to_string(&path).unwrap_or_default();
+                        let routes = derive_routes_from_controller(name, &source).unwrap_or_default();
+                        let controller_key = name.trim_end_matches("_controller");
+                        for route in routes {
+                            if let Some(func_value) = interpreter.environment.borrow().get(&route.function_name) {
+                                crate::interpreter::builtins::router::register_controller_action(
+                                    controller_key,
+                                    &route.function_name,
+                                    func_value.clone(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let _worker_routes = get_routes();
+
+    let check_interval = Duration::from_millis(500);
+    let mut ws_event_rx_inner = Some(ws_event_rx);
+    let ws_registry_inner = Some(ws_registry);
+
+    const BATCH_SIZE: usize = 64;
+
+    loop {
+        // Process WebSocket events first (always check)
+        if let (Some(ref mut rx), Some(ref _registry)) =
+            (ws_event_rx_inner.as_mut(), ws_registry_inner.as_ref())
+        {
+            match rx.recv_timeout(Duration::ZERO) {
+                Ok(data) => {
+                    handle_websocket_event(interpreter, &data);
+                    let _ = data.response_tx.send(WebSocketActionData {
+                        join: None,
+                        leave: None,
+                        send: None,
+                        broadcast: None,
+                        broadcast_room: None,
+                        close: None,
+                    });
+                }
+                Err(channel::RecvTimeoutError::Timeout) => {}
+                Err(channel::RecvTimeoutError::Disconnected) => {
+                    ws_event_rx_inner = None;
+                }
+            }
+        }
+
+        // Batch process HTTP requests
+        for _ in 0..BATCH_SIZE {
+            match work_queue.rx.recv_timeout(Duration::ZERO) {
+                Ok(data) => {
+                    let resp_data = handle_request(interpreter, &data);
+                    let _ = data.response_tx.send(resp_data);
+                }
+                Err(channel::RecvTimeoutError::Timeout) => {
+                    break;
+                }
+                Err(channel::RecvTimeoutError::Disconnected) => {
+                    return;
+                }
+            }
+        }
+
+        // Wait for more requests
+        if let Ok(data) = work_queue.rx.recv_timeout(check_interval) {
+            let resp_data = handle_request(interpreter, &data);
+            let _ = data.response_tx.send(resp_data);
+        }
+    }
 }
 
 /// Data for WebSocket events sent to the interpreter thread.
@@ -639,6 +797,7 @@ struct WebSocketEventData {
 }
 
 /// Actions to take after processing a WebSocket event.
+#[allow(dead_code)]
 struct WebSocketActionData {
     join: Option<String>,
     leave: Option<String>,
@@ -651,30 +810,20 @@ struct WebSocketActionData {
 /// Handle a hyper request
 async fn handle_hyper_request(
     req: Request<Incoming>,
-    request_tx: std::sync::mpsc::Sender<RequestData>,
+    request_tx: channel::Sender<RequestData>,
     reload_tx: Option<broadcast::Sender<()>>,
     public_dir: PathBuf,
-    ws_event_tx: std::sync::mpsc::Sender<WebSocketEventData>,
+    ws_event_tx: channel::Sender<WebSocketEventData>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let method = req.method().to_string().to_uppercase();
     let uri = req.uri();
     let path = uri.path().to_string();
 
-    eprintln!("[HTTP] {} {}", method, path);
-
     // Check for WebSocket upgrade request
     if is_websocket_upgrade(&req) {
-        eprintln!("[WS] WebSocket upgrade request for path: {}", path);
-
         // Check if there's a WebSocket route for this path
         let routes = crate::serve::websocket::get_websocket_routes();
-        eprintln!(
-            "[WS] Registered routes: {:?}",
-            routes.iter().map(|r| &r.path_pattern).collect::<Vec<_>>()
-        );
-
         let has_ws_route = routes.iter().any(|r| r.path_pattern == path);
-        eprintln!("[WS] Has route for {}: {}", path, has_ws_route);
 
         if has_ws_route {
             // Get the global WebSocket registry
@@ -754,27 +903,33 @@ async fn handle_hyper_request(
         }
     }
 
-    // Read body
-    let body_bytes = http_body_util::BodyExt::collect(req.into_body())
-        .await
-        .map(|b| b.to_bytes())
-        .unwrap_or_default();
-    let body = String::from_utf8_lossy(&body_bytes).to_string();
+    // Read body - skip for GET/HEAD requests (usually empty)
+    let body = if method == "GET" || method == "HEAD" {
+        String::new()
+    } else {
+        let body_bytes = http_body_util::BodyExt::collect(req.into_body())
+            .await
+            .map(|b| b.to_bytes())
+            .unwrap_or_default();
+        String::from_utf8_lossy(&body_bytes).to_string()
+    };
 
     // Create oneshot channel for response
     let (response_tx, response_rx) = oneshot::channel();
 
     // Send to interpreter thread
     let request_data = RequestData {
-        method,
-        path,
+        method: method.clone(),
+        path: path.clone(),
         query,
         headers,
         body,
         response_tx,
     };
 
-    if request_tx.send(request_data).is_err() {
+    let send_result = request_tx.send(request_data);
+
+    if send_result.is_err() {
         return Ok(Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .body(Full::new(Bytes::from("Server shutting down")))
@@ -809,7 +964,6 @@ fn is_websocket_upgrade(req: &Request<Incoming>) -> bool {
     }
 
     if let Some(upgrade_header) = req.headers().get(header::UPGRADE) {
-        eprintln!("[WS] Upgrade header: {:?}", upgrade_header);
         return upgrade_header == "websocket";
     }
 
@@ -821,23 +975,18 @@ async fn handle_websocket_upgrade(
     req: Request<Incoming>,
     ws_registry: Arc<WebSocketRegistry>,
     path: String,
-    ws_event_tx: std::sync::mpsc::Sender<WebSocketEventData>,
+    ws_event_tx: channel::Sender<WebSocketEventData>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    eprintln!("[WS] handle_websocket_upgrade called for path: {}", path);
-
     // Create WebSocket config
     let config = WebSocketConfig::default();
 
     // Check if there's an upgrade header
     if !is_websocket_upgrade(&req) {
-        eprintln!("[WS] No upgrade header found");
         return Ok(Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .body(Full::new(Bytes::from("Not a WebSocket upgrade request")))
             .unwrap());
     }
-
-    eprintln!("[WS] Upgrade header present, creating upgrade response...");
 
     // For WebSocket, we need to handle the upgrade differently
     // Spawn a task to handle the WebSocket connection
@@ -847,28 +996,18 @@ async fn handle_websocket_upgrade(
     let config = config.clone();
 
     tokio::spawn(async move {
-        eprintln!("[WS] Handling WebSocket upgrade...");
-
         // Use hyper's upgrade
         match hyper::upgrade::on(req).await {
             Ok(upgraded) => {
-                eprintln!("[WS] Upgrade successful, creating WebSocket stream...");
-
                 // Wrap with TokioIo
                 let mut io = TokioIo::new(upgraded);
 
                 // Complete the WebSocket handshake using tungstenite
-                eprintln!("[WS] Completing WebSocket handshake...");
-
                 // Read the HTTP request to get the Sec-WebSocket-Key
                 use tokio::io::{AsyncReadExt, AsyncWriteExt};
                 let mut http_request = String::new();
-                match io.read_to_string(&mut http_request).await {
-                    Ok(_) => eprintln!("[WS] Read HTTP request ({} bytes)", http_request.len()),
-                    Err(e) => {
-                        eprintln!("[WS] Failed to read HTTP request: {}", e);
-                        return;
-                    }
+                if let Err(_) = io.read_to_string(&mut http_request).await {
+                    return;
                 }
 
                 // Parse the Sec-WebSocket-Key from the request
@@ -879,7 +1018,6 @@ async fn handle_websocket_upgrade(
                     .map(|s| s.trim().as_bytes());
 
                 if sec_websocket_key.is_none() {
-                    eprintln!("[WS] No Sec-WebSocket-Key found in request");
                     return;
                 }
 
@@ -896,11 +1034,9 @@ async fn handle_websocket_upgrade(
                      \r\n",
                     accept
                 );
-                if let Err(e) = io.write_all(response.as_bytes()).await {
-                    eprintln!("[WS] Failed to write response: {}", e);
+                if let Err(_) = io.write_all(response.as_bytes()).await {
                     return;
                 }
-                eprintln!("[WS] Sent 101 response");
 
                 // Now create the WebSocket stream
                 let mut stream = tokio_tungstenite::WebSocketStream::from_raw_socket(
@@ -909,10 +1045,9 @@ async fn handle_websocket_upgrade(
                     Some(config),
                 )
                 .await;
-                eprintln!("[WS] WebSocket stream created");
 
                 // Create connection in registry
-                let (ws_tx, mut ws_rx) = tokio::sync::mpsc::channel::<
+                let (ws_tx, _ws_rx) = tokio::sync::mpsc::channel::<
                     Result<tungstenite::Message, tungstenite::Error>,
                 >(32);
                 let ws_tx_arc = Arc::new(ws_tx);
@@ -931,7 +1066,10 @@ async fn handle_websocket_upgrade(
                     channel: None,
                     response_tx,
                 };
-                let _ = ws_event_tx.send(connect_event);
+                let ws_event_tx_clone = ws_event_tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    let _ = ws_event_tx_clone.send(connect_event);
+                });
 
                 // Handle messages
                 while let Some(msg_result) = stream.next().await {
@@ -948,12 +1086,14 @@ async fn handle_websocket_upgrade(
                                         channel: None,
                                         response_tx,
                                     };
-                                    let _ = ws_event_tx.send(msg_event);
+                                    let ws_event_tx_clone = ws_event_tx.clone();
+                                    tokio::task::spawn_blocking(move || {
+                                        let _ = ws_event_tx_clone.send(msg_event);
+                                    });
                                 }
                             }
                         }
-                        Err(e) => {
-                            eprintln!("[WS] Message error: {}", e);
+                        Err(_) => {
                             break;
                         }
                     }
@@ -969,13 +1109,15 @@ async fn handle_websocket_upgrade(
                     channel: None,
                     response_tx,
                 };
-                let _ = ws_event_tx.send(disconnect_event);
+                let ws_event_tx_clone = ws_event_tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    let _ = ws_event_tx_clone.send(disconnect_event);
+                });
 
                 ws_registry.unregister(&connection_id).await;
-                eprintln!("[WS] Connection closed for: {}", connection_id);
             }
-            Err(e) => {
-                eprintln!("[WS] Upgrade error: {}", e);
+            Err(_) => {
+                // Upgrade error, silently ignore
             }
         }
     });
@@ -989,26 +1131,21 @@ async fn handle_websocket_upgrade(
         .body(Full::new(Bytes::new()))
         .unwrap();
 
-    eprintln!("[WS] Returning 101 Switching Protocols");
     return Ok(response);
 }
 
 /// Handle WebSocket stream for a single connection.
+#[allow(dead_code)]
 async fn handle_websocket_stream<S>(
     mut stream: WebSocketStream<S>,
     ws_rx: &mut tokio::sync::mpsc::Receiver<Result<tungstenite::Message, tungstenite::Error>>,
     connection_id: Uuid,
     ws_registry: Arc<WebSocketRegistry>,
     path: String,
-    ws_event_tx: std::sync::mpsc::Sender<WebSocketEventData>,
+    ws_event_tx: channel::Sender<WebSocketEventData>,
 ) where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
 {
-    eprintln!(
-        "[WS] handle_websocket_stream started for connection: {}",
-        connection_id
-    );
-
     // Create a oneshot channel for sending events to interpreter and getting actions back
     let (response_tx, response_rx) = oneshot::channel();
 
@@ -1022,8 +1159,8 @@ async fn handle_websocket_stream<S>(
         response_tx,
     };
 
-    if let Err(e) = ws_event_tx.send(connect_event) {
-        eprintln!("Failed to send WebSocket connect event: {}", e);
+    if let Err(_) = ws_event_tx.send(connect_event) {
+        // Silently ignore send errors
     }
 
     // Wait for handler response (don't block forever, max 5 seconds)
@@ -1116,87 +1253,6 @@ async fn handle_websocket_stream<S>(
     };
 
     let _ = ws_event_tx.send(disconnect_event);
-}
-
-/// Interpreter loop - executes handlers sequentially (runs on main thread)
-fn interpreter_loop(
-    interpreter: &mut Interpreter,
-    file_tracker: &mut FileTracker,
-    models_dir: &Path,
-    middleware_dir: &Path,
-    request_rx: std::sync::mpsc::Receiver<RequestData>,
-    reload_tx: Option<broadcast::Sender<()>>,
-    ws_registry: Option<Arc<WebSocketRegistry>>,
-    ws_event_rx: Option<std::sync::mpsc::Receiver<WebSocketEventData>>,
-) {
-    use std::sync::mpsc::RecvTimeoutError;
-
-    let check_interval = std::time::Duration::from_millis(500);
-
-    // Clone the options for use in the loop
-    let mut ws_event_rx_inner = ws_event_rx;
-    let ws_registry_inner = ws_registry;
-
-    loop {
-        // Check for file changes
-        let changed_files = file_tracker.get_changed_files();
-        if !changed_files.is_empty() {
-            handle_hot_reload(
-                interpreter,
-                file_tracker,
-                &changed_files,
-                models_dir,
-                middleware_dir,
-            );
-
-            // Send live reload signal to connected browsers
-            if let Some(ref tx) = reload_tx {
-                let _ = tx.send(());
-                println!("   Sent reload signal to browsers\n");
-            }
-        }
-
-        // Non-blocking receive with timeout so we can check for file changes periodically
-        // First check WebSocket events
-        if let (Some(ref mut rx), Some(ref _registry)) =
-            (ws_event_rx_inner.as_mut(), ws_registry_inner.as_ref())
-        {
-            match rx.recv_timeout(check_interval) {
-                Ok(data) => {
-                    handle_websocket_event(interpreter, &data);
-                    let _ = data.response_tx.send(WebSocketActionData {
-                        join: None,
-                        leave: None,
-                        send: None,
-                        broadcast: None,
-                        broadcast_room: None,
-                        close: None,
-                    });
-                }
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => {
-                    // Channel closed, disable WebSocket event handling
-                    ws_event_rx_inner = None;
-                }
-            }
-        }
-
-        // Then check HTTP requests
-        match request_rx.recv_timeout(check_interval) {
-            Ok(data) => {
-                let resp_data = handle_request(interpreter, &data);
-                let _ = data.response_tx.send(resp_data);
-            }
-            Err(RecvTimeoutError::Timeout) => {
-                // Timeout - loop back to check for file changes
-                continue;
-            }
-            Err(RecvTimeoutError::Disconnected) => {
-                // Channel closed, exit
-                return;
-            }
-        }
-    }
 }
 
 /// Handle a WebSocket event by calling the handler function.
@@ -1299,26 +1355,58 @@ fn handle_websocket_event(interpreter: &mut Interpreter, data: &WebSocketEventDa
     }
 }
 
+/// Call the route handler with the request hash.
+fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash: Value) -> ResponseData {
+    // Use CONTROLLERS registry to look up handler by full name (controller#action)
+    let handler_result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
+
+    match handler_result {
+        Ok(handler_value) => {
+            match interpreter.call_value(handler_value, vec![request_hash], Span::default()) {
+                Ok(result) => {
+                    let (status, headers, body) = extract_response(&result);
+                    let headers: Vec<_> = headers.into_iter().collect();
+                    ResponseData {
+                        status,
+                        headers,
+                        body,
+                    }
+                }
+                Err(e) => ResponseData {
+                    status: 500,
+                    headers: vec![],
+                    body: format!("Internal Server Error: {}", e),
+                },
+            }
+        }
+        Err(e) => ResponseData {
+            status: 500,
+            headers: vec![],
+            body: format!("Handler not found: {}", e),
+        },
+    }
+}
+
 /// Handle a single request (called on interpreter thread)
 fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> ResponseData {
-    // Get current routes
     let routes = get_routes();
 
-    // Find matching route and extract params
-    let mut matched_route = None;
-    let mut matched_params = HashMap::new();
+    let method = &data.method;
+    let path = &data.path;
+
+    // Find matching route
+    let mut result = None;
     for route in &routes {
-        if route.method == data.method {
-            if let Some(params) = match_path(&route.path_pattern, &data.path) {
-                matched_route = Some(route);
-                matched_params = params;
+        if route.method == *method {
+            if let Some(params) = match_path(&route.path_pattern, path) {
+                result = Some((route, params));
                 break;
             }
         }
     }
 
-    let route = match matched_route {
-        Some(r) => r,
+    let (route, matched_params) = match result {
+        Some((r, params)) => (r, params),
         None => {
             return ResponseData {
                 status: 404,
@@ -1328,23 +1416,38 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
         }
     };
 
-    // Build request hash with extracted params
-    let mut request_hash = build_request_hash(
-        &data.method,
-        &data.path,
-        matched_params,
-        data.query.clone(),
-        data.headers.clone(),
-        data.body.clone(),
-    );
+    let handler_name = route.handler_name.clone();
+    let scoped_middleware = route.middleware.clone();
 
-    // Execute middleware chain: scoped middleware first, then global middleware
-    // Scoped middleware runs first so namespace/controller-specific middleware runs before global
-    let scoped_middleware: Vec<_> = route.middleware.iter().collect();
+    // Build request hash - optimize for empty query/headers/body
+    let mut request_hash = if data.query.is_empty() && data.headers.is_empty() && data.body.is_empty() {
+        build_request_hash(
+            &data.method,
+            &data.path,
+            matched_params,
+            HashMap::new(),
+            HashMap::new(),
+            String::new(),
+        )
+    } else {
+        build_request_hash(
+            &data.method,
+            &data.path,
+            matched_params,
+            data.query.clone(),
+            data.headers.clone(),
+            data.body.clone(),
+        )
+    };
+
+    // Fast path: no middleware at all
     let global_middleware = get_middleware();
+    if scoped_middleware.is_empty() && global_middleware.is_empty() {
+        return call_handler(interpreter, &handler_name, request_hash);
+    }
 
     // Execute scoped (route-specific) middleware
-    for mw in scoped_middleware {
+    for mw in &scoped_middleware {
         match interpreter.call_value(mw.clone(), vec![request_hash.clone()], Span::default()) {
             Ok(result) => match extract_middleware_result(&result) {
                 MiddlewareResult::Continue(modified_request) => {
@@ -1378,15 +1481,11 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
     }
 
     // Execute global middleware
-    // Skip global_only middleware if route has scoped middleware
-    // Skip scope_only middleware (only runs when explicitly scoped)
-    let has_scoped_middleware = !route.middleware.is_empty();
+    let has_scoped_middleware = !scoped_middleware.is_empty();
     for mw in &global_middleware {
-        // Skip global-only middleware when route has scoped middleware
         if has_scoped_middleware && mw.global_only {
             continue;
         }
-        // Skip scope_only middleware (it only runs when explicitly scoped)
         if mw.scope_only {
             continue;
         }
@@ -1428,22 +1527,7 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
     }
 
     // Call the route handler
-    match interpreter.call_value(route.handler.clone(), vec![request_hash], Span::default()) {
-        Ok(result) => {
-            let (status, headers, body) = extract_response(&result);
-            let headers: Vec<_> = headers.into_iter().collect();
-            ResponseData {
-                status,
-                headers,
-                body,
-            }
-        }
-        Err(e) => ResponseData {
-            status: 500,
-            headers: vec![],
-            body: format!("Internal Server Error: {}", e),
-        },
-    }
+    call_handler(interpreter, &handler_name, request_hash)
 }
 
 /// Handle hot reload of changed files

@@ -132,7 +132,7 @@ impl TypeChecker {
             ExprKind::InterpolatedString(parts) => {
                 for part in parts {
                     if let crate::ast::expr::InterpolatedPart::Expression(expr) = part {
-                        self.check_expr(&expr)?;
+                        self.check_expr(expr)?;
                     }
                 }
                 Ok(Type::String)
@@ -149,7 +149,7 @@ impl TypeChecker {
                 self.common_type(&arm_types)
             }
             ExprKind::ListComprehension {
-                element,
+                element: _,
                 variable,
                 iterable,
                 condition,
@@ -176,8 +176,8 @@ impl TypeChecker {
                 Ok(Type::Array(Box::new(Type::Any)))
             }
             ExprKind::HashComprehension {
-                key,
-                value,
+                key: _,
+                value: _,
                 variable,
                 iterable,
                 condition,
@@ -212,7 +212,7 @@ impl TypeChecker {
             ExprKind::Spread(inner) => {
                 // Spread takes an array and returns its element type (in context)
                 // For now, just check the inner expression and return Array type
-                let inner_type = self.check_expr(inner)?;
+                let _inner_type = self.check_expr(inner)?;
                 // In array context, spread returns the element type of the array
                 // We return Any since we can't easily determine the element type
                 Ok(Type::Any)

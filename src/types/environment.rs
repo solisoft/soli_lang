@@ -444,6 +444,79 @@ impl TypeEnvironment {
                 return_type: Box::new(Type::Any),
             },
         );
+
+        // String functions
+        // split(String, String) -> Array
+        self.functions.insert(
+            "split".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Array(Box::new(Type::String))),
+            },
+        );
+
+        // join(Array, String) -> String
+        self.functions.insert(
+            "join".to_string(),
+            Type::Function {
+                params: vec![Type::Any, Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // contains(String, String) -> Bool
+        self.functions.insert(
+            "contains".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
+        // index_of(String, String) -> Int
+        self.functions.insert(
+            "index_of".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Int),
+            },
+        );
+
+        // substring(String, Int, Int) -> String
+        self.functions.insert(
+            "substring".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Int, Type::Int],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // upcase(String) -> String
+        self.functions.insert(
+            "upcase".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // downcase(String) -> String
+        self.functions.insert(
+            "downcase".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // trim(String) -> String
+        self.functions.insert(
+            "trim".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
     }
 
     /// Enter a new scope.

@@ -1612,6 +1612,124 @@ if hasenv("SECRET_KEY") {
 
 ---
 
+## HTML Functions
+
+Soli provides built-in functions for safely escaping and sanitizing HTML content. These are essential for preventing XSS (Cross-Site Scripting) attacks when rendering user-generated content.
+
+### html_escape
+
+Escapes HTML special characters, converting them to their safe entity equivalents.
+
+```rust
+html_escape(string)
+```
+
+**Parameters:** `String` - The string to escape
+**Returns:** `String` - The escaped string
+
+**Escapes these characters:**
+| Character | Escaped To |
+|-----------|------------|
+| `&` | `&amp;` |
+| `<` | `&lt;` |
+| `>` | `&gt;` |
+| `"` | `&| `'` |quot;` |
+ `&#39;` |
+
+```rust
+let user_input = "<script>alert('xss')</script>";
+let safe = html_escape(user_input);
+print(safe);  // &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;
+
+let html = "<div>Hello & World</div>";
+let escaped = html_escape(html);
+print(escaped);  // &lt;div&gt;Hello &amp; World&lt;/div&gt;
+```
+
+### html_unescape
+
+Converts HTML entities back to their original characters (reverse of `html_escape`).
+
+```rust
+html_unescape(string)
+```
+
+**Parameters:** `String` - The string with HTML entities
+**Returns:** `String` - The unescaped string
+
+```rust
+let escaped = "&lt;div&gt;Hello &amp; World&lt;/div&gt;";
+let original = html_unescape(escaped);
+print(original);  // <div>Hello & World</div>
+```
+
+### sanitize_html
+
+Removes dangerous HTML tags and attributes while preserving safe formatting. Essential for rendering user-generated HTML content safely.
+
+```rust
+sanitize_html(string)
+```
+
+**Parameters:** `String` - The HTML string to sanitize
+**Returns:** `String` - The sanitized HTML
+
+**Blocked Tags:**
+- `<script>` - JavaScript execution
+- `<style>` - CSS injection
+- `<iframe>` - Frame embedding
+- `<object>` - Plugin content
+- `<embed>` - Plugin embedding
+- `<form>` - Form submission
+- `<input>` - User input fields
+
+**Allowed Tags:**
+`p`, `br`, `b`, `i`, `u`, `em`, `strong`, `a`, `ul`, `ol`, `li`, `blockquote`, `code`, `pre`, `h1`, `h2`, `h3`, `h4`, `h5`, `h6`, `span`, `div`, `img`
+
+**Allowed Attributes:**
+`href`, `src`, `title`, `alt`, `class`, `id`, `style`
+
+**Blocked Attribute Patterns:**
+- `javascript:` URLs
+- Event handlers: `onclick`, `onload`, `onerror`, etc.
+
+```rust
+let unsafe_html = "<script>alert('xss')</script><p>Safe content</p>";
+let safe = sanitize_html(unsafe_html);
+print(safe);  // <p>Safe content</p>
+
+let with_events = "<img src=x onerror=alert(1)>";
+print(sanitize_html(with_events));  // <img src=x>
+
+let mixed = "<h1>Title</h1><script>evil()</script><p>Text</p>";
+print(sanitize_html(mixed));  // <h1>Title</h1><p>Text</p>
+```
+
+### HTML Sanitization Example
+
+A complete example for safely rendering user comments:
+
+```rust
+fn render_comment(author: String, content: String) -> String {
+    let escaped_author = html_escape(author);
+    let sanitized_content = sanitize_html(content);
+    return "<div class=\"comment\"><strong>" + escaped_author + ":</strong> " + sanitized_content + "</div>";
+}
+
+let comment = render_comment("Alice", "<p>Great post!</p><script>steal_cookies()</script>");
+print(comment);
+// <div class="comment"><strong>Alice:</strong> <p>Great post!</p></div>
+```
+
+:::caution[XSS Prevention]
+Always use these functions when rendering user-generated content:
+- Use `html_escape()` for plain text that should not contain HTML
+- Use `sanitize_html()` when users should be able to use basic formatting
+- Never concatenate raw user input into HTML without escaping
+:::
+
+---
+
 ## Summary Table
 ---
 
@@ -1685,3 +1803,24 @@ if hasenv("SECRET_KEY") {
 | `setenv(name, value)` | String, String | Void | Set environment variable |
 | `unsetenv(name)` | String | Void | Remove environment variable |
 | `hasenv(name)` | String | Bool | Check if variable exists |
+| `html_escape(string)` | String | String | Escape HTML special characters |
+| `html_unescape(string)` | String | String | Unescape HTML entities |
+| `sanitize_html(string)` | String | String | Remove dangerous HTML (XSS prevention) |
+
+---
+
+## i18n (Internationalization)
+
+Internationalization support is provided as a pure Soli library. See the [Internationalization Guide](/docs/guides/internationalization) for details.
+
+Key i18n functions (from library):
+
+| Function | Parameters | Returns | Description |
+|----------|------------|---------|-------------|
+| `i18n_set_locale(locale)` | String | Void | Set current locale |
+| `i18n_get_locale()` | - | String | Get current locale |
+| `i18n_t(key)` | String | String | Translate a string |
+| `i18n_tn(singular, plural, count)` | String, String, Int | String | Get plural form |
+| `i18n_format_number(n, locale)` | Float, String | String | Format number |
+| `i18n_format_currency(amount, currency, locale)` | Float, String, String | String | Format currency |
+| `i18n_format_date_simple(day, month, year, locale)` | Int, Int, Int, String | String | Format date |

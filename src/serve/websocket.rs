@@ -140,7 +140,7 @@ impl WebSocketRegistry {
         let connections = self.connections.lock().await;
         if let Some(conn) = connections.get(id) {
             let msg = Message::text(message);
-            if let Err(e) = conn.sender.send(Ok(msg)).await {
+            if let Err(_e) = conn.sender.send(Ok(msg)).await {
                 return Err(tungstenite::Error::ConnectionClosed);
             }
         }

@@ -5,10 +5,9 @@ use std::rc::Rc;
 
 use crate::ast::expr::{BinaryOp, Expr, ExprKind, MatchPattern, UnaryOp};
 use crate::ast::stmt::{
-    ClassDecl, ConstructorDecl, FieldDecl, FunctionDecl, MethodDecl, Parameter, Program, Stmt,
-    StmtKind,
+    ClassDecl, ConstructorDecl, FunctionDecl, MethodDecl, Parameter, Program, Stmt, StmtKind,
 };
-use crate::bytecode::chunk::{Chunk, CompiledClass, CompiledFunction, Constant};
+use crate::bytecode::chunk::{CompiledClass, CompiledFunction, Constant};
 use crate::bytecode::instruction::{OpCode, UpvalueInfo};
 use crate::error::CompileError;
 use crate::span::Span;
@@ -17,6 +16,7 @@ use crate::span::Span;
 pub type CompileResult<T> = Result<T, CompileError>;
 
 /// The bytecode compiler.
+#[allow(dead_code)]
 pub struct Compiler {
     /// Current function being compiled
     current: FunctionCompiler,
@@ -31,6 +31,7 @@ pub struct Compiler {
 }
 
 /// Context for compiling a single function.
+#[allow(dead_code)]
 struct FunctionCompiler {
     /// The function being compiled
     function: CompiledFunction,
@@ -56,6 +57,7 @@ struct Local {
 }
 
 /// Type of function being compiled.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FunctionType {
     Script,
@@ -63,9 +65,11 @@ enum FunctionType {
     Method,
     Constructor,
     Lambda,
+    Async,
 }
 
 /// Context for class compilation.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct ClassContext {
     /// Class name
@@ -125,6 +129,11 @@ impl Compiler {
             "now",
             "keys",
             "values",
+            "entries",
+            "has_key",
+            "delete",
+            "merge",
+            "clear",
             // HTTP functions
             "http_get",
             "http_post",
@@ -141,6 +150,10 @@ impl Compiler {
             // File I/O functions
             "barf",
             "slurp",
+            // HTML functions
+            "html_escape",
+            "html_unescape",
+            "sanitize_html",
         ];
 
         for (i, name) in natives.iter().enumerate() {
@@ -332,8 +345,83 @@ impl Compiler {
                 self.compile_statement(inner)?;
             }
 
-            StmtKind::Throw(_) | StmtKind::Try { .. } => {
-                unimplemented!("Exception handling not yet implemented in compiler")
+            StmtKind::Throw(value) => {
+                let line = stmt.span.line as u32;
+                self.compile_expression(value)?;
+                self.emit_op(OpCode::Throw, line);
+            }
+
+            StmtKind::Try {
+                try_block,
+                catch_var,
+                catch_block,
+                finally_block,
+            } => {
+                let line = stmt.span.line as u32;
+
+                // Mark try block start
+                self.current_offset();
+
+                // Compile try block
+                self.compile_statement(try_block)?;
+
+                // Emit TRY instruction with placeholder offsets
+                // TRY <catch_offset_offset:u16> <finally_offset_offset:u16>
+                // We store the offsets to where the jump targets will be written
+                self.emit_op(OpCode::Try, line);
+                self.emit_u16(0xFFFF, line); // catch_offset placeholder
+                self.emit_u16(0xFFFF, line); // finally_offset placeholder
+
+                // Record position to patch later
+                let try_instruction_offset = self.current_offset() - 4;
+
+                // Emit try end marker
+                self.emit_op(OpCode::TryEnd, line);
+
+                // Patch catch offset if there's a catch block
+                if let Some(catch_blk) = catch_block {
+                    let catch_offset = self.current_offset();
+                    let chunk = &mut self.current.function.chunk;
+                    chunk.patch_u16(try_instruction_offset + 2, catch_offset as u16);
+
+                    // Declare catch variable if present
+                    if let Some(var_name) = catch_var {
+                        self.declare_local(var_name.clone())?;
+                        self.mark_initialized();
+                    }
+
+                    self.compile_statement(catch_blk)?;
+
+                    // Pop the try block
+                    self.emit_op(OpCode::PopTry, line);
+                }
+
+                // Patch finally offset if there's a finally block
+                if let Some(finally_blk) = finally_block {
+                    let finally_offset = self.current_offset();
+                    {
+                        let chunk = &mut self.current.function.chunk;
+                        chunk.patch_u16(try_instruction_offset + 4, finally_offset as u16);
+                    }
+
+                    // Compile finally block
+                    self.compile_statement(finally_blk)?;
+                } else if catch_block.is_none() {
+                    // If only finally, patch it to current position
+                    let current_offset = self.current_offset();
+                    let chunk = &mut self.current.function.chunk;
+                    chunk.patch_u16(try_instruction_offset + 4, current_offset as u16);
+                }
+
+                // If there's a catch block and also a finally, we need to jump over finally after catch
+                if catch_block.is_some() && finally_block.is_some() {
+                    let end_jump = self.emit_jump(OpCode::Jump, line);
+                    self.patch_jump(end_jump);
+                    self.emit_op(OpCode::PopTry, line);
+                } else if catch_block.is_none() {
+                    // Only finally - need to pop try
+                    self.emit_op(OpCode::PopTry, line);
+                }
             }
         }
 
@@ -477,7 +565,7 @@ impl Compiler {
                 if self.current_class.is_none() {
                     return Err(CompileError::new(
                         "Cannot use 'this' outside of a class".to_string(),
-                        expr.span.clone(),
+                        expr.span,
                     ));
                 }
                 self.emit_op(OpCode::GetThis, line);
@@ -488,13 +576,13 @@ impl Compiler {
                     None => {
                         return Err(CompileError::new(
                             "Cannot use 'super' outside of a class".to_string(),
-                            expr.span.clone(),
+                            expr.span,
                         ));
                     }
                     Some(ctx) if !ctx.has_superclass => {
                         return Err(CompileError::new(
                             "Cannot use 'super' in a class without a superclass".to_string(),
-                            expr.span.clone(),
+                            expr.span,
                         ));
                     }
                     _ => {}
@@ -591,7 +679,7 @@ impl Compiler {
                 _ => {
                     return Err(CompileError::new(
                         "Invalid assignment target".to_string(),
-                        target.span.clone(),
+                        target.span,
                     ));
                 }
             },
@@ -636,7 +724,6 @@ impl Compiler {
 
                 if else_branch.is_some() {
                     let end_jump = self.emit_jump(OpCode::Jump, line);
-                    let else_start = self.current_offset();
 
                     self.patch_jump(else_jump);
                     self.compile_expression(else_branch.as_ref().unwrap())?;
@@ -665,7 +752,7 @@ impl Compiler {
                             }
                         }
                         crate::ast::expr::InterpolatedPart::Expression(expr) => {
-                            self.compile_expression(&expr)?;
+                            self.compile_expression(expr)?;
                             if !first {
                                 self.emit_op(OpCode::Add, line);
                             }
@@ -727,8 +814,10 @@ impl Compiler {
             ExprKind::Spread(_) => {
                 unimplemented!("Spread expressions not yet implemented in compiler")
             }
-            ExprKind::Throw(_) => {
-                unimplemented!("Throw expressions not yet implemented in compiler")
+            ExprKind::Throw(value) => {
+                let line = expr.span.line as u32;
+                self.compile_expression(value)?;
+                self.emit_op(OpCode::Throw, line);
             }
         }
 

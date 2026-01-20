@@ -204,7 +204,7 @@ impl<'a> Scanner<'a> {
     fn scan_string(&mut self) -> Result<Token, LexerError> {
         let start_position = self.current_pos;
         let start_line = self.line;
-        let start_column = self.column;
+        let _start_column = self.column;
         let mut value = String::new();
         let mut has_interpolation = false;
 
@@ -263,7 +263,7 @@ impl<'a> Scanner<'a> {
         }
 
         let end_position = self.current_pos;
-        let end_line = self.line;
+        let _end_line = self.line;
         let end_column = self.column;
         let span = Span::new(start_position, end_position, start_line, end_column);
 
@@ -280,7 +280,7 @@ impl<'a> Scanner<'a> {
         let mut parts = Vec::new();
         let mut current = String::new();
         let mut chars = s.chars().peekable();
-        let mut paren_depth = 0;
+        let _paren_depth = 0;
 
         while let Some(c) = chars.next() {
             if c == '\\' {
@@ -291,15 +291,15 @@ impl<'a> Scanner<'a> {
                     }
                     current = String::new();
                     chars.next(); // consume (
-                    paren_depth = 1;
+                    let mut _paren_depth = 1;
                     // Read until matching )
                     while let Some(c2) = chars.next() {
                         if c2 == '(' {
-                            paren_depth += 1;
+                            _paren_depth += 1;
                             current.push(c2);
                         } else if c2 == ')' {
-                            paren_depth -= 1;
-                            if paren_depth == 0 {
+                            _paren_depth -= 1;
+                            if _paren_depth == 0 {
                                 break;
                             }
                             current.push(c2);

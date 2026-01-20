@@ -6,7 +6,6 @@ mod statements;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::Read;
 use std::rc::Rc;
 
 use crate::ast::*;
@@ -21,10 +20,11 @@ use crate::span::Span;
 
 pub(crate) type RuntimeResult<T> = Result<T, RuntimeError>;
 
-/// Internal result type that can carry return values.
+/// Internal result type that can carry return values and exceptions.
 pub(crate) enum ControlFlow {
     Normal,
     Return(Value),
+    Throw(Value),
 }
 
 /// The Solilang interpreter.
@@ -63,6 +63,7 @@ impl Interpreter {
             match &result {
                 Err(_) => break,
                 Ok(ControlFlow::Return(_)) => break,
+                Ok(ControlFlow::Throw(_)) => break,
                 Ok(ControlFlow::Normal) => {}
             }
         }
@@ -86,7 +87,11 @@ impl Interpreter {
 
         match self.execute_block(&func.body, call_env)? {
             ControlFlow::Normal => Ok(Value::Null),
-            ControlFlow::Return(v) => Ok(v),
+            ControlFlow::Return(return_value) => Ok(return_value),
+            ControlFlow::Throw(e) => Err(RuntimeError::General {
+                message: format!("Unhandled exception: {}", e),
+                span: Span::default(),
+            }),
         }
     }
 
@@ -151,7 +156,7 @@ impl Interpreter {
             let mut body = String::new();
             if let Some(len) = request.body_length() {
                 if len > 0 {
-                    let mut reader = request.as_reader();
+                    let reader = request.as_reader();
                     let mut buf = Vec::with_capacity(len);
                     if reader.read_to_end(&mut buf).is_ok() {
                         body = String::from_utf8_lossy(&buf).to_string();
@@ -179,31 +184,42 @@ impl Interpreter {
                 let request_hash =
                     build_request_hash(&method, path, matched_params, query, headers, body);
 
+                // Look up the handler in the interpreter's environment
+                let handler = self.environment.borrow().get(&route.handler_name);
+
                 // Call the handler
-                match self.call_value(route.handler.clone(), vec![request_hash], Span::default()) {
-                    Ok(result) => {
-                        let (status, resp_headers, resp_body) = extract_response(&result);
+                match handler {
+                    Some(handler_value) => {
+                        match self.call_value(handler_value, vec![request_hash], Span::default()) {
+                            Ok(result) => {
+                                let (status, resp_headers, resp_body) = extract_response(&result);
 
-                        let mut response =
-                            tiny_http::Response::from_string(resp_body).with_status_code(status);
+                                let mut response = tiny_http::Response::from_string(resp_body)
+                                    .with_status_code(status);
 
-                        // Add headers
-                        for (key, value) in resp_headers {
-                            if let Ok(header) =
-                                tiny_http::Header::from_bytes(key.as_bytes(), value.as_bytes())
-                            {
-                                response = response.with_header(header);
+                                // Add headers
+                                for (key, value) in resp_headers {
+                                    if let Ok(header) = tiny_http::Header::from_bytes(
+                                        key.as_bytes(),
+                                        value.as_bytes(),
+                                    ) {
+                                        response = response.with_header(header);
+                                    }
+                                }
+
+                                response.boxed()
                             }
+                            Err(e) => tiny_http::Response::from_string(format!("Error: {}", e))
+                                .with_status_code(500)
+                                .boxed(),
                         }
-
-                        response.boxed()
                     }
-                    Err(e) => {
-                        eprintln!("Handler error: {}", e);
-                        tiny_http::Response::from_string(format!("Internal Server Error: {}", e))
-                            .with_status_code(500)
-                            .boxed()
-                    }
+                    None => tiny_http::Response::from_string(format!(
+                        "Handler not found: {}",
+                        route.handler_name
+                    ))
+                    .with_status_code(500)
+                    .boxed(),
                 }
             } else {
                 // 404 Not Found
