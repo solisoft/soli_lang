@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Chat - Solilang MVC</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        #messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            background: white;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        #messages p {
+            margin: 8px 0;
+            padding: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        #messages p.join {
+            background: #d4edda;
+            color: #155724;
+        }
+        #messages p.leave {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        #messages p.system {
+            background: #fff3cd;
+            color: #856404;
+            font-style: italic;
+        }
+        #status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        #status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        #status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Chat</h1>
+
+    <div class="info">
+        <strong>Status:</strong> <span id="status">Connecting...</span><br>
+        <strong>Connection ID:</strong> <span id="conn-id">-</span>
+    </div>
+
+    <div id="messages"></div>
+
+    <div>
+        <input type="text" id="msg" placeholder="Type a message...">
+        <button onclick="send()">Send</button>
+    </div>
+
+    <script>
+        let ws = null;
+        const messagesDiv = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+        const connIdDiv = document.getElementById('conn-id');
+
+        function connect() {
+            ws = new WebSocket('ws://' + window.location.host + '/chat');
+
+            ws.onopen = function() {
+                statusDiv.textContent = 'Connected';
+                statusDiv.className = 'connected';
+                addMessage('Connected to chat server', 'system');
+            };
+
+            ws.onclose = function() {
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.className = 'disconnected';
+                addMessage('Disconnected from server', 'system');
+                // Reconnect after 3 seconds
+                setTimeout(connect, 3000);
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addMessage('Connection error', 'system');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'join') {
+                        addMessage('User joined: ' + data.user, 'join');
+                    } else if (data.type === 'leave') {
+                        addMessage('User left: ' + data.user, 'leave');
+                    } else if (data.type === 'disconnect') {
+                        addMessage('Client disconnected: ' + data.connection_id, 'leave');
+                    } else {
+                        // Regular message - just display it
+                        addMessage('Message: ' + event.data, '');
+                    }
+                } catch (e) {
+                    // If not JSON, just display raw message
+                    addMessage('Received: ' + event.data, '');
+                }
+            };
+        }
+
+        function addMessage(text, className) {
+            const p = document.createElement('p');
+            p.textContent = '[' + new Date().toLocaleTimeString() + '] ' + text;
+            if (className) p.className = className;
+            messagesDiv.appendChild(p);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function send() {
+            const input = document.getElementById('msg');
+            const text = input.value.trim();
+
+            if (text && ws && ws.readyState === WebSocket.OPEN) {
+                const message = JSON.stringify({
+                    type: 'message',
+                    text: text,
+                    timestamp: new Date().toISOString()
+                });
+                ws.send(message);
+                addMessage('You: ' + text, '');
+                input.value = '';
+            }
+        }
+
+        // Handle Enter key
+        document.getElementById('msg').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                send();
+            }
+        });
+
+        // Connect on load
+        connect();
+    </script>
+</body>
+</html>

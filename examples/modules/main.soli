@@ -1,0 +1,33 @@
+// Main program demonstrating the module system
+
+// Import all exports from math module
+import "./lib/math.soli";
+
+// Import specific functions from utils module
+import { greet, max } from "./lib/utils.soli";
+
+// Use imported functions
+print("=== Module System Demo ===");
+print("");
+
+// Math operations
+print("Math operations:");
+print("add(5, 3) = ", add(5, 3));
+print("subtract(10, 4) = ", subtract(10, 4));
+print("multiply(6, 7) = ", multiply(6, 7));
+print("square(8) = ", square(8));
+print("abs(-42) = ", abs(-42));
+print("");
+
+// Utility functions
+print("Utility functions:");
+print(greet("World"));
+print("max(15, 23) = ", max(15, 23));
+print("");
+
+// Combining imported functions
+let result = square(add(2, 3));
+print("square(add(2, 3)) = ", result);
+
+print("");
+print("=== Demo Complete ===");

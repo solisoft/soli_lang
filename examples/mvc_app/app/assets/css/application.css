@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+    .btn {
+        @apply px-4 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm;
+    }
+    .btn-primary {
+        @apply bg-primary hover:bg-indigo-700 text-white;
+    }
+}

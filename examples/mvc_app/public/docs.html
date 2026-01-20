@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solilang MVC Framework - Documentation</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #0ea5e9;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --code-bg: #0d1117;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            padding: 2rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: white;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: var(--primary);
+            font-size: 1.2rem;
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        .logo-text span {
+            font-weight: 300;
+            opacity: 0.9;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover {
+            opacity: 1;
+        }
+
+        .hero {
+            padding: 4rem 2rem;
+            text-align: center;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, white 0%, #cbd5e1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 2rem;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid var(--primary);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.875rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 3rem;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 140px;
+            height: fit-content;
+        }
+
+        .sidebar-section {
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        .sidebar-nav {
+            list-style: none;
+        }
+
+        .sidebar-nav li {
+            margin-bottom: 0.25rem;
+        }
+
+        .sidebar-nav a {
+            display: block;
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .sidebar-nav a:hover {
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+
+        .sidebar-nav a.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .content {
+            min-width: 0;
+        }
+
+        .doc-section {
+            margin-bottom: 3rem;
+            padding-bottom: 3rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .doc-section:last-child {
+            border-bottom: none;
+        }
+
+        .doc-section h2 {
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .doc-section h2::before {
+            content: '';
+            width: 4px;
+            height: 28px;
+            background: var(--primary);
+            border-radius: 2px;
+        }
+
+        .doc-section h3 {
+            font-size: 1.25rem;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--text-primary);
+        }
+
+        .doc-section p {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .code-lang {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .code-copy {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .code-copy:hover {
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+
+        .code-content {
+            padding: 1.25rem;
+            overflow-x: auto;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            white-space: pre;
+        }
+
+        .code-content .comment { color: #6a9955; font-style: italic; }
+        .code-content .keyword { color: #c586c0; font-weight: 600; }
+        .code-content .string { color: #ce9178; }
+        .code-content .function { color: #dcdcaa; }
+        .code-content .type { color: #4ec9b0; }
+        .code-content .number { color: #b5cea8; }
+        .code-content .operator { color: #d4d4d4; }
+
+        .info-box {
+            padding: 1rem 1.25rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .info-box.tip {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .info-box.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .info-box.note {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .info-box .icon {
+            font-size: 1.25rem;
+        }
+
+        .info-box .text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+
+        .feature-card h4 {
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .doc-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        .doc-table th,
+        .doc-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .doc-table th {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .doc-table td {
+            color: var(--text-secondary);
+        }
+
+        .doc-table tr:hover td {
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .quick-start {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(14, 165, 233, 0.1) 100%);
+            border: 1px solid var(--primary);
+            border-radius: 16px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .quick-start h3 {
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                position: relative;
+                top: 0;
+                display: flex;
+                gap: 2rem;
+                overflow-x: auto;
+                padding-bottom: 1rem;
+            }
+
+            .sidebar-section {
+                margin-bottom: 0;
+                min-width: 150px;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">S</div>
+                <div class="logo-text">Solilang <span>MVC</span></div>
+            </div>
+            <nav class="nav-links">
+                <a href="#getting-started">Getting Started</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#middleware">Middleware</a>
+                <a href="#routing">Routing</a>
+                <a href="https://github.com/solilang/solilang" target="_blank">GitHub</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="hero-badge">v0.1.0</div>
+        <h1>MVC Framework Documentation</h1>
+        <p>A powerful, type-safe Model-View-Controller framework built with Solilang. Build scalable web applications with ease.</p>
+    </section>
+
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Getting Started</div>
+                <ul class="sidebar-nav">
+                    <li><a href="#introduction">Introduction</a></li>
+                    <li><a href="#quick-start">Quick Start</a></li>
+                    <li><a href="#installation">Installation</a></li>
+                </ul>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Core Concepts</div>
+                <ul class="sidebar-nav">
+                    <li><a href="#architecture">Architecture</a></li>
+                    <li><a href="#project-structure">Project Structure</a></li>
+                    <li><a href="#controllers">Controllers</a></li>
+                    <li><a href="#views">Views</a></li>
+                    <li><a href="#models">Models</a></li>
+                </ul>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Features</div>
+                <ul class="sidebar-nav">
+                    <li><a href="#routing">Routing</a></li>
+                    <li><a href="#middleware">Middleware</a></li>
+                    <li><a href="#scoped-middleware">Scoped Middleware</a></li>
+                    <li><a href="#resources">Resources</a></li>
+                    <li><a href="#namespaces">Namespaces</a></li>
+                </ul>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Reference</div>
+                <ul class="sidebar-nav">
+                    <li><a href="#cli-commands">CLI Commands</a></li>
+                    <li><a href="#configuration">Configuration</a></li>
+                    <li><a href="#examples">Examples</a></li>
+                </ul>
+            </div>
+        </aside>
+
+        <main class="content">
+            <section id="introduction" class="doc-section">
+                <h2>Introduction</h2>
+                <p>The Solilang MVC Framework provides a clean, organized structure for building web applications. It follows the Model-View-Controller pattern, separating concerns into logical components.</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>Type-Safe</h4>
+                        <p>Built with Solilang's type system for compile-time safety</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>Hot Reload</h4>
+                        <p>Instant updates during development without restarting</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>Scoped Middleware</h4>
+                        <p>Apply middleware to specific routes with fine-grained control</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>Template Engine</h4>
+                        <p>Powerful templating with layouts and dynamic content</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="quick-start" class="doc-section">
+                <h2>Quick Start</h2>
+                <p>Get your first MVC application running in minutes.</p>
+
+                <div class="quick-start">
+                    <h3>Create a New Project</h3>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">bash</span>
+                            <button class="code-copy">Copy</button>
+                        </div>
+                        <div class="code-content">cargo run -- serve examples/mvc_app</div>
+                    </div>
+                </div>
+
+                <p>Your application will be available at <code>http://localhost:3000</code></p>
+
+                <div class="info-box tip">
+                    <span class="icon">&#9888;</span>
+                    <span class="text">The server supports hot reload! Edit any file and changes are reflected immediately.</span>
+                </div>
+            </section>
+
+            <section id="architecture" class="doc-section">
+                <h2>Architecture</h2>
+                <p>The MVC pattern separates your application into three main components:</p>
+
+                <h3>Model</h3>
+                <p>Handles data logic and business rules. Models interact with your database and return structured data to controllers.</p>
+
+                <h3>View</h3>
+                <p>Presents data to users. Views use templates to render HTML with dynamic content from controllers.</p>
+
+                <h3>Controller</h3>
+                <p>Orchestrates requests. Controllers receive input, interact with models, and return responses through views.</p>
+
+                <div class="info-box note">
+                    <span class="icon">&#128214;</span>
+                    <span class="text">This architecture promotes separation of concerns, making your code more maintainable and testable.</span>
+                </div>
+            </section>
+
+            <section id="project-structure" class="doc-section">
+                <h2>Project Structure</h2>
+                <p>A typical MVC project has the following structure:</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">text</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content">mvc_app/
+├── app/
+│   ├── controllers/     # Route handlers
+│   │   └── home_controller.soli
+│   ├── middleware/      # Middleware functions
+│   │   ├── auth.soli
+│   │   └── cors.soli
+│   ├── models/          # Data models
+│   └── views/           # Templates
+├── config/
+│   └── routes.soli      # Route definitions
+└── public/              # Static assets</div>
+                </div>
+            </section>
+
+            <section id="controllers" class="doc-section">
+                <h2>Controllers</h2>
+                <p>Controllers define the actions that handle HTTP requests. Each function in a controller corresponds to a route.</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">soli</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="comment">// app/controllers/home_controller.soli</span>
+
+<span class="keyword">fn</span> <span class="function">index</span>(req: <span class="type">Any</span>) -> <span class="type">Any</span> {
+    <span class="keyword">return</span> {
+        <span class="string">"status"</span>: <span class="type">200</span>,
+        <span class="string">"body"</span>: <span class="string">"Hello, World!"</span>
+    };
+}
+
+<span class="keyword">fn</span> <span class="function">about</span>(req: <span class="type">Any</span>) -> <span class="type">Any</span> {
+    <span class="keyword">return</span> {
+        <span class="string">"status"</span>: <span class="type">200</span>,
+        <span class="string">"body"</span>: <span class="string">"About page"</span>
+    };
+}</div>
+                </div>
+            </section>
+
+            <section id="views" class="doc-section">
+                <h2>Views</h2>
+                <p>Views handle the presentation layer, rendering HTML responses using ERB-like templates. Templates mix HTML with embedded Soli code.</p>
+
+                <h3>Rendering Views from Controllers</h3>
+                <p>Use the <code>render()</code> function to render a template with data:</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">soli</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="keyword">fn</span> <span class="function">index</span>(req: <span class="type">Any</span>) -> <span class="type">Any</span> {
+    <span class="keyword">return</span> render(<span class="string">"home/index"</span>, {
+        <span class="string">"title"</span>: <span class="string">"Welcome"</span>,
+        <span class="string">"message"</span>: <span class="string">"Hello, World!"</span>,
+        <span class="string">"users"</span>: [
+            {<span class="string">"name"</span>: <span class="string">"Alice"</span>, <span class="string">"email"</span>: <span class="string">"alice@example.com"</span>},
+            {<span class="string">"name"</span>: <span class="string">"Bob"</span>, <span class="string">"email"</span>: <span class="string">"bob@example.com"</span>}
+        ]
+    });
+}</div>
+                </div>
+
+                <h3>Template Structure</h3>
+                <p>Templates are located in <code>app/views/</code> and can use layouts for consistent page structure:</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">text</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content">app/views/
+├── home/
+│   ├── index.html          # Home page template
+│   └── about.html          # About page template
+├── layouts/
+│   └── application.html    # Main layout with header/footer
+└── users/
+    ├── index.html          # Users list
+    └── show.html           # User detail view</div>
+                </div>
+
+                <h3>Template Syntax (ERB-like)</h3>
+                <p>Mix HTML with embedded Soli code using special tags:</p>
+
+                <table class="doc-table">
+                    <thead>
+                        <tr>
+                            <th>Syntax</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>&lt;%= expr %&gt;</code></td>
+                            <td>Output expression result</td>
+                        </tr>
+                        <tr>
+                            <td><code>&lt;% code %&gt;</code></td>
+                            <td>Execute code (no output)</td>
+                        </tr>
+                        <tr>
+                            <td><code>&lt;% if cond %&gt;...&lt;% end %&gt;</code></td>
+                            <td>Conditional block</td>
+                        </tr>
+                        <tr>
+                            <td><code>&lt;% for item in list %&gt;...&lt;% end %&gt;</code></td>
+                            <td>Loop over collection</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Example Template</h3>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">erb</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="comment">&lt;!-- app/views/home/index.html --&gt;</span>
+<span class="operator">&lt;</span><span class="type">h1</span><span class="operator">&gt;</span>&lt;%= title %&gt;<span class="operator">&lt;/</span><span class="type">h1</span><span class="operator">&gt;</span>
+
+<span class="operator">&lt;</span><span class="type">p</span><span class="operator">&gt;</span>&lt;%= message %&gt;<span class="operator">&lt;/</span><span class="type">p</span><span class="operator">&gt;</span>
+
+<span class="operator">&lt;</span><span class="type">h2</span><span class="operator">&gt;</span>Users<span class="operator">&lt;/</span><span class="type">h2</span><span class="operator">&gt;</span>
+<span class="operator">&lt;</span><span class="type">ul</span><span class="operator">&gt;</span>
+&lt;% for user in users %&gt;
+    <span class="operator">&lt;</span><span class="type">li</span><span class="operator">&gt;</span>&lt;%= user["name"] %&gt; - &lt;%= user["email"] %&gt;<span class="operator">&lt;/</span><span class="type">li</span><span class="operator">&gt;</span>
+&lt% end %&gt;
+<span class="operator">&lt;/</span><span class="type">ul</span><span class="operator">&gt;</span>
+
+<span class="operator">&lt;</span><span class="type">p</span><span class="operator">&gt;</span>Total users: &lt%= count(users) %&gt;<span class="operator">&lt;/</span><span class="type">p</span><span class="operator">&gt;</span></div>
+                </div>
+
+                <h3>Conditionals</h3>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">erb</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content">&lt;% if is_logged_in %&gt;
+    <span class="operator">&lt;</span><span class="type">p</span><span class="operator">&gt;</span>Welcome back, &lt%= user_name %&gt;!<span class="operator">&lt;/</span><span class="type">p</span><span class="operator">&gt;</span>
+&lt% else %&gt;
+    <span class="operator">&lt;</span><span class="type">p</span><span class="operator">&gt;</span>Please log in.<span class="operator">&lt;/</span><span class="type">p</span><span class="operator">&gt;</span>
+&lt% end %&gt;
+
+&lt% if count(users) > 0 %&gt;
+    <span class="operator">&lt;</span><span class="type">p</span><span class="operator">&gt;</span>There are users.<span class="operator">&lt;/</span><span class="type">p</span><span class="operator">&gt;</span>
+&lt% end %&gt;</div>
+                </div>
+
+                <h3>Layouts</h3>
+                <p>Layouts wrap content pages with common header, footer, and navigation:</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">erb</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="comment">&lt;!-- app/views/layouts/application.html --&gt;</span>
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+    &lt;title&gt;&lt;%= yield "title" %&gt;&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;header&gt;
+        &lt;nav&gt;
+            &lt;a href="/"&gt;Home&lt;/a&gt;
+            &lt;a href="/about"&gt;About&lt;/a&gt;
+        &lt;/nav&gt;
+    &lt;/header&gt;
+
+    &lt;main&gt;
+        &lt;%= yield %&gt;
+    &lt;/main&gt;
+
+    &lt;footer&gt;
+        &amp;copy; 2024 My App
+    &lt;/footer&gt;
+&lt;/body&gt;
+&lt;/html&gt;</div>
+                </div>
+
+                <div class="info-box tip">
+                    <span class="icon">&#9888;</span>
+                    <span class="text">Use <code>&lt;%= yield %&gt;</code> in layouts to insert the content from child templates. Use <code>&lt;%= yield "title" %&gt;</code> to yield a specific section.</span>
+                </div>
+            </section>
+
+            <section id="middleware" class="doc-section">
+                <h2>Middleware</h2>
+                <p>Middleware functions intercept requests before they reach route handlers. They can modify requests, authenticate users, or short-circuit with responses.</p>
+
+                <h3>Middleware Types</h3>
+                <table class="doc-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Option</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Global-Only</td>
+                            <td><code>// global_only: true</code></td>
+                            <td>Runs for ALL routes, cannot be scoped</td>
+                        </tr>
+                        <tr>
+                            <td>Scope-Only</td>
+                            <td><code>// scope_only: true</code></td>
+                            <td>Only runs when explicitly scoped to routes</td>
+                        </tr>
+                        <tr>
+                            <td>Regular</td>
+                            <td>No option</td>
+                            <td>Runs globally by default, can also be scoped</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Middleware Example</h3>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">soli</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="comment">// app/middleware/auth.soli
+// order: 20
+// scope_only: true</span>
+
+<span class="keyword">fn</span> <span class="function">authenticate</span>(req: <span class="type">Any</span>) -> <span class="type">Any</span> {
+    <span class="keyword">let</span> headers = req[<span class="string">"headers"</span>];
+    <span class="keyword">let</span> api_key = headers[<span class="string">"X-Api-Key"</span>];
+
+    <span class="keyword">if</span> (api_key == <span class="string">"secret-key-123"</span>) {
+        <span class="keyword">return</span> { <span class="string">"continue"</span>: <span class="keyword">true</span>, <span class="string">"request"</span>: req };
+    }
+
+    <span class="keyword">return</span> {
+        <span class="string">"continue"</span>: <span class="keyword">false</span>,
+        <span class="string">"response"</span>: {
+            <span class="string">"status"</span>: <span class="type">401</span>,
+            <span class="string">"body"</span>: <span class="string">"Unauthorized"</span>
+        }
+    };
+}</div>
+                </div>
+            </section>
+
+            <section id="scoped-middleware" class="doc-section">
+                <h2>Scoped Middleware</h2>
+                <p>Apply middleware to specific routes using the <code>middleware()</code> helper. This gives you fine-grained control over which routes require authentication, logging, or other middleware.</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">soli</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="comment">// config/routes.soli</span>
+
+<span class="comment">// Apply authentication ONLY to admin routes</span>
+<span class="function">middleware</span>(<span class="string">"authenticate"</span>, <span class="keyword">-></span> {
+    <span class="function">get</span>(<span class="string">"/admin"</span>, <span class="string">"admin#index"</span>);
+    <span class="function">get</span>(<span class="string">"/admin/users"</span>, <span class="string">"admin#users"</span>);
+});
+
+<span class="comment">// Public routes - no authentication required</span>
+<span class="function">get</span>(<span class="string">"/"</span>, <span class="string">"home#index"</span>);
+<span class="function">get</span>(<span class="string">"/about"</span>, <span class="string">"home#about"</span>);</div>
+                </div>
+
+                <div class="info-box tip">
+                    <span class="icon">&#9888;</span>
+                    <span class="text">Scoped middleware runs BEFORE global middleware, giving you precise control over request processing.</span>
+                </div>
+            </section>
+
+            <section id="routing" class="doc-section">
+                <h2>Routing</h2>
+                <p>Define routes in <code>config/routes.soli</code> using the DSL helpers.</p>
+
+                <h3>Basic Routes</h3>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">soli</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="function">get</span>(<span class="string">"/"</span>, <span class="string">"home#index"</span>);
+<span class="function">post</span>(<span class="string">"/users"</span>, <span class="string">"users#create"</span>);
+<span class="function">put</span>(<span class="string">"/users/:id"</span>, <span class="string">"users#update"</span>);
+<span class="function">delete</span>(<span class="string">"/users/:id"</span>, <span class="string">"users#destroy"</span>);
+<span class="function">patch</span>(<span class="string">"/users/:id"</span>, <span class="string">"users#partial_update"</span>);</div>
+                </div>
+
+                <h3>Namespaces</h3>
+                <p>Group related routes under a common prefix.</p>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">soli</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="function">namespace</span>(<span class="string">"api"</span>, <span class="keyword">-></span> {
+    <span class="function">middleware</span>(<span class="string">"authenticate"</span>, <span class="keyword">-></span> {
+        <span class="function">get</span>(<span class="string">"/api/users"</span>, <span class="string">"users#index"</span>);
+        <span class="function">post</span>(<span class="string">"/api/users"</span>, <span class="string">"users#create"</span>);
+    });
+});</div>
+                </div>
+            </section>
+
+            <section id="resources" class="doc-section">
+                <h2>Resources</h2>
+                <p>Generate RESTful routes for a controller automatically using the <code>resources()</code> helper.</p>
+
+                <table class="doc-table">
+                    <thead>
+                        <tr>
+                            <th>HTTP Method</th>
+                            <th>Path</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>GET</td><td>/users</td><td>index</td></tr>
+                        <tr><td>GET</td><td>/users/:id</td><td>show</td></tr>
+                        <tr><td>GET</td><td>/users/new</td><td>new</td></tr>
+                        <tr><td>POST</td><td>/users</td><td>create</td></tr>
+                        <tr><td>GET</td><td>/users/:id/edit</td><td>edit</td></tr>
+                        <tr><td>PUT</td><td>/users/:id</td><td>update</td></tr>
+                        <tr><td>PATCH</td><td>/users/:id</td><td>update</td></tr>
+                        <tr><td>DELETE</td><td>/users/:id</td><td>destroy</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">soli</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="comment">// Generate all RESTful routes for users</span>
+<span class="function">resources</span>(<span class="string">"users"</span>, <span class="keyword">null</span>);</div>
+                </div>
+            </section>
+
+            <section id="configuration" class="doc-section">
+                <h2>Configuration</h2>
+                <p>Middleware options are configured using special comments:</p>
+
+                <table class="doc-table">
+                    <thead>
+                        <tr>
+                            <th>Option</th>
+                            <th>Example</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>// order: N</code></td>
+                            <td><code>// order: 10</code></td>
+                            <td>Execution order (lower runs first)</td>
+                        </tr>
+                        <tr>
+                            <td><code>// global_only: true</code></td>
+                            <td><code>// global_only: true</code></td>
+                            <td>Only runs globally, cannot be scoped</td>
+                        </tr>
+                        <tr>
+                            <td><code>// scope_only: true</code></td>
+                            <td><code>// scope_only: true</code></td>
+                            <td>Only runs when explicitly scoped</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="cli-commands" class="doc-section">
+                <h2>CLI Commands</h2>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">bash</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content"><span class="comment"># Start development server</span>
+cargo run -- serve &lt;project-path&gt;
+
+<span class="comment"># Parse routes without starting server</span>
+cargo run -- parse &lt;routes-file&gt;
+
+<span class="comment"># Run with hot reload (default)</span>
+cargo run -- serve examples/mvc_app</div>
+                </div>
+            </section>
+
+            <section id="examples" class="doc-section">
+                <h2>Examples</h2>
+                <p>Explore the example MVC application to see these concepts in action:</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-lang">text</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <div class="code-content">examples/mvc_app/
+├── app/
+│   ├── controllers/
+│   │   ├── home_controller.soli    # Home page routes
+│   │   ├── users_controller.soli   # User CRUD operations
+│   │   └── admin_controller.soli   # Admin routes
+│   ├── middleware/
+│   │   ├── auth.soli              # Authentication (scope_only)
+│   │   ├── cors.soli              # CORS headers (global_only)
+│   │   └── logging.soli           # Request logging (global_only)
+│   ├── models/
+│   └── views/
+│       ├── home/
+│       └── layouts/
+├── config/
+│   └── routes.soli               # Route definitions
+└── public/</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <footer class="footer">
+        <p>Solilang MVC Framework v0.1.0</p>
+        <p>Built with love using Solilang</p>
+        <p><a href="https://github.com/solilang/solilang">GitHub</a> | <a href="#">Documentation</a></p>
+    </footer>
+
+    <script>
+        // Highlight active section on scroll
+        const sections = document.querySelectorAll('.doc-section');
+        const navLinks = document.querySelectorAll('.sidebar-nav a');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 150) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        });
+
+        // Copy button functionality
+        document.querySelectorAll('.code-copy').forEach(button => {
+            button.addEventListener('click', () => {
+                const code = button.closest('.code-block').querySelector('.code-content').textContent;
+                navigator.clipboard.writeText(code.trim());
+                button.textContent = 'Copied!';
+                setTimeout(() => button.textContent = 'Copy', 2000);
+            });
+        });
+
+        // Smooth scroll for navigation
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

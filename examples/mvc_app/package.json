@@ -1,0 +1,12 @@
+{
+  "name": "soli-mvc-app",
+  "version": "1.0.0",
+  "description": "Example Soli MVC application with TailwindCSS",
+  "scripts": {
+    "build:css": "tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css",
+    "watch:css": "tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.1"
+  }
+}

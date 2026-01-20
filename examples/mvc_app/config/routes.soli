@@ -1,0 +1,74 @@
+// ============================================================================
+// Solilang MVC Routes Configuration
+// Demonstrates SCOPED MIDDLEWARE functionality
+// ============================================================================
+//
+// MIDDLEWARE TYPES:
+// ---------------
+// 1. Global-Only Middleware
+//    - `// global_only: true`
+//    - Runs for ALL routes
+//    - Cannot be scoped
+//    - Example: CORS, logging
+//
+// 2. Scope-Only Middleware
+//    - `// scope_only: true`
+//    - Does NOT run globally
+//    - Only runs when explicitly scoped
+//    - Example: authentication, authorization
+//
+// 3. Regular Middleware
+//    - No special comment
+//    - Runs globally by default
+//    - Can also be scoped to specific routes
+//    - Example: optional logging, optional validation
+//
+// SCOPED MIDDLEWARE SYNTAX:
+// ------------------------
+// middleware("middleware_name", -> {
+//     get("/path", "controller#action");
+//     post("/path", "controller#action");
+// });
+//
+// ============================================================================
+
+// Example: Scope authentication to specific routes
+// The authenticate middleware (scope_only) only runs for these routes
+middleware("authenticate", -> {
+    get("/admin", "admin#index");
+    get("/admin/users", "admin#users");
+    get("/admin/settings", "admin#settings");
+});
+
+// ============================================================================
+// Standard Routes (no scoped middleware)
+// ============================================================================
+
+// Root path
+get("/", "home#index");
+
+// Public routes (no authentication required)
+get("/about", "home#about");
+get("/health", "home#health");
+
+// Documentation
+get("/docs", "home#docs_redirect");
+
+// Users resource routes
+resources("users", null);
+
+// ============================================================================
+// WebSocket Routes
+// ============================================================================
+
+// WebSocket chat endpoint
+websocket("/chat", "chat#chat_handler");
+
+print("Routes loaded!");
+print("");
+print("Scoped middleware demo:");
+print("  - /admin/* routes require X-Api-Key header");
+print("  - Global middleware (CORS, logging) runs for all requests");
+print("  - Authentication middleware only runs for /admin/* routes");
+print("  - Use: curl -H 'X-Api-Key: secret-key-123' <url>");
+print("  - Full documentation: http://localhost:3000/docs");

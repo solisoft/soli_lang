@@ -1,0 +1,26 @@
+// Admin controller - demonstrates routes with scoped middleware
+// All routes in this controller require authentication
+
+fn index(req: Any) -> Any {
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "text/html"},
+        "body": "<h1>Admin Dashboard</h1><p>Welcome to the admin panel!</p>"
+    };
+}
+
+fn users(req: Any) -> Any {
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "text/html"},
+        "body": "<h1>Admin - Users</h1><p>User management panel</p>"
+    };
+}
+
+fn settings(req: Any) -> Any {
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "text/html"},
+        "body": "<h1>Admin - Settings</h1><p>System settings</p>"
+    };
+}

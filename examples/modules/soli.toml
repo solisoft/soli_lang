@@ -1,0 +1,10 @@
+[package]
+name = "modules-demo"
+version = "0.1.0"
+description = "Demonstration of Solilang's module system"
+main = "main.soli"
+
+[dependencies]
+# Dependencies can be specified as paths or (future) versions
+# math = { path = "./lib/math" }
+# utils = { path = "./lib/utils" }

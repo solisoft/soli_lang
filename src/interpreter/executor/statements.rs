@@ -1,0 +1,214 @@
+//! Statement execution.
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use crate::ast::*;
+use crate::error::RuntimeError;
+use crate::interpreter::environment::Environment;
+use crate::interpreter::value::{Class, Function, Value};
+
+use super::{ControlFlow, Interpreter, RuntimeResult};
+
+impl Interpreter {
+    /// Execute a statement, returning control flow information.
+    pub(crate) fn execute(&mut self, stmt: &Stmt) -> RuntimeResult<ControlFlow> {
+        match &stmt.kind {
+            StmtKind::Expression(expr) => {
+                self.evaluate(expr)?;
+                Ok(ControlFlow::Normal)
+            }
+
+            StmtKind::Let {
+                name, initializer, ..
+            } => {
+                let value = if let Some(init) = initializer {
+                    self.evaluate(init)?
+                } else {
+                    Value::Null
+                };
+                self.environment.borrow_mut().define(name.clone(), value);
+                Ok(ControlFlow::Normal)
+            }
+
+            StmtKind::Block(statements) => self.execute_block(
+                statements,
+                Environment::with_enclosing(self.environment.clone()),
+            ),
+
+            StmtKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let cond_value = self.evaluate(condition)?;
+                if cond_value.is_truthy() {
+                    self.execute(then_branch)
+                } else if let Some(else_br) = else_branch {
+                    self.execute(else_br)
+                } else {
+                    Ok(ControlFlow::Normal)
+                }
+            }
+
+            StmtKind::While { condition, body } => {
+                while self.evaluate(condition)?.is_truthy() {
+                    match self.execute(body)? {
+                        ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
+                        ControlFlow::Normal => {}
+                    }
+                }
+                Ok(ControlFlow::Normal)
+            }
+
+            StmtKind::For {
+                variable,
+                iterable,
+                body,
+            } => self.execute_for_loop(variable, iterable, body),
+
+            StmtKind::Return(value) => {
+                let return_value = if let Some(expr) = value {
+                    self.evaluate(expr)?
+                } else {
+                    Value::Null
+                };
+                Ok(ControlFlow::Return(return_value))
+            }
+
+            StmtKind::Function(decl) => {
+                let func = Function::from_decl(decl, self.environment.clone());
+                self.environment
+                    .borrow_mut()
+                    .define(decl.name.clone(), Value::Function(Rc::new(func)));
+                Ok(ControlFlow::Normal)
+            }
+
+            StmtKind::Class(decl) => {
+                self.execute_class(decl)?;
+                Ok(ControlFlow::Normal)
+            }
+
+            StmtKind::Interface(_) => {
+                // Interfaces are handled at type-check time, no runtime effect
+                Ok(ControlFlow::Normal)
+            }
+
+            StmtKind::Import(import_decl) => {
+                // Module imports are resolved before execution by the ModuleResolver
+                // If we reach here, it means import resolution hasn't been done yet
+                Err(RuntimeError::General {
+                    message: format!(
+                        "Import '{}' was not resolved. Run module resolution first.",
+                        import_decl.path
+                    ),
+                    span: stmt.span,
+                })
+            }
+
+            StmtKind::Export(inner) => {
+                // Export just executes the inner declaration and marks it as exported
+                // The module system tracks what's exported
+                self.execute(inner)
+            }
+
+            StmtKind::Throw(_) | StmtKind::Try { .. } => {
+                unimplemented!("Exception handling not yet implemented")
+            }
+        }
+    }
+
+    fn execute_for_loop(
+        &mut self,
+        variable: &str,
+        iterable: &Expr,
+        body: &Stmt,
+    ) -> RuntimeResult<ControlFlow> {
+        let iter_value = self.evaluate(iterable)?;
+        match iter_value {
+            Value::Array(arr) => {
+                for item in arr.borrow().iter().cloned().collect::<Vec<_>>() {
+                    let loop_env = Environment::with_enclosing(self.environment.clone());
+                    let prev_env =
+                        std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
+                    self.environment
+                        .borrow_mut()
+                        .define(variable.to_string(), item);
+                    let result = self.execute(body);
+                    self.environment = prev_env;
+                    match result? {
+                        ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
+                        ControlFlow::Normal => {}
+                    }
+                }
+                Ok(ControlFlow::Normal)
+            }
+            _ => Err(RuntimeError::type_error(
+                format!("cannot iterate over {}", iter_value.type_name()),
+                iterable.span,
+            )),
+        }
+    }
+
+    pub(super) fn execute_class(&mut self, decl: &ClassDecl) -> RuntimeResult<()> {
+        let superclass = if let Some(ref superclass_name) = decl.superclass {
+            match self.environment.borrow().get(superclass_name) {
+                Some(Value::Class(class)) => Some(class),
+                Some(_) => {
+                    return Err(RuntimeError::NotAClass(superclass_name.clone(), decl.span));
+                }
+                None => {
+                    return Err(RuntimeError::undefined_variable(superclass_name, decl.span));
+                }
+            }
+        } else {
+            None
+        };
+
+        // Create environment for methods (with potential super binding)
+        let method_env = if superclass.is_some() {
+            let env = Environment::with_enclosing(self.environment.clone());
+            Rc::new(RefCell::new(env))
+        } else {
+            self.environment.clone()
+        };
+
+        // Collect methods
+        let mut methods = HashMap::new();
+        let mut static_methods = HashMap::new();
+
+        for method_decl in &decl.methods {
+            let func = Function::from_method(method_decl, method_env.clone());
+            if method_decl.is_static {
+                static_methods.insert(method_decl.name.clone(), Rc::new(func));
+            } else {
+                methods.insert(method_decl.name.clone(), Rc::new(func));
+            }
+        }
+
+        // Create constructor if present
+        let constructor = decl.constructor.as_ref().map(|ctor| {
+            Rc::new(Function {
+                name: "new".to_string(),
+                params: ctor.params.clone(),
+                body: ctor.body.clone(),
+                closure: method_env.clone(),
+                is_method: true,
+            })
+        });
+
+        let class = Class {
+            name: decl.name.clone(),
+            superclass,
+            methods,
+            static_methods,
+            constructor,
+        };
+
+        self.environment
+            .borrow_mut()
+            .define(decl.name.clone(), Value::Class(Rc::new(class)));
+        Ok(())
+    }
+}
