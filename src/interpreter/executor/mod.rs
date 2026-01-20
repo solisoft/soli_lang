@@ -107,132 +107,181 @@ impl Interpreter {
             });
         }
 
-        // Create the server
         let addr = format!("0.0.0.0:{}", port);
-        let server = match tiny_http::Server::http(&addr) {
-            Ok(s) => s,
-            Err(e) => {
-                return Err(RuntimeError::General {
-                    message: format!("Failed to start HTTP server on port {}: {}", port, e),
-                    span: Span::default(),
-                });
-            }
-        };
+
+        let listener = std::net::TcpListener::bind(&addr).map_err(|e| RuntimeError::General {
+            message: format!("Failed to start HTTP server on port {}: {}", port, e),
+            span: Span::default(),
+        })?;
 
         println!("Server listening on http://0.0.0.0:{}", port);
 
-        // Main server loop
-        loop {
-            // Wait for a request
-            let mut request = match server.recv() {
-                Ok(req) => req,
-                Err(e) => {
-                    eprintln!("Error receiving request: {}", e);
-                    continue;
-                }
-            };
+        for stream in listener.incoming() {
+            let stream = stream.map_err(|e| RuntimeError::General {
+                message: format!("Failed to accept connection: {}", e),
+                span: Span::default(),
+            })?;
 
-            // Extract request info
-            let method = request.method().to_string().to_uppercase();
-            let url = request.url().to_string();
+            let _ = self.handle_http_connection(stream);
+        }
 
-            // Split path and query string
-            let (path, query_str) = if let Some(pos) = url.find('?') {
-                (&url[..pos], &url[pos + 1..])
-            } else {
-                (url.as_str(), "")
-            };
+        Ok(Value::Null)
+    }
 
-            // Parse query string
-            let query = parse_query_string(query_str);
+    fn handle_http_connection(&mut self, stream: std::net::TcpStream) -> RuntimeResult<()> {
+        use std::io::{BufRead, Read, Write};
 
-            // Extract headers
-            let mut headers = HashMap::new();
-            for header in request.headers() {
-                headers.insert(header.field.to_string(), header.value.to_string());
+        let mut stream = stream;
+        let mut reader = std::io::BufReader::new(&mut stream);
+
+        let mut request_line = String::new();
+        reader
+            .read_line(&mut request_line)
+            .map_err(|e| RuntimeError::General {
+                message: format!("Failed to read request: {}", e),
+                span: Span::default(),
+            })?;
+
+        let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
+        if parts.len() < 2 {
+            self.send_error_response(&mut stream, "400 Bad Request")?;
+            return Ok(());
+        }
+
+        let method = parts[0].to_uppercase();
+        let url = parts[1];
+
+        let (path, query_str) = if let Some(pos) = url.find('?') {
+            (&url[..pos], &url[pos + 1..])
+        } else {
+            (url, "")
+        };
+
+        let query = parse_query_string(query_str);
+
+        let mut headers = HashMap::new();
+        for line in reader.by_ref().lines() {
+            let line = line.map_err(|e| RuntimeError::General {
+                message: format!("Failed to read header: {}", e),
+                span: Span::default(),
+            })?;
+            if line.trim().is_empty() {
+                break;
             }
-
-            // Read body
-            let mut body = String::new();
-            if let Some(len) = request.body_length() {
-                if len > 0 {
-                    let reader = request.as_reader();
-                    let mut buf = Vec::with_capacity(len);
-                    if reader.read_to_end(&mut buf).is_ok() {
-                        body = String::from_utf8_lossy(&buf).to_string();
-                    }
-                }
-            }
-
-            // Find matching route
-            let mut matched_route = None;
-            let mut matched_params = HashMap::new();
-
-            for route in &routes {
-                if route.method == method {
-                    if let Some(params) = match_path(&route.path_pattern, path) {
-                        matched_route = Some(route);
-                        matched_params = params;
-                        break;
-                    }
-                }
-            }
-
-            // Handle the request
-            let response = if let Some(route) = matched_route {
-                // Build request hash
-                let request_hash =
-                    build_request_hash(&method, path, matched_params, query, headers, body);
-
-                // Look up the handler in the interpreter's environment
-                let handler = self.environment.borrow().get(&route.handler_name);
-
-                // Call the handler
-                match handler {
-                    Some(handler_value) => {
-                        match self.call_value(handler_value, vec![request_hash], Span::default()) {
-                            Ok(result) => {
-                                let (status, resp_headers, resp_body) = extract_response(&result);
-
-                                let mut response = tiny_http::Response::from_string(resp_body)
-                                    .with_status_code(status);
-
-                                // Add headers
-                                for (key, value) in resp_headers {
-                                    if let Ok(header) = tiny_http::Header::from_bytes(
-                                        key.as_bytes(),
-                                        value.as_bytes(),
-                                    ) {
-                                        response = response.with_header(header);
-                                    }
-                                }
-
-                                response.boxed()
-                            }
-                            Err(e) => tiny_http::Response::from_string(format!("Error: {}", e))
-                                .with_status_code(500)
-                                .boxed(),
-                        }
-                    }
-                    None => tiny_http::Response::from_string(format!(
-                        "Handler not found: {}",
-                        route.handler_name
-                    ))
-                    .with_status_code(500)
-                    .boxed(),
-                }
-            } else {
-                // 404 Not Found
-                tiny_http::Response::from_string("Not Found")
-                    .with_status_code(404)
-                    .boxed()
-            };
-
-            // Send response
-            if let Err(e) = request.respond(response) {
-                eprintln!("Error sending response: {}", e);
+            if let Some((key, value)) = line.split_once(':') {
+                headers.insert(key.trim().to_string(), value.trim().to_string());
             }
         }
+
+        let body = if let Some(content_length) = headers.get("Content-Length") {
+            if let Ok(len) = content_length.parse::<usize>() {
+                let mut buf = vec![0u8; len];
+                reader
+                    .read_exact(&mut buf)
+                    .map_err(|e| RuntimeError::General {
+                        message: format!("Failed to read body: {}", e),
+                        span: Span::default(),
+                    })?;
+                String::from_utf8_lossy(&buf).to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        let routes = get_routes();
+        let mut matched_route = None;
+        let mut matched_params = HashMap::new();
+
+        for route in &routes {
+            if route.method == method {
+                if let Some(params) = match_path(&route.path_pattern, path) {
+                    matched_route = Some(route);
+                    matched_params = params;
+                    break;
+                }
+            }
+        }
+
+        if let Some(route) = matched_route {
+            let request_hash =
+                build_request_hash(&method, path, matched_params, query, headers, body);
+
+            let handler = self.environment.borrow().get(&route.handler_name);
+
+            match handler {
+                Some(handler_value) => {
+                    match self.call_value(handler_value, vec![request_hash], Span::default()) {
+                        Ok(result) => {
+                            let (status, resp_headers, resp_body) = extract_response(&result);
+                            self.build_http_response(&mut stream, status, resp_headers, resp_body)?
+                        }
+                        Err(e) => self.build_http_response(
+                            &mut stream,
+                            500,
+                            HashMap::new(),
+                            format!("Error: {}", e),
+                        )?,
+                    }
+                }
+                None => self.build_http_response(
+                    &mut stream,
+                    500,
+                    HashMap::new(),
+                    format!("Handler not found: {}", route.handler_name),
+                )?,
+            }
+        } else {
+            self.build_http_response(&mut stream, 404, HashMap::new(), "Not Found".to_string())?;
+        }
+
+        Ok(())
+    }
+
+    fn build_http_response(
+        &self,
+        stream: &mut std::net::TcpStream,
+        status: u16,
+        headers: HashMap<String, String>,
+        body: String,
+    ) -> RuntimeResult<()> {
+        let status_text = match status {
+            200 => "OK",
+            400 => "Bad Request",
+            404 => "Not Found",
+            500 => "Internal Server Error",
+            _ => "Unknown",
+        };
+
+        let mut response = format!("HTTP/1.1 {} {}\r\n", status, status_text);
+        response.push_str("Content-Type: text/plain\r\n");
+        response.push_str(&format!("Content-Length: {}\r\n", body.len()));
+        response.push_str("Connection: close\r\n");
+
+        for (key, value) in headers {
+            response.push_str(&format!("{}: {}\r\n", key, value));
+        }
+
+        response.push_str("\r\n");
+        response.push_str(&body);
+
+        std::io::Write::write_all(stream, response.as_bytes()).map_err(|e| {
+            RuntimeError::General {
+                message: format!("Failed to send response: {}", e),
+                span: Span::default(),
+            }
+        })?;
+
+        Ok(())
+    }
+
+    fn send_error_response(
+        &self,
+        stream: &mut std::net::TcpStream,
+        message: &str,
+    ) -> RuntimeResult<()> {
+        self.build_http_response(stream, 400, HashMap::new(), message.to_string())
     }
 }
 
