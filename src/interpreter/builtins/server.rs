@@ -286,6 +286,77 @@ thread_local! {
     static KEY_QUERY: Value = Value::String("query".to_string());
     static KEY_HEADERS: Value = Value::String("headers".to_string());
     static KEY_BODY: Value = Value::String("body".to_string());
+    static KEY_JSON: Value = Value::String("json".to_string());
+    static KEY_FORM: Value = Value::String("form".to_string());
+    static KEY_FILES: Value = Value::String("files".to_string());
+    static KEY_ALL: Value = Value::String("all".to_string());
+}
+
+/// Parsed request body data.
+#[derive(Default)]
+pub struct ParsedBody {
+    /// Parsed JSON body (if Content-Type is application/json)
+    pub json: Option<Value>,
+    /// Parsed form body (if Content-Type is application/x-www-form-urlencoded)
+    pub form: Option<Value>,
+    /// Uploaded files (if Content-Type is multipart/form-data)
+    pub files: Option<Value>,
+}
+
+/// Parse a JSON string into a Soli Value.
+pub fn parse_json_body(body: &str) -> Option<Value> {
+    if body.is_empty() {
+        return None;
+    }
+    match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(json) => json_to_value(&json).ok(),
+        Err(_) => None,
+    }
+}
+
+/// Parse a URL-encoded form body into a Soli Value (Hash).
+pub fn parse_form_urlencoded_body(body: &str) -> Option<Value> {
+    if body.is_empty() {
+        return None;
+    }
+    let form_data = parse_query_string(body);
+    if form_data.is_empty() {
+        return None;
+    }
+    let pairs: Vec<(Value, Value)> = form_data
+        .into_iter()
+        .map(|(k, v)| (Value::String(k), Value::String(v)))
+        .collect();
+    Some(Value::Hash(Rc::new(RefCell::new(pairs))))
+}
+
+/// Convert a serde_json::Value to a Soli Value.
+fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
+    match json {
+        serde_json::Value::Null => Ok(Value::Null),
+        serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(Value::Int(i))
+            } else if let Some(f) = n.as_f64() {
+                Ok(Value::Float(f))
+            } else {
+                Err("Invalid JSON number".to_string())
+            }
+        }
+        serde_json::Value::String(s) => Ok(Value::String(s.clone())),
+        serde_json::Value::Array(arr) => {
+            let items: Result<Vec<Value>, String> = arr.iter().map(json_to_value).collect();
+            Ok(Value::Array(Rc::new(RefCell::new(items?))))
+        }
+        serde_json::Value::Object(obj) => {
+            let pairs: Result<Vec<(Value, Value)>, String> = obj
+                .iter()
+                .map(|(k, v)| Ok((Value::String(k.clone()), json_to_value(v)?)))
+                .collect();
+            Ok(Value::Hash(Rc::new(RefCell::new(pairs?))))
+        }
+    }
 }
 
 /// Build a request hash from HTTP request data.
@@ -297,6 +368,19 @@ pub fn build_request_hash(
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
     body: String,
+) -> Value {
+    build_request_hash_with_parsed(method, path, params, query, headers, body, ParsedBody::default())
+}
+
+/// Build a request hash with parsed body data.
+pub fn build_request_hash_with_parsed(
+    method: &str,
+    path: &str,
+    params: HashMap<String, String>,
+    query: HashMap<String, String>,
+    headers: HashMap<String, String>,
+    body: String,
+    parsed: ParsedBody,
 ) -> Value {
     // Pre-allocate with known capacity
     let params_pairs: Vec<(Value, Value)> = if params.is_empty() {
@@ -326,6 +410,9 @@ pub fn build_request_hash(
             .collect()
     };
 
+    // Build unified "all" params - merges route params, query params, and body params
+    let all_pairs = build_unified_params(&params_pairs, &query_pairs, &parsed);
+
     // Build request hash using cached keys
     let request_pairs: Vec<(Value, Value)> = KEY_METHOD.with(|key_method| {
         KEY_PATH.with(|key_path| {
@@ -333,23 +420,47 @@ pub fn build_request_hash(
                 KEY_QUERY.with(|key_query| {
                     KEY_HEADERS.with(|key_headers| {
                         KEY_BODY.with(|key_body| {
-                            vec![
-                                (key_method.clone(), Value::String(method.to_string())),
-                                (key_path.clone(), Value::String(path.to_string())),
-                                (
-                                    key_params.clone(),
-                                    Value::Hash(Rc::new(RefCell::new(params_pairs))),
-                                ),
-                                (
-                                    key_query.clone(),
-                                    Value::Hash(Rc::new(RefCell::new(query_pairs))),
-                                ),
-                                (
-                                    key_headers.clone(),
-                                    Value::Hash(Rc::new(RefCell::new(header_pairs))),
-                                ),
-                                (key_body.clone(), Value::String(body)),
-                            ]
+                            KEY_JSON.with(|key_json| {
+                                KEY_FORM.with(|key_form| {
+                                    KEY_FILES.with(|key_files| {
+                                        KEY_ALL.with(|key_all| {
+                                            vec![
+                                                (key_method.clone(), Value::String(method.to_string())),
+                                                (key_path.clone(), Value::String(path.to_string())),
+                                                (
+                                                    key_params.clone(),
+                                                    Value::Hash(Rc::new(RefCell::new(params_pairs))),
+                                                ),
+                                                (
+                                                    key_query.clone(),
+                                                    Value::Hash(Rc::new(RefCell::new(query_pairs))),
+                                                ),
+                                                (
+                                                    key_headers.clone(),
+                                                    Value::Hash(Rc::new(RefCell::new(header_pairs))),
+                                                ),
+                                                (key_body.clone(), Value::String(body)),
+                                                (
+                                                    key_json.clone(),
+                                                    parsed.json.unwrap_or(Value::Null),
+                                                ),
+                                                (
+                                                    key_form.clone(),
+                                                    parsed.form.unwrap_or(Value::Null),
+                                                ),
+                                                (
+                                                    key_files.clone(),
+                                                    parsed.files.unwrap_or(Value::Array(Rc::new(RefCell::new(Vec::new())))),
+                                                ),
+                                                (
+                                                    key_all.clone(),
+                                                    Value::Hash(Rc::new(RefCell::new(all_pairs))),
+                                                ),
+                                            ]
+                                        })
+                                    })
+                                })
+                            })
                         })
                     })
                 })
@@ -358,6 +469,54 @@ pub fn build_request_hash(
     });
 
     Value::Hash(Rc::new(RefCell::new(request_pairs)))
+}
+
+/// Build unified params by merging route params, query params, and body params.
+/// Body params take precedence, followed by query params, then route params.
+fn build_unified_params(
+    route_params: &[(Value, Value)],
+    query_params: &[(Value, Value)],
+    parsed: &ParsedBody,
+) -> Vec<(Value, Value)> {
+    let mut all: Vec<(Value, Value)> = Vec::new();
+
+    // Start with route params
+    for pair in route_params {
+        all.push(pair.clone());
+    }
+
+    // Add query params (override route params)
+    for pair in query_params {
+        // Remove existing key if present
+        all.retain(|(k, _)| k != pair.0);
+        all.push(pair.clone());
+    }
+
+    // Add body params from JSON (highest priority)
+    if let Some(ref json) = parsed.json {
+        if let Value::Hash(hash) = json {
+            for (k, v) in hash.borrow().iter() {
+                // Remove existing key if present
+                all.retain(|(key, _)| key != k);
+                all.push((k.clone(), v.clone()));
+            }
+        }
+    }
+
+    // Add body params from form (if no JSON)
+    if parsed.json.is_none() {
+        if let Some(ref form) = parsed.form {
+            if let Value::Hash(hash) = form {
+                for (k, v) in hash.borrow().iter() {
+                    // Remove existing key if present
+                    all.retain(|(key, _)| key != k);
+                    all.push((k.clone(), v.clone()));
+                }
+            }
+        }
+    }
+
+    all
 }
 
 /// Extract response data from a response hash returned by a handler.

@@ -56,6 +56,9 @@
 
 
         /* Prose customization */
+        .prose :where(code):not(:where([class~="not-prose"] *))::before { content: "" !important; }
+        .prose :where(code):not(:where([class~="not-prose"] *))::after { content: "" !important; }
+
         .prose h1, .prose h2, .prose h3, .prose h4 {
             color: white;
             font-weight: 600;
@@ -251,6 +254,11 @@
                                 Internationalization
                             </a>
                         </li>
+                        <li>
+                            <a href="/docs/request-params" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Request Parameters' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                Request Parameters
+                            </a>
+                        </li>
                     </ul>
                 </div>
 
@@ -368,10 +376,41 @@
                                     Internationalization
                                 </a>
                             </li>
+                            <li>
+                                <a href="/docs/request-params" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Request Parameters' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                    Request Parameters
+                                </a>
+                            </li>
                         </ul>
                     </div>
 
 
+
+                    <div>
+                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                            <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                            Security
+                        </h5>
+                        <ul class="space-y-1">
+                            <li>
+                                <a href="/docs/authentication" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Authentication with JWT' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                    Authentication
+                                </a>
+                            </li>
+                            <li>
+                                <a href="/docs/sessions" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Session Management' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                    Sessions
+                                </a>
+                            </li>
+                            <li>
+                                <a href="/docs/validation" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Input Validation' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                    Validation
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
 
                     <div>
                         <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">

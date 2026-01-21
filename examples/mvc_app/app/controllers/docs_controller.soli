@@ -92,3 +92,35 @@ fn i18n(req: Any) -> Any {
         "layout": "layouts/docs"
     });
 }
+
+fn authentication(req: Any) -> Any {
+    return render("docs/authentication", {
+        "title": "Authentication with JWT",
+        "section": "security",
+        "layout": "layouts/docs"
+    });
+}
+
+fn sessions(req: Any) -> Any {
+    return render("docs/sessions", {
+        "title": "Session Management",
+        "section": "security",
+        "layout": "layouts/docs"
+    });
+}
+
+fn validation(req: Any) -> Any {
+    return render("docs/validation", {
+        "title": "Input Validation",
+        "section": "security",
+        "layout": "layouts/docs"
+    });
+}
+
+fn request_params(req: Any) -> Any {
+    return render("docs/request-params", {
+        "title": "Request Parameters",
+        "section": "core_concepts",
+        "layout": "layouts/docs"
+    });
+}

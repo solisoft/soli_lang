@@ -1,0 +1,233 @@
+<div class="space-y-12">
+    <!-- Header -->
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-x">
+                Input Validation
+            </span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
+            Robust schema-based validation with automatic type coercion and detailed error reporting.
+        </p>
+    </div>
+
+    <!-- Overview Section -->
+    <section>
+        <div class="bg-gradient-to-br from-amber-900/20 to-orange-900/20 rounded-2xl p-8 border border-white/10 shadow-xl backdrop-blur-sm">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-amber-500/20 rounded-lg text-amber-400">
+                    <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold text-white mb-3 mt-0 border-none">Trust, but Verify</h2>
+                    <p class="text-gray-300 leading-relaxed mb-0">
+                        SoliLang's validation library is built around the <code class="text-amber-400">V</code> class. It allows you to define declarative schemas for your data. It handles not just checking values, but also safely converting types (coercion) and sanitizing input.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- The V Class -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">1</span>
+            The V Class
+        </h2>
+        <p class="text-gray-400 mb-6">
+            Start by choosing the base type using the global <code class="text-amber-300">V</code> object.
+        </p>
+        
+        <!-- Terminal Window -->
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl mb-8">
+            <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
+                <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                <span class="ml-2 text-xs text-gray-500 font-mono">Primitives</span>
+            </div>
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-soli text-sm">V.string()        // Matches text
+V.int()           // Matches integers (e.g., "123" -> 123)
+V.float()         // Matches decimals
+V.bool()          // Matches true/false (and "true"/"false")
+V.array(schema)   // Matches a list of items
+V.hash(schema)    // Matches a nested object</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Schema Example -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-orange-500/20 text-orange-400 text-sm border border-orange-500/30">2</span>
+            Validation in Action
+        </h2>
+        <p class="text-gray-400 mb-6">
+            Chain methods to build complex rules. Here is a realistic registration schema:
+        </p>
+
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
+            <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
+                <div class="w-3 h-3 rounded-full bg-gray-600"></div>
+                <div class="w-3 h-3 rounded-full bg-gray-600"></div>
+                <div class="w-3 h-3 rounded-full bg-gray-600"></div>
+                <span class="ml-2 text-xs text-gray-500 font-mono">controllers/users_controller.soli</span>
+            </div>
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-soli text-sm">// 1. Define the schema
+let user_schema = {
+    "email": V.string().required().email().trim(),
+    "password": V.string().required().min_length(8),
+    "age": V.int().optional().min(18).max(120),
+    "newsletter": V.bool().default(false)
+};
+
+// 2. Validate input data (e.g., from a POST request)
+let result = validate(req["body"], user_schema);
+
+// 3. Handle results
+if result["valid"] {
+    // result["data"] contains the clean, coerced data
+    create_user(result["data"]);
+} else {
+    // result["errors"] contains validation messages
+    return render("register", { "errors": result["errors"] });
+}</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Constraints Grid -->
+    <section class="py-8">
+        <h2 class="text-3xl font-bold text-white mb-8">Available Constraints</h2>
+        <div class="space-y-6">
+            <!-- Universal -->
+            <div class="bg-[#1e1e1e] rounded-xl overflow-hidden border border-white/5">
+                <div class="px-6 py-4 bg-white/5 border-b border-white/5 flex items-center gap-3">
+                    <div class="p-2 bg-amber-500/10 rounded-lg text-amber-400">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Universal Constraints</h3>
+                </div>
+                <div class="divide-y divide-white/5">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-amber-300 font-mono text-sm bg-amber-500/10 px-2 py-1 rounded">.required()</code>
+                            <p class="mt-2 text-sm text-gray-400">Field must be present and not null.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-amber-300 font-mono text-sm bg-amber-500/10 px-2 py-1 rounded">.optional()</code>
+                            <p class="mt-2 text-sm text-gray-400">Field is optional (can be undefined).</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-amber-300 font-mono text-sm bg-amber-500/10 px-2 py-1 rounded">.nullable()</code>
+                            <p class="mt-2 text-sm text-gray-400">Allows explicit <code class="text-xs text-gray-500">null</code> values.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-amber-300 font-mono text-sm bg-amber-500/10 px-2 py-1 rounded">.default(value)</code>
+                            <p class="mt-2 text-sm text-gray-400">Sets a default value if missing.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-amber-300 font-mono text-sm bg-amber-500/10 px-2 py-1 rounded">.one_of([a, b])</code>
+                            <p class="mt-2 text-sm text-gray-400">Must match one of the provided values.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- String -->
+            <div class="bg-[#1e1e1e] rounded-xl overflow-hidden border border-white/5">
+                <div class="px-6 py-4 bg-white/5 border-b border-white/5 flex items-center gap-3">
+                    <div class="p-2 bg-orange-500/10 rounded-lg text-orange-400">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">String Constraints</h3>
+                </div>
+                <div class="divide-y divide-white/5">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-orange-300 font-mono text-sm bg-orange-500/10 px-2 py-1 rounded">.email()</code>
+                            <p class="mt-2 text-sm text-gray-400">Validates standard email format.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-orange-300 font-mono text-sm bg-orange-500/10 px-2 py-1 rounded">.url()</code>
+                            <p class="mt-2 text-sm text-gray-400">Validates URL format.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-orange-300 font-mono text-sm bg-orange-500/10 px-2 py-1 rounded">.min_length(n)</code>
+                            <p class="mt-2 text-sm text-gray-400">Minimum number of characters.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-orange-300 font-mono text-sm bg-orange-500/10 px-2 py-1 rounded">.max_length(n)</code>
+                            <p class="mt-2 text-sm text-gray-400">Maximum number of characters.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-orange-300 font-mono text-sm bg-orange-500/10 px-2 py-1 rounded">.pattern(regex)</code>
+                            <p class="mt-2 text-sm text-gray-400">Matches against a regex pattern.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-orange-300 font-mono text-sm bg-orange-500/10 px-2 py-1 rounded">.trim()</code>
+                            <p class="mt-2 text-sm text-gray-400">Removes whitespace from both ends.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Numeric -->
+            <div class="bg-[#1e1e1e] rounded-xl overflow-hidden border border-white/5">
+                <div class="px-6 py-4 bg-white/5 border-b border-white/5 flex items-center gap-3">
+                    <div class="p-2 bg-yellow-500/10 rounded-lg text-yellow-400">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Numeric Constraints</h3>
+                </div>
+                <div class="divide-y divide-white/5">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-yellow-300 font-mono text-sm bg-yellow-500/10 px-2 py-1 rounded">.min(n)</code>
+                            <p class="mt-2 text-sm text-gray-400">Value must be greater or equal to n.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-yellow-300 font-mono text-sm bg-yellow-500/10 px-2 py-1 rounded">.max(n)</code>
+                            <p class="mt-2 text-sm text-gray-400">Value must be less or equal to n.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-yellow-300 font-mono text-sm bg-yellow-500/10 px-2 py-1 rounded">.positive()</code>
+                            <p class="mt-2 text-sm text-gray-400">Must be greater than 0.</p>
+                        </div>
+                        <div class="p-4 hover:bg-white/[0.02] transition-colors">
+                            <code class="text-yellow-300 font-mono text-sm bg-yellow-500/10 px-2 py-1 rounded">.negative()</code>
+                            <p class="mt-2 text-sm text-gray-400">Must be less than 0.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Live Demo Card -->
+    <section class="relative group">
+        <div class="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+        <div class="relative bg-gray-900 rounded-xl p-8 border border-white/10">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div>
+                    <h3 class="text-xl font-bold text-white mb-2">Interactive Validation Lab</h3>
+                    <p class="text-gray-400">
+                        Test different constraints against live input in our interactive demo.
+                    </p>
+                </div>
+                <div class="flex flex-shrink-0 gap-4">
+                    <a href="/users/validation-demo" class="inline-flex items-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white font-medium rounded-lg transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 hover:-translate-y-0.5">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                        </svg>
+                        Launch Demo
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>

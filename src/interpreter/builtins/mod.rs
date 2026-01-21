@@ -19,12 +19,15 @@ pub mod dotenv;
 pub mod env;
 pub mod http;
 pub mod i18n;
+pub mod jwt;
 pub mod model;
 pub mod regex;
 pub mod router;
 pub mod server;
+pub mod session;
 pub mod solidb;
 pub mod template;
+pub mod validation;
 
 /// Register all built-in functions in the given environment.
 pub fn register_builtins(env: &mut Environment) {
@@ -822,6 +825,15 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register I18n class
     i18n::register_i18n_class(env);
+
+    // Register validation system (V class and validate function)
+    validation::register_validation_builtins(env);
+
+    // Register session management builtins
+    session::register_session_builtins(env);
+
+    // Register JWT builtins
+    jwt::register_jwt_builtins(env);
 
     // Register Error class and error types
     register_error_classes(env);

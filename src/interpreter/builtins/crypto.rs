@@ -157,6 +157,70 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         })),
     );
 
+    // password_hash(plain) -> hashed string
+    // Alias for argon2_hash
+    env.define(
+        "password_hash".to_string(),
+        Value::NativeFunction(NativeFunction::new("password_hash", Some(1), |args| {
+            let password = match &args[0] {
+                Value::String(s) => s.as_bytes(),
+                other => {
+                    return Err(format!(
+                        "password_hash() expects string password, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let salt = SaltString::generate(&mut OsRng);
+            let argon2 = Argon2::default();
+            let password_hash = argon2
+                .hash_password(password, &salt)
+                .map_err(|e| format!("Failed to hash password: {}", e))?;
+
+            Ok(Value::String(password_hash.to_string()))
+        })),
+    );
+
+    // password_verify(plain, hashed) -> bool
+    // Alias for argon2_verify
+    env.define(
+        "password_verify".to_string(),
+        Value::NativeFunction(NativeFunction::new("password_verify", Some(2), |args| {
+            let password = match &args[0] {
+                Value::String(s) => s.as_bytes(),
+                other => {
+                    return Err(format!(
+                        "password_verify() expects string password as first argument, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let hash_str = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "password_verify() expects string hash as second argument, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let parsed_hash = match PasswordHash::new(&hash_str) {
+                Ok(h) => h,
+                Err(e) => {
+                    return Err(format!("Invalid hash format: {}", e));
+                }
+            };
+
+            let argon2 = Argon2::default();
+            let is_valid = argon2.verify_password(password, &parsed_hash).is_ok();
+
+            Ok(Value::Bool(is_valid))
+        })),
+    );
+
     // x25519_keypair() -> {private: String, public: String}
     // Generates a new X25519 key pair
     // Returns a hash with 'private' and 'public' keys as hex strings

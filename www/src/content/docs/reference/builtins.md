@@ -941,8 +941,80 @@ The request hash passed to handlers contains:
 | `path` | String | Request path (e.g., "/users/123") |
 | `params` | Hash | Route parameters (e.g., `{"id": "123"}` for `/users/:id`) |
 | `query` | Hash | Query string parameters (e.g., `{"page": "1"}` for `?page=1`) |
+| `all` | Hash | Unified params - merges route params, query params, and body params |
 | `headers` | Hash | Request headers |
-| `body` | String | Request body |
+| `body` | String | Raw request body |
+| `json` | Any/Null | Auto-parsed JSON body (if Content-Type: application/json) |
+| `form` | Hash/Null | Auto-parsed form data (if Content-Type: application/x-www-form-urlencoded or multipart/form-data) |
+| `files` | Array | Uploaded files array (for multipart/form-data) |
+
+#### Unified Params (`req["all"]`)
+
+The `all` field provides unified access to all parameters from any source. Parameters are merged with the following priority (higher priority values override lower):
+
+1. **Route params** - Lowest priority
+2. **Query params** - Override route params
+3. **Body params** (JSON or form) - Highest priority
+
+```rust
+// Request: POST /users/123/profile?name=alice&age=30
+// Body: {"bio": "Developer", "age": "25"}
+
+fn handler(req: Any) -> Any {
+    // Access individual param sources
+    let id = req["params"]["id"];           // "123" (route param)
+    let name = req["query"]["name"];        // "alice" (query param)
+    let bio = req["json"]["bio"];           // "Developer" (JSON body)
+
+    // Use unified params - includes all sources
+    // Body params override query params, which override route params
+    let all = req["all"];
+    print("ID:", all["id"]);       // "123"
+    print("Name:", all["name"]);   // "alice" (query overrides route)
+    print("Age:", all["age"]);     // "25" (JSON body overrides query)
+    print("Bio:", all["bio"]);     // "Developer"
+
+    return {"status": 200, "body": "OK"};
+}
+```
+
+This is especially useful when building APIs that accept parameters from multiple sources:
+
+### Auto-Parsed Request Bodies
+
+Request bodies are automatically parsed based on the `Content-Type` header:
+
+**JSON Bodies (application/json):**
+```rust
+fn create_user(req: Any) -> Any {
+    let data = req["json"];  // Auto-parsed JSON
+    return {"status": 201, "body": json_stringify({"name": data["name"]})};
+}
+```
+
+**Form Bodies (application/x-www-form-urlencoded):**
+```rust
+fn handle_form(req: Any) -> Any {
+    let name = req["form"]["name"];
+    let email = req["form"]["email"];
+    return {"status": 200, "body": "Form submitted"};
+}
+```
+
+**File Uploads (multipart/form-data):**
+```rust
+fn upload_file(req: Any) -> Any {
+    let files = req["files"];
+    for file in files {
+        print("Name:", file["name"]);           // Form field name
+        print("Filename:", file["filename"]);   // Original filename
+        print("Content-Type:", file["content_type"]);
+        print("Size:", file["size"]);           // Size in bytes
+        // file["data"] contains the raw bytes as an array
+    }
+    return {"status": 200, "body": "Uploaded"};
+}
+```
 
 ```rust
 fn handler(req: Any) -> Any {
@@ -1252,6 +1324,490 @@ When using cryptographic functions:
 - **Key Exchange**: Use `x25519_shared_secret()` to establish shared secrets, then derive symmetric keys from them.
 - **Randomness**: All key generation functions use cryptographically secure random number generators.
 - **Key Clamping**: X25519 private keys are automatically clamped according to the specification.
+
+---
+
+## JWT (JSON Web Token) Functions
+
+Soli provides built-in functions for creating and verifying JWTs for stateless authentication.
+
+### jwt_sign
+
+Creates a signed JWT token with a payload.
+
+```rust
+jwt_sign(payload, secret)
+jwt_sign(payload, secret, options)
+```
+
+**Parameters:**
+- `payload`: Hash containing claims (e.g., `{"sub": "user123", "name": "Alice"}`)
+- `secret`: Secret key as `String`
+- `options`: Optional hash with:
+  - `expires_in`: Expiration time in seconds (Int)
+  - `algorithm`: Signing algorithm - `"HS256"`, `"HS384"`, or `"HS512"` (String)
+
+**Returns:** `String` - The signed JWT token
+
+```rust
+// Basic token
+let payload = {"sub": "user123", "name": "Alice"};
+let token = jwt_sign(payload, "my-secret-key");
+print(token);  // eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+// With expiration (1 hour)
+let token = jwt_sign({"sub": "user123"}, "secret", {"expires_in": 3600});
+```
+
+### jwt_verify
+
+Verifies a JWT token and returns the claims if valid.
+
+```rust
+jwt_verify(token, secret)
+```
+
+**Parameters:**
+- `token`: JWT token as `String`
+- `secret`: Secret key as `String`
+
+**Returns:** `Hash` - If valid: `{"sub": "...", "exp": ..., "iat": ...}`. If invalid: `{"error": true, "message": "..."}`
+
+```rust
+let result = jwt_verify(token, "my-secret-key");
+
+if result["error"] == true {
+    print("Invalid token:", result["message"]);
+} else {
+    print("User:", result["sub"]);
+    print("Expires at:", result["exp"]);
+}
+```
+
+### jwt_decode
+
+Decodes a JWT token without verifying the signature (for reading tokens without secret).
+
+```rust
+jwt_decode(token)
+```
+
+**Parameters:** JWT token as `String`
+
+**Returns:** `Hash` - The decoded claims (same format as `jwt_verify`)
+
+```rust
+let claims = jwt_decode(token);
+print("Subject:", claims["sub"]);
+print("Issued at:", claims["iat"]);
+```
+
+### JWT Example
+
+A complete example for API authentication:
+
+```rust
+fn create_token(user_id: String, expires_in: Int) -> String {
+    let payload = {
+        "sub": user_id,
+        "role": "user"
+    };
+    return jwt_sign(payload, getenv("JWT_SECRET"), {"expires_in": expires_in});
+}
+
+fn verify_token(token: String) -> Any {
+    let result = jwt_verify(token, getenv("JWT_SECRET"));
+    if result["error"] == true {
+        return {"valid": false, "error": result["message"]};
+    }
+    return {"valid": true, "user_id": result["sub"]};
+}
+
+// Login - create token
+let token = create_token("user123", 3600);
+
+// Middleware - verify token
+let result = verify_token(auth_header);
+if result["valid"] == false {
+    return {"status": 401, "body": "Unauthorized"};
+}
+```
+
+---
+
+## Session Functions
+
+Soli provides built-in session management with cookie-based session IDs and in-memory storage.
+
+### session_id
+
+Returns the current session ID.
+
+```rust
+session_id()
+```
+
+**Parameters:** None
+**Returns:** `String` - The current session ID, or `null` if no session
+
+```rust
+let id = session_id();
+if id == null {
+    print("No active session");
+} else {
+    print("Session:", id);
+}
+```
+
+### session_get
+
+Retrieves a value from the current session.
+
+```rust
+session_get(key)
+```
+
+**Parameters:**
+- `key`: The session key as `String`
+
+**Returns:** The stored value, or `null` if not found
+
+```rust
+let user_id = session_get("user_id");
+let preferences = session_get("preferences");
+```
+
+### session_set
+
+Stores a value in the current session.
+
+```rust
+session_set(key, value)
+```
+
+**Parameters:**
+- `key`: The session key as `String`
+- `value`: Any JSON-serializable value
+
+**Returns:** `Void`
+
+```rust
+session_set("user_id", "user123");
+session_set("preferences", {"theme": "dark", "lang": "en"});
+```
+
+### session_has
+
+Checks if a key exists in the session.
+
+```rust
+session_has(key)
+```
+
+**Parameters:** Session key as `String`
+**Returns:** `Bool` - `true` if the key exists
+
+```rust
+if session_has("authenticated") {
+    print("User is logged in");
+}
+```
+
+### session_delete
+
+Removes a key from the session and returns its previous value.
+
+```rust
+session_delete(key)
+```
+
+**Parameters:** Session key as `String`
+**Returns:** The deleted value, or `null` if not found
+
+```rust
+let old_value = session_delete("temp_data");
+```
+
+### session_regenerate
+
+Creates a new session ID (useful after login for security).
+
+```rust
+session_regenerate()
+```
+
+**Parameters:** None
+**Returns:** `String` - The new session ID
+
+```rust
+// After successful login
+session_regenerate();
+session_set("authenticated", true);
+session_set("user_id", user_id);
+```
+
+### session_destroy
+
+Destroys the current session and all its data.
+
+```rust
+session_destroy()
+```
+
+**Parameters:** None
+**Returns:** `Void`
+
+```rust
+// On logout
+session_destroy();
+```
+
+### Session Example
+
+Complete authentication example:
+
+```rust
+fn login(req: Any) -> Any {
+    let data = req["json"];
+    let username = data["username"];
+    let password = data["password"];
+
+    // Verify credentials (simplified)
+    if username == "admin" && password == "secret" {
+        // Regenerate session for security
+        session_regenerate();
+        session_set("user", username);
+        session_set("role", "admin");
+        session_set("authenticated", true);
+
+        return {
+            "status": 200,
+            "body": json_stringify({"success": true, "user": username})
+        };
+    }
+
+    return {
+        "status": 401,
+        "body": json_stringify({"success": false, "error": "Invalid credentials"})
+    };
+}
+
+fn logout(req: Any) -> Any {
+    session_destroy();
+    return {
+        "status": 200,
+        "body": json_stringify({"success": true})
+    };
+}
+
+fn get_profile(req: Any) -> Any {
+    if session_get("authenticated") != true {
+        return {"status": 401, "body": "Unauthorized"};
+    }
+
+    return {
+        "status": 200,
+        "body": json_stringify({
+            "user": session_get("user"),
+            "role": session_get("role")
+        })
+    };
+}
+
+http_server_post("/login", login);
+http_server_post("/logout", logout);
+http_server_get("/profile", get_profile);
+```
+
+:::note[Session Storage]
+Sessions are stored in-memory and will be lost when the server restarts. For persistent sessions, consider storing session data in a database.
+:::
+
+:::tip[Session Cookie]
+Sessions use `HttpOnly` cookies with `SameSite=Lax` for security. The cookie is automatically set on responses.
+:::
+
+---
+
+## Input Validation Functions
+
+Soli provides a schema-based input validation system with type coercion and rich validation rules.
+
+### V Class
+
+The `V` class provides factory methods for creating validators:
+
+```rust
+V.string()   // String validator
+V.int()      // Integer validator
+V.float()    // Float validator
+V.bool()     // Boolean validator
+V.array(schema)   // Array validator with element schema
+V.hash(schema)    // Hash validator with nested schema
+```
+
+### validate
+
+Validates data against a schema and returns the result.
+
+```rust
+validate(data, schema)
+```
+
+**Parameters:**
+- `data`: Hash to validate (or `null` for empty data)
+- `schema`: Hash defining validation rules
+
+**Returns:** `Hash` with:
+- `valid`: `Bool` - Whether validation passed
+- `data`: `Hash` - The validated/coerced data
+- `errors`: `Array` - Array of error objects with `field`, `message`, `code`
+
+### Validator Methods
+
+All validators support chaining these methods:
+
+#### Required/Optional
+
+```rust
+.field().required()   // Field must be present
+.field().optional()   // Field can be omitted (default)
+```
+
+#### Nullable
+
+```rust
+.field().nullable()   // Null value is allowed
+```
+
+#### Default Value
+
+```rust
+.field().default(value)  // Use default if field is missing
+```
+
+#### Numeric Constraints
+
+```rust
+V.int().min(0)         // Minimum value
+V.int().max(100)       // Maximum value
+V.float().min(0.0)     // Minimum value
+V.float().max(1.0)     // Maximum value
+```
+
+#### String Constraints
+
+```rust
+V.string().min_length(1)     // Minimum characters
+V.string().max_length(255)   // Maximum characters
+V.string().pattern(r"^\d+$") // Regex pattern
+V.string().email()           // Valid email format
+V.string().url()             // Valid URL format
+```
+
+#### Enumeration
+
+```rust
+V.string().one_of(["admin", "user", "guest"])  // Must be one of these values
+V.int().one_of([1, 2, 3])                      // Must be one of these integers
+```
+
+### Validation Example
+
+```rust
+// Define a user registration schema
+let user_schema = {
+    "email": V.string().required().email(),
+    "password": V.string().required().min_length(8),
+    "age": V.int().optional().min(13).max(150),
+    "role": V.string().default("user").one_of(["admin", "user", "guest"])
+};
+
+// Validate registration data
+let input = {
+    "email": "user@example.com",
+    "password": "secure123",
+    "age": "25"  // Will be coerced to int
+};
+
+let result = validate(input, user_schema);
+
+if result["valid"] {
+    print("Validated data:", result["data"]);
+} else {
+    print("Validation errors:");
+    for error in result["errors"] {
+        print(error["field"], ":", error["message"]);
+    }
+}
+```
+
+### Nested Validation
+
+Validate nested objects and arrays:
+
+```rust
+// Address schema
+let address_schema = {
+    "street": V.string().required(),
+    "city": V.string().required(),
+    "zip": V.string().pattern(r"^\d{5}$")
+};
+
+// User schema with nested address
+let user_schema = {
+    "name": V.string().required(),
+    "address": V.hash(address_schema).required()
+};
+
+// Array validation
+let tags_schema = V.array(V.string().min_length(1)).required();
+
+let user_data = {
+    "name": "Alice",
+    "address": {
+        "street": "123 Main St",
+        "city": "Boston",
+        "zip": "12345"
+    },
+    "tags": ["admin", "developer"]
+};
+
+let result = validate(user_data, {
+    "name": V.string().required(),
+    "address": V.hash({
+        "street": V.string().required(),
+        "city": V.string().required(),
+        "zip": V.string().pattern(r"^\d{5}$")
+    }).required(),
+    "tags": V.array(V.string().required()).required()
+});
+```
+
+### Validation Response Format
+
+```rust
+// Valid result
+{
+    "valid": true,
+    "data": {
+        "email": "user@example.com",
+        "password": "secure123",
+        "age": 25
+    },
+    "errors": []
+}
+
+// Invalid result
+{
+    "valid": false,
+    "data": {},
+    "errors": [
+        {"field": "email", "message": "must be a valid email", "code": "invalid_email"},
+        {"field": "password", "message": "must be at least 8 characters", "code": "min_length"}
+    ]
+}
+```
 
 ---
 
@@ -2148,6 +2704,23 @@ Soli uses Rust's regex syntax, which supports:
 | `x25519_public_key(private)` | String/Array | String | Derive public key from private |
 | `x25519(basepoint, scalar)` | String/Array, String/Array | String | X25519 scalar multiplication |
 | `ed25519_keypair()` | - | Hash | Generate Ed25519 key pair |
+| `jwt_sign(payload, secret, opts?)` | Hash, String, Hash? | String | Create JWT token |
+| `jwt_verify(token, secret)` | String, String | Hash | Verify JWT and return claims |
+| `jwt_decode(token)` | String | Hash | Decode JWT without verification |
+| `session_id()` | - | String/Null | Get current session ID |
+| `session_get(key)` | String | Any | Get session value |
+| `session_set(key, value)` | String, Any | Void | Set session value |
+| `session_has(key)` | String | Bool | Check if key exists in session |
+| `session_delete(key)` | String | Any | Delete session key |
+| `session_regenerate()` | - | String | Regenerate session ID |
+| `session_destroy()` | - | Void | Destroy session |
+| `validate(data, schema)` | Hash, Hash | Hash | Validate data against schema |
+| `V.string()` | - | Validator | Create string validator |
+| `V.int()` | - | Validator | Create int validator |
+| `V.float()` | - | Validator | Create float validator |
+| `V.bool()` | - | Validator | Create bool validator |
+| `V.array(schema)` | Validator? | Validator | Create array validator |
+| `V.hash(schema)` | Hash? | Validator | Create hash validator |
 | `barf(path, content)` | String, String/Array<Int> | Void | Write file (text or binary) |
 | `slurp(path, mode?)` | String, String? | String/Array<Int> | Read file (text or binary) |
 | `new Solidb(host, db)` | String, String | Instance | Create SoliDB client |

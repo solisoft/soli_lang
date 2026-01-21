@@ -54,9 +54,12 @@ use uuid::Uuid;
 
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
-    build_request_hash, extract_response, find_route, get_routes, match_path, parse_query_string,
-    rebuild_route_index,
-    register_route_with_handler, routes_to_worker_routes, set_worker_routes, WorkerRoute,
+    build_request_hash, build_request_hash_with_parsed, extract_response, find_route, get_routes,
+    match_path, parse_form_urlencoded_body, parse_json_body, parse_query_string, rebuild_route_index,
+    register_route_with_handler, routes_to_worker_routes, set_worker_routes, ParsedBody, WorkerRoute,
+};
+use crate::interpreter::builtins::session::{
+    create_session_cookie, ensure_session, extract_session_id_from_cookie, set_current_session_id,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
@@ -65,6 +68,15 @@ use crate::interpreter::{Interpreter, Value};
 use crate::span::Span;
 use crate::ExecutionMode;
 
+/// Uploaded file information
+#[derive(Clone)]
+pub struct UploadedFile {
+    pub name: String,
+    pub filename: String,
+    pub content_type: String,
+    pub data: Vec<u8>,
+}
+
 /// Request data sent to interpreter thread
 struct RequestData {
     method: String,
@@ -72,6 +84,12 @@ struct RequestData {
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
     body: String,
+    /// Raw body bytes (for multipart parsing)
+    body_bytes: Option<Vec<u8>>,
+    /// Pre-parsed form fields from multipart
+    multipart_form: Option<HashMap<String, String>>,
+    /// Pre-parsed files from multipart
+    multipart_files: Option<Vec<UploadedFile>>,
     response_tx: oneshot::Sender<ResponseData>,
 }
 
@@ -923,16 +941,10 @@ fn run_hyper_server_worker_pool(
             track_static_recursive(&watch_public_dir, &mut file_tracker);
         }
 
-        // Track source CSS files (app/assets/css) for Tailwind
-        let assets_css_dir = watch_folder.join("app").join("assets").join("css");
-        if assets_css_dir.exists() {
-            for entry in std::fs::read_dir(&assets_css_dir).into_iter().flatten().flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "css") {
-                    file_tracker.track(&path);
-                }
-            }
-        }
+        // Note: We don't track source CSS files (app/assets/css) here
+        // because Tailwind's --watch mode already handles CSS changes.
+        // Tracking them would cause an infinite loop since trigger_tailwind_rebuild
+        // touches the CSS file to force a rebuild.
 
         println!("Hot reload: Watching {} files", file_tracker.tracked_count());
 
@@ -950,15 +962,9 @@ fn run_hyper_server_worker_pool(
             let mut middleware_changed = false;
             let mut static_files_changed = false;
             let mut routes_changed = false;
-            let mut source_css_changed = false;
 
             for path in &changed {
                 println!("   {}", path.display());
-
-                // Check if it's a source CSS file (app/assets/css)
-                if path.starts_with(&assets_css_dir) {
-                    source_css_changed = true;
-                }
 
                 // Check if it's a static file (CSS, JS, images)
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -1003,11 +1009,6 @@ fn run_hyper_server_worker_pool(
                     // Note: No need to set static_files_changed here - the file watcher
                     // will detect when Tailwind updates public/css/application.css
                 }
-            }
-            if source_css_changed && dev_mode_for_watcher {
-                // Tailwind watch mode handles source CSS changes automatically
-                // Touch input CSS to ensure rebuild is triggered
-                trigger_tailwind_rebuild(&watch_folder);
             }
             if static_files_changed {
                 hot_reload_versions_for_watcher.static_files.fetch_add(1, Ordering::Release);
@@ -1379,6 +1380,63 @@ struct WebSocketActionData {
     close: Option<String>,
 }
 
+/// Parse multipart form data into form fields and files.
+async fn parse_multipart_body(
+    body_bytes: &[u8],
+    content_type: &str,
+) -> (HashMap<String, String>, Vec<UploadedFile>) {
+    let mut form_fields = HashMap::new();
+    let mut files = Vec::new();
+
+    // Extract boundary from content-type header
+    let boundary = content_type
+        .split(';')
+        .find_map(|part| {
+            let part = part.trim();
+            if part.starts_with("boundary=") {
+                Some(part.trim_start_matches("boundary=").trim_matches('"').to_string())
+            } else {
+                None
+            }
+        });
+
+    let boundary = match boundary {
+        Some(b) => b,
+        None => return (form_fields, files),
+    };
+
+    // Use multer to parse the multipart data
+    let stream = futures_util::stream::once(async move {
+        Ok::<_, std::io::Error>(bytes::Bytes::copy_from_slice(body_bytes))
+    });
+
+    let mut multipart = multer::Multipart::new(stream, boundary);
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().map(|s| s.to_string()).unwrap_or_default();
+        let filename = field.file_name().map(|s| s.to_string());
+        let content_type = field.content_type().map(|m| m.to_string()).unwrap_or_default();
+
+        if let Ok(data) = field.bytes().await {
+            if let Some(fname) = filename {
+                // This is a file upload
+                files.push(UploadedFile {
+                    name: name.clone(),
+                    filename: fname,
+                    content_type,
+                    data: data.to_vec(),
+                });
+            } else {
+                // This is a regular form field
+                let value = String::from_utf8_lossy(&data).to_string();
+                form_fields.insert(name, value);
+            }
+        }
+    }
+
+    (form_fields, files)
+}
+
 /// Handle a hyper request
 async fn handle_hyper_request(
     req: Request<Incoming>,
@@ -1541,14 +1599,30 @@ async fn handle_hyper_request(
     }
 
     // Read body - skip for GET/HEAD requests (usually empty)
-    let body = if method == "GET" || method == "HEAD" {
-        String::new()
+    let (body, body_bytes_opt, multipart_form, multipart_files) = if method == "GET" || method == "HEAD" {
+        (String::new(), None, None, None)
     } else {
         let body_bytes = http_body_util::BodyExt::collect(req.into_body())
             .await
-            .map(|b| b.to_bytes())
+            .map(|b| b.to_bytes().to_vec())
             .unwrap_or_default();
-        String::from_utf8_lossy(&body_bytes).to_string()
+
+        // Check if this is a multipart form
+        let content_type = headers.get("content-type").map(|s| s.as_str());
+        if let Some(ct) = content_type {
+            if ct.starts_with("multipart/form-data") {
+                // Parse multipart form data
+                let (form_fields, files) = parse_multipart_body(&body_bytes, ct).await;
+                let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+                (body_str, Some(body_bytes), Some(form_fields), Some(files))
+            } else {
+                let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+                (body_str, None, None, None)
+            }
+        } else {
+            let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+            (body_str, None, None, None)
+        }
     };
 
     // Create oneshot channel for response
@@ -1561,6 +1635,9 @@ async fn handle_hyper_request(
         query,
         headers,
         body,
+        body_bytes: body_bytes_opt,
+        multipart_form,
+        multipart_files,
         response_tx,
     };
 
@@ -2302,18 +2379,103 @@ fn to_pascal_case_controller(controller_key: &str) -> String {
     result
 }
 
+/// Convert uploaded files to Soli Value array.
+fn uploaded_files_to_value(files: &[UploadedFile]) -> Value {
+    let file_values: Vec<Value> = files
+        .iter()
+        .map(|f| {
+            let pairs: Vec<(Value, Value)> = vec![
+                (Value::String("name".to_string()), Value::String(f.name.clone())),
+                (Value::String("filename".to_string()), Value::String(f.filename.clone())),
+                (Value::String("content_type".to_string()), Value::String(f.content_type.clone())),
+                (Value::String("size".to_string()), Value::Int(f.data.len() as i64)),
+                (
+                    Value::String("data".to_string()),
+                    Value::Array(Rc::new(RefCell::new(
+                        f.data.iter().map(|&b| Value::Int(b as i64)).collect(),
+                    ))),
+                ),
+            ];
+            Value::Hash(Rc::new(RefCell::new(pairs)))
+        })
+        .collect();
+    Value::Array(Rc::new(RefCell::new(file_values)))
+}
+
+/// Parse request body based on Content-Type header.
+fn parse_request_body(
+    body: &str,
+    content_type: Option<&str>,
+    multipart_form: Option<&HashMap<String, String>>,
+    multipart_files: Option<&Vec<UploadedFile>>,
+) -> ParsedBody {
+    let mut parsed = ParsedBody::default();
+
+    // Handle multipart data if available (parsed in async context)
+    if let Some(form_fields) = multipart_form {
+        if !form_fields.is_empty() {
+            let pairs: Vec<(Value, Value)> = form_fields
+                .iter()
+                .map(|(k, v)| (Value::String(k.clone()), Value::String(v.clone())))
+                .collect();
+            parsed.form = Some(Value::Hash(Rc::new(RefCell::new(pairs))));
+        }
+    }
+
+    if let Some(files) = multipart_files {
+        if !files.is_empty() {
+            parsed.files = Some(uploaded_files_to_value(files));
+        }
+    }
+
+    // If we already have multipart data, skip other parsing
+    if parsed.form.is_some() || parsed.files.is_some() {
+        return parsed;
+    }
+
+    if body.is_empty() {
+        return parsed;
+    }
+
+    let content_type = match content_type {
+        Some(ct) => ct.to_lowercase(),
+        None => return parsed,
+    };
+
+    if content_type.starts_with("application/json") {
+        parsed.json = parse_json_body(body);
+    } else if content_type.starts_with("application/x-www-form-urlencoded") {
+        parsed.form = parse_form_urlencoded_body(body);
+    }
+
+    parsed
+}
+
 /// Handle a single request (called on interpreter thread)
 fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> ResponseData {
     let method = &data.method;
     let path = &data.path;
 
+    // Set up session for this request
+    let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
+    let existing_session_id = extract_session_id_from_cookie(cookie_header);
+    let session_id = ensure_session(existing_session_id.as_deref());
+    let is_new_session = existing_session_id.as_deref() != Some(&session_id);
+    set_current_session_id(Some(session_id.clone()));
+
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route, matched_params) = match find_route(method, path) {
         Some((r, params)) => (r, params),
         None => {
+            // Clear session context before returning
+            set_current_session_id(None);
             return ResponseData {
                 status: 404,
-                headers: vec![],
+                headers: if is_new_session {
+                    vec![("Set-Cookie".to_string(), create_session_cookie(&session_id))]
+                } else {
+                    vec![]
+                },
                 body: "Not Found".to_string(),
             };
         }
@@ -2322,30 +2484,54 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
     let handler_name = route.handler_name.clone();
     let scoped_middleware = route.middleware.clone();
 
-    // Build request hash - optimize for empty query/headers/body
+    // Extract Content-Type for body parsing
+    let content_type = data.headers.get("content-type").map(|s| s.as_str());
+
+    // Parse body based on Content-Type (including multipart data parsed in async context)
+    let parsed_body = parse_request_body(
+        &data.body,
+        content_type,
+        data.multipart_form.as_ref(),
+        data.multipart_files.as_ref(),
+    );
+
+    // Build request hash with parsed body - optimize for empty query/headers/body
     let mut request_hash = if data.query.is_empty() && data.headers.is_empty() && data.body.is_empty() {
-        build_request_hash(
+        build_request_hash_with_parsed(
             &data.method,
             &data.path,
             matched_params,
             HashMap::new(),
             HashMap::new(),
             String::new(),
+            parsed_body,
         )
     } else {
-        build_request_hash(
+        build_request_hash_with_parsed(
             &data.method,
             &data.path,
             matched_params,
             data.query.clone(),
             data.headers.clone(),
             data.body.clone(),
+            parsed_body,
         )
+    };
+
+    // Helper to finalize response with session cookie
+    let finalize_response = |mut resp: ResponseData| -> ResponseData {
+        // Add session cookie if it's a new session
+        if is_new_session {
+            resp.headers.push(("Set-Cookie".to_string(), create_session_cookie(&session_id)));
+        }
+        // Clear session context
+        set_current_session_id(None);
+        resp
     };
 
     // Fast path: no middleware at all (avoid cloning middleware list if empty)
     if scoped_middleware.is_empty() && !has_middleware() {
-        return call_handler(interpreter, &handler_name, request_hash);
+        return finalize_response(call_handler(interpreter, &handler_name, request_hash));
     }
 
     // Only clone middleware list if we need it
@@ -2361,26 +2547,26 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
                 MiddlewareResult::Response(resp) => {
                     let (status, headers, body) = extract_response(&resp);
                     let headers: Vec<_> = headers.into_iter().collect();
-                    return ResponseData {
+                    return finalize_response(ResponseData {
                         status,
                         headers,
                         body,
-                    };
+                    });
                 }
                 MiddlewareResult::Error(err) => {
-                    return ResponseData {
+                    return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![],
                         body: format!("Middleware error: {}", err),
-                    };
+                    });
                 }
             },
             Err(e) => {
-                return ResponseData {
+                return finalize_response(ResponseData {
                     status: 500,
                     headers: vec![],
                     body: format!("Middleware error: {}", e),
-                };
+                });
             }
         }
     }
@@ -2407,31 +2593,31 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
                 MiddlewareResult::Response(resp) => {
                     let (status, headers, body) = extract_response(&resp);
                     let headers: Vec<_> = headers.into_iter().collect();
-                    return ResponseData {
+                    return finalize_response(ResponseData {
                         status,
                         headers,
                         body,
-                    };
+                    });
                 }
                 MiddlewareResult::Error(err) => {
-                    return ResponseData {
+                    return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![],
                         body: format!("Middleware error: {}", err),
-                    };
+                    });
                 }
             },
             Err(e) => {
-                return ResponseData {
+                return finalize_response(ResponseData {
                     status: 500,
                     headers: vec![],
                     body: format!("Middleware error: {}", e),
-                };
+                });
             }
         }
     }
 
     // Call the route handler
-    call_handler(interpreter, &handler_name, request_hash)
+    finalize_response(call_handler(interpreter, &handler_name, request_hash))
 }
 

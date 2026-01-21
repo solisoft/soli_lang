@@ -1,0 +1,136 @@
+<!-- Registration Form -->
+<div class="min-h-[calc(100vh-8rem)] flex items-center justify-center py-12 px-4">
+    <div class="max-w-md w-full">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 mb-4">
+                <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+            </div>
+            <h1 class="text-3xl font-bold text-white">Create Account</h1>
+            <p class="mt-2 text-gray-400">Join us today</p>
+        </div>
+
+        <!-- Registration Card -->
+        <div class="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-8 shadow-2xl">
+            <form id="registerForm" class="space-y-5">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                    <input type="text" id="username" name="username" required minlength="3" maxlength="20"
+                        pattern="^[a-zA-Z0-9_]+$"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                        placeholder="john_doe">
+                    <p class="mt-1 text-xs text-gray-500">3-20 characters, letters, numbers, underscores only</p>
+                </div>
+
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
+                    <input type="email" id="email" name="email" required
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                        placeholder="you@example.com">
+                </div>
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                    <input type="password" id="password" name="password" required minlength="8"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                        placeholder="••••••••">
+                    <p class="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+                </div>
+
+                <div>
+                    <label for="confirm_password" class="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" required
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                        placeholder="••••••••">
+                </div>
+
+                <div>
+                    <label for="age" class="block text-sm font-medium text-gray-300 mb-2">Age (optional)</label>
+                    <input type="number" id="age" name="age" min="13" max="150"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                        placeholder="25">
+                </div>
+
+                <div id="registerError" class="hidden p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm"></div>
+                <div id="registerSuccess" class="hidden p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-sm"></div>
+
+                <button type="submit"
+                    class="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-xl shadow-lg shadow-emerald-500/25 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]">
+                    Create Account
+                </button>
+            </form>
+
+            <div class="mt-6 text-center">
+                <p class="text-gray-400 text-sm">Already have an account? <a href="/users/login" class="text-emerald-400 hover:text-emerald-300 transition-colors font-medium">Sign in</a></p>
+            </div>
+        </div>
+
+        <!-- Back Link -->
+        <div class="mt-6 text-center">
+            <a href="/" class="text-gray-400 hover:text-white text-sm transition-colors inline-flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = {
+        username: formData.get('username'),
+        email: formData.get('email'),
+        password: formData.get('password'),
+        confirm_password: formData.get('confirm_password'),
+        age: formData.get('age') ? parseInt(formData.get('age')) : null
+    };
+
+    const errorEl = document.getElementById('registerError');
+    const successEl = document.getElementById('registerSuccess');
+    errorEl.classList.add('hidden');
+    successEl.classList.add('hidden');
+
+    // Client-side validation
+    if (data.password !== data.confirm_password) {
+        errorEl.textContent = 'Passwords do not match';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        const response = await fetch('/users/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            successEl.textContent = 'Account created successfully! Redirecting to login...';
+            successEl.classList.remove('hidden');
+            setTimeout(() => {
+                window.location.href = '/users/login';
+            }, 2000);
+        } else {
+            // Display validation errors if any
+            if (result.errors && result.errors.length > 0) {
+                const errors = result.errors.map(e => e.message).join(', ');
+                errorEl.textContent = errors;
+            } else {
+                errorEl.textContent = result.error || 'Registration failed';
+            }
+            errorEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        errorEl.textContent = 'An error occurred. Please try again.';
+        errorEl.classList.remove('hidden');
+    }
+});
+</script>

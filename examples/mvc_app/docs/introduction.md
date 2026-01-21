@@ -71,3 +71,10 @@ The Soli language has its own comprehensive documentation:
 ## Design Philosophy
 
 Soli favors convention over configuration. By following standard naming patterns, you write less glue code and focus on building features.
+
+## Guides
+
+- **[Authentication](/docs/authentication)** - JWT-based stateless authentication
+- **[Sessions](/docs/sessions)** - Cookie-based session management
+- **[Validation](/docs/validation)** - Schema-based input validation
+- **[Request Parameters](/docs/request-params)** - Unified access to route, query, and body parameters

@@ -1,0 +1,204 @@
+<!-- Validation Demo Page -->
+<div class="max-w-4xl mx-auto py-12 px-4">
+    <!-- Header -->
+    <div class="text-center mb-12">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 mb-4">
+            <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        </div>
+        <h1 class="text-3xl font-bold text-white">Input Validation Demo</h1>
+        <p class="mt-2 text-gray-400">Try out the schema-based validation system</p>
+    </div>
+
+    <!-- Validation Form -->
+    <div class="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-8 mb-8">
+        <h2 class="text-lg font-semibold text-white mb-6">User Registration Form</h2>
+
+        <form id="validationForm" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                    <input type="text" id="username" name="username"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                        placeholder="john_doe">
+                    <p class="mt-1 text-xs text-gray-500">3-20 chars, letters, numbers, underscores</p>
+                </div>
+
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-300 mb-2">Email</label>
+                    <input type="email" id="email" name="email"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                        placeholder="you@example.com">
+                </div>
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                    <input type="password" id="password" name="password"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                        placeholder="••••••••">
+                    <p class="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+                </div>
+
+                <div>
+                    <label for="age" class="block text-sm font-medium text-gray-300 mb-2">Age</label>
+                    <input type="number" id="age" name="age"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                        placeholder="25">
+                    <p class="mt-1 text-xs text-gray-500">Must be 13-150</p>
+                </div>
+
+                <div>
+                    <label for="website" class="block text-sm font-medium text-gray-300 mb-2">Website (optional)</label>
+                    <input type="url" id="website" name="website"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                        placeholder="https://example.com">
+                </div>
+
+                <div>
+                    <label for="role" class="block text-sm font-medium text-gray-300 mb-2">Role</label>
+                    <select id="role" name="role"
+                        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all">
+                        <option value="">Select a role</option>
+                        <option value="admin">Admin</option>
+                        <option value="user">User</option>
+                        <option value="guest">Guest</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex gap-4">
+                <button type="submit"
+                    class="flex-1 py-3 px-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]">
+                    Validate & Submit
+                </button>
+                <button type="button" onclick="resetForm()"
+                    class="px-6 py-3 bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 rounded-xl transition-all">
+                    Reset
+                </button>
+            </div>
+        </form>
+
+        <!-- Results -->
+        <div id="validationResults" class="mt-6 hidden">
+            <h3 class="text-sm font-medium text-gray-300 mb-3">Validation Results</h3>
+            <div id="resultsContent"></div>
+        </div>
+    </div>
+
+    <!-- Schema Reference -->
+    <div class="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-8">
+        <h2 class="text-lg font-semibold text-white mb-4">Validation Schema</h2>
+        <p class="text-gray-400 mb-4">The form above is validated against this schema:</p>
+
+        <div class="bg-gray-950 rounded-xl p-4 overflow-x-auto">
+<pre class="text-sm"><code class="language-soli"><span class="text-purple-400">let</span> schema = {
+    <span class="text-green-400">"username"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>()
+        .<span class="text-blue-400">min_length</span>(<span class="text-orange-300">3</span>)
+        .<span class="text-blue-400">max_length</span>(<span class="text-orange-300">20</span>)
+        .<span class="text-blue-400">pattern</span>(<span class="text-green-400">r"^[a-zA-Z0-9_]+$"</span>),
+    <span class="text-green-400">"email"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>().<span class="text-blue-400">email</span>(),
+    <span class="text-green-400">"password"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>()
+        .<span class="text-blue-400">min_length</span>(<span class="text-orange-300">8</span>),
+    <span class="text-green-400">"age"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">int</span>().<span class="text-blue-400">optional</span>()
+        .<span class="text-blue-400">min</span>(<span class="text-orange-300">13</span>).<span class="text-blue-400">max</span>(<span class="text-orange-300">150</span>),
+    <span class="text-green-400">"website"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">optional</span>().<span class="text-blue-400">url</span>(),
+    <span class="text-green-400">"role"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">optional</span>()
+        .<span class="text-blue-400">one_of</span>([<span class="text-green-400">"admin"</span>, <span class="text-green-400">"user"</span>, <span class="text-green-400">"guest"</span>])
+};
+
+<span class="text-purple-400">let</span> result = <span class="text-blue-400">validate</span>(data, schema);</code></pre>
+        </div>
+
+        <div class="mt-6 flex flex-wrap gap-3">
+            <a href="/docs/validation" class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 rounded-lg transition-all text-sm">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Validation Docs
+            </a>
+            <a href="/users/login" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 rounded-lg transition-all text-sm">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+                Login with Sessions
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+function resetForm() {
+    document.getElementById('validationForm').reset();
+    document.getElementById('validationResults').classList.add('hidden');
+}
+
+document.getElementById('validationForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = {
+        username: formData.get('username') || null,
+        email: formData.get('email') || null,
+        password: formData.get('password') || null,
+        age: formData.get('age') ? parseInt(formData.get('age')) : null,
+        website: formData.get('website') || null,
+        role: formData.get('role') || null
+    };
+
+    const resultsEl = document.getElementById('validationResults');
+    const contentEl = document.getElementById('resultsContent');
+
+    try {
+        const response = await fetch('/users/validate-registration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.valid) {
+            contentEl.innerHTML = `
+                <div class="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl mb-4">
+                    <div class="flex items-center gap-2 text-emerald-400 mb-2">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span class="font-medium">Validation Passed!</span>
+                    </div>
+                    <p class="text-gray-300 text-sm">Your data has been validated and coerced:</p>
+                    <pre class="mt-2 bg-gray-950 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto">${JSON.stringify(result.data, null, 2)}</pre>
+                </div>
+            `;
+        } else {
+            contentEl.innerHTML = `
+                <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+                    <div class="flex items-center gap-2 text-red-400 mb-3">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span class="font-medium">Validation Failed</span>
+                    </div>
+                    <ul class="space-y-2">
+                        ${result.errors.map(err => `
+                            <li class="flex items-start gap-2 text-sm text-gray-300">
+                                <span class="text-red-400 mt-0.5">•</span>
+                                <span><strong class="text-white">${err.field}:</strong> ${err.message}</span>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        resultsEl.classList.remove('hidden');
+    } catch (err) {
+        contentEl.innerHTML = `
+            <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
+                An error occurred during validation.
+            </div>
+        `;
+        resultsEl.classList.remove('hidden');
+    }
+});
+</script>
