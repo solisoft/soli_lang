@@ -416,11 +416,37 @@ fn parse_for_block(tokens: &[Token]) -> Result<(TemplateNode, usize), String> {
 
 /// Parse a for statement like "item in items" or "(item in items)"
 fn parse_for_statement(s: &str) -> Result<(String, Expr), String> {
-    let s = s
-        .trim()
-        .trim_start_matches('(')
-        .trim_end_matches(')')
-        .trim();
+    let s = s.trim();
+
+    // Only strip outer parens if the whole expression is wrapped: "(item in items)"
+    // Don't strip if it's something like "item in range(1, 5)"
+    let s = if s.starts_with('(') && s.ends_with(')') {
+        // Check if these are matching outer parens by verifying paren balance
+        let inner = &s[1..s.len()-1];
+        let mut depth = 0;
+        let mut is_outer_parens = true;
+        for c in inner.chars() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    if depth == 0 {
+                        // Found unmatched ), so the outer parens aren't wrapping the whole thing
+                        is_outer_parens = false;
+                        break;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+        if is_outer_parens && depth == 0 {
+            inner.trim()
+        } else {
+            s
+        }
+    } else {
+        s
+    };
 
     // Look for " in " as the separator
     if let Some(pos) = s.find(" in ") {
