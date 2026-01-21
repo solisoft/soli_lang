@@ -1,0 +1,233 @@
+<h1>WebSockets</h1>
+
+<p class="lead text-xl text-gray-300 mb-8">
+    Build real-time applications with Soli's built-in WebSocket support. Handle connections, broadcast messages, and create interactive experiences.
+</p>
+
+<h2>Defining a WebSocket Route</h2>
+
+<p>Register WebSocket endpoints in <code>config/routes.soli</code> using <code>router_websocket</code>:</p>
+
+<pre><code class="language-soli">// config/routes.soli
+
+// WebSocket endpoint - maps path to handler function
+router_websocket("/ws/chat", "websocket#chat_handler");
+</code></pre>
+
+<h2>Creating a Handler</h2>
+
+<p>WebSocket handlers receive an <code>event</code> object with connection info and return actions:</p>
+
+<pre><code class="language-soli">// app/controllers/websocket_controller.soli
+
+fn chat_handler(event: Any) -> Any {
+    let event_type = event["type"];           // "connect", "message", or "disconnect"
+    let connection_id = event["connection_id"]; // Unique client ID
+
+    if (event_type == "connect") {
+        // Client just connected
+        return {
+            "broadcast": "{\"type\":\"join\",\"user\":\"" + connection_id + "\"}"
+        };
+    }
+
+    if (event_type == "disconnect") {
+        // Client disconnected
+        return {
+            "broadcast": "{\"type\":\"leave\",\"user\":\"" + connection_id + "\"}"
+        };
+    }
+
+    if (event_type == "message") {
+        // Client sent a message
+        let message = event["message"];
+        let parsed = json_parse(message);
+        let text = parsed["text"];
+
+        return {
+            "broadcast": "{\"type\":\"message\",\"from\":\"" + connection_id + "\",\"text\":\"" + text + "\"}"
+        };
+    }
+
+    return {};
+}
+</code></pre>
+
+<h2>Event Object</h2>
+
+<p>The handler receives an event hash with these fields:</p>
+
+<table class="w-full my-6">
+    <thead>
+        <tr class="border-b border-gray-700">
+            <th class="text-left py-2 px-4">Field</th>
+            <th class="text-left py-2 px-4">Type</th>
+            <th class="text-left py-2 px-4">Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr class="border-b border-gray-800">
+            <td class="py-2 px-4"><code>type</code></td>
+            <td class="py-2 px-4">String</td>
+            <td class="py-2 px-4"><code>"connect"</code>, <code>"message"</code>, or <code>"disconnect"</code></td>
+        </tr>
+        <tr class="border-b border-gray-800">
+            <td class="py-2 px-4"><code>connection_id</code></td>
+            <td class="py-2 px-4">String</td>
+            <td class="py-2 px-4">Unique UUID for this connection</td>
+        </tr>
+        <tr class="border-b border-gray-800">
+            <td class="py-2 px-4"><code>message</code></td>
+            <td class="py-2 px-4">String</td>
+            <td class="py-2 px-4">The message content (only for <code>"message"</code> events)</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Handler Response Actions</h2>
+
+<p>Return a hash with one of these actions:</p>
+
+<table class="w-full my-6">
+    <thead>
+        <tr class="border-b border-gray-700">
+            <th class="text-left py-2 px-4">Action</th>
+            <th class="text-left py-2 px-4">Description</th>
+            <th class="text-left py-2 px-4">Example</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr class="border-b border-gray-800">
+            <td class="py-2 px-4"><code>broadcast</code></td>
+            <td class="py-2 px-4">Send to ALL connected clients</td>
+            <td class="py-2 px-4"><code>{"broadcast": "Hello everyone!"}</code></td>
+        </tr>
+        <tr class="border-b border-gray-800">
+            <td class="py-2 px-4"><code>send</code></td>
+            <td class="py-2 px-4">Reply only to the sender</td>
+            <td class="py-2 px-4"><code>{"send": "Hello, just you!"}</code></td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Client-Side JavaScript</h2>
+
+<p>Connect to your WebSocket endpoint from the browser:</p>
+
+<pre><code class="language-javascript">// Connect to WebSocket
+const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(protocol + '//' + location.host + '/ws/chat');
+
+// Connection opened
+ws.onopen = function() {
+    console.log('Connected!');
+};
+
+// Receive messages
+ws.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    console.log('Received:', data);
+
+    if (data.type === 'join') {
+        console.log('User joined:', data.user);
+    } else if (data.type === 'message') {
+        console.log(data.from + ': ' + data.text);
+    } else if (data.type === 'leave') {
+        console.log('User left:', data.user);
+    }
+};
+
+// Send a message
+function sendMessage(text) {
+    ws.send(JSON.stringify({ text: text }));
+}
+
+// Handle errors
+ws.onerror = function(error) {
+    console.error('WebSocket error:', error);
+};
+
+// Connection closed
+ws.onclose = function() {
+    console.log('Disconnected');
+    // Optionally reconnect after delay
+    setTimeout(connect, 3000);
+};
+</code></pre>
+
+<h2>Complete Example: Chat Room</h2>
+
+<p>Here's a minimal chat implementation:</p>
+
+<h3>Route</h3>
+<pre><code class="language-soli">// config/routes.soli
+get("/chat", "chat#page");
+router_websocket("/ws/chat", "chat#handler");
+</code></pre>
+
+<h3>Controller</h3>
+<pre><code class="language-soli">// app/controllers/chat_controller.soli
+
+fn handler(event: Any) -> Any {
+    let event_type = event["type"];
+    let id = event["connection_id"];
+
+    if (event_type == "message") {
+        let msg = json_parse(event["message"]);
+        return {
+            "broadcast": "{\"user\":\"" + id + "\",\"text\":\"" + msg["text"] + "\"}"
+        };
+    }
+
+    return {};
+}
+
+fn page(req: Any) -> Any {
+    return render("chat/index", {"title": "Chat"});
+}
+</code></pre>
+
+<h3>View</h3>
+<pre><code class="language-erb">&lt;!-- app/views/chat/index.html.erb --&gt;
+&lt;div id="messages"&gt;&lt;/div&gt;
+&lt;input type="text" id="input" placeholder="Type a message..."&gt;
+&lt;button onclick="send()"&gt;Send&lt;/button&gt;
+
+&lt;script&gt;
+const ws = new WebSocket('ws://' + location.host + '/ws/chat');
+const messages = document.getElementById('messages');
+const input = document.getElementById('input');
+
+ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    messages.innerHTML += '&lt;p&gt;&lt;b&gt;' + data.user.slice(0,8) + ':&lt;/b&gt; ' + data.text + '&lt;/p&gt;';
+};
+
+function send() {
+    ws.send(JSON.stringify({ text: input.value }));
+    input.value = '';
+}
+
+input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') send();
+});
+&lt;/script&gt;
+</code></pre>
+
+<h2>Performance</h2>
+
+<p>Soli's WebSocket implementation is built on Rust's async runtime and can handle:</p>
+
+<ul>
+    <li><strong>10,000+ messages/second</strong> throughput</li>
+    <li><strong>Thousands of concurrent connections</strong></li>
+    <li><strong>Sub-millisecond latency</strong> for echo responses</li>
+</ul>
+
+<div class="callout callout-tip">
+    <p><strong>Tip:</strong> Use <code>send</code> instead of <code>broadcast</code> when you only need to reply to the sender. Broadcasting to thousands of clients is more expensive than a single reply.</p>
+</div>
+
+<h2>Live Demo</h2>
+
+<p>Try the <a href="/websocket">WebSocket Demo</a> to see it in action!</p>

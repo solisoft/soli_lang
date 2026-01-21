@@ -1,0 +1,16 @@
+config:
+  target: "ws://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 100
+      name: "Max throughput test"
+
+scenarios:
+  - name: "Rapid fire messages"
+    engine: ws
+    flow:
+      - connect: "ws://localhost:3000/ws/chat"
+      - loop:
+        - send:
+            payload: '{"text":"msg"}'
+        count: 100

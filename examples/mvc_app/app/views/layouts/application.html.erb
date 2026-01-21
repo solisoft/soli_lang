@@ -4,68 +4,210 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %> - Soli MVC</title>
+    <meta name="description" content="Soli MVC - A modern, high-performance web framework with expressive syntax.">
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="/css/application.css">
     <style>
         body { font-family: 'Inter', sans-serif; }
         code, pre { font-family: 'JetBrains Mono', monospace; }
+
+        /* Premium glass navigation */
         .glass-nav {
-            background: rgba(17, 24, 39, 0.7);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            background: rgba(3, 7, 18, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
+
+        /* Hero gradient with animated orbs */
         .hero-gradient {
-            background-color: #111827; /* gray-900 fallback */
-            background-image: radial-gradient(circle at top right, rgba(99, 102, 241, 0.15) 0%, rgba(17, 24, 39, 0) 50%),
-                            radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.15) 0%, rgba(17, 24, 39, 0) 50%);
+            background-color: #030712;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 100% 100%, rgba(168, 85, 247, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse 50% 30% at 0% 100%, rgba(236, 72, 153, 0.08) 0%, transparent 50%);
             background-attachment: fixed;
+        }
+
+        /* Animated gradient text */
+        .gradient-text {
+            background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Premium button hover effects */
+        .btn-glow {
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-glow::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.5s;
+        }
+        .btn-glow:hover::before {
+            transform: translateX(100%);
+        }
+
+        /* Smooth scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.3);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.5);
+        }
+
+        /* Mobile menu animation */
+        .mobile-nav {
+            transform: translateY(-100%);
+            transition: transform 0.3s ease;
+        }
+        .mobile-nav.open {
+            transform: translateY(0);
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col min-h-full hero-gradient antialiased selection:bg-indigo-500 selection:text-white">
+<body class="bg-gray-950 text-white flex flex-col min-h-full hero-gradient antialiased selection:bg-indigo-500/50 selection:text-white">
+    <!-- Navigation -->
     <nav class="glass-nav sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
+                <!-- Logo -->
                 <div class="flex items-center">
-                    <div class="flex-shrink-0 flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white">S</div>
-                        <span class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">Soli MVC</span>
-                    </div>
+                    <a href="/" class="flex items-center gap-3 group">
+                        <div class="relative">
+                            <div class="absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl blur-lg opacity-50 group-hover:opacity-75 transition-opacity"></div>
+                            <div class="relative w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg">
+                                S
+                            </div>
+                        </div>
+                        <span class="text-xl font-bold tracking-tight">
+                            <span class="text-white">Soli</span>
+                            <span class="text-gray-400 font-normal">MVC</span>
+                        </span>
+                    </a>
                 </div>
-                <div class="flex items-center space-x-6">
-                    <a href="/" class="text-sm font-medium text-gray-200 hover:text-white transition-colors">Home</a>
-                    <a href="/docs" class="text-sm font-medium text-gray-200 hover:text-white transition-colors">Docs</a>
-                    <a href="https://github.com/solilang/soli" target="_blank" class="text-gray-400 hover:text-white transition-colors">
-                        <span class="sr-only">GitHub</span>
-                        <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" /></svg>
+
+                <!-- Desktop Navigation -->
+                <div class="hidden md:flex items-center gap-1">
+                    <a href="/" class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white rounded-lg hover:bg-white/5 transition-all">
+                        Home
+                    </a>
+                    <a href="/docs" class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white rounded-lg hover:bg-white/5 transition-all">
+                        Documentation
+                    </a>
+                    <a href="https://github.com/solisoft/soli_lang" target="_blank" class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white rounded-lg hover:bg-white/5 transition-all flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" /></svg>
+                        GitHub
+                    </a>
+                    <div class="w-px h-6 bg-white/10 mx-2"></div>
+                    <a href="/docs/introduction" class="btn-glow ml-2 inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-all shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40">
+                        Get Started
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                    </a>
+                </div>
+
+                <!-- Mobile menu button -->
+                <div class="md:hidden flex items-center">
+                    <button onclick="toggleMobileNav()" class="p-2 text-gray-400 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Navigation -->
+        <div id="mobileNav" class="mobile-nav md:hidden absolute top-full left-0 right-0 bg-gray-950/95 backdrop-blur-xl border-b border-white/5">
+            <div class="px-4 py-4 space-y-1">
+                <a href="/" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Home</a>
+                <a href="/docs" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Documentation</a>
+                <a href="https://github.com/solisoft/soli_lang" target="_blank" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">GitHub</a>
+                <div class="pt-2">
+                    <a href="/docs/introduction" class="block px-4 py-3 text-center text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-all font-semibold">
+                        Get Started
                     </a>
                 </div>
             </div>
         </div>
     </nav>
 
+    <!-- Main Content -->
     <main class="flex-grow">
         <%= yield %>
     </main>
 
-    <footer class="border-t border-gray-800 bg-gray-900/50 backdrop-blur-sm mt-auto">
-        <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col md:flex-row items-center justify-between gap-4">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-gray-400">&copy; <%= 2026 %> SoliLang. MIT License.</span>
+    <!-- Footer -->
+    <footer class="border-t border-white/5 bg-gray-950/80 backdrop-blur-xl mt-auto">
+        <div class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+                <!-- Brand -->
+                <div class="md:col-span-2">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-sm">S</div>
+                        <span class="font-bold text-lg text-white">Soli MVC</span>
+                    </div>
+                    <p class="text-gray-400 text-sm max-w-sm">
+                        A modern, high-performance web framework that combines elegant syntax with blazing fast execution.
+                    </p>
                 </div>
-                <div class="flex space-x-6 text-sm text-gray-400">
-                    <a href="#" class="hover:text-gray-200 transition-colors">Privacy</a>
-                    <a href="#" class="hover:text-gray-200 transition-colors">Terms</a>
-                    <a href="#" class="hover:text-gray-200 transition-colors">Twitter</a>
+
+                <!-- Links -->
+                <div>
+                    <h4 class="text-sm font-semibold text-white mb-4">Documentation</h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="/docs/introduction" class="text-gray-400 hover:text-white transition-colors">Introduction</a></li>
+                        <li><a href="/docs/installation" class="text-gray-400 hover:text-white transition-colors">Installation</a></li>
+                        <li><a href="/docs/routing" class="text-gray-400 hover:text-white transition-colors">Routing</a></li>
+                        <li><a href="/docs/controllers" class="text-gray-400 hover:text-white transition-colors">Controllers</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="text-sm font-semibold text-white mb-4">Community</h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="https://github.com/solisoft/soli_lang" target="_blank" class="text-gray-400 hover:text-white transition-colors">GitHub</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors">Discord</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors">Twitter</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Bottom -->
+            <div class="pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p class="text-sm text-gray-500">&copy; 2026 SoliLang. MIT License.</p>
+                <div class="flex items-center gap-6">
+                    <a href="#" class="text-gray-400 hover:text-white transition-colors">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" /></svg>
+                    </a>
+                    <a href="#" class="text-gray-400 hover:text-white transition-colors">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" /></svg>
+                    </a>
                 </div>
             </div>
         </div>
     </footer>
+
+    <script>
+    function toggleMobileNav() {
+        document.getElementById('mobileNav').classList.toggle('open');
+    }
+    </script>
 </body>
 </html>

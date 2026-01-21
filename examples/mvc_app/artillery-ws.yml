@@ -1,0 +1,31 @@
+config:
+  target: "ws://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 10
+      name: "Warm up"
+    - duration: 60
+      arrivalRate: 50
+      name: "Sustained load"
+    - duration: 30
+      arrivalRate: 100
+      name: "Peak load"
+
+scenarios:
+  - name: "WebSocket chat"
+    engine: ws
+    flow:
+      - connect: "ws://localhost:3000/ws/chat"
+      - think: 1
+      - send:
+          payload: '{"text":"Hello from Artillery!"}'
+      - think: 2
+      - send:
+          payload: '{"text":"Testing message 1"}'
+      - think: 1
+      - send:
+          payload: '{"text":"Testing message 2"}'
+      - think: 2
+      - send:
+          payload: '{"text":"Goodbye!"}'
+      - think: 1

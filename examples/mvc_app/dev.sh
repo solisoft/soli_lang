@@ -34,7 +34,7 @@ trap cleanup SIGINT SIGTERM
 
 # Start Soli server
 echo -e "${GREEN}Starting Soli server...${NC}"
-soli serve .
+soli serve . 
 
 # Kill Tailwind watcher when Soli server exits
 kill $TAILWIND_PID

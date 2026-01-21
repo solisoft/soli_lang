@@ -517,6 +517,78 @@ impl TypeEnvironment {
                 return_type: Box::new(Type::String),
             },
         );
+
+        // regex_match(String, String) -> Bool
+        self.functions.insert(
+            "regex_match".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
+        // regex_find(String, String) -> Hash|null
+        self.functions.insert(
+            "regex_find".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
+        // regex_find_all(String, String) -> Array
+        self.functions.insert(
+            "regex_find_all".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Array(Box::new(Type::Any))),
+            },
+        );
+
+        // regex_replace(String, String, String) -> String
+        self.functions.insert(
+            "regex_replace".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // regex_replace_all(String, String, String) -> String
+        self.functions.insert(
+            "regex_replace_all".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // regex_split(String, String) -> Array
+        self.functions.insert(
+            "regex_split".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Array(Box::new(Type::String))),
+            },
+        );
+
+        // regex_capture(String, String) -> Hash|null
+        self.functions.insert(
+            "regex_capture".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
+        // regex_escape(String) -> String
+        self.functions.insert(
+            "regex_escape".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
     }
 
     /// Enter a new scope.

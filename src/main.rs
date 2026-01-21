@@ -375,21 +375,24 @@ impl ReplState {
     }
 
     fn execute_line(&mut self, source: &str) -> Result<(), solilang::error::SolilangError> {
-        // Check if input looks like an expression (no semicolon at end)
-        // If so, wrap it to print the result
-        let source = if !source.ends_with(';')
-            && !source.ends_with('}')
-            && !source.starts_with("let ")
-            && !source.starts_with("fn ")
-            && !source.starts_with("class ")
-            && !source.starts_with("interface ")
-            && !source.starts_with("if ")
-            && !source.starts_with("while ")
-            && !source.starts_with("for ")
-            && !source.starts_with("return ")
+        // Check if input looks like an expression that should print its result
+        // Strip trailing semicolon for the check
+        let trimmed = source.trim_end_matches(';').trim();
+
+        let source = if !trimmed.ends_with('}')
+            && !trimmed.starts_with("let ")
+            && !trimmed.starts_with("fn ")
+            && !trimmed.starts_with("class ")
+            && !trimmed.starts_with("interface ")
+            && !trimmed.starts_with("if ")
+            && !trimmed.starts_with("while ")
+            && !trimmed.starts_with("for ")
+            && !trimmed.starts_with("return ")
+            && !trimmed.starts_with("print(")
+            && !trimmed.starts_with("println(")
         {
             // Wrap as print statement for expression evaluation
-            format!("print({});", source)
+            format!("print({});", trimmed)
         } else if !source.ends_with(';') && !source.ends_with('}') {
             format!("{};", source)
         } else {

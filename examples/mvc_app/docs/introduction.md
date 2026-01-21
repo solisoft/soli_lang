@@ -51,6 +51,23 @@ mvc_app/
     └── layouts/        # Page layouts
 ```
 
+## Soli Language
+
+Soli is the programming language that powers the MVC framework. It features:
+
+- **Static typing** with type inference
+- **Classes and inheritance** for OOP
+- **Interfaces** for contracts
+- **Pattern matching** for elegant conditionals
+- **Pipeline operator** for readable data transformation
+
+### Learn the Soli Language
+
+The Soli language has its own comprehensive documentation:
+
+- **[Soli Language Reference](/docs/soli-language)** - Complete guide to Soli syntax, types, functions, classes, and more
+- [Official Soli Documentation](https://solilang.com/docs/guides/introduction) - Full language documentation
+
 ## Design Philosophy
 
 Soli favors convention over configuration. By following standard naming patterns, you write less glue code and focus on building features.

@@ -7,6 +7,7 @@ get("/", "home#index");
 
 // Public routes
 get("/health", "home#health");
+get("/up", "home#up");
 
 // Documentation
 get("/docs", "docs#index");
@@ -17,6 +18,12 @@ get("/docs/controllers", "docs#controllers");
 get("/docs/models", "docs#models");
 get("/docs/views", "docs#views");
 get("/docs/middleware", "docs#middleware");
+get("/docs/websockets", "docs#websockets");
+get("/docs/soli-language", "docs#soli_language");
+
+// WebSocket Demo
+get("/websocket", "websocket#demo");
+router_websocket("/ws/chat", "websocket#chat_handler");
 
 print("Routes loaded!");
 

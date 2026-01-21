@@ -60,3 +60,19 @@ fn models(req: Any) -> Any {
         "layout": "layouts/docs"
     });
 }
+
+fn websockets(req: Any) -> Any {
+    return render("docs/websockets", {
+        "title": "WebSockets",
+        "section": "core_concepts",
+        "layout": "layouts/docs"
+    });
+}
+
+fn soli_language(req: Any) -> Any {
+    return render("docs/soli-language", {
+        "title": "Soli Language Reference",
+        "section": "language_reference",
+        "layout": "layouts/docs"
+    });
+}

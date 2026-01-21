@@ -127,9 +127,11 @@ impl Compiler {
             "type_of",
             "is_null",
             "now",
+            "clock",
             "keys",
             "values",
             "entries",
+            "from_entries",
             "has_key",
             "delete",
             "merge",
@@ -154,6 +156,15 @@ impl Compiler {
             "html_escape",
             "html_unescape",
             "sanitize_html",
+            // Regex functions
+            "regex_match",
+            "regex_find",
+            "regex_find_all",
+            "regex_replace",
+            "regex_replace_all",
+            "regex_split",
+            "regex_capture",
+            "regex_escape",
         ];
 
         for (i, name) in natives.iter().enumerate() {

@@ -6,6 +6,8 @@ use std::io;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use regex::Regex;
+
 use crate::bytecode::chunk::{
     Closure, CompiledFunction, Constant, Upvalue, VMClass, VMInstance, VMIterator, VMValue,
 };
@@ -66,9 +68,11 @@ enum NativeId {
     TypeOf,
     IsNull,
     Now,
+    Clock,
     Keys,
     Values,
     Entries,
+    FromEntries,
     HasKey,
     Delete,
     Merge,
@@ -93,11 +97,20 @@ enum NativeId {
     HtmlEscape,
     HtmlUnescape,
     SanitizeHtml,
+    // Regex functions
+    RegexMatch,
+    RegexFind,
+    RegexFindAll,
+    RegexReplace,
+    RegexReplaceAll,
+    RegexSplit,
+    RegexCapture,
+    RegexEscape,
 }
 
 impl NativeId {
     fn from_u16(val: u16) -> Option<Self> {
-        if val <= NativeId::SanitizeHtml as u16 {
+        if val <= NativeId::RegexEscape as u16 {
             Some(unsafe { std::mem::transmute(val) })
         } else {
             None
@@ -135,9 +148,11 @@ impl NativeId {
             NativeId::TypeOf => Some(1),
             NativeId::IsNull => Some(1),
             NativeId::Now => Some(0),
+            NativeId::Clock => Some(0),
             NativeId::Keys => Some(1),
             NativeId::Values => Some(1),
             NativeId::Entries => Some(1),
+            NativeId::FromEntries => Some(1),
             NativeId::HasKey => Some(2),
             NativeId::Delete => Some(2),
             NativeId::Merge => Some(2),
@@ -162,6 +177,15 @@ impl NativeId {
             NativeId::HtmlEscape => Some(1),
             NativeId::HtmlUnescape => Some(1),
             NativeId::SanitizeHtml => Some(1),
+            // Regex functions
+            NativeId::RegexMatch => Some(2),
+            NativeId::RegexFind => Some(2),
+            NativeId::RegexFindAll => Some(2),
+            NativeId::RegexReplace => Some(3),
+            NativeId::RegexReplaceAll => Some(3),
+            NativeId::RegexSplit => Some(2),
+            NativeId::RegexCapture => Some(2),
+            NativeId::RegexEscape => Some(1),
         }
     }
 }
@@ -546,6 +570,12 @@ impl VM {
                     .unwrap_or_default();
                 Ok(VMValue::Float(duration.as_secs_f64()))
             }
+            NativeId::Clock => {
+                let duration = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default();
+                Ok(VMValue::Float(duration.as_secs_f64()))
+            }
             NativeId::Keys => {
                 if let VMValue::Hash(hash) = &args[0] {
                     let keys: Vec<VMValue> = hash.borrow().iter().map(|(k, _)| k.clone()).collect();
@@ -576,6 +606,46 @@ impl VM {
                 } else {
                     Err(RuntimeError::new(
                         "entries requires a hash",
+                        Span::default(),
+                    ))
+                }
+            }
+            NativeId::FromEntries => {
+                if let VMValue::Array(arr) = &args[0] {
+                    let mut result: Vec<(VMValue, VMValue)> = Vec::new();
+                    for entry in arr.borrow().iter() {
+                        if let VMValue::Array(pair) = entry {
+                            let borrowed = pair.borrow();
+                            if borrowed.len() != 2 {
+                                return Err(RuntimeError::new(
+                                    "from_entries expects array of [key, value] pairs",
+                                    Span::default(),
+                                ));
+                            }
+                            let key = &borrowed[0];
+                            // Update existing key or add new one
+                            let mut found = false;
+                            for (k, v) in result.iter_mut() {
+                                if k == key {
+                                    *v = borrowed[1].clone();
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if !found {
+                                result.push((key.clone(), borrowed[1].clone()));
+                            }
+                        } else {
+                            return Err(RuntimeError::new(
+                                "from_entries expects array of [key, value] pairs",
+                                Span::default(),
+                            ));
+                        }
+                    }
+                    Ok(VMValue::Hash(Rc::new(RefCell::new(result))))
+                } else {
+                    Err(RuntimeError::new(
+                        "from_entries requires an array",
                         Span::default(),
                     ))
                 }
@@ -1276,6 +1346,200 @@ impl VM {
                 }
                 Ok(VMValue::String(Rc::new(result)))
             }
+            // Regex functions
+            NativeId::RegexMatch => match (&args[0], &args[1]) {
+                (VMValue::String(pattern), VMValue::String(s)) => match Regex::new(pattern) {
+                    Ok(re) => Ok(VMValue::Bool(re.is_match(s))),
+                    Err(e) => Err(RuntimeError::new(
+                        format!("Invalid regex pattern: {}", e),
+                        Span::default(),
+                    )),
+                },
+                _ => Err(RuntimeError::new(
+                    "regex_match requires (string, string)",
+                    Span::default(),
+                )),
+            },
+            NativeId::RegexFind => match (&args[0], &args[1]) {
+                (VMValue::String(pattern), VMValue::String(s)) => match Regex::new(pattern) {
+                    Ok(re) => {
+                        if let Some(m) = re.find(s) {
+                            let matches: Vec<(VMValue, VMValue)> = vec![
+                                (
+                                    VMValue::String(Rc::new("match".to_string())),
+                                    VMValue::String(Rc::new(m.as_str().to_string())),
+                                ),
+                                (
+                                    VMValue::String(Rc::new("start".to_string())),
+                                    VMValue::Int(m.start() as i64),
+                                ),
+                                (
+                                    VMValue::String(Rc::new("end".to_string())),
+                                    VMValue::Int(m.end() as i64),
+                                ),
+                            ];
+                            Ok(VMValue::Hash(Rc::new(RefCell::new(matches))))
+                        } else {
+                            Ok(VMValue::Null)
+                        }
+                    }
+                    Err(e) => Err(RuntimeError::new(
+                        format!("Invalid regex pattern: {}", e),
+                        Span::default(),
+                    )),
+                },
+                _ => Err(RuntimeError::new(
+                    "regex_find requires (string, string)",
+                    Span::default(),
+                )),
+            },
+            NativeId::RegexFindAll => match (&args[0], &args[1]) {
+                (VMValue::String(pattern), VMValue::String(s)) => match Regex::new(pattern) {
+                    Ok(re) => {
+                        let matches: Vec<VMValue> = re
+                            .find_iter(s)
+                            .map(|m| {
+                                let match_hash: Vec<(VMValue, VMValue)> = vec![
+                                    (
+                                        VMValue::String(Rc::new("match".to_string())),
+                                        VMValue::String(Rc::new(m.as_str().to_string())),
+                                    ),
+                                    (
+                                        VMValue::String(Rc::new("start".to_string())),
+                                        VMValue::Int(m.start() as i64),
+                                    ),
+                                    (
+                                        VMValue::String(Rc::new("end".to_string())),
+                                        VMValue::Int(m.end() as i64),
+                                    ),
+                                ];
+                                VMValue::Hash(Rc::new(RefCell::new(match_hash)))
+                            })
+                            .collect();
+                        Ok(VMValue::Array(Rc::new(RefCell::new(matches))))
+                    }
+                    Err(e) => Err(RuntimeError::new(
+                        format!("Invalid regex pattern: {}", e),
+                        Span::default(),
+                    )),
+                },
+                _ => Err(RuntimeError::new(
+                    "regex_find_all requires (string, string)",
+                    Span::default(),
+                )),
+            },
+            NativeId::RegexReplace => match (&args[0], &args[1], &args[2]) {
+                (VMValue::String(pattern), VMValue::String(s), VMValue::String(replacement)) => {
+                    match Regex::new(pattern) {
+                        Ok(re) => {
+                            let result = re.replace(s, replacement.as_str());
+                            Ok(VMValue::String(Rc::new(result.to_string())))
+                        }
+                        Err(e) => Err(RuntimeError::new(
+                            format!("Invalid regex pattern: {}", e),
+                            Span::default(),
+                        )),
+                    }
+                }
+                _ => Err(RuntimeError::new(
+                    "regex_replace requires (string, string, string)",
+                    Span::default(),
+                )),
+            },
+            NativeId::RegexReplaceAll => match (&args[0], &args[1], &args[2]) {
+                (VMValue::String(pattern), VMValue::String(s), VMValue::String(replacement)) => {
+                    match Regex::new(pattern) {
+                        Ok(re) => {
+                            let result = re.replace_all(s, replacement.as_str());
+                            Ok(VMValue::String(Rc::new(result.to_string())))
+                        }
+                        Err(e) => Err(RuntimeError::new(
+                            format!("Invalid regex pattern: {}", e),
+                            Span::default(),
+                        )),
+                    }
+                }
+                _ => Err(RuntimeError::new(
+                    "regex_replace_all requires (string, string, string)",
+                    Span::default(),
+                )),
+            },
+            NativeId::RegexSplit => match (&args[0], &args[1]) {
+                (VMValue::String(pattern), VMValue::String(s)) => match Regex::new(pattern) {
+                    Ok(re) => {
+                        let parts: Vec<VMValue> = re
+                            .split(s)
+                            .map(|p| VMValue::String(Rc::new(p.to_string())))
+                            .collect();
+                        Ok(VMValue::Array(Rc::new(RefCell::new(parts))))
+                    }
+                    Err(e) => Err(RuntimeError::new(
+                        format!("Invalid regex pattern: {}", e),
+                        Span::default(),
+                    )),
+                },
+                _ => Err(RuntimeError::new(
+                    "regex_split requires (string, string)",
+                    Span::default(),
+                )),
+            },
+            NativeId::RegexCapture => match (&args[0], &args[1]) {
+                (VMValue::String(pattern), VMValue::String(s)) => match Regex::new(pattern) {
+                    Ok(re) => {
+                        if let Some(caps) = re.captures(s) {
+                            let mut result: Vec<(VMValue, VMValue)> = vec![
+                                (
+                                    VMValue::String(Rc::new("match".to_string())),
+                                    VMValue::String(Rc::new(
+                                        caps.get(0)
+                                            .map(|m| m.as_str().to_string())
+                                            .unwrap_or_default(),
+                                    )),
+                                ),
+                                (
+                                    VMValue::String(Rc::new("start".to_string())),
+                                    VMValue::Int(
+                                        caps.get(0).map(|m| m.start() as i64).unwrap_or(-1),
+                                    ),
+                                ),
+                                (
+                                    VMValue::String(Rc::new("end".to_string())),
+                                    VMValue::Int(caps.get(0).map(|m| m.end() as i64).unwrap_or(-1)),
+                                ),
+                            ];
+                            for name in re.capture_names().flatten() {
+                                if let Some(cap) = caps.name(name) {
+                                    result.push((
+                                        VMValue::String(Rc::new(name.to_string())),
+                                        VMValue::String(Rc::new(cap.as_str().to_string())),
+                                    ));
+                                }
+                            }
+                            Ok(VMValue::Hash(Rc::new(RefCell::new(result))))
+                        } else {
+                            Ok(VMValue::Null)
+                        }
+                    }
+                    Err(e) => Err(RuntimeError::new(
+                        format!("Invalid regex pattern: {}", e),
+                        Span::default(),
+                    )),
+                },
+                _ => Err(RuntimeError::new(
+                    "regex_capture requires (string, string)",
+                    Span::default(),
+                )),
+            },
+            NativeId::RegexEscape => match &args[0] {
+                VMValue::String(s) => {
+                    let escaped = regex::escape(s);
+                    Ok(VMValue::String(Rc::new(escaped)))
+                }
+                _ => Err(RuntimeError::new(
+                    "regex_escape requires (string)",
+                    Span::default(),
+                )),
+            },
         }
     }
 

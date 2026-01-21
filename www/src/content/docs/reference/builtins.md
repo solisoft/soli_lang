@@ -1730,6 +1730,242 @@ Always use these functions when rendering user-generated content:
 
 ---
 
+## Regex Functions
+
+Soli provides built-in functions for working with regular expressions using Rust's `regex` crate.
+
+### regex_match
+
+Checks if a string matches a regex pattern.
+
+```rust
+regex_match(pattern, string)
+```
+
+**Parameters:**
+- `pattern`: Regex pattern as `String`
+- `string`: String to test as `String`
+
+**Returns:** `Bool` - `true` if the string matches the pattern
+
+```rust
+regex_match(r"\d+", "123");      // true
+regex_match(r"^[a-z]+$", "abc"); // true
+regex_match(r"\d+", "abc");      // false
+```
+
+### regex_find
+
+Finds the first match of a regex pattern in a string.
+
+```rust
+regex_find(pattern, string)
+```
+
+**Parameters:**
+- `pattern`: Regex pattern as `String`
+- `string`: String to search as `String`
+
+**Returns:** `Hash|null` - Hash with match details, or `null` if no match:
+- `match`: The matched string
+- `start`: Start index (Int)
+- `end`: End index (Int)
+
+```rust
+let result = regex_find(r"\d+", "abc123def456");
+print(result["match"]); // "123"
+print(result["start"]); // 3
+print(result["end"]);   // 6
+
+let no_match = regex_find(r"\d+", "abcdef");
+print(no_match); // null
+```
+
+### regex_find_all
+
+Finds all matches of a regex pattern in a string.
+
+```rust
+regex_find_all(pattern, string)
+```
+
+**Parameters:**
+- `pattern`: Regex pattern as `String`
+- `string`: String to search as `String`
+
+**Returns:** `Array` - Array of match hashes, each containing `match`, `start`, and `end`
+
+```rust
+let results = regex_find_all(r"\d+", "abc123def456ghi789");
+for result in results {
+    print("Found:", result["match"], "at", result["start"]);
+}
+// Found: 123 at 3
+// Found: 456 at 9
+// Found: 789 at 15
+```
+
+### regex_replace
+
+Replaces the first match of a regex pattern.
+
+```rust
+regex_replace(pattern, string, replacement)
+```
+
+**Parameters:**
+- `pattern`: Regex pattern as `String`
+- `string`: String to search as `String`
+- `replacement`: Replacement string as `String`
+
+**Returns:** `String` - String with first match replaced
+
+```rust
+let result = regex_replace(r"\d+", "price: 123 dollars", "XXX");
+print(result); // "price: XXX dollars"
+```
+
+### regex_replace_all
+
+Replaces all matches of a regex pattern.
+
+```rust
+regex_replace_all(pattern, string, replacement)
+```
+
+**Parameters:**
+- `pattern`: Regex pattern as `String`
+- `string`: String to search as `String`
+- `replacement`: Replacement string as `String`
+
+**Returns:** `String` - String with all matches replaced
+
+```rust
+let result = regex_replace_all(r"\d+", "abc123def456ghi789", "NUM");
+print(result); // "abcNUMdefNUMghiNUM"
+```
+
+### regex_split
+
+Splits a string by a regex pattern.
+
+```rust
+regex_split(pattern, string)
+```
+
+**Parameters:**
+- `pattern`: Regex pattern as `String`
+- `string`: String to split as `String`
+
+**Returns:** `Array` - Array of string parts
+
+```rust
+let parts = regex_split(r"\s+", "hello   world  test");
+print(parts); // ["hello", "world", "test"]
+
+let csv = regex_split(r"[,\s]+", "a,b,c   d,e");
+print(csv); // ["a", "b", "c", "d", "e"]
+```
+
+### regex_capture
+
+Finds the first match with named capture groups.
+
+```rust
+regex_capture(pattern, string)
+```
+
+**Parameters:**
+- `pattern`: Regex pattern with optional named groups as `String`
+- `string`: String to search as `String`
+
+**Returns:** `Hash|null` - Hash with match details and named captures
+
+```rust
+let result = regex_capture(r"(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})", "Date: 2024-01-21");
+print(result["match"]);  // "2024-01-21"
+print(result["year"]);   // "2024"
+print(result["month"]);  // "01"
+print(result["day"]);    // "21"
+print(result["start"]);  // 6
+print(result["end"]);    // 16
+```
+
+### regex_escape
+
+Escapes special regex characters in a string.
+
+```rust
+regex_escape(string)
+```
+
+**Parameters:** `String` - String to escape
+
+**Returns:** `String` - String with regex special characters escaped
+
+```rust
+let pattern = regex_escape("file.txt");
+print(pattern); // "file\\.txt"
+
+let result = regex_match(pattern, "file.txt");
+print(result); // true
+```
+
+### Regex Examples
+
+Complete examples demonstrating regex usage:
+
+```rust
+// Email validation
+fn is_valid_email(email: String) -> Bool {
+    return regex_match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email);
+}
+
+print(is_valid_email("user@example.com")); // true
+print(is_valid_email("invalid"));          // false
+
+// Extract all URLs from text
+fn extract_urls(text: String) -> Array {
+    let results = regex_find_all(r"https?://[^\s<>\"]+", text);
+    let urls = [];
+    for r in results {
+        push(urls, r["match"]);
+    }
+    return urls;
+}
+
+let text = "Visit https://example.com and http://test.org today";
+let urls = extract_urls(text);
+print(urls); // ["https://example.com", "http://test.org"]
+
+// Phone number formatting
+fn format_phone(phone: String) -> String {
+    let digits = regex_replace(r"\D+", phone, "");
+    if len(digits) == 10 {
+        return regex_replace(r"(\d{3})(\d{3})(\d{4})", digits, "$1-$2-$3");
+    }
+    return phone;
+}
+
+print(format_phone("5551234567"));   // "555-123-4567"
+print(format_phone("555-123-4567")); // "555-123-4567"
+```
+
+:::tip[Regex Syntax]
+Soli uses Rust's regex syntax, which supports:
+- `.` - Any character
+- `\d` - Digits, `\D` - Non-digits
+- `\w` - Word chars, `\W` - Non-word chars
+- `\s` - Whitespace, `\S` - Non-whitespace
+- `*`, `+`, `?` - Quantifiers
+- `[abc]`, `[^abc]` - Character classes
+- `^`, `$` - Anchors
+- `()` - Groups, `(?<name>...)` - Named groups
+- `|` - Alternation
+:::
+
+---
+
 ## Summary Table
 ---
 

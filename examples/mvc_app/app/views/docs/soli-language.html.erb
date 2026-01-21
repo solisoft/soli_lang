@@ -1,0 +1,598 @@
+<h1>Soli Language Reference</h1>
+
+<p class="lead text-xl text-gray-300 mb-8">A comprehensive reference to the <strong>Soli programming language</strong>, covering syntax, types, control flow, functions, classes, and more.</p>
+
+<div class="callout callout-info">
+    <strong>What you'll learn:</strong> This guide provides complete documentation of the Soli language, from basic syntax to advanced features like pattern matching and the pipeline operator.
+</div>
+
+<h2>Table of Contents</h2>
+
+<nav class="not-prose my-6">
+    <ul class="space-y-2">
+        <li><a href="#introduction" class="text-indigo-400 hover:text-indigo-300">1. Introduction</a></li>
+        <li><a href="#variables--types" class="text-indigo-400 hover:text-indigo-300">2. Variables & Types</a></li>
+        <li><a href="#operators" class="text-indigo-400 hover:text-indigo-300">3. Operators</a></li>
+        <li><a href="#control-flow" class="text-indigo-400 hover:text-indigo-300">4. Control Flow</a></li>
+        <li><a href="#functions" class="text-indigo-400 hover:text-indigo-300">5. Functions</a></li>
+        <li><a href="#arrays" class="text-indigo-400 hover:text-indigo-300">6. Arrays</a></li>
+        <li><a href="#hashes" class="text-indigo-400 hover:text-indigo-300">7. Hashes</a></li>
+        <li><a href="#classes--oop" class="text-indigo-400 hover:text-indigo-300">8. Classes & OOP</a></li>
+        <li><a href="#pattern-matching" class="text-indigo-400 hover:text-indigo-300">9. Pattern Matching</a></li>
+        <li><a href="#pipeline-operator" class="text-indigo-400 hover:text-indigo-300">10. Pipeline Operator</a></li>
+        <li><a href="#modules" class="text-indigo-400 hover:text-indigo-300">11. Modules</a></li>
+        <li><a href="#built-in-functions" class="text-indigo-400 hover:text-indigo-300">12. Built-in Functions</a></li>
+    </ul>
+</nav>
+
+<div class="not-prose grid grid-cols-1 md:grid-cols-2 gap-4 my-8">
+    <a href="#introduction" class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+        <h4 class="text-white font-semibold mb-2 flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400 group-hover:text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Introduction
+        </h4>
+        <p class="text-sm text-gray-400 m-0">Learn about Soli's key features, design philosophy, and hello world example.</p>
+    </a>
+    <a href="#variables--types" class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+        <h4 class="text-white font-semibold mb-2 flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400 group-hover:text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+            </svg>
+            Variables & Types
+        </h4>
+        <p class="text-sm text-gray-400 m-0">Static typing with inference, primitive types, arrays, and hashes.</p>
+    </a>
+    <a href="#functions" class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+        <h4 class="text-white font-semibold mb-2 flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400 group-hover:text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+            Functions
+        </h4>
+        <p class="text-sm text-gray-400 m-0">Defining functions, recursion, higher-order functions, and pipelines.</p>
+    </a>
+    <a href="#classes--oop" class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+        <h4 class="text-white font-semibold mb-2 flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400 group-hover:text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+            </svg>
+            Classes & OOP
+        </h4>
+        <p class="text-sm text-gray-400 m-0">Classes, inheritance, interfaces, visibility modifiers, and static members.</p>
+    </a>
+</div>
+
+<h2 id="introduction">1. Introduction</h2>
+
+<p>Soli is a modern, statically-typed programming language designed for clarity and expressiveness. It combines object-oriented programming with functional concepts like the pipeline operator.</p>
+
+<h3>Key Features</h3>
+
+<ul>
+    <li><strong>Static Typing with Inference</strong>: Type safety without verbose annotations</li>
+    <li><strong>Pipeline Operator</strong>: Chain function calls for readable data transformation</li>
+    <li><strong>Object-Oriented Programming</strong>: Classes, inheritance, and interfaces</li>
+    <li><strong>Pattern Matching</strong>: Powerful destructuring and matching capabilities</li>
+</ul>
+
+<h3>Hello World</h3>
+
+<pre><code class="language-soli">print("Hello, World!");</code></pre>
+
+<h2 id="variables--types">2. Variables & Types</h2>
+
+<h3>Variable Declaration</h3>
+
+<pre><code class="language-soli">let name = "Alice";
+let age = 30;
+let temperature = 98.6;
+
+// With type annotations
+let name: String = "Alice";
+let age: Int = 30;
+let temperature: Float = 98.6;</code></pre>
+
+<h3>Primitive Types</h3>
+
+<div class="not-prose grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 my-6">
+    <div class="p-4 rounded-xl bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/20">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="px-2 py-1 rounded-md bg-blue-500/20 text-blue-400 font-mono font-semibold text-sm">Int</span>
+        </div>
+        <p class="text-sm text-gray-400 mb-2">64-bit signed integer</p>
+        <code class="text-xs text-gray-500">42, -100, 9_000_000</code>
+    </div>
+    <div class="p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/20">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400 font-mono font-semibold text-sm">Float</span>
+        </div>
+        <p class="text-sm text-gray-400 mb-2">64-bit floating-point</p>
+        <code class="text-xs text-gray-500">3.14159, 0.001, 2.5e10</code>
+    </div>
+    <div class="p-4 rounded-xl bg-gradient-to-br from-amber-500/10 to-amber-600/5 border border-amber-500/20">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="px-2 py-1 rounded-md bg-amber-500/20 text-amber-400 font-mono font-semibold text-sm">String</span>
+        </div>
+        <p class="text-sm text-gray-400 mb-2">UTF-8 string</p>
+        <code class="text-xs text-gray-500">"Hello", "Line 1\nLine 2"</code>
+    </div>
+    <div class="p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/20">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="px-2 py-1 rounded-md bg-purple-500/20 text-purple-400 font-mono font-semibold text-sm">Bool</span>
+        </div>
+        <p class="text-sm text-gray-400 mb-2">Boolean value</p>
+        <code class="text-xs text-gray-500">true, false</code>
+    </div>
+    <div class="p-4 rounded-xl bg-gradient-to-br from-gray-500/10 to-gray-600/5 border border-gray-500/20">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="px-2 py-1 rounded-md bg-gray-500/20 text-gray-400 font-mono font-semibold text-sm">Null</span>
+        </div>
+        <p class="text-sm text-gray-400 mb-2">Absence of value</p>
+        <code class="text-xs text-gray-500">null</code>
+    </div>
+</div>
+
+<h3>Arrays</h3>
+
+<pre><code class="language-soli">let numbers: Int[] = [1, 2, 3, 4, 5];
+let names = ["Alice", "Bob", "Charlie"];
+
+// Access elements
+print(numbers[0]);  // 1
+print(names[2]);    // "Charlie"
+
+// Negative indices
+print(numbers[-1]);  // Last element</code></pre>
+
+<h3>Hashes</h3>
+
+<pre><code class="language-soli">let person = {
+    "name": "Alice",
+    "age": 30,
+    "city": "New York"
+};
+
+// Access
+print(person["name"]);  // "Alice"
+
+// Modify
+person["age"] = 31;
+
+// Missing keys return null
+print(person["email"]);  // null</code></pre>
+
+<h2 id="control-flow">3. Control Flow</h2>
+
+<h3>If/Else</h3>
+
+<pre><code class="language-soli">let age = 18;
+
+if (age >= 18) {
+    print("Adult");
+} else if (age >= 13) {
+    print("Teenager");
+} else {
+    print("Child");
+}</code></pre>
+
+<h3>While Loop</h3>
+
+<pre><code class="language-soli">let i = 0;
+while (i < 5) {
+    print(i);
+    i = i + 1;
+}
+// Output: 0, 1, 2, 3, 4</code></pre>
+
+<h3>For Loop</h3>
+
+<pre><code class="language-soli">let fruits = ["apple", "banana", "cherry"];
+
+for (fruit in fruits) {
+    print(fruit);
+}
+
+// With range
+for (i in range(0, 5)) {
+    print(i);
+}</code></pre>
+
+<h2 id="functions">4. Functions</h2>
+
+<pre><code class="language-soli">// Basic function
+fn add(a: Int, b: Int) -> Int {
+    return a + b;
+}
+
+// Recursive function
+fn factorial(n: Int) -> Int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+// Higher-order function
+fn apply(x: Int, f: (Int) -> Int) -> Int {
+    return f(x);
+}
+
+fn double(x: Int) -> Int {
+    return x * 2;
+}
+
+let result = apply(5, double);  // 10</code></pre>
+
+<h2 id="classes--oop">5. Classes & OOP</h2>
+
+<h3>Basic Class</h3>
+
+<pre><code class="language-soli">class Person {
+    name: String;
+    age: Int;
+
+    new(name: String, age: Int) {
+        this.name = name;
+        this.age = age;
+    }
+
+    fn greet() -> String {
+        return "Hello, I'm " + this.name;
+    }
+}
+
+let person = new Person("Alice", 30);
+print(person.greet());</code></pre>
+
+<h3>Inheritance</h3>
+
+<pre><code class="language-soli">class Animal {
+    name: String;
+
+    new(name: String) {
+        this.name = name;
+    }
+
+    fn speak() -> String {
+        return this.name + " makes a sound";
+    }
+}
+
+class Dog extends Animal {
+    breed: String;
+
+    new(name: String, breed: String) {
+        this.name = name;
+        this.breed = breed;
+    }
+
+    fn speak() -> String {
+        return this.name + " barks!";
+    }
+}</code></pre>
+
+<h3>Interfaces</h3>
+
+<pre><code class="language-soli">interface Drawable {
+    fn draw() -> String;
+}
+
+class Circle implements Drawable {
+    radius: Float;
+
+    new(r: Float) {
+        this.radius = r;
+    }
+
+    fn draw() -> String {
+        return "Circle with radius " + str(this.radius);
+    }
+}</code></pre>
+
+<h2 id="pipeline-operator">6. Pipeline Operator</h2>
+
+<p>The pipeline operator <code>|></code> chains function calls in a readable, left-to-right manner:</p>
+
+<pre><code class="language-soli">fn double(x: Int) -> Int { return x * 2; }
+fn addOne(x: Int) -> Int { return x + 1; }
+fn square(x: Int) -> Int { return x * x; }
+
+let result = 5 |> double() |> addOne() |> square();
+print(result);  // 121</code></pre>
+
+<h2 id="pattern-matching">7. Pattern Matching</h2>
+
+<pre><code class="language-soli">let x = 42;
+let result = match x {
+    42 => "the answer",
+    _ => "something else",
+};
+
+// Array patterns
+let numbers = [1, 2, 3];
+match numbers {
+    [] => "empty array",
+    [first] => "single element: " + str(first),
+    [first, ...rest] => "first: " + str(first),
+};
+
+// Hash patterns
+let user = {"name": "Alice", "age": 30};
+match user {
+    {name: n, age: a} => n + " is " + str(a) + " years old",
+    _ => "unknown",
+};</code></pre>
+
+<h2 id="modules">8. Modules</h2>
+
+<pre><code class="language-soli">// math.soli
+export fn add(a: Int, b: Int) -> Int {
+    return a + b;
+}
+
+// main.soli
+import { add } from "./math.soli";
+let sum = add(2, 3);</code></pre>
+
+<h2 id="built-in-functions">9. Built-in Functions</h2>
+
+<p>Soli provides a comprehensive set of built-in functions for common operations. These functions are available in every Soli program without importing anything.</p>
+
+<h3>I/O Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">print</h4>
+        <p class="text-sm text-gray-400 mb-3">Print values to stdout</p>
+        <pre><code class="language-soli text-sm">print("Hello");
+print(1, 2, 3);</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">input</h4>
+        <p class="text-sm text-gray-400 mb-3">Read line from stdin</p>
+        <pre><code class="language-soli text-sm">let name = input("Name: ");</code></pre>
+    </div>
+</div>
+
+<h3>Type Conversion</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">str / int / float</h4>
+        <p class="text-sm text-gray-400 mb-3">Convert between types</p>
+        <pre><code class="language-soli text-sm">str(42);      // "42"
+int("123");   // 123
+float("3.14"); // 3.14</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">type</h4>
+        <p class="text-sm text-gray-400 mb-3">Get type name as string</p>
+        <pre><code class="language-soli text-sm">type(42);         // "Int"
+type("hello");    // "String"
+type([1, 2]);     // "Array"</code></pre>
+    </div>
+</div>
+
+<h3>Array Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">len / push / pop</h4>
+        <p class="text-sm text-gray-400 mb-3">Array manipulation</p>
+        <pre><code class="language-soli text-sm">let arr = [1, 2, 3];
+len(arr);        // 3
+push(arr, 4);    // [1, 2, 3, 4]
+pop(arr);        // 4, arr is [1, 2, 3]</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">range / map / filter</h4>
+        <p class="text-sm text-gray-400 mb-3">Create and transform arrays</p>
+        <pre><code class="language-soli text-sm">range(0, 5);     // [0, 1, 2, 3, 4]
+[1, 2, 3].map(fn(x) x * 2);  // [2, 4, 6]
+[1, 2, 3, 4].filter(fn(x) x > 2);  // [3, 4]</code></pre>
+    </div>
+</div>
+
+<h3>Hash Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">keys / values / entries</h4>
+        <p class="text-sm text-gray-400 mb-3">Get hash data</p>
+        <pre><code class="language-soli text-sm">let h = {"a": 1, "b": 2};
+keys(h);     // [a, b]
+values(h);   // [1, 2]
+entries(h);  // [[a, 1], [b, 2]]</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">has_key / delete / merge</h4>
+        <p class="text-sm text-gray-400 mb-3">Modify hashes</p>
+        <pre><code class="language-soli text-sm">has_key(h, "a");     // true
+delete(h, "a");      // removes "a"
+merge(h1, h2);       // combine hashes</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">from_entries</h4>
+        <p class="text-sm text-gray-400 mb-3">Create hash from array of [key, value] pairs (reverse of entries)</p>
+        <pre><code class="language-soli text-sm">let pairs = [["a", 1], ["b", 2]];
+from_entries(pairs);  // {"a": 1, "b": 2}
+
+// Round-trip: entries -> from_entries
+let h = {"x": 10, "y": 20};
+from_entries(entries(h));  // {"x": 10, "y": 20}</code></pre>
+    </div>
+</div>
+
+<h3>Math Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">abs</h4>
+        <pre><code class="language-soli text-sm">abs(-5)  // 5</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">min / max</h4>
+        <pre><code class="language-soli text-sm">min(3, 7)   // 3
+max(3, 7)   // 7</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">sqrt / pow</h4>
+        <pre><code class="language-soli text-sm">sqrt(16)    // 4.0
+pow(2, 3)   // 8</code></pre>
+    </div>
+</div>
+
+<h3>Regex Functions</h3>
+
+<p class="mb-4 text-gray-400">Powerful pattern matching and text manipulation:</p>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">Match & Find</h4>
+        <pre><code class="language-soli text-sm">// Check if matches
+regex_match(r"\d+", "123");  // true
+
+// Find first match
+let m = regex_find(r"\d+", "abc123def");
+m["match"];  // "123"
+
+// Find all matches
+regex_find_all(r"\d+", "a1b2c3");  // [[match:1], [match:2], [match:3]]</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">Replace & Split</h4>
+        <pre><code class="language-soli text-sm">// Replace
+regex_replace(r"\d+", "a1b2", "X");  // "aXb2"
+regex_replace_all(r"\d+", "a1b2", "X");  // "aXbX"
+
+// Split
+regex_split(r"\s+", "a b  c");  // [a, b, c]
+
+// Capture groups
+regex_capture(r"(?<y>\d{4})-(?<m>\d{2})", "2024-01");
+// {match: "2024-01", y: "2024", m: "01"}</code></pre>
+    </div>
+</div>
+
+<h3>File I/O</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">barf - Write File</h4>
+        <pre><code class="language-soli text-sm">// Write text
+barf("hello.txt", "Hello World!");
+
+// Write binary
+barf("data.bin", [72, 101, 108, 108, 111]);</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">slurp - Read File</h4>
+        <pre><code class="language-soli text-sm">// Read text (default)
+let text = slurp("hello.txt");
+
+// Read binary
+let bytes = slurp("data.bin", "binary");</code></pre>
+    </div>
+</div>
+
+<h3>Cryptographic Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">argon2_hash</h4>
+        <p class="text-sm text-gray-400 mb-3">Hash password with Argon2id</p>
+        <pre><code class="language-soli text-sm">let hash = argon2_hash("mypassword");
+// $argon2id$v=19$m=19456,t=2,p=1$...</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">argon2_verify</h4>
+        <p class="text-sm text-gray-400 mb-3">Verify password against hash</p>
+        <pre><code class="language-soli text-sm">let valid = argon2_verify("mypassword", hash);  // true
+let invalid = argon2_verify("wrong", hash);      // false</code></pre>
+    </div>
+</div>
+
+<h3>HTTP Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">GET Requests</h4>
+        <pre><code class="language-soli text-sm">// Simple GET
+let html = http_get("https://example.com");
+
+// GET and parse JSON
+let data = http_get_json("https://api.example.com/users");</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">POST Requests</h4>
+        <pre><code class="language-soli text-sm">// POST with body
+http_post("https://api.example.com/data", "hello");
+
+// POST JSON
+http_post_json("https://api.example.com/users", {"name": "Alice"});</code></pre>
+    </div>
+</div>
+
+<h3>HTML Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">html_escape</h4>
+        <pre><code class="language-soli text-sm">html_escape("&lt;script&gt;")  // "&amp;lt;script&amp;gt;"</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">html_unescape</h4>
+        <pre><code class="language-soli text-sm">html_unescape("&amp;lt;div&amp;gt;")  // "&lt;div&gt;"</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">sanitize_html</h4>
+        <pre><code class="language-soli text-sm">sanitize_html("&lt;script&gt;alert()&lt;/script&gt;&lt;p&gt;Hi&lt;/p&gt;")  // "&lt;p&gt;Hi&lt;/p&gt;"</code></pre>
+    </div>
+</div>
+
+<h3>JSON Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">json_parse</h4>
+        <p class="text-sm text-gray-400 mb-3">Parse JSON string to Soli value</p>
+        <pre><code class="language-soli text-sm">let data = json_parse('{"name": "Alice"}');
+print(data["name"]);  // Alice</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">json_stringify</h4>
+        <p class="text-sm text-gray-400 mb-3">Convert Soli value to JSON string</p>
+        <pre><code class="language-soli text-sm">let json = json_stringify({"name": "Bob", "age": 30});
+// {"name":"Bob","age":30}</code></pre>
+    </div>
+</div>
+
+<h3>Time & Date Functions</h3>
+
+<div class="not-prose my-6">
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-4">
+        <h4 class="text-indigo-400 font-medium mb-2">clock</h4>
+        <p class="text-sm text-gray-400 mb-3">Get current time in seconds since Unix epoch</p>
+        <pre><code class="language-soli text-sm">let start = clock();
+// ... do some work ...
+let elapsed = clock() - start;
+print("Took " + str(elapsed) + " seconds");</code></pre>
+    </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+        <h4 class="text-indigo-400 font-medium mb-2">__i18n_format_date</h4>
+        <p class="text-sm text-gray-400 mb-3">Format a Unix timestamp with locale-aware formatting</p>
+        <pre><code class="language-soli text-sm">let ts = int(clock());  // Current timestamp
+
+// Format with different locales
+__i18n_format_date(ts, "en");  // "01/21/2026" (MM/DD/YYYY)
+__i18n_format_date(ts, "fr");  // "21/01/2026" (DD/MM/YYYY)
+__i18n_format_date(ts, "de");  // "21.01.2026" (DD.MM.YYYY)
+__i18n_format_date(ts);        // "2026-01-21" (ISO format, default)</code></pre>
+    </div>
+</div>
+
+<div class="callout callout-tip">
+    <strong>Complete Documentation:</strong> For the full Soli language documentation including advanced examples, best practices, and detailed explanations, see the <a href="https://solilang.com/docs/guides/introduction" target="_blank">official Soli documentation</a>.
+</div>

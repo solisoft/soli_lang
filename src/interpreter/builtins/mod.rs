@@ -17,6 +17,7 @@ pub mod dotenv;
 pub mod env;
 pub mod http;
 pub mod model;
+pub mod regex;
 pub mod router;
 pub mod server;
 pub mod solidb;
@@ -400,6 +401,62 @@ pub fn register_builtins(env: &mut Environment) {
         )),
     );
 
+    // from_entries(array) - Create hash from array of [key, value] pairs (reverse of entries)
+    env.define(
+        "from_entries".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "from_entries",
+            Some(1),
+            |args| match &args[0] {
+                Value::Array(arr) => {
+                    let mut result: Vec<(Value, Value)> = Vec::new();
+
+                    for entry in arr.borrow().iter() {
+                        match entry {
+                            Value::Array(pair) => {
+                                let borrowed = pair.borrow();
+                                if borrowed.len() != 2 {
+                                    return Err(format!(
+                                        "from_entries expects array of [key, value] pairs, got array with {} elements",
+                                        borrowed.len()
+                                    ));
+                                }
+                                let key = &borrowed[0];
+                                if !key.is_hashable() {
+                                    return Err(format!(
+                                        "{} cannot be used as a hash key",
+                                        key.type_name()
+                                    ));
+                                }
+                                // Update existing key or add new one
+                                let mut found = false;
+                                for (k, v) in result.iter_mut() {
+                                    if k.hash_eq(key) {
+                                        *v = borrowed[1].clone();
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                                if !found {
+                                    result.push((key.clone(), borrowed[1].clone()));
+                                }
+                            }
+                            other => {
+                                return Err(format!(
+                                    "from_entries expects array of [key, value] pairs, got {}",
+                                    other.type_name()
+                                ));
+                            }
+                        }
+                    }
+
+                    Ok(Value::Hash(Rc::new(RefCell::new(result))))
+                }
+                other => Err(format!("from_entries() expects array, got {}", other.type_name())),
+            },
+        )),
+    );
+
     // clear(hash) - Remove all entries from hash (mutates)
     env.define(
         "clear".to_string(),
@@ -744,6 +801,9 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register template functions
     template::register_template_builtins(env);
+
+    // Register regex functions
+    regex::register_regex_builtins(env);
 
     // Register router functions
     router::register_router_builtins(env);

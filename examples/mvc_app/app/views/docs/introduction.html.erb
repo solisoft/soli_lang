@@ -1,32 +1,142 @@
-<h1>Introduction</h1>
-<p class="lead">The Solilang MVC Framework provides a clean, locally compiled, and organized structure for building web applications.</p>
+<h1>Introduction to Soli MVC</h1>
 
-<div class="not-prose grid gap-6 md:grid-cols-2 my-8">
-    <div class="p-6 rounded-xl bg-gray-800/50 border border-gray-700">
-        <h3 class="text-lg font-semibold text-white mb-2">Type-Safe</h3>
-        <p class="text-gray-400">Built with Solilang's type system for compile-time safety and runtime reliability.</p>
+<p class="lead text-xl text-gray-300 mb-8">Welcome to <strong>Soli MVC</strong>, a modern web framework designed for developers who value both elegance and performance. Soli combines the expressiveness of dynamic languages with the speed of compiled execution.</p>
+
+<div class="callout callout-info">
+    <strong>What you'll learn:</strong> This guide will introduce you to the MVC pattern, Soli's philosophy, and help you understand how to build applications with Soli.
+</div>
+
+<h2>What is Soli?</h2>
+
+<p>Soli is a <strong>high-performance</strong> programming language and web framework written in Rust. It features:</p>
+
+<ul>
+    <li><strong>Expressive syntax</strong> inspired by Ruby and modern languages</li>
+    <li><strong>Bytecode compilation</strong> with optional JIT for maximum performance</li>
+    <li><strong>Built-in MVC framework</strong> with convention over configuration</li>
+    <li><strong>Hot reload</strong> for rapid development without restarts</li>
+    <li><strong>WebSocket support</strong> with channels and rooms</li>
+    <li><strong>Integrated ORM</strong> for database operations</li>
+</ul>
+
+<h2>The MVC Pattern</h2>
+
+<p>Soli follows the <strong>Model-View-Controller (MVC)</strong> architectural pattern, which separates your application into three interconnected components:</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Component</th>
+            <th>Responsibility</th>
+            <th>Location</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>Model</strong></td>
+            <td>Data, business logic, and database interactions</td>
+            <td><code>app/models/</code></td>
+        </tr>
+        <tr>
+            <td><strong>View</strong></td>
+            <td>Presentation layer and HTML templates</td>
+            <td><code>app/views/</code></td>
+        </tr>
+        <tr>
+            <td><strong>Controller</strong></td>
+            <td>Request handling and coordination</td>
+            <td><code>app/controllers/</code></td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Project Structure</h2>
+
+<p>A typical Soli MVC application follows this structure:</p>
+
+<pre><code class="language-bash">my_app/
+├── app/
+│   ├── controllers/      # Request handlers
+│   │   └── home_controller.soli
+│   ├── models/           # Data models
+│   │   └── user.soli
+│   ├── views/            # HTML templates
+│   │   ├── layouts/      # Shared layouts
+│   │   │   └── application.html.erb
+│   │   └── home/
+│   │       └── index.html.erb
+│   └── middleware/       # Request interceptors
+│       └── auth.soli
+├── config/
+│   └── routes.soli       # Route definitions
+├── public/               # Static assets
+│   ├── css/
+│   └── js/
+└── package.json          # Build configuration</code></pre>
+
+<h2>Quick Example</h2>
+
+<p>Here's how the pieces fit together in a simple Soli application:</p>
+
+<h3>1. Define a Route</h3>
+
+<pre><code class="language-soli">// config/routes.soli
+get("/", "home#index");
+get("/users/:id", "users#show");</code></pre>
+
+<h3>2. Create a Controller</h3>
+
+<pre><code class="language-soli">// app/controllers/home_controller.soli
+fn index(req) {
+    let message = "Welcome to Soli!";
+
+    return render("home/index", {
+        "title": "Home",
+        "message": message
+    });
+}</code></pre>
+
+<h3>3. Build a View</h3>
+
+<pre><code class="language-html">&lt;!-- app/views/home/index.html.erb --&gt;
+&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt;
+&lt;p&gt;Start building something amazing.&lt;/p&gt;</code></pre>
+
+<h2>Design Philosophy</h2>
+
+<p>Soli is built around several core principles:</p>
+
+<div class="not-prose grid grid-cols-1 md:grid-cols-2 gap-4 my-8">
+    <div class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-colors">
+        <h4 class="text-white font-semibold mb-2">Convention Over Configuration</h4>
+        <p class="text-sm text-gray-400 m-0">Sensible defaults mean less boilerplate. Name your controller <code>users_controller.soli</code> and routes automatically map.</p>
     </div>
-    <div class="p-6 rounded-xl bg-gray-800/50 border border-gray-700">
-        <h3 class="text-lg font-semibold text-white mb-2">Hot Reload</h3>
-        <p class="text-gray-400">Instant updates during local development. Edit a file and see changes immediately.</p>
+    <div class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-colors">
+        <h4 class="text-white font-semibold mb-2">Performance First</h4>
+        <p class="text-sm text-gray-400 m-0">Bytecode compilation and optional JIT ensure your application runs at native speed. Handle 170k+ requests/sec.</p>
+    </div>
+    <div class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-colors">
+        <h4 class="text-white font-semibold mb-2">Developer Experience</h4>
+        <p class="text-sm text-gray-400 m-0">Hot reload, clear error messages, and intuitive APIs make development a joy rather than a chore.</p>
+    </div>
+    <div class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-colors">
+        <h4 class="text-white font-semibold mb-2">Batteries Included</h4>
+        <p class="text-sm text-gray-400 m-0">ORM, templating, middleware, WebSockets — everything you need is built in. No hunting for libraries.</p>
     </div>
 </div>
 
-<h2>Architecture</h2>
-<p>The MVC pattern separates your application into three main layers:</p>
+<h2>Next Steps</h2>
 
-<ul>
-    <li><strong>Model</strong>: Manages data and business logic.</li>
-    <li><strong>View</strong>: Handles presentation and HTML rendering.</li>
-    <li><strong>Controller</strong>: Orchestrates the flow between models and views.</li>
-</ul>
+<p>Ready to start building? Here's what to do next:</p>
 
-<div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-    <div class="flex items-start gap-3">
-        <div class="text-indigo-400 mt-0.5">ℹ</div>
-        <div>
-            <h4 class="text-indigo-400 font-medium text-sm">Design Philosophy</h4>
-            <p class="text-sm text-indigo-200 mt-1">Soli favors convention over configuration. By following standard naming patterns, you write less glue code and focus on building features.</p>
-        </div>
-    </div>
+<ol>
+    <li><a href="/docs/installation">Install Soli</a> on your machine</li>
+    <li>Learn about <a href="/docs/routing">Routing</a> to define your application's URLs</li>
+    <li>Master <a href="/docs/controllers">Controllers</a> to handle requests</li>
+    <li>Build beautiful interfaces with <a href="/docs/views">Views</a></li>
+    <li>Store data using <a href="/docs/models">Models & ORM</a></li>
+</ol>
+
+<div class="callout callout-tip">
+    <strong>Pro Tip:</strong> The fastest way to learn Soli is to build something. Start with a simple blog or todo app and expand from there!
 </div>
