@@ -296,8 +296,6 @@ mod datetime_inner {
 }
 
 pub fn register_datetime_builtins(env: &mut Environment) {
-    eprintln!("DEBUG: Registering datetime helper functions");
-
     // __datetime_now_local() - Get current local time as timestamp
     env.define(
         "__datetime_now_local".to_string(),

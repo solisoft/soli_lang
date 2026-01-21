@@ -15,26 +15,8 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Build CSS first
-echo -e "${GREEN}Building CSS...${NC}"
-npm run build:css
-
-# Start Tailwind watcher in background
-echo -e "${GREEN}Starting Tailwind watcher...${NC}"
-npm run watch:css &
-TAILWIND_PID=$!
-
-# Trap signals to clean up
-cleanup() {
-    echo -e "${YELLOW}Shutting down...${NC}"
-    kill $TAILWIND_PID 2>/dev/null || true
-    exit 0
-}
-trap cleanup SIGINT SIGTERM
-
-# Start Soli server
-echo -e "${GREEN}Starting Soli server...${NC}"
-soli serve . 
-
-# Kill Tailwind watcher when Soli server exits
-kill $TAILWIND_PID
+# Start Soli server in dev mode
+# Tailwind CSS compilation is now integrated - no need for separate watcher!
+echo -e "${GREEN}Starting Soli server with hot reload...${NC}"
+echo -e "${GREEN}Tailwind CSS will be compiled automatically when views change.${NC}"
+soli serve . --dev

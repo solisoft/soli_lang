@@ -261,8 +261,14 @@ pub fn serve_folder_with_options_and_mode(
     // Public directory for static files
     let public_dir = folder.join("public");
 
+    // Compile Tailwind CSS on startup (dev mode only)
+    if dev_mode {
+        compile_tailwind_css(folder);
+    }
+
     // Always use hyper-based MVC server
     run_hyper_server_worker_pool(
+        folder,
         port,
         controllers_dir,
         models_dir,
@@ -275,6 +281,48 @@ pub fn serve_folder_with_options_and_mode(
         views_dir,
         routes_file,
     )
+}
+
+/// Compile Tailwind CSS if tailwind.config.js exists in the project.
+/// Returns true if compilation was attempted.
+fn compile_tailwind_css(folder: &Path) -> bool {
+    let tailwind_config = folder.join("tailwind.config.js");
+    if !tailwind_config.exists() {
+        eprintln!("   [Tailwind] Config not found at: {}", tailwind_config.display());
+        return false;
+    }
+
+    // Check for package.json with build:css script
+    let package_json = folder.join("package.json");
+    if !package_json.exists() {
+        eprintln!("   [Tailwind] package.json not found at: {}", package_json.display());
+        return false;
+    }
+
+    println!("Compiling Tailwind CSS...");
+
+    let output = std::process::Command::new("npm")
+        .arg("run")
+        .arg("build:css")
+        .current_dir(folder)
+        .output();
+
+    match output {
+        Ok(result) => {
+            if result.status.success() {
+                println!("   ✓ Tailwind CSS compiled successfully");
+                true
+            } else {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                eprintln!("   ✗ Tailwind CSS compilation failed: {}", stderr);
+                false
+            }
+        }
+        Err(e) => {
+            eprintln!("   ✗ Failed to run npm: {}", e);
+            false
+        }
+    }
 }
 
 /// Scan for all controller files in the controllers directory.
@@ -617,6 +665,7 @@ impl WorkerSender {
 
 /// Run the MVC HTTP server with a worker pool for parallel request processing.
 fn run_hyper_server_worker_pool(
+    folder: &Path,
     port: u16,
     controllers_dir: PathBuf,
     models_dir: PathBuf,
@@ -745,6 +794,7 @@ fn run_hyper_server_worker_pool(
     let hot_reload_versions_for_watcher = hot_reload_versions.clone();
 
     // Spawn file watcher thread for hot reload
+    let watch_folder = folder.to_path_buf();
     let watch_controllers_dir = controllers_dir.clone();
     let watch_views_dir = views_dir.clone();
     let watch_middleware_dir = middleware_dir.clone();
@@ -813,6 +863,17 @@ fn run_hyper_server_worker_pool(
             track_static_recursive(&watch_public_dir, &mut file_tracker);
         }
 
+        // Track source CSS files (app/assets/css) for Tailwind
+        let assets_css_dir = watch_folder.join("app").join("assets").join("css");
+        if assets_css_dir.exists() {
+            for entry in std::fs::read_dir(&assets_css_dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.extension().map_or(false, |ext| ext == "css") {
+                    file_tracker.track(&path);
+                }
+            }
+        }
+
         println!("Hot reload: Watching {} files", file_tracker.tracked_count());
 
         loop {
@@ -829,9 +890,15 @@ fn run_hyper_server_worker_pool(
             let mut middleware_changed = false;
             let mut static_files_changed = false;
             let mut routes_changed = false;
+            let mut source_css_changed = false;
 
             for path in &changed {
                 println!("   {}", path.display());
+
+                // Check if it's a source CSS file (app/assets/css)
+                if path.starts_with(&assets_css_dir) {
+                    source_css_changed = true;
+                }
 
                 // Check if it's a static file (CSS, JS, images)
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -868,6 +935,13 @@ fn run_hyper_server_worker_pool(
             if views_changed {
                 hot_reload_versions_for_watcher.views.fetch_add(1, Ordering::Release);
                 println!("   ✓ Signaled template cache clear to all workers");
+
+                // Recompile Tailwind CSS when views change (new classes may have been added)
+                compile_tailwind_css(&watch_folder);
+            }
+            if source_css_changed {
+                // Recompile Tailwind CSS when source CSS changes
+                compile_tailwind_css(&watch_folder);
             }
             if static_files_changed {
                 hot_reload_versions_for_watcher.static_files.fetch_add(1, Ordering::Release);

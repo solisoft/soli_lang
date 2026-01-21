@@ -62,7 +62,6 @@ fn parse_datetime_string(s: &str) -> Result<i64, String> {
 }
 
 pub fn register_datetime_and_duration_classes(env: &mut Environment) {
-    eprintln!("DEBUG: Registering DateTime and Duration classes");
     // This should print during interpreter initialization
 
     // Register datetime_now function

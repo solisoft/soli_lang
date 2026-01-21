@@ -13,29 +13,42 @@ A comprehensive demonstration of the Solilang MVC Framework with scoped middlewa
 ```bash
 # Install dependencies
 npm install
-
-# Build CSS
-npm run build:css
 ```
 
 ## Quick Start
 
 ```bash
-# Start development server with hot reload
-npm run dev
+# Start development server with hot reload and automatic Tailwind CSS compilation
+soli serve . --dev
 
-# Or use the shell script directly
+# Or use the shell script
 ./dev.sh
 ```
 
 Visit [http://localhost:3000](http://localhost:3000) for the app, and [http://localhost:3000/docs](http://localhost:3000/docs) for full documentation.
 
-## Alternative: Using Soli CLI directly
+## Tailwind CSS Integration
 
-If you have Soli installed globally:
+When running in dev mode (`--dev`), Soli automatically handles Tailwind CSS:
+
+- **On startup**: Compiles Tailwind CSS automatically
+- **On view changes**: Recompiles when you edit `.erb` template files
+- **On source CSS changes**: Recompiles when files in `app/assets/css/` change
+
+No need to run a separate Tailwind watcher - just use `soli serve . --dev`!
+
+### Requirements for Tailwind integration
+
+- `tailwind.config.js` in project root
+- `package.json` with a `build:css` script
+- Node.js and npm installed
+
+### Production
+
+For production, use without the `--dev` flag:
 
 ```bash
-soli serve examples/mvc_app
+soli serve .
 ```
 
 ## Project Structure
@@ -198,7 +211,8 @@ The development server supports hot reload:
 - Edit controllers → changes apply immediately
 - Edit middleware → changes apply immediately
 - Edit routes → routes are reloaded
-- Edit templates → pages are refreshed
+- Edit templates → pages are refreshed + **Tailwind CSS recompiles automatically**
+- Edit source CSS (`app/assets/css/`) → Tailwind CSS recompiles automatically
 
 No restart needed!
 
