@@ -488,7 +488,7 @@ fn build_unified_params(
     // Add query params (override route params)
     for pair in query_params {
         // Remove existing key if present
-        all.retain(|(k, _)| k != pair.0);
+        all.retain(|(k, _)| *k != pair.0);
         all.push(pair.clone());
     }
 
@@ -497,7 +497,7 @@ fn build_unified_params(
         if let Value::Hash(hash) = json {
             for (k, v) in hash.borrow().iter() {
                 // Remove existing key if present
-                all.retain(|(key, _)| key != k);
+                all.retain(|(key, _)| *key != *k);
                 all.push((k.clone(), v.clone()));
             }
         }
@@ -509,7 +509,7 @@ fn build_unified_params(
             if let Value::Hash(hash) = form {
                 for (k, v) in hash.borrow().iter() {
                     // Remove existing key if present
-                    all.retain(|(key, _)| key != k);
+                    all.retain(|(key, _)| *key != *k);
                     all.push((k.clone(), v.clone()));
                 }
             }
