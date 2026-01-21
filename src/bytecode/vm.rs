@@ -120,6 +120,15 @@ enum NativeId {
     IsNull,
     Now,
     Clock,
+    Range,
+    Abs,
+    Min,
+    Max,
+    Floor,
+    Ceil,
+    Round,
+    Sqrt,
+    Pow,
     Keys,
     Values,
     Entries,
@@ -210,6 +219,15 @@ impl NativeId {
             NativeId::IsNull => Some(1),
             NativeId::Now => Some(0),
             NativeId::Clock => Some(0),
+            NativeId::Range => Some(2),
+            NativeId::Abs => Some(1),
+            NativeId::Min => Some(2),
+            NativeId::Max => Some(2),
+            NativeId::Floor => Some(1),
+            NativeId::Ceil => Some(1),
+            NativeId::Round => Some(1),
+            NativeId::Sqrt => Some(1),
+            NativeId::Pow => Some(2),
             NativeId::Keys => Some(1),
             NativeId::Values => Some(1),
             NativeId::Entries => Some(1),
@@ -925,6 +943,77 @@ impl VM {
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_default();
                 Ok(VMValue::Float(duration.as_secs_f64()))
+            }
+            NativeId::Range => {
+                match (&args[0], &args[1]) {
+                    (VMValue::Int(start), VMValue::Int(end)) => {
+                        let arr: Vec<VMValue> = (*start..*end).map(VMValue::Int).collect();
+                        Ok(VMValue::Array(Rc::new(RefCell::new(arr))))
+                    }
+                    _ => Err(RuntimeError::new("range() expects two integers", Span::default())),
+                }
+            }
+            NativeId::Abs => {
+                match &args[0] {
+                    VMValue::Int(n) => Ok(VMValue::Int(n.abs())),
+                    VMValue::Float(n) => Ok(VMValue::Float(n.abs())),
+                    _ => Err(RuntimeError::new("abs() expects a number", Span::default())),
+                }
+            }
+            NativeId::Min => {
+                match (&args[0], &args[1]) {
+                    (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(*a.min(b))),
+                    (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.min(*b))),
+                    (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).min(*b))),
+                    (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.min(*b as f64))),
+                    _ => Err(RuntimeError::new("min() expects two numbers", Span::default())),
+                }
+            }
+            NativeId::Max => {
+                match (&args[0], &args[1]) {
+                    (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(*a.max(b))),
+                    (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.max(*b))),
+                    (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).max(*b))),
+                    (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.max(*b as f64))),
+                    _ => Err(RuntimeError::new("max() expects two numbers", Span::default())),
+                }
+            }
+            NativeId::Floor => {
+                match &args[0] {
+                    VMValue::Int(n) => Ok(VMValue::Int(*n)),
+                    VMValue::Float(n) => Ok(VMValue::Float(n.floor())),
+                    _ => Err(RuntimeError::new("floor() expects a number", Span::default())),
+                }
+            }
+            NativeId::Ceil => {
+                match &args[0] {
+                    VMValue::Int(n) => Ok(VMValue::Int(*n)),
+                    VMValue::Float(n) => Ok(VMValue::Float(n.ceil())),
+                    _ => Err(RuntimeError::new("ceil() expects a number", Span::default())),
+                }
+            }
+            NativeId::Round => {
+                match &args[0] {
+                    VMValue::Int(n) => Ok(VMValue::Int(*n)),
+                    VMValue::Float(n) => Ok(VMValue::Float(n.round())),
+                    _ => Err(RuntimeError::new("round() expects a number", Span::default())),
+                }
+            }
+            NativeId::Sqrt => {
+                match &args[0] {
+                    VMValue::Int(n) => Ok(VMValue::Float((*n as f64).sqrt())),
+                    VMValue::Float(n) => Ok(VMValue::Float(n.sqrt())),
+                    _ => Err(RuntimeError::new("sqrt() expects a number", Span::default())),
+                }
+            }
+            NativeId::Pow => {
+                match (&args[0], &args[1]) {
+                    (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(a.pow(*b as u32))),
+                    (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.powf(*b))),
+                    (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).powf(*b))),
+                    (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.powf(*b as f64))),
+                    _ => Err(RuntimeError::new("pow() expects two numbers", Span::default())),
+                }
             }
             NativeId::Keys => {
                 if let VMValue::Hash(hash) = &args[0] {

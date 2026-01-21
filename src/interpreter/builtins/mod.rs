@@ -95,34 +95,6 @@ pub fn register_builtins(env: &mut Environment) {
         })),
     );
 
-    // range(start, end) - Create an array of integers from start to end (exclusive)
-    env.define(
-        "range".to_string(),
-        Value::NativeFunction(NativeFunction::new("range", Some(2), |args| {
-            let start = match &args[0] {
-                Value::Int(n) => *n,
-                other => {
-                    return Err(format!(
-                        "range() expects integer start, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-            let end = match &args[1] {
-                Value::Int(n) => *n,
-                other => {
-                    return Err(format!(
-                        "range() expects integer end, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let values: Vec<Value> = (start..end).map(Value::Int).collect();
-            Ok(Value::Array(Rc::new(RefCell::new(values))))
-        })),
-    );
-
     // push(array, value) - Add element to array
     env.define(
         "push".to_string(),
