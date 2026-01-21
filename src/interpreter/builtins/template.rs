@@ -96,6 +96,7 @@ fn compute_file_md5(path: &PathBuf) -> Result<String, String> {
 
 /// Inject template helper functions into the data context
 fn inject_template_helpers(data: &Value) -> Value {
+    eprintln!("[DEBUG] inject_template_helpers called");
     match data {
         Value::Hash(hash) => {
             let mut new_hash: Vec<(Value, Value)> = hash.borrow().clone();
@@ -110,6 +111,7 @@ fn inject_template_helpers(data: &Value) -> Value {
             // Add range() function if not present
             let range_key = Value::String("range".to_string());
             let has_range = hash.borrow().iter().any(|(k, _)| k.hash_eq(&range_key));
+            eprintln!("[DEBUG] has_range: {}, adding range function", has_range);
 
             if !has_range {
                 let range_func =
