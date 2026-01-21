@@ -107,6 +107,39 @@ fn inject_template_helpers(data: &Value) -> Value {
                 .iter()
                 .any(|(k, _)| k.hash_eq(&public_path_key));
 
+            // Add range() function if not present
+            let range_key = Value::String("range".to_string());
+            let has_range = hash.borrow().iter().any(|(k, _)| k.hash_eq(&range_key));
+
+            if !has_range {
+                let range_func =
+                    Value::NativeFunction(NativeFunction::new("range", Some(2), |args| {
+                        let start = match &args[0] {
+                            Value::Int(n) => *n,
+                            other => {
+                                return Err(format!(
+                                    "range() expects integer start, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let end = match &args[1] {
+                            Value::Int(n) => *n,
+                            other => {
+                                return Err(format!(
+                                    "range() expects integer end, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+
+                        let values: Vec<Value> = (start..end).map(Value::Int).collect();
+                        Ok(Value::Array(Rc::new(RefCell::new(values))))
+                    }));
+
+                new_hash.push((range_key, range_func));
+            }
+
             if !has_public_path {
                 // Create the public_path native function
                 let public_path_func =
