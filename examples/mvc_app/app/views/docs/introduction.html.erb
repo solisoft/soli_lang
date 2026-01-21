@@ -1,60 +1,88 @@
-<h1>Introduction to Soli MVC</h1>
+<div class="max-w-3xl mx-auto">
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Introduction</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Welcome to <strong>Soli MVC</strong>, a modern web framework designed for developers who value both elegance and performance. Soli combines the expressiveness of dynamic languages with the speed of compiled execution.
+        </p>
+    </div>
 
-<p class="lead text-xl text-gray-300 mb-8">Welcome to <strong>Soli MVC</strong>, a modern web framework designed for developers who value both elegance and performance. Soli combines the expressiveness of dynamic languages with the speed of compiled execution.</p>
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-blue-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-blue-400 mb-1">What you'll learn</h4>
+                <p class="text-blue-200/80 text-sm">
+                    This guide will introduce you to the MVC pattern, Soli's philosophy, and help you understand how to build applications with Soli.
+                </p>
+            </div>
+        </div>
+    </div>
 
-<div class="callout callout-info">
-    <strong>What you'll learn:</strong> This guide will introduce you to the MVC pattern, Soli's philosophy, and help you understand how to build applications with Soli.
-</div>
+    <h2 class="text-2xl font-bold text-white mb-6">What is Soli?</h2>
+    <p class="text-gray-400 mb-6">Soli is a <strong>high-performance</strong> programming language and web framework written in Rust. It features:</p>
 
-<h2>What is Soli?</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="font-semibold text-white mb-2">Expressive Syntax</h3>
+            <p class="text-sm text-gray-400">Inspired by Ruby and modern languages for maximum developer happiness.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="font-semibold text-white mb-2">Blazing Performance</h3>
+            <p class="text-sm text-gray-400">Bytecode compilation with optional JIT for near-native speed.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="font-semibold text-white mb-2">Batteries Included</h3>
+            <p class="text-sm text-gray-400">Built-in ORM, WebSockets, and hot-reload development server.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="font-semibold text-white mb-2">Type Safety</h3>
+            <p class="text-sm text-gray-400">Optional static typing allows you to catch bugs early.</p>
+        </div>
+    </div>
 
-<p>Soli is a <strong>high-performance</strong> programming language and web framework written in Rust. It features:</p>
+    <h2 class="text-2xl font-bold text-white mb-6">The MVC Pattern</h2>
+    <p class="text-gray-400 mb-6">
+        Soli follows the <strong>Model-View-Controller (MVC)</strong> architectural pattern, separating your app into three layers:
+    </p>
 
-<ul>
-    <li><strong>Expressive syntax</strong> inspired by Ruby and modern languages</li>
-    <li><strong>Bytecode compilation</strong> with optional JIT for maximum performance</li>
-    <li><strong>Built-in MVC framework</strong> with convention over configuration</li>
-    <li><strong>Hot reload</strong> for rapid development without restarts</li>
-    <li><strong>WebSocket support</strong> with channels and rooms</li>
-    <li><strong>Integrated ORM</strong> for database operations</li>
-</ul>
+    <div class="space-y-4 mb-12">
+        <div class="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-lg">M</div>
+            <div>
+                <h3 class="text-white font-semibold">Model</h3>
+                <p class="text-gray-400 text-sm mt-1">Manages data, business logic, and database interactions. Located in <code>app/models/</code>.</p>
+            </div>
+        </div>
+        <div class="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-lg">V</div>
+            <div>
+                <h3 class="text-white font-semibold">View</h3>
+                <p class="text-gray-400 text-sm mt-1">Handles the presentation layer and HTML templates. Located in <code>app/views/</code>.</p>
+            </div>
+        </div>
+        <div class="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-lg">C</div>
+            <div>
+                <h3 class="text-white font-semibold">Controller</h3>
+                <p class="text-gray-400 text-sm mt-1">Coordinates between Models and Views to handle requests. Located in <code>app/controllers/</code>.</p>
+            </div>
+        </div>
+    </div>
 
-<h2>The MVC Pattern</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Project Structure</h2>
 
-<p>Soli follows the <strong>Model-View-Controller (MVC)</strong> architectural pattern, which separates your application into three interconnected components:</p>
-
-<table>
-    <thead>
-        <tr>
-            <th>Component</th>
-            <th>Responsibility</th>
-            <th>Location</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td><strong>Model</strong></td>
-            <td>Data, business logic, and database interactions</td>
-            <td><code>app/models/</code></td>
-        </tr>
-        <tr>
-            <td><strong>View</strong></td>
-            <td>Presentation layer and HTML templates</td>
-            <td><code>app/views/</code></td>
-        </tr>
-        <tr>
-            <td><strong>Controller</strong></td>
-            <td>Request handling and coordination</td>
-            <td><code>app/controllers/</code></td>
-        </tr>
-    </tbody>
-</table>
-
-<h2>Project Structure</h2>
-
-<p>A typical Soli MVC application follows this structure:</p>
-
-<pre><code class="language-bash">my_app/
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Directory Layout</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">my_app/
 ├── app/
 │   ├── controllers/      # Request handlers
 │   │   └── home_controller.soli
@@ -73,21 +101,40 @@
 │   ├── css/
 │   └── js/
 └── package.json          # Build configuration</code></pre>
+        </div>
+    </div>
 
-<h2>Quick Example</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Quick Example</h2>
+    <p class="text-gray-400 mb-6">Here's how the pieces fit together in a simple Soli application:</p>
 
-<p>Here's how the pieces fit together in a simple Soli application:</p>
-
-<h3>1. Define a Route</h3>
-
-<pre><code class="language-soli">// config/routes.soli
-get("/", "home#index");
+    <div class="space-y-8 mb-12">
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400 text-xs font-bold">1</span>
+                Define a Route
+            </h3>
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+                    <span class="text-xs text-gray-400 font-mono">config/routes.soli</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">get("/", "home#index");
 get("/users/:id", "users#show");</code></pre>
+                </div>
+            </div>
+        </div>
 
-<h3>2. Create a Controller</h3>
-
-<pre><code class="language-soli">// app/controllers/home_controller.soli
-fn index(req) {
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/20 text-purple-400 text-xs font-bold">2</span>
+                Create a Controller
+            </h3>
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+                    <span class="text-xs text-gray-400 font-mono">app/controllers/home_controller.soli</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn index(req) {
     let message = "Welcome to Soli!";
 
     return render("home/index", {
@@ -95,48 +142,48 @@ fn index(req) {
         "message": message
     });
 }</code></pre>
+                </div>
+            </div>
+        </div>
 
-<h3>3. Build a View</h3>
-
-<pre><code class="language-html">&lt;!-- app/views/home/index.html.erb --&gt;
-&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt;
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-pink-500/20 text-pink-400 text-xs font-bold">3</span>
+                Build a View
+            </h3>
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+                    <span class="text-xs text-gray-400 font-mono">app/views/home/index.html.erb</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt;
 &lt;p&gt;Start building something amazing.&lt;/p&gt;</code></pre>
-
-<h2>Design Philosophy</h2>
-
-<p>Soli is built around several core principles:</p>
-
-<div class="not-prose grid grid-cols-1 md:grid-cols-2 gap-4 my-8">
-    <div class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-colors">
-        <h4 class="text-white font-semibold mb-2">Convention Over Configuration</h4>
-        <p class="text-sm text-gray-400 m-0">Sensible defaults mean less boilerplate. Name your controller <code>users_controller.soli</code> and routes automatically map.</p>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-colors">
-        <h4 class="text-white font-semibold mb-2">Performance First</h4>
-        <p class="text-sm text-gray-400 m-0">Bytecode compilation and optional JIT ensure your application runs at native speed. Handle 170k+ requests/sec.</p>
+
+    <div class="my-8 p-6 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-green-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
+            </svg>
+            Pro Tip
+        </h4>
+        <p class="text-green-200/80 text-sm">
+            The fastest way to learn Soli is to build something. Start with a simple blog or todo app and expand from there!
+        </p>
     </div>
-    <div class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-colors">
-        <h4 class="text-white font-semibold mb-2">Developer Experience</h4>
-        <p class="text-sm text-gray-400 m-0">Hot reload, clear error messages, and intuitive APIs make development a joy rather than a chore.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/installation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Installation &rarr;</h3>
+            <p class="text-sm text-gray-400">Get Soli running on your machine.</p>
+        </a>
+        <a href="/docs/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Routing &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn how to define your application's URLs.</p>
+        </a>
     </div>
-    <div class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-colors">
-        <h4 class="text-white font-semibold mb-2">Batteries Included</h4>
-        <p class="text-sm text-gray-400 m-0">ORM, templating, middleware, WebSockets — everything you need is built in. No hunting for libraries.</p>
-    </div>
-</div>
-
-<h2>Next Steps</h2>
-
-<p>Ready to start building? Here's what to do next:</p>
-
-<ol>
-    <li><a href="/docs/installation">Install Soli</a> on your machine</li>
-    <li>Learn about <a href="/docs/routing">Routing</a> to define your application's URLs</li>
-    <li>Master <a href="/docs/controllers">Controllers</a> to handle requests</li>
-    <li>Build beautiful interfaces with <a href="/docs/views">Views</a></li>
-    <li>Store data using <a href="/docs/models">Models & ORM</a></li>
-</ol>
-
-<div class="callout callout-tip">
-    <strong>Pro Tip:</strong> The fastest way to learn Soli is to build something. Start with a simple blog or todo app and expand from there!
 </div>

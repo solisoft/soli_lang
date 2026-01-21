@@ -144,9 +144,9 @@ fn inject_template_helpers(data: &Value) -> Value {
 
                         // Return path with query parameter
                         if path.contains('?') {
-                            Ok(Value::String(format!("{}&v={}", path, hash)))
+                            Ok(Value::String(format!("/{}&v={}", path, hash)))
                         } else {
-                            Ok(Value::String(format!("{}?v={}", path, hash)))
+                            Ok(Value::String(format!("/{}?v={}", path, hash)))
                         }
                     }));
 

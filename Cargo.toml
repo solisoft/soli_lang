@@ -40,6 +40,8 @@ crossbeam = "0.8"
 # Cryptography
 argon2 = { version = "0.5", features = ["std", "rand"] }
 md5 = "0.7"
+curve25519-dalek = "4"
+rand_core = "0.6"
 
 # Validation
 regex = "1"
@@ -47,6 +49,10 @@ chrono = { version = "0.4", features = ["std"] }
 
 # Database
 solidb-client = "0.5.0"
+
+# Daemonize (Unix only)
+daemonize = "0.5"
+nix = { version = "0.29", features = ["signal", "process"] }
 
 # JIT compilation dependencies (optional)
 cranelift = { version = "0.111", optional = true }

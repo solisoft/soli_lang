@@ -58,6 +58,16 @@ thread_local! {
     static ROUTER_CONTEXT: RefCell<Vec<RouterScope>> = RefCell::new(vec![RouterScope::default()]);
 }
 
+/// Reset router context for hot reload.
+/// Clears the context stack and reinitializes with a default scope.
+pub fn reset_router_context() {
+    ROUTER_CONTEXT.with(|ctx| {
+        let mut stack = ctx.borrow_mut();
+        stack.clear();
+        stack.push(RouterScope::default());
+    });
+}
+
 #[derive(Clone)]
 struct RouterScope {
     path_prefix: String,        // Current URL prefix (e.g. "/users/:user_id")

@@ -8,8 +8,23 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
 
+use chrono::{DateTime, Datelike, TimeZone, Timelike};
+
+// Thread-local storage for I18n locale
+thread_local! {
+    static VM_CURRENT_LOCALE: RefCell<String> = RefCell::new("en".to_string());
+}
+
+fn vm_get_locale() -> String {
+    VM_CURRENT_LOCALE.with(|l| l.borrow().clone())
+}
+
+fn vm_set_locale(locale: String) {
+    VM_CURRENT_LOCALE.with(|l| *l.borrow_mut() = locale);
+}
+
 use crate::bytecode::chunk::{
-    Closure, CompiledFunction, Constant, Upvalue, VMClass, VMInstance, VMIterator, VMValue,
+    Chunk, Closure, CompiledFunction, Constant, Upvalue, VMClass, VMInstance, VMIterator, VMValue,
 };
 use crate::bytecode::instruction::OpCode;
 use crate::error::RuntimeError;
@@ -19,6 +34,42 @@ use crate::span::Span;
 const STACK_MAX: usize = 65536;
 /// Maximum call frames.
 const FRAMES_MAX: usize = 256;
+
+/// Parse a datetime string into a Unix timestamp.
+fn parse_datetime_string(s: &str) -> Result<i64, String> {
+    let s = s.trim();
+    let datetime = if s.ends_with('Z') || s.contains("+") {
+        chrono::DateTime::parse_from_rfc3339(s).or_else(|_| chrono::DateTime::parse_from_rfc2822(s))
+    } else {
+        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+            .map(|nd| {
+                chrono::DateTime::from_naive_utc_and_offset(
+                    nd,
+                    chrono::FixedOffset::east_opt(0).unwrap(),
+                )
+            })
+            .or_else(|_| {
+                chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").map(|d| {
+                    chrono::DateTime::from_naive_utc_and_offset(
+                        d.and_hms_opt(0, 0, 0).unwrap(),
+                        chrono::FixedOffset::east_opt(0).unwrap(),
+                    )
+                })
+            })
+            .or_else(|_| {
+                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").map(|nd| {
+                    chrono::DateTime::from_naive_utc_and_offset(
+                        nd,
+                        chrono::FixedOffset::east_opt(0).unwrap(),
+                    )
+                })
+            })
+    };
+    match datetime {
+        Ok(dt) => Ok(dt.timestamp()),
+        Err(_) => Err(format!("Invalid datetime format: {}", s)),
+    }
+}
 
 /// Result type for VM operations.
 pub type VMResult<T> = Result<T, RuntimeError>;
@@ -106,11 +157,21 @@ enum NativeId {
     RegexSplit,
     RegexCapture,
     RegexEscape,
+    // DateTime functions
+    DateTimeNow,
+    DateTimeParse,
+    DateTimeUtc,
+    DurationBetween,
+    DurationSeconds,
+    DurationMinutes,
+    DurationHours,
+    DurationDays,
+    DurationWeeks,
 }
 
 impl NativeId {
     fn from_u16(val: u16) -> Option<Self> {
-        if val <= NativeId::RegexEscape as u16 {
+        if val <= NativeId::DurationWeeks as u16 {
             Some(unsafe { std::mem::transmute(val) })
         } else {
             None
@@ -186,8 +247,277 @@ impl NativeId {
             NativeId::RegexSplit => Some(2),
             NativeId::RegexCapture => Some(2),
             NativeId::RegexEscape => Some(1),
+            // DateTime functions
+            NativeId::DateTimeNow => Some(0),
+            NativeId::DateTimeParse => Some(1),
+            NativeId::DateTimeUtc => Some(0),
+            NativeId::DurationBetween => Some(2),
+            NativeId::DurationSeconds => Some(1),
+            NativeId::DurationMinutes => Some(1),
+            NativeId::DurationHours => Some(1),
+            NativeId::DurationDays => Some(1),
+            NativeId::DurationWeeks => Some(1),
         }
     }
+}
+
+/// Call a native method on a DateTime or Duration instance.
+fn call_datetime_method(inst: &VMInstance, method_name: &str) -> Result<VMValue, String> {
+    let timestamp = inst
+        .get("timestamp")
+        .or_else(|| inst.get("seconds"))
+        .and_then(|v| match v {
+            VMValue::Int(t) => Some(t),
+            VMValue::Float(t) => Some(t as i64),
+            _ => None,
+        })
+        .ok_or_else(|| format!("DateTime/Duration instance missing timestamp field"))?;
+
+    // Use chrono to parse the timestamp
+    let datetime = chrono::DateTime::from_timestamp(timestamp, 0)
+        .ok_or_else(|| format!("Invalid timestamp: {}", timestamp))?;
+
+    match method_name {
+        "year" => Ok(VMValue::Int(datetime.year() as i64)),
+        "month" => Ok(VMValue::Int(datetime.month() as i64)),
+        "day" => Ok(VMValue::Int(datetime.day() as i64)),
+        "hour" => Ok(VMValue::Int(datetime.hour() as i64)),
+        "minute" => Ok(VMValue::Int(datetime.minute() as i64)),
+        "second" => Ok(VMValue::Int(datetime.second() as i64)),
+        "weekday" => Ok(VMValue::String(Rc::new(match datetime.weekday() {
+            chrono::Weekday::Mon => "monday".to_string(),
+            chrono::Weekday::Tue => "tuesday".to_string(),
+            chrono::Weekday::Wed => "wednesday".to_string(),
+            chrono::Weekday::Thu => "thursday".to_string(),
+            chrono::Weekday::Fri => "friday".to_string(),
+            chrono::Weekday::Sat => "saturday".to_string(),
+            chrono::Weekday::Sun => "sunday".to_string(),
+        }))),
+        "to_unix" => Ok(VMValue::Int(timestamp)),
+        "to_iso" => {
+            let iso = datetime.to_rfc3339();
+            Ok(VMValue::String(Rc::new(iso)))
+        }
+        "to_string" | "str" => {
+            let s = format!("{}", datetime);
+            Ok(VMValue::String(Rc::new(s)))
+        }
+        "total_seconds" => {
+            let seconds = inst
+                .get("seconds")
+                .or_else(|| inst.get("timestamp"))
+                .and_then(|v| match v {
+                    VMValue::Int(t) => Some(t as f64),
+                    VMValue::Float(t) => Some(t),
+                    _ => None,
+                })
+                .unwrap_or(0.0);
+            Ok(VMValue::Float(seconds))
+        }
+        "total_minutes" => {
+            let seconds = inst
+                .get("seconds")
+                .or_else(|| inst.get("timestamp"))
+                .and_then(|v| match v {
+                    VMValue::Int(t) => Some(t as f64),
+                    VMValue::Float(t) => Some(t),
+                    _ => None,
+                })
+                .unwrap_or(0.0);
+            Ok(VMValue::Float(seconds / 60.0))
+        }
+        "total_hours" => {
+            let seconds = inst
+                .get("seconds")
+                .or_else(|| inst.get("timestamp"))
+                .and_then(|v| match v {
+                    VMValue::Int(t) => Some(t as f64),
+                    VMValue::Float(t) => Some(t),
+                    _ => None,
+                })
+                .unwrap_or(0.0);
+            Ok(VMValue::Float(seconds / 3600.0))
+        }
+        "total_days" => {
+            let seconds = inst
+                .get("seconds")
+                .or_else(|| inst.get("timestamp"))
+                .and_then(|v| match v {
+                    VMValue::Int(t) => Some(t as f64),
+                    VMValue::Float(t) => Some(t),
+                    _ => None,
+                })
+                .unwrap_or(0.0);
+            Ok(VMValue::Float(seconds / 86400.0))
+        }
+        "total_weeks" => {
+            let seconds = inst
+                .get("seconds")
+                .or_else(|| inst.get("timestamp"))
+                .and_then(|v| match v {
+                    VMValue::Int(t) => Some(t as f64),
+                    VMValue::Float(t) => Some(t),
+                    _ => None,
+                })
+                .unwrap_or(0.0);
+            Ok(VMValue::Float(seconds / 604800.0))
+        }
+        _ => Err(format!("Unknown DateTime/Duration method: {}", method_name)),
+    }
+}
+
+/// Helper to create a CompiledFunction for datetime_utc
+fn create_datetime_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "datetime_utc".to_string(),
+        arity: 0,
+        full_arity: 0,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a CompiledFunction for datetime_parse
+fn create_datetime_parse_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "datetime_parse".to_string(),
+        arity: 1,
+        full_arity: 1,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a CompiledFunction for duration_between
+fn create_duration_between_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "duration_between".to_string(),
+        arity: 2,
+        full_arity: 2,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a CompiledFunction for duration constructors
+fn create_duration_from_value_closure(method_name: String) -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: format!("duration_{}", method_name),
+        arity: 1,
+        full_arity: 1,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a closure for I18n.locale()
+fn create_i18n_locale_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "i18n_locale".to_string(),
+        arity: 0,
+        full_arity: 0,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a closure for I18n.set_locale(locale)
+fn create_i18n_set_locale_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "i18n_set_locale".to_string(),
+        arity: 1,
+        full_arity: 1,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a closure for I18n.translate(key, locale?, translations?)
+fn create_i18n_translate_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "i18n_translate".to_string(),
+        arity: 1,
+        full_arity: 3,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a closure for I18n.plural(key, n, locale?, translations?)
+fn create_i18n_plural_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "i18n_plural".to_string(),
+        arity: 2,
+        full_arity: 4,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a closure for I18n.format_number(n, locale?)
+fn create_i18n_format_number_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "i18n_format_number".to_string(),
+        arity: 1,
+        full_arity: 2,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a closure for I18n.format_currency(amount, currency, locale?)
+fn create_i18n_format_currency_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "i18n_format_currency".to_string(),
+        arity: 2,
+        full_arity: 3,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
+}
+
+/// Helper to create a closure for I18n.format_date(ts, locale?)
+fn create_i18n_format_date_closure() -> Rc<RefCell<Closure>> {
+    let function = Rc::new(CompiledFunction {
+        name: "i18n_format_date".to_string(),
+        arity: 1,
+        full_arity: 2,
+        chunk: Chunk::new(),
+        upvalue_count: 0,
+        is_method: false,
+        default_values: Vec::new(),
+    });
+    Rc::new(RefCell::new(Closure::new(function)))
 }
 
 /// The bytecode virtual machine.
@@ -223,14 +553,34 @@ struct ExceptionHandler {
 impl VM {
     /// Create a new VM.
     pub fn new() -> Self {
-        Self {
+        let mut vm = Self {
             stack: Vec::with_capacity(STACK_MAX),
             frames: Vec::with_capacity(FRAMES_MAX),
             globals: HashMap::new(),
             open_upvalues: Vec::new(),
             exception_handlers: Vec::new(),
             current_exception: None,
-        }
+        };
+
+        // Register DateTime and Duration classes
+        let datetime_class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
+        vm.globals.insert(
+            "DateTime".to_string(),
+            VMValue::Class(datetime_class.clone()),
+        );
+
+        let duration_class = Rc::new(RefCell::new(VMClass::new("Duration".to_string())));
+        vm.globals.insert(
+            "Duration".to_string(),
+            VMValue::Class(duration_class.clone()),
+        );
+
+        // Register I18n class
+        let i18n_class = Rc::new(RefCell::new(VMClass::new("I18n".to_string())));
+        vm.globals
+            .insert("I18n".to_string(), VMValue::Class(i18n_class.clone()));
+
+        vm
     }
 
     /// Call a native function by ID.
@@ -1540,11 +1890,202 @@ impl VM {
                     Span::default(),
                 )),
             },
+            // DateTime functions
+            NativeId::DateTimeNow => {
+                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                let timestamp = now.as_secs() as i64;
+                let class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
+                let instance =
+                    VMInstance::with_field(class, "timestamp".to_string(), VMValue::Int(timestamp));
+                Ok(VMValue::Instance(Rc::new(RefCell::new(instance))))
+            }
+            NativeId::DateTimeParse => {
+                let s = match &args[0] {
+                    VMValue::String(s) => s.as_str(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "datetime_parse requires a string",
+                            Span::default(),
+                        ))
+                    }
+                };
+                let timestamp =
+                    parse_datetime_string(s).map_err(|e| RuntimeError::new(e, Span::default()))?;
+                let class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
+                let instance =
+                    VMInstance::with_field(class, "timestamp".to_string(), VMValue::Int(timestamp));
+                Ok(VMValue::Instance(Rc::new(RefCell::new(instance))))
+            }
+            NativeId::DateTimeUtc => {
+                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                let timestamp = now.as_secs() as i64;
+                let class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
+                let instance =
+                    VMInstance::with_field(class, "timestamp".to_string(), VMValue::Int(timestamp));
+                Ok(VMValue::Instance(Rc::new(RefCell::new(instance))))
+            }
+            NativeId::DurationBetween => {
+                let (start, end) = match (&args[0], &args[1]) {
+                    (VMValue::Instance(i1), VMValue::Instance(i2)) => {
+                        let ts1 = i1.borrow().get("timestamp");
+                        let ts2 = i2.borrow().get("timestamp");
+                        match (ts1, ts2) {
+                            (Some(VMValue::Int(t1)), Some(VMValue::Int(t2))) => (t1, t2),
+                            _ => return Err(RuntimeError::new(
+                                "duration_between requires DateTime instances with timestamp field",
+                                Span::default(),
+                            )),
+                        }
+                    }
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "duration_between requires two DateTime instances",
+                            Span::default(),
+                        ))
+                    }
+                };
+                let class = Rc::new(RefCell::new(VMClass::new("Duration".to_string())));
+                let instance =
+                    VMInstance::with_field(class, "seconds".to_string(), VMValue::Int(end - start));
+                Ok(VMValue::Instance(Rc::new(RefCell::new(instance))))
+            }
+            NativeId::DurationSeconds => {
+                let seconds = match &args[0] {
+                    VMValue::Instance(inst) => inst
+                        .borrow()
+                        .get("seconds")
+                        .or_else(|| inst.borrow().get("timestamp"))
+                        .ok_or_else(|| {
+                            RuntimeError::new(
+                                "duration_seconds requires a Duration or DateTime instance",
+                                Span::default(),
+                            )
+                        })?,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "duration_seconds requires a Duration instance",
+                            Span::default(),
+                        ))
+                    }
+                };
+                match seconds {
+                    VMValue::Int(s) => Ok(VMValue::Float(s as f64)),
+                    VMValue::Float(s) => Ok(VMValue::Float(s)),
+                    _ => Err(RuntimeError::new("Invalid duration value", Span::default())),
+                }
+            }
+            NativeId::DurationMinutes => {
+                let seconds = match &args[0] {
+                    VMValue::Instance(inst) => inst
+                        .borrow()
+                        .get("seconds")
+                        .or_else(|| inst.borrow().get("timestamp"))
+                        .ok_or_else(|| {
+                            RuntimeError::new(
+                                "duration_minutes requires a Duration or DateTime instance",
+                                Span::default(),
+                            )
+                        })?,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "duration_minutes requires a Duration instance",
+                            Span::default(),
+                        ))
+                    }
+                };
+                match seconds {
+                    VMValue::Int(s) => Ok(VMValue::Float(s as f64 / 60.0)),
+                    VMValue::Float(s) => Ok(VMValue::Float(s / 60.0)),
+                    _ => Err(RuntimeError::new("Invalid duration value", Span::default())),
+                }
+            }
+            NativeId::DurationHours => {
+                let seconds = match &args[0] {
+                    VMValue::Instance(inst) => inst
+                        .borrow()
+                        .get("seconds")
+                        .or_else(|| inst.borrow().get("timestamp"))
+                        .ok_or_else(|| {
+                            RuntimeError::new(
+                                "duration_hours requires a Duration or DateTime instance",
+                                Span::default(),
+                            )
+                        })?,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "duration_hours requires a Duration instance",
+                            Span::default(),
+                        ))
+                    }
+                };
+                match seconds {
+                    VMValue::Int(s) => Ok(VMValue::Float(s as f64 / 3600.0)),
+                    VMValue::Float(s) => Ok(VMValue::Float(s / 3600.0)),
+                    _ => Err(RuntimeError::new("Invalid duration value", Span::default())),
+                }
+            }
+            NativeId::DurationDays => {
+                let seconds = match &args[0] {
+                    VMValue::Instance(inst) => inst
+                        .borrow()
+                        .get("seconds")
+                        .or_else(|| inst.borrow().get("timestamp"))
+                        .ok_or_else(|| {
+                            RuntimeError::new(
+                                "duration_days requires a Duration or DateTime instance",
+                                Span::default(),
+                            )
+                        })?,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "duration_days requires a Duration instance",
+                            Span::default(),
+                        ))
+                    }
+                };
+                match seconds {
+                    VMValue::Int(s) => Ok(VMValue::Float(s as f64 / 86400.0)),
+                    VMValue::Float(s) => Ok(VMValue::Float(s / 86400.0)),
+                    _ => Err(RuntimeError::new("Invalid duration value", Span::default())),
+                }
+            }
+            NativeId::DurationWeeks => {
+                let seconds = match &args[0] {
+                    VMValue::Instance(inst) => inst
+                        .borrow()
+                        .get("seconds")
+                        .or_else(|| inst.borrow().get("timestamp"))
+                        .ok_or_else(|| {
+                            RuntimeError::new(
+                                "duration_weeks requires a Duration or DateTime instance",
+                                Span::default(),
+                            )
+                        })?,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "duration_weeks requires a Duration instance",
+                            Span::default(),
+                        ))
+                    }
+                };
+                match seconds {
+                    VMValue::Int(s) => Ok(VMValue::Float(s as f64 / 604800.0)),
+                    VMValue::Float(s) => Ok(VMValue::Float(s / 604800.0)),
+                    _ => Err(RuntimeError::new("Invalid duration value", Span::default())),
+                }
+            }
         }
     }
 
     /// Run a compiled function.
     pub fn run(&mut self, function: CompiledFunction) -> VMResult<()> {
+        // Reset execution state (but preserve globals for REPL)
+        self.stack.clear();
+        self.frames.clear();
+        self.open_upvalues.clear();
+        self.exception_handlers.clear();
+        self.current_exception = None;
+
         // Wrap the function in a closure
         let closure = Rc::new(RefCell::new(Closure::new(Rc::new(function))));
 
@@ -1928,15 +2469,62 @@ impl VM {
                             } else {
                                 // Check for method
                                 let class = inst.borrow().class.clone();
-                                let method = class.borrow().find_method(&name);
-                                if let Some(method) = method {
-                                    let bound = VMValue::BoundMethod(inst.clone(), method);
-                                    self.push(bound);
+                                let class_name = class.borrow().name.clone();
+
+                                // Check if this is a known DateTime/Duration instance method
+                                if class_name == "DateTime" || class_name == "Duration" {
+                                    let method_names = [
+                                        "year",
+                                        "month",
+                                        "day",
+                                        "hour",
+                                        "minute",
+                                        "second",
+                                        "weekday",
+                                        "to_unix",
+                                        "to_iso",
+                                        "to_string",
+                                        "str",
+                                        "total_seconds",
+                                        "total_minutes",
+                                        "total_hours",
+                                        "total_days",
+                                        "total_weeks",
+                                    ];
+                                    if method_names.contains(&name.as_str()) {
+                                        let bound = VMValue::BoundNativeMethod(
+                                            inst.clone(),
+                                            class_name,
+                                            name,
+                                        );
+                                        self.push(bound);
+                                    } else {
+                                        return Err(RuntimeError::new(
+                                            format!("Undefined property '{}'", name),
+                                            Span::default(),
+                                        ));
+                                    }
                                 } else {
-                                    return Err(RuntimeError::new(
-                                        format!("Undefined property '{}'", name),
-                                        Span::default(),
-                                    ));
+                                    // Check for regular method
+                                    let method = class.borrow().find_method(&name);
+                                    if let Some(method) = method {
+                                        let bound = VMValue::BoundMethod(inst.clone(), method);
+                                        self.push(bound);
+                                    } else if class.borrow().find_native_method(&name).is_some() {
+                                        // Check for native method
+                                        let class_name = class.borrow().name.clone();
+                                        let bound = VMValue::BoundNativeMethod(
+                                            inst.clone(),
+                                            class_name,
+                                            name,
+                                        );
+                                        self.push(bound);
+                                    } else {
+                                        return Err(RuntimeError::new(
+                                            format!("Undefined property '{}'", name),
+                                            Span::default(),
+                                        ));
+                                    }
                                 }
                             }
                         }
@@ -1945,10 +2533,87 @@ impl VM {
                             if let Some(method) = class.borrow().static_methods.get(&name) {
                                 self.push(VMValue::Closure(method.clone()));
                             } else {
-                                return Err(RuntimeError::new(
-                                    format!("Undefined static method '{}'", name),
-                                    Span::default(),
-                                ));
+                                // Check for built-in DateTime/Duration static methods
+                                let class_name = class.borrow().name.clone();
+                                if class_name == "DateTime" {
+                                    match name.as_str() {
+                                        "utc" | "now" => {
+                                            // Return a closure that creates a DateTime instance
+                                            let closure = create_datetime_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        "parse" => {
+                                            // Return a closure that parses a datetime string
+                                            let closure = create_datetime_parse_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        _ => {
+                                            return Err(RuntimeError::new(
+                                                format!("Undefined static method '{}'", name),
+                                                Span::default(),
+                                            ));
+                                        }
+                                    }
+                                } else if class_name == "Duration" {
+                                    match name.as_str() {
+                                        "between" => {
+                                            let closure = create_duration_between_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        "seconds" | "minutes" | "hours" | "days" | "weeks" => {
+                                            let closure = create_duration_from_value_closure(name);
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        _ => {
+                                            return Err(RuntimeError::new(
+                                                format!("Undefined static method '{}'", name),
+                                                Span::default(),
+                                            ));
+                                        }
+                                    }
+                                } else if class_name == "I18n" {
+                                    match name.as_str() {
+                                        "locale" => {
+                                            let closure = create_i18n_locale_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        "set_locale" => {
+                                            let closure = create_i18n_set_locale_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        "translate" => {
+                                            let closure = create_i18n_translate_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        "plural" => {
+                                            let closure = create_i18n_plural_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        "format_number" => {
+                                            let closure = create_i18n_format_number_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        "format_currency" => {
+                                            let closure = create_i18n_format_currency_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        "format_date" => {
+                                            let closure = create_i18n_format_date_closure();
+                                            self.push(VMValue::Closure(closure));
+                                        }
+                                        _ => {
+                                            return Err(RuntimeError::new(
+                                                format!("Undefined static method '{}'", name),
+                                                Span::default(),
+                                            ));
+                                        }
+                                    }
+                                } else {
+                                    return Err(RuntimeError::new(
+                                        format!("Undefined static method '{}'", name),
+                                        Span::default(),
+                                    ));
+                                }
                             }
                         }
                         _ => {
@@ -2710,6 +3375,16 @@ impl VM {
                 self.stack[callee_idx] = VMValue::Instance(instance);
                 self.call_closure_frame(method, arg_count + 1)?;
             }
+            VMValue::BoundNativeMethod(instance, class_name, method_name) => {
+                // Call the native method directly
+                let inst = instance;
+                let result = call_datetime_method(&inst.borrow(), &method_name)
+                    .map_err(|e| RuntimeError::new(e, Span::default()))?;
+                // Pop the bound method
+                self.pop()?;
+                // Push result
+                self.push(result);
+            }
             VMValue::Class(class) => {
                 // Create instance
                 let instance = VMInstance::new(class.clone());
@@ -2756,6 +3431,22 @@ impl VM {
         arg_count: usize,
     ) -> VMResult<()> {
         let function = closure.borrow().function.clone();
+        let function_name = function.name.clone();
+
+        // Handle built-in static method closures directly
+        if function_name == "datetime_utc" {
+            return self.handle_datetime_utc(arg_count);
+        } else if function_name == "datetime_parse" {
+            return self.handle_datetime_parse(arg_count);
+        } else if function_name == "duration_between" {
+            return self.handle_duration_between(arg_count);
+        } else if function_name.starts_with("duration_") {
+            let method_name = function_name.strip_prefix("duration_").unwrap();
+            return self.handle_duration_from_value(method_name, arg_count);
+        } else if function_name.starts_with("i18n_") {
+            return self.handle_i18n_method(&function_name, arg_count);
+        }
+
         let arity = function.arity as usize;
         let full_arity = function.full_arity as usize;
 
@@ -2809,6 +3500,540 @@ impl VM {
         });
 
         Ok(())
+    }
+
+    /// Handle datetime_utc() static method call
+    fn handle_datetime_utc(&mut self, _arg_count: usize) -> VMResult<()> {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let timestamp = now.as_secs() as i64;
+        let class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
+        let instance =
+            VMInstance::with_field(class, "timestamp".to_string(), VMValue::Int(timestamp));
+        // Pop the closure
+        self.pop()?;
+        // Push result
+        self.push(VMValue::Instance(Rc::new(RefCell::new(instance))));
+        Ok(())
+    }
+
+    /// Handle datetime_parse(string) static method call
+    fn handle_datetime_parse(&mut self, arg_count: usize) -> VMResult<()> {
+        if arg_count != 1 {
+            return Err(RuntimeError::new(
+                "datetime_parse expects 1 argument",
+                Span::default(),
+            ));
+        }
+        let arg = self.pop()?;
+        let s = match arg {
+            VMValue::String(s) => s.as_str().to_string(),
+            _ => {
+                return Err(RuntimeError::new(
+                    "datetime_parse requires a string",
+                    Span::default(),
+                ))
+            }
+        };
+        let timestamp =
+            parse_datetime_string(&s).map_err(|e| RuntimeError::new(e, Span::default()))?;
+        let class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
+        let instance =
+            VMInstance::with_field(class, "timestamp".to_string(), VMValue::Int(timestamp));
+        // Pop the closure
+        self.pop()?;
+        // Push result
+        self.push(VMValue::Instance(Rc::new(RefCell::new(instance))));
+        Ok(())
+    }
+
+    /// Handle duration_between(dt1, dt2) static method call
+    fn handle_duration_between(&mut self, arg_count: usize) -> VMResult<()> {
+        if arg_count != 2 {
+            return Err(RuntimeError::new(
+                "duration_between expects 2 arguments",
+                Span::default(),
+            ));
+        }
+        let arg2 = self.pop()?;
+        let arg1 = self.pop()?;
+        let (start, end) = match (arg1, arg2) {
+            (VMValue::Instance(i1), VMValue::Instance(i2)) => {
+                let ts1 = i1.borrow().get("timestamp");
+                let ts2 = i2.borrow().get("timestamp");
+                match (ts1, ts2) {
+                    (Some(VMValue::Int(t1)), Some(VMValue::Int(t2))) => (t1, t2),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "duration_between requires DateTime instances",
+                            Span::default(),
+                        ))
+                    }
+                }
+            }
+            _ => {
+                return Err(RuntimeError::new(
+                    "duration_between requires DateTime instances",
+                    Span::default(),
+                ))
+            }
+        };
+        let class = Rc::new(RefCell::new(VMClass::new("Duration".to_string())));
+        let instance =
+            VMInstance::with_field(class, "seconds".to_string(), VMValue::Int(end - start));
+        // Pop the closure
+        self.pop()?;
+        // Push result
+        self.push(VMValue::Instance(Rc::new(RefCell::new(instance))));
+        Ok(())
+    }
+
+    /// Handle duration_*(value) static method calls
+    fn handle_duration_from_value(&mut self, method_name: &str, arg_count: usize) -> VMResult<()> {
+        if arg_count != 1 {
+            return Err(RuntimeError::new(
+                format!("duration_{} expects 1 argument", method_name),
+                Span::default(),
+            ));
+        }
+        let arg = self.pop()?;
+        let seconds = match arg {
+            VMValue::Int(n) => n as f64,
+            VMValue::Float(n) => n,
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("duration_{} requires a number", method_name),
+                    Span::default(),
+                ))
+            }
+        };
+        let total_seconds = match method_name {
+            "seconds" => seconds,
+            "minutes" => seconds * 60.0,
+            "hours" => seconds * 3600.0,
+            "days" => seconds * 86400.0,
+            "weeks" => seconds * 604800.0,
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("Unknown duration method: {}", method_name),
+                    Span::default(),
+                ))
+            }
+        };
+        let class = Rc::new(RefCell::new(VMClass::new("Duration".to_string())));
+        let instance =
+            VMInstance::with_field(class, "seconds".to_string(), VMValue::Float(total_seconds));
+        // Pop the closure
+        self.pop()?;
+        // Push result
+        self.push(VMValue::Instance(Rc::new(RefCell::new(instance))));
+        Ok(())
+    }
+
+    /// Handle I18n static method calls
+    fn handle_i18n_method(&mut self, function_name: &str, arg_count: usize) -> VMResult<()> {
+        match function_name {
+            "i18n_locale" => {
+                // Pop closure
+                self.pop()?;
+                // Return current locale
+                let locale = vm_get_locale();
+                self.push(VMValue::String(Rc::new(locale)));
+                Ok(())
+            }
+            "i18n_set_locale" => {
+                if arg_count != 1 {
+                    return Err(RuntimeError::new(
+                        "I18n.set_locale expects 1 argument",
+                        Span::default(),
+                    ));
+                }
+                let arg = self.pop()?;
+                let locale = match arg {
+                    VMValue::String(s) => s.as_str().to_string(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "I18n.set_locale expects a string",
+                            Span::default(),
+                        ))
+                    }
+                };
+                vm_set_locale(locale.clone());
+                // Pop closure
+                self.pop()?;
+                self.push(VMValue::String(Rc::new(locale)));
+                Ok(())
+            }
+            "i18n_translate" => {
+                // i18n_translate(key, locale?, translations?)
+                // Collect args in reverse order
+                let mut args = Vec::new();
+                for _ in 0..arg_count {
+                    args.push(self.pop()?);
+                }
+                args.reverse();
+
+                let key = match args.get(0) {
+                    Some(VMValue::String(s)) => s.as_str().to_string(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "I18n.translate expects a key string",
+                            Span::default(),
+                        ))
+                    }
+                };
+
+                let locale = if arg_count > 1 {
+                    match &args[1] {
+                        VMValue::String(s) => s.as_str().to_string(),
+                        VMValue::Null => vm_get_locale(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "I18n.translate locale must be a string or null",
+                                Span::default(),
+                            ))
+                        }
+                    }
+                } else {
+                    vm_get_locale()
+                };
+
+                let result = if arg_count > 2 {
+                    match &args[2] {
+                        VMValue::Hash(h) => {
+                            let locale_key = format!("{}.{}", locale, key);
+                            let fallback_key = format!("en.{}", key);
+                            let hash = h.borrow();
+                            let found = hash
+                                .iter()
+                                .find(|(k, _)| {
+                                    if let VMValue::String(s) = k {
+                                        s.as_str() == locale_key
+                                    } else {
+                                        false
+                                    }
+                                })
+                                .or_else(|| {
+                                    hash.iter().find(|(k, _)| {
+                                        if let VMValue::String(s) = k {
+                                            s.as_str() == fallback_key
+                                        } else {
+                                            false
+                                        }
+                                    })
+                                });
+                            match found {
+                                Some((_, v)) => v.clone(),
+                                None => VMValue::String(Rc::new(key)),
+                            }
+                        }
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "I18n.translate translations must be a Hash",
+                                Span::default(),
+                            ))
+                        }
+                    }
+                } else {
+                    VMValue::String(Rc::new(key))
+                };
+
+                // Pop closure
+                self.pop()?;
+                self.push(result);
+                Ok(())
+            }
+            "i18n_plural" => {
+                // i18n_plural(key, n, locale?, translations?)
+                let mut args = Vec::new();
+                for _ in 0..arg_count {
+                    args.push(self.pop()?);
+                }
+                args.reverse();
+
+                let key = match args.get(0) {
+                    Some(VMValue::String(s)) => s.as_str().to_string(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "I18n.plural expects a key string",
+                            Span::default(),
+                        ))
+                    }
+                };
+
+                let n = match args.get(1) {
+                    Some(VMValue::Int(i)) => *i,
+                    Some(VMValue::Float(f)) => *f as i64,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "I18n.plural expects a number",
+                            Span::default(),
+                        ))
+                    }
+                };
+
+                let locale = if arg_count > 2 {
+                    match &args[2] {
+                        VMValue::String(s) => s.as_str().to_string(),
+                        VMValue::Null => vm_get_locale(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "I18n.plural locale must be a string or null",
+                                Span::default(),
+                            ))
+                        }
+                    }
+                } else {
+                    vm_get_locale()
+                };
+
+                let plural_suffix = if n == 0 {
+                    "_zero"
+                } else if n == 1 {
+                    "_one"
+                } else {
+                    "_other"
+                };
+                let plural_key = format!("{}.{}{}", locale, key, plural_suffix);
+
+                let result = if arg_count > 3 {
+                    match &args[3] {
+                        VMValue::Hash(h) => {
+                            let hash = h.borrow();
+                            let found = hash.iter().find(|(k, _)| {
+                                if let VMValue::String(s) = k {
+                                    s.as_str() == plural_key
+                                } else {
+                                    false
+                                }
+                            });
+                            match found {
+                                Some((_, v)) => v.clone(),
+                                None => VMValue::String(Rc::new(key)),
+                            }
+                        }
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "I18n.plural translations must be a Hash",
+                                Span::default(),
+                            ))
+                        }
+                    }
+                } else {
+                    VMValue::String(Rc::new(key))
+                };
+
+                // Pop closure
+                self.pop()?;
+                self.push(result);
+                Ok(())
+            }
+            "i18n_format_number" => {
+                // i18n_format_number(n, locale?)
+                let mut args = Vec::new();
+                for _ in 0..arg_count {
+                    args.push(self.pop()?);
+                }
+                args.reverse();
+
+                let n = match args.get(0) {
+                    Some(VMValue::Int(i)) => *i as f64,
+                    Some(VMValue::Float(f)) => *f,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "I18n.format_number expects a number",
+                            Span::default(),
+                        ))
+                    }
+                };
+
+                let locale = if arg_count > 1 {
+                    match &args[1] {
+                        VMValue::String(s) => s.as_str().to_string(),
+                        VMValue::Null => vm_get_locale(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "I18n.format_number locale must be a string or null",
+                                Span::default(),
+                            ))
+                        }
+                    }
+                } else {
+                    vm_get_locale()
+                };
+
+                let formatted = match locale.as_str() {
+                    "fr" | "de" | "es" | "it" => format!("{}", n).replace('.', ","),
+                    _ => format!("{}", n),
+                };
+
+                // Pop closure
+                self.pop()?;
+                self.push(VMValue::String(Rc::new(formatted)));
+                Ok(())
+            }
+            "i18n_format_currency" => {
+                // i18n_format_currency(amount, currency, locale?)
+                let mut args = Vec::new();
+                for _ in 0..arg_count {
+                    args.push(self.pop()?);
+                }
+                args.reverse();
+
+                let amount = match args.get(0) {
+                    Some(VMValue::Int(i)) => *i as f64,
+                    Some(VMValue::Float(f)) => *f,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "I18n.format_currency expects a number",
+                            Span::default(),
+                        ))
+                    }
+                };
+
+                let currency = match args.get(1) {
+                    Some(VMValue::String(s)) => s.as_str().to_string(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "I18n.format_currency expects a currency code",
+                            Span::default(),
+                        ))
+                    }
+                };
+
+                let locale = if arg_count > 2 {
+                    match &args[2] {
+                        VMValue::String(s) => s.as_str().to_string(),
+                        VMValue::Null => vm_get_locale(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "I18n.format_currency locale must be a string or null",
+                                Span::default(),
+                            ))
+                        }
+                    }
+                } else {
+                    vm_get_locale()
+                };
+
+                let symbol = match currency.as_str() {
+                    "USD" => "$",
+                    "EUR" => "€",
+                    "GBP" => "£",
+                    "JPY" => "¥",
+                    _ => &currency,
+                };
+
+                let (decimal_sep, thousands_sep) = match locale.as_str() {
+                    "fr" | "de" | "es" | "it" => (",", "."),
+                    _ => (".", ","),
+                };
+
+                let int_part = amount as i64;
+                let frac_part = ((amount - int_part as f64) * 100.0).round() as i64;
+                let int_str = int_part.to_string();
+                let formatted_int: String = int_str
+                    .chars()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .chunks(3)
+                    .map(|chunk| chunk.iter().collect::<String>())
+                    .collect::<Vec<_>>()
+                    .join(thousands_sep)
+                    .chars()
+                    .rev()
+                    .collect();
+
+                let result = if frac_part > 0 {
+                    format!(
+                        "{}{}{}{}",
+                        symbol,
+                        formatted_int,
+                        decimal_sep,
+                        format!("{:02}", frac_part)
+                    )
+                } else {
+                    format!("{}{}", symbol, formatted_int)
+                };
+
+                // Pop closure
+                self.pop()?;
+                self.push(VMValue::String(Rc::new(result)));
+                Ok(())
+            }
+            "i18n_format_date" => {
+                // i18n_format_date(ts, locale?)
+                let mut args = Vec::new();
+                for _ in 0..arg_count {
+                    args.push(self.pop()?);
+                }
+                args.reverse();
+
+                let ts = match args.get(0) {
+                    Some(VMValue::Int(n)) => *n,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "I18n.format_date requires a timestamp",
+                            Span::default(),
+                        ))
+                    }
+                };
+
+                let locale = if arg_count > 1 {
+                    match &args[1] {
+                        VMValue::String(s) => s.as_str().to_string(),
+                        VMValue::Null => vm_get_locale(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "I18n.format_date locale must be a string or null",
+                                Span::default(),
+                            ))
+                        }
+                    }
+                } else {
+                    vm_get_locale()
+                };
+
+                let dt = chrono::DateTime::from_timestamp(ts, 0)
+                    .ok_or_else(|| RuntimeError::new("Invalid timestamp", Span::default()))?;
+                let local = dt.with_timezone(&chrono::Local);
+
+                let formatted = match locale.as_str() {
+                    "fr" => format!(
+                        "{:02}/{:02}/{:04}",
+                        local.day(),
+                        local.month(),
+                        local.year()
+                    ),
+                    "en" => format!(
+                        "{:02}/{:02}/{:04}",
+                        local.month(),
+                        local.day(),
+                        local.year()
+                    ),
+                    "de" => format!(
+                        "{:02}.{:02}.{:04}",
+                        local.day(),
+                        local.month(),
+                        local.year()
+                    ),
+                    _ => format!(
+                        "{:04}-{:02}-{:02}",
+                        local.year(),
+                        local.month(),
+                        local.day()
+                    ),
+                };
+
+                // Pop closure
+                self.pop()?;
+                self.push(VMValue::String(Rc::new(formatted)));
+                Ok(())
+            }
+            _ => Err(RuntimeError::new(
+                format!("Unknown I18n method: {}", function_name),
+                Span::default(),
+            )),
+        }
     }
 
     /// Call a closure and return its result (for native function callbacks).

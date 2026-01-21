@@ -1,233 +1,151 @@
-<h1>WebSockets</h1>
+<div class="max-w-3xl mx-auto">
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">WebSockets</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Build real-time, interactive experiences. Soli provides native WebSocket support for chat apps, notifications, and live updates.
+        </p>
+    </div>
 
-<p class="lead text-xl text-gray-300 mb-8">
-    Build real-time applications with Soli's built-in WebSocket support. Handle connections, broadcast messages, and create interactive experiences.
-</p>
+    <div class="mb-12 p-1 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500">
+        <div class="bg-gray-950 rounded-xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div>
+                <h3 class="text-lg font-semibold text-white mb-2">Want to see it in action?</h3>
+                <p class="text-gray-400 text-sm">Check out the interactive WebSocket chat demo included in this app.</p>
+            </div>
+            <a href="/websocket" class="btn-glow inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-gray-900 font-bold hover:bg-gray-100 transition-all shadow-lg shadow-white/10">
+                <span class="relative flex h-3 w-3 mr-1">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                Try Live Demo
+            </a>
+        </div>
+    </div>
 
-<h2>Defining a WebSocket Route</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Defining a Route</h2>
+    <p class="text-gray-400 mb-6">Register WebSocket endpoints in <code>config/routes.soli</code>.</p>
 
-<p>Register WebSocket endpoints in <code>config/routes.soli</code> using <code>router_websocket</code>:</p>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">config/routes.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Map path to handler function
+router_websocket("/ws/chat", "websocket#chat_handler");</code></pre>
+        </div>
+    </div>
 
-<pre><code class="language-soli">// config/routes.soli
+    <h2 class="text-2xl font-bold text-white mb-6">Handling Events</h2>
+    <p class="text-gray-400 mb-6">Handlers receive connection events and return actions.</p>
 
-// WebSocket endpoint - maps path to handler function
-router_websocket("/ws/chat", "websocket#chat_handler");
-</code></pre>
-
-<h2>Creating a Handler</h2>
-
-<p>WebSocket handlers receive an <code>event</code> object with connection info and return actions:</p>
-
-<pre><code class="language-soli">// app/controllers/websocket_controller.soli
-
-fn chat_handler(event: Any) -> Any {
-    let event_type = event["type"];           // "connect", "message", or "disconnect"
-    let connection_id = event["connection_id"]; // Unique client ID
-
-    if (event_type == "connect") {
-        // Client just connected
-        return {
-            "broadcast": "{\"type\":\"join\",\"user\":\"" + connection_id + "\"}"
-        };
-    }
-
-    if (event_type == "disconnect") {
-        // Client disconnected
-        return {
-            "broadcast": "{\"type\":\"leave\",\"user\":\"" + connection_id + "\"}"
-        };
-    }
-
-    if (event_type == "message") {
-        // Client sent a message
-        let message = event["message"];
-        let parsed = json_parse(message);
-        let text = parsed["text"];
-
-        return {
-            "broadcast": "{\"type\":\"message\",\"from\":\"" + connection_id + "\",\"text\":\"" + text + "\"}"
-        };
-    }
-
-    return {};
-}
-</code></pre>
-
-<h2>Event Object</h2>
-
-<p>The handler receives an event hash with these fields:</p>
-
-<table class="w-full my-6">
-    <thead>
-        <tr class="border-b border-gray-700">
-            <th class="text-left py-2 px-4">Field</th>
-            <th class="text-left py-2 px-4">Type</th>
-            <th class="text-left py-2 px-4">Description</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>type</code></td>
-            <td class="py-2 px-4">String</td>
-            <td class="py-2 px-4"><code>"connect"</code>, <code>"message"</code>, or <code>"disconnect"</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>connection_id</code></td>
-            <td class="py-2 px-4">String</td>
-            <td class="py-2 px-4">Unique UUID for this connection</td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>message</code></td>
-            <td class="py-2 px-4">String</td>
-            <td class="py-2 px-4">The message content (only for <code>"message"</code> events)</td>
-        </tr>
-    </tbody>
-</table>
-
-<h2>Handler Response Actions</h2>
-
-<p>Return a hash with one of these actions:</p>
-
-<table class="w-full my-6">
-    <thead>
-        <tr class="border-b border-gray-700">
-            <th class="text-left py-2 px-4">Action</th>
-            <th class="text-left py-2 px-4">Description</th>
-            <th class="text-left py-2 px-4">Example</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>broadcast</code></td>
-            <td class="py-2 px-4">Send to ALL connected clients</td>
-            <td class="py-2 px-4"><code>{"broadcast": "Hello everyone!"}</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>send</code></td>
-            <td class="py-2 px-4">Reply only to the sender</td>
-            <td class="py-2 px-4"><code>{"send": "Hello, just you!"}</code></td>
-        </tr>
-    </tbody>
-</table>
-
-<h2>Client-Side JavaScript</h2>
-
-<p>Connect to your WebSocket endpoint from the browser:</p>
-
-<pre><code class="language-javascript">// Connect to WebSocket
-const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(protocol + '//' + location.host + '/ws/chat');
-
-// Connection opened
-ws.onopen = function() {
-    console.log('Connected!');
-};
-
-// Receive messages
-ws.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-    console.log('Received:', data);
-
-    if (data.type === 'join') {
-        console.log('User joined:', data.user);
-    } else if (data.type === 'message') {
-        console.log(data.from + ': ' + data.text);
-    } else if (data.type === 'leave') {
-        console.log('User left:', data.user);
-    }
-};
-
-// Send a message
-function sendMessage(text) {
-    ws.send(JSON.stringify({ text: text }));
-}
-
-// Handle errors
-ws.onerror = function(error) {
-    console.error('WebSocket error:', error);
-};
-
-// Connection closed
-ws.onclose = function() {
-    console.log('Disconnected');
-    // Optionally reconnect after delay
-    setTimeout(connect, 3000);
-};
-</code></pre>
-
-<h2>Complete Example: Chat Room</h2>
-
-<p>Here's a minimal chat implementation:</p>
-
-<h3>Route</h3>
-<pre><code class="language-soli">// config/routes.soli
-get("/chat", "chat#page");
-router_websocket("/ws/chat", "chat#handler");
-</code></pre>
-
-<h3>Controller</h3>
-<pre><code class="language-soli">// app/controllers/chat_controller.soli
-
-fn handler(event: Any) -> Any {
-    let event_type = event["type"];
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">app/controllers/websocket_controller.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn chat_handler(event: Any) -> Any {
+    let type = event["type"];
     let id = event["connection_id"];
 
-    if (event_type == "message") {
-        let msg = json_parse(event["message"]);
-        return {
-            "broadcast": "{\"user\":\"" + id + "\",\"text\":\"" + msg["text"] + "\"}"
-        };
+    if (type == "connect") {
+        return { "broadcast": json_encode({ "type": "join", "user": id }) };
+    }
+
+    if (type == "message") {
+        let msg = event["message"];
+        return { "broadcast": msg };
     }
 
     return {};
-}
+}</code></pre>
+        </div>
+    </div>
 
-fn page(req: Any) -> Any {
-    return render("chat/index", {"title": "Chat"});
-}
-</code></pre>
+    <h2 class="text-2xl font-bold text-white mb-6">The Event Object</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-purple-300 font-bold">type</code>
+            <p class="text-sm text-gray-400 mt-2">Event kind: <code>"connect"</code>, <code>"message"</code>, or <code>"disconnect"</code>.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-purple-300 font-bold">connection_id</code>
+            <p class="text-sm text-gray-400 mt-2">Unique UUID string identifying the client connection.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-purple-300 font-bold">message</code>
+            <p class="text-sm text-gray-400 mt-2">The text payload sent by the client (only for <code>"message"</code>).</p>
+        </div>
+    </div>
 
-<h3>View</h3>
-<pre><code class="language-erb">&lt;!-- app/views/chat/index.html.erb --&gt;
-&lt;div id="messages"&gt;&lt;/div&gt;
-&lt;input type="text" id="input" placeholder="Type a message..."&gt;
-&lt;button onclick="send()"&gt;Send&lt;/button&gt;
+    <h2 class="text-2xl font-bold text-white mb-6">Response Actions</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-indigo-500/50 transition-all">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg class="w-24 h-24 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">Broadcast</h3>
+            <p class="text-gray-400 text-sm mb-4">Send a message to ALL connected clients (including sender).</p>
+            <code class="block bg-gray-950 p-3 rounded-lg text-xs text-indigo-300 font-mono">{"broadcast": "Hello All"}</code>
+        </div>
+        
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-purple-500/50 transition-all">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg class="w-24 h-24 text-purple-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">Send (Reply)</h3>
+            <p class="text-gray-400 text-sm mb-4">Send a message ONLY to the client who triggered the event.</p>
+            <code class="block bg-gray-950 p-3 rounded-lg text-xs text-purple-300 font-mono">{"send": "Hello You"}</code>
+        </div>
+    </div>
 
-&lt;script&gt;
-const ws = new WebSocket('ws://' + location.host + '/ws/chat');
-const messages = document.getElementById('messages');
-const input = document.getElementById('input');
+    <h2 class="text-2xl font-bold text-white mb-6">Client-Side Code</h2>
 
-ws.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-    messages.innerHTML += '&lt;p&gt;&lt;b&gt;' + data.user.slice(0,8) + ':&lt;/b&gt; ' + data.text + '&lt;/p&gt;';
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">JavaScript</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-javascript text-sm">// Connect to WebSocket
+const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(`${protocol}//${location.host}/ws/chat`);
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log('Received:', data);
 };
 
-function send() {
-    ws.send(JSON.stringify({ text: input.value }));
-    input.value = '';
-}
+ws.send(JSON.stringify({ text: 'Hello!' }));</code></pre>
+        </div>
+    </div>
 
-input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') send();
-});
-&lt;/script&gt;
-</code></pre>
+    <h2 class="text-2xl font-bold text-white mb-6">Performance</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
+            <div class="text-3xl font-bold text-white mb-1">10k+</div>
+            <div class="text-sm text-indigo-400 font-medium">Messages / Sec</div>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
+            <div class="text-3xl font-bold text-white mb-1">&lt;1ms</div>
+            <div class="text-sm text-purple-400 font-medium">Latency</div>
+        </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
+            <div class="text-3xl font-bold text-white mb-1">Async</div>
+            <div class="text-sm text-pink-400 font-medium">Non-blocking I/O</div>
+        </div>
+    </div>
 
-<h2>Performance</h2>
-
-<p>Soli's WebSocket implementation is built on Rust's async runtime and can handle:</p>
-
-<ul>
-    <li><strong>10,000+ messages/second</strong> throughput</li>
-    <li><strong>Thousands of concurrent connections</strong></li>
-    <li><strong>Sub-millisecond latency</strong> for echo responses</li>
-</ul>
-
-<div class="callout callout-tip">
-    <p><strong>Tip:</strong> Use <code>send</code> instead of <code>broadcast</code> when you only need to reply to the sender. Broadcasting to thousands of clients is more expensive than a single reply.</p>
+    <div class="my-8 p-6 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-yellow-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            Optimization Tip
+        </h4>
+        <p class="text-yellow-200/80 text-sm">
+            Use <code>send</code> instead of <code>broadcast</code> whenever possible. 
+            Broadcasting to thousands of clients is significantly more expensive than a direct reply.
+        </p>
+    </div>
 </div>
-
-<h2>Live Demo</h2>
-
-<p>Try the <a href="/websocket">WebSocket Demo</a> to see it in action!</p>

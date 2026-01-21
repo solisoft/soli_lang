@@ -70,6 +70,7 @@ fn register_controller_class(env: &mut Environment) {
         methods: HashMap::new(),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
+        native_methods: HashMap::new(),
         constructor: None,
     };
     env.define(

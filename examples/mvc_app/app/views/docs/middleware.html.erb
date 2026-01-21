@@ -1,13 +1,22 @@
-<h1>Middleware</h1>
-<p class="lead text-xl text-gray-300 mb-8">
-    Middleware provides a way to filter HTTP requests and responses, enabling cross-cutting concerns like authentication, logging, and CORS.
-</p>
+<div class="max-w-3xl mx-auto">
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Middleware</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Filter HTTP requests and responses. Middleware enables cross-cutting concerns like authentication, logging, and CORS handling.
+        </p>
+    </div>
 
-<h2>Middleware Attributes</h2>
-<p>Middleware functions support special comment attributes to control their behavior:</p>
-<pre><code class="language-soli">// app/middleware/logging.soli
+    <h2 class="text-2xl font-bold text-white mb-6">Middleware Attributes</h2>
+    <p class="text-gray-400 mb-6">Control behavior using special comment attributes:</p>
 
-// order: 10
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">app/middleware/logging.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// order: 10
 // Execution order (lower runs first, default: 100)
 fn log_request(req: Any) -> Any {
     let timestamp = datetime::now();
@@ -16,30 +25,31 @@ fn log_request(req: Any) -> Any {
 }
 
 // global_only: true
-// Only run when applied globally, cannot be used in route-level scopes
+// Only run when applied globally
 fn cors(req: Any) -> Any {
     let response = req;
     response.headers["Access-Control-Allow-Origin"] = "*";
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
     return response;
 }
 
 // scope_only: true
-// Only run when explicitly scoped to routes, never globally
+// Only run when explicitly scoped
 fn authenticate(req: Any) -> Any {
     let token = req.headers["Authorization"];
-    if token == null || token == "" {
-        return error(401, "Unauthorized");
-    }
+    if token == null { return error(401, "Unauthorized"); }
     return req;
 }</code></pre>
+        </div>
+    </div>
 
-<h2>Creating Middleware</h2>
-<p>Create a file in <code>app/middleware/</code>:</p>
-<pre><code class="language-soli">// app/middleware/auth.soli
+    <h2 class="text-2xl font-bold text-white mb-6">Creating Middleware</h2>
 
-// order: 20
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">app/middleware/auth.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// order: 20
 // scope_only: true
 fn authenticate(req: Any) -> Any {
     let token = req.headers["Authorization"];
@@ -48,277 +58,118 @@ fn authenticate(req: Any) -> Any {
         return error(401, "Unauthorized");
     }
 
-    // Validate token and add user to request
+    // Validate token
     let user = validate_token(token);
     if user == null {
         return error(401, "Invalid token");
     }
 
-    // Attach user to request for controller access
+    // Attach user to request
     req["user"] = user;
     return req;
-}
-
-// order: 30
-fn add_request_id(req: Any) -> Any {
-    let id = generate_uuid();
-    req["request_id"] = id;
-    return req;
 }</code></pre>
+        </div>
+    </div>
 
-<h3>Request Object</h3>
-<p>The request object contains:</p>
-<pre><code class="language-soli">{
-    "method": "GET",           // HTTP method
-    "path": "/users/123",      // Request path
-    "query": {},               // Query parameters
-    "headers": {},             // HTTP headers
-    "cookies": {},             // Cookies
-    "body": "",                // Request body (if applicable)
-    "params": {},              // Route parameters
-    "user": {...}              // Set by auth middleware
-}</code></pre>
+    <h2 class="text-2xl font-bold text-white mb-6">Execution Order</h2>
+    <p class="text-gray-400 mb-8">Requests flow through middleware layers before reaching your controller.</p>
 
-<h3>Returning Responses</h3>
-<p>Middleware can return responses to short-circuit the request:</p>
-<pre><code class="language-soli">// Return error response
-return error(401, "Unauthorized");
+    <div class="relative py-8 mb-16">
+        <div class="absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-indigo-500/50 to-transparent -translate-x-1/2"></div>
+        
+        <div class="space-y-4">
+            <!-- Step 1 -->
+            <div class="relative flex items-center justify-center">
+                <div class="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-gray-950"></div>
+                <div class="bg-gray-900 border border-white/10 rounded-lg px-6 py-3 shadow-lg">
+                    <span class="text-indigo-400 font-mono text-xs block mb-1">Step 1</span>
+                    <span class="text-white font-medium">Global Middleware</span>
+                    <span class="text-gray-500 text-sm ml-2">(Sorted by order)</span>
+                </div>
+            </div>
 
-// Return redirect
-return redirect("/login");
+            <div class="h-8"></div>
 
-// Return custom response
-return {
-    "status": 403,
-    "headers": {"Content-Type": "application/json"},
-    "body": json_encode({"error": "Access denied"})
-};</code></pre>
+            <!-- Step 2 -->
+            <div class="relative flex items-center justify-center">
+                <div class="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-purple-500 ring-4 ring-gray-950"></div>
+                <div class="bg-gray-900 border border-white/10 rounded-lg px-6 py-3 shadow-lg">
+                    <span class="text-purple-400 font-mono text-xs block mb-1">Step 2</span>
+                    <span class="text-white font-medium">Scoped Middleware</span>
+                    <span class="text-gray-500 text-sm ml-2">(Specific to route)</span>
+                </div>
+            </div>
 
-<h2>Applying Middleware</h2>
+            <div class="h-8"></div>
 
-<h3>Global Middleware</h3>
-<p>Apply to all routes using <code>use()</code>:</p>
-<pre><code class="language-soli">// config/routes.soli
+            <!-- Step 3 -->
+            <div class="relative flex items-center justify-center">
+                <div class="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-green-500 ring-4 ring-gray-950"></div>
+                <div class="bg-green-500/10 border border-green-500/20 rounded-lg px-6 py-3 shadow-lg">
+                    <span class="text-green-400 font-mono text-xs block mb-1">Target</span>
+                    <span class="text-white font-bold">Controller Action</span>
+                </div>
+            </div>
 
-// Apply logging and CORS to all routes
+            <div class="h-8"></div>
+
+            <!-- Step 4 -->
+            <div class="relative flex items-center justify-center">
+                <div class="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-gray-500 ring-4 ring-gray-950"></div>
+                <div class="bg-gray-900 border border-white/10 rounded-lg px-6 py-3 shadow-lg">
+                    <span class="text-gray-400 font-mono text-xs block mb-1">Return</span>
+                    <span class="text-white font-medium">Response flows back up</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Applying Middleware</h2>
+    
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">config/routes.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Global middleware (runs on every request)
 use("middleware/logging");
 use("middleware/cors");
 
-get("/", "home#index");
-get("/about", "home#about");
-get("/users", "users#list");
-get("/users/:id", "users#show");</code></pre>
-
-<h3>Route-Scoped Middleware</h3>
-<p>Apply specific middleware to specific routes:</p>
-<pre><code class="language-soli">// config/routes.soli
-
-// Dashboard requires authentication
+// Scoped middleware (runs on specific routes)
 get("/dashboard", "dashboard#index", ["auth"]);
 
-// Admin panel requires admin role
-get("/admin", "admin#panel", ["auth", "admin_only"]);
-
-// API routes with rate limiting
-get("/api/users", "api#users", ["auth", "rate_limit"]);
-post("/api/users", "api#create_user", ["auth", "rate_limit"]);
-
-// Public routes (no middleware)
-get("/public/docs", "docs#index");</code></pre>
-
-<h3>Combining Global and Scoped</h3>
-<pre><code class="language-soli">// config/routes.soli
-
-// Global logging for all requests
-use("middleware/logging");
-
-// Scoped authentication for protected routes
-get("/profile", "user#profile", ["auth"]);
-get("/settings", "user#settings", ["auth"]);
-get("/api/data", "api#data", ["auth", "api_key"]);
-
-// Public routes bypass auth
-get("/home", "home#index");
-get("/login", "auth#login");</code></pre>
-
-<h2>Execution Order</h2>
-<p>Middleware executes in this order:</p>
-<ol class="list-decimal list-inside space-y-2">
-    <li>Global middleware (sorted by <code>order</code>)</li>
-    <li>Scoped middleware for the route (sorted by <code>order</code>)</li>
-    <li>Controller action</li>
-    <li>Response flows back through scoped middleware</li>
-    <li>Response flows back through global middleware</li>
-</ol>
-
-<pre><code class="language-text">Request → [logging] → [cors] → [auth] → Controller → [auth] → [cors] → Response
-                (order: 10)    (order: 5)     (order: 20)</code></pre>
-
-<h2>Built-in Middleware</h2>
-
-<h3>Logging Middleware</h3>
-<p>Log all incoming requests with timing:</p>
-<pre><code class="language-soli">// app/middleware/logging.soli
-
-// order: 10
-fn log_request(req: Any) -> Any {
-    let timestamp = datetime::now();
-    println("[{}] {} {}", timestamp, req.method, req.path);
-    return req;
-}</code></pre>
-
-<h3>CORS Middleware</h3>
-<p>Handle Cross-Origin Resource Sharing:</p>
-<pre><code class="language-soli">// app/middleware/cors.soli
-
-// order: 5
-// global_only: true
-fn add_cors_headers(req: Any) -> Any {
-    let response = req;
-    response.headers["Access-Control-Allow-Origin"] = "*";
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
-    response.headers["Access-Control-Max-Age"] = "86400";
-    return response;
-}</code></pre>
-
-<h3>Authentication Middleware</h3>
-<p>Session-based authentication:</p>
-<pre><code class="language-soli">// app/middleware/auth.soli
-
-// order: 20
-// scope_only: true
-fn authenticate(req: Any) -> Any {
-    let session_id = req.cookies["session_id"];
-
-    if session_id == null || session_id == "" {
-        return redirect("/login?redirect=" + req.path);
-    }
-
-    let session = get_session(session_id);
-    if session == null {
-        return redirect("/login?redirect=" + req.path);
-    }
-
-    // Check session expiry
-    if session["expires_at"] < datetime::now() {
-        delete_session(session_id);
-        return redirect("/login?reason=expired");
-    }
-
-    // Attach user to request
-    req["user"] = session["user"];
-    return req;
-}</code></pre>
-
-<h3>Rate Limiting</h3>
-<p>Prevent abuse by limiting requests:</p>
-<pre><code class="language-soli">// app/middleware/rate_limit.soli
-
-// order: 100
-fn rate_limit(req: Any) -> Any {
-    let ip = req.headers["X-Forwarded-For"] ?? req.headers["Remote-Addr"];
-    let key = "rate_limit:" + ip;
-
-    let current = redis_get(key) ?? 0;
-    if current >= 100 {
-        return error(429, "Too many requests");
-    }
-
-    redis_incr(key);
-    redis_expire(key, 60); // Reset after 60 seconds
-
-    return req;
-}</code></pre>
-
-<h3>Body Parsing</h3>
-<p>Parse JSON request bodies:</p>
-<pre><code class="language-soli">// app/middleware/body_parser.soli
-
-// order: 15
-fn parse_json(req: Any) -> Any {
-    let content_type = req.headers["Content-Type"] ?? "";
-
-    if content_type.contains("application/json") {
-        let body = req.body;
-        if body != null && body != "" {
-            req["parsed_body"] = json_decode(body);
-        }
-    }
-
-    return req;
-}</code></pre>
-
-<div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-    <div class="flex items-start gap-3">
-        <div class="text-indigo-400 mt-0.5">
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-            </svg>
-        </div>
-        <div>
-            <h4 class="text-indigo-400 font-medium">Middleware Best Practices</h4>
-            <p class="text-sm text-indigo-200 mt-1">
-                Keep middleware focused and single-purpose. Use <code>order</code> to control execution sequence.
-                Global middleware should be lightweight - save heavy processing for scoped middleware.
-            </p>
+// Combining scopes
+get("/api/users", "api#users", ["auth", "rate_limit"]);</code></pre>
         </div>
     </div>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
+            </svg>
+            Best Practices
+        </h4>
+        <ul class="text-indigo-200/80 space-y-2 mt-2 text-sm">
+            <li>• Use <code>order</code> to strictly control the execution sequence.</li>
+            <li>• Keep global middleware lightweight; expensive operations belong in scoped middleware.</li>
+            <li>• Use <code>scope_only: true</code> for authentication to prevent accidental global application.</li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
+            <p class="text-sm text-gray-400">Handle the requests processed by middleware.</p>
+        </a>
+        <a href="/docs/views" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Views &rarr;</h3>
+            <p class="text-sm text-gray-400">Render HTML responses for your users.</p>
+        </a>
+        <a href="/docs/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models &rarr;</h3>
+            <p class="text-sm text-gray-400">Interact with your database securely.</p>
+        </a>
+    </div>
 </div>
-
-<h2>Middleware File Structure</h2>
-<pre><code class="language-text">app/middleware/
-├── logging.soli          # Request logging
-├── cors.soli             # CORS headers
-├── auth.soli             # Authentication
-├── rate_limit.soli       # Rate limiting
-└── body_parser.soli      # Body parsing</code></pre>
-
-<h2>Complete Example</h2>
-<pre><code class="language-soli">// config/routes.soli
-
-// Global middleware - runs on all requests
-use("middleware/cors");        // order: 5
-use("middleware/logging");     // order: 10
-
-// Public routes
-get("/", "home#index");
-get("/about", "home#about");
-get("/login", "auth#login");
-post("/auth/login", "auth#process_login");
-
-// Protected routes
-get("/dashboard", "dashboard#index", ["auth"]);
-get("/profile", "user#profile", ["auth"]);
-get("/settings", "user#settings", ["auth"]);
-
-// API routes with rate limiting
-get("/api/users", "api#users", ["auth", "rate_limit"]);
-get("/api/users/:id", "api#user_detail", ["auth", "rate_limit"]);
-post("/api/users", "api#create_user", ["auth", "rate_limit", "admin_only"]);
-
-// Admin routes
-get("/admin", "admin#panel", ["auth", "admin_only"]);
-post("/admin/users", "admin#create_user", ["auth", "admin_only"]);</code></pre>
-
-<h2>Next Steps</h2>
-<ul class="space-y-2">
-    <li>
-        <a href="/docs/controllers" class="text-indigo-400 hover:text-indigo-300">
-            Controllers
-        </a>
-        - Handle HTTP requests
-    </li>
-    <li>
-        <a href="/docs/views" class="text-indigo-400 hover:text-indigo-300">
-            Views & Templates
-        </a>
-        - Render HTML responses
-    </li>
-    <li>
-        <a href="/docs/models" class="text-indigo-400 hover:text-indigo-300">
-            Models & ORM
-        </a>
-        - Work with database data
-    </li>
-</ul>

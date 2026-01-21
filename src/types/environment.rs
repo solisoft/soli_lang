@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::types::type_repr::{ClassType, InterfaceType, Type};
+use crate::types::type_repr::{ClassType, InterfaceType, MethodInfo, Type};
 
 /// A type environment tracking types of variables and declarations.
 #[derive(Debug, Clone)]
@@ -589,6 +589,155 @@ impl TypeEnvironment {
                 return_type: Box::new(Type::String),
             },
         );
+
+        // Register built-in classes
+        self.register_builtin_classes();
+    }
+
+    fn register_builtin_classes(&mut self) {
+        // DateTime class
+        let mut datetime_class = ClassType::new("DateTime".to_string());
+        datetime_class.methods.insert(
+            "now".to_string(),
+            MethodInfo {
+                name: "now".to_string(),
+                params: vec![],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        datetime_class.methods.insert(
+            "utc".to_string(),
+            MethodInfo {
+                name: "utc".to_string(),
+                params: vec![],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        datetime_class.methods.insert(
+            "parse".to_string(),
+            MethodInfo {
+                name: "parse".to_string(),
+                params: vec![("s".to_string(), Type::String)],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("DateTime".to_string(), datetime_class);
+
+        // Duration class
+        let mut duration_class = ClassType::new("Duration".to_string());
+        duration_class.methods.insert(
+            "between".to_string(),
+            MethodInfo {
+                name: "between".to_string(),
+                params: vec![
+                    ("start".to_string(), Type::Class(ClassType::new("DateTime".to_string()))),
+                    ("end".to_string(), Type::Class(ClassType::new("DateTime".to_string()))),
+                ],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("Duration".to_string(), duration_class);
+
+        // I18n class
+        let mut i18n_class = ClassType::new("I18n".to_string());
+        i18n_class.methods.insert(
+            "locale".to_string(),
+            MethodInfo {
+                name: "locale".to_string(),
+                params: vec![],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        i18n_class.methods.insert(
+            "set_locale".to_string(),
+            MethodInfo {
+                name: "set_locale".to_string(),
+                params: vec![("locale".to_string(), Type::String)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        i18n_class.methods.insert(
+            "translate".to_string(),
+            MethodInfo {
+                name: "translate".to_string(),
+                params: vec![
+                    ("key".to_string(), Type::String),
+                    ("locale".to_string(), Type::Any),
+                    ("translations".to_string(), Type::Any),
+                ],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        i18n_class.methods.insert(
+            "plural".to_string(),
+            MethodInfo {
+                name: "plural".to_string(),
+                params: vec![
+                    ("key".to_string(), Type::String),
+                    ("n".to_string(), Type::Int),
+                    ("locale".to_string(), Type::Any),
+                    ("translations".to_string(), Type::Any),
+                ],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        i18n_class.methods.insert(
+            "format_number".to_string(),
+            MethodInfo {
+                name: "format_number".to_string(),
+                params: vec![
+                    ("n".to_string(), Type::Any),
+                    ("locale".to_string(), Type::Any),
+                ],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        i18n_class.methods.insert(
+            "format_currency".to_string(),
+            MethodInfo {
+                name: "format_currency".to_string(),
+                params: vec![
+                    ("amount".to_string(), Type::Any),
+                    ("currency".to_string(), Type::String),
+                    ("locale".to_string(), Type::Any),
+                ],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        i18n_class.methods.insert(
+            "format_date".to_string(),
+            MethodInfo {
+                name: "format_date".to_string(),
+                params: vec![
+                    ("ts".to_string(), Type::Int),
+                    ("locale".to_string(), Type::Any),
+                ],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("I18n".to_string(), i18n_class);
     }
 
     /// Enter a new scope.

@@ -1,7 +1,8 @@
 //! Soli CLI: Execute files or run the REPL.
 
 use std::env;
-use std::io::{self, Write};
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::process;
 
@@ -9,6 +10,13 @@ use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
 use solilang::ExecutionMode;
+
+#[cfg(unix)]
+use daemonize::Daemonize;
+#[cfg(unix)]
+use nix::sys::signal::{kill, Signal};
+#[cfg(unix)]
+use nix::unistd::Pid;
 
 /// CLI command to execute.
 enum Command {
@@ -20,9 +28,10 @@ enum Command {
     Serve {
         folder: String,
         port: u16,
-        live_reload: bool,
+        dev_mode: bool,
         mode: ExecutionMode,
         workers: usize,
+        daemonize: bool,
     },
 }
 
@@ -39,7 +48,7 @@ fn print_usage() {
     eprintln!();
     eprintln!("Usage: soli [options] [script.soli]");
     eprintln!(
-        "       soli serve <folder> [--port PORT] [--workers N] [--no-live-reload] [--mode MODE]"
+        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--mode MODE]"
     );
     eprintln!();
     eprintln!("Commands:");
@@ -51,9 +60,10 @@ fn print_usage() {
     eprintln!("  --jit           Use JIT compilation (fastest)");
     eprintln!("  --disassemble   Print bytecode disassembly before execution");
     eprintln!("  --no-type-check Skip type checking");
+    eprintln!("  -d              Daemonize server (creates soli.pid and soli.log)");
+    eprintln!("  --dev           Enable development mode (hot reload, no caching)");
     eprintln!("  --port PORT     Port for serve command (default: 3000)");
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
-    eprintln!("  --no-live-reload  Disable browser auto-refresh on file changes");
     eprintln!("  --mode MODE     Execution mode for serve: tree-walk, bytecode (default), jit");
     eprintln!("  --help, -h      Show this help message");
     eprintln!();
@@ -62,10 +72,11 @@ fn print_usage() {
     eprintln!("  soli script.soli              Run a script file");
     eprintln!("  soli --bytecode script.soli   Run with bytecode VM");
     eprintln!("  soli --disassemble fib.soli   Show bytecode and run");
-    eprintln!("  soli serve my_app             Start MVC server");
-    eprintln!("  soli serve my_app --port 8080 Start MVC server on port 8080");
-    eprintln!("  soli serve my_app --workers 16 Start MVC server with 16 workers");
-    eprintln!("  soli serve my_app --no-live-reload  Disable browser auto-refresh");
+    eprintln!("  soli serve my_app             Start production server (no hot reload)");
+    eprintln!("  soli serve my_app -d          Start as daemon (background process)");
+    eprintln!("  soli serve my_app --dev       Start development server (with hot reload)");
+    eprintln!("  soli serve my_app --port 8080 Start on custom port");
+    eprintln!("  soli serve my_app --workers 16 Start server with 16 workers");
     eprintln!("  soli serve my_app --mode bytecode  Use bytecode VM for MVC server");
 }
 
@@ -94,7 +105,8 @@ fn parse_args() -> Options {
 
                 // Check for options
                 let mut port = 3000u16;
-                let mut live_reload = true;
+                let mut dev_mode = false;  // Production by default
+                let mut daemonize = false;
                 let mut serve_mode = ExecutionMode::Bytecode;
                 // Default to number of CPU cores for optimal parallelism
                 let mut workers = std::thread::available_parallelism()
@@ -124,8 +136,10 @@ fn parse_args() -> Options {
                             eprintln!("Invalid workers number: {}", args[i]);
                             process::exit(64);
                         });
-                    } else if args[i] == "--no-live-reload" {
-                        live_reload = false;
+                    } else if args[i] == "-d" {
+                        daemonize = true;  // Enable daemon mode
+                    } else if args[i] == "--dev" {
+                        dev_mode = true;  // Enable development mode
                     } else if args[i] == "--mode" {
                         i += 1;
                         if i >= args.len() {
@@ -169,9 +183,10 @@ fn parse_args() -> Options {
                 options.command = Command::Serve {
                     folder,
                     port,
-                    live_reload,
+                    dev_mode,
                     mode: serve_mode,
                     workers,
+                    daemonize,
                 };
                 return options;
             }
@@ -220,14 +235,15 @@ fn main() {
         Command::Serve {
             folder,
             port,
-            live_reload,
+            dev_mode,
             mode,
             workers,
-        } => run_serve(folder, *port, *live_reload, *mode, *workers),
+            daemonize,
+        } => run_serve(folder, *port, *dev_mode, *mode, *workers, *daemonize),
     }
 }
 
-fn run_serve(folder: &str, port: u16, live_reload: bool, mode: ExecutionMode, workers: usize) {
+fn run_serve(folder: &str, port: u16, dev_mode: bool, mode: ExecutionMode, workers: usize, daemonize: bool) {
     let path = Path::new(folder);
 
     if !path.exists() {
@@ -240,12 +256,120 @@ fn run_serve(folder: &str, port: u16, live_reload: bool, mode: ExecutionMode, wo
         process::exit(1);
     }
 
+    // Handle daemonization (Unix only)
+    #[cfg(unix)]
+    if daemonize {
+        let pid_file = path.join("soli.pid");
+        let log_file = path.join("soli.log");
+
+        // Kill previous process if pid file exists
+        kill_previous_process(&pid_file);
+
+        // Create/truncate log file
+        let log = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file)
+            .unwrap_or_else(|e| {
+                eprintln!("Error: Cannot create log file: {}", e);
+                process::exit(1);
+            });
+
+        let daemon = Daemonize::new()
+            .pid_file(&pid_file)
+            .chown_pid_file(true)
+            .working_directory(path)
+            .stdout(log.try_clone().unwrap())
+            .stderr(log);
+
+        println!("Starting soli daemon...");
+        println!("  PID file: {}", pid_file.display());
+        println!("  Log file: {}", log_file.display());
+
+        match daemon.start() {
+            Ok(_) => {
+                // We're now in the daemon process
+                println!("Daemon started successfully");
+            }
+            Err(e) => {
+                eprintln!("Error: Failed to daemonize: {}", e);
+                process::exit(1);
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    if daemonize {
+        eprintln!("Error: Daemonization is only supported on Unix systems");
+        process::exit(1);
+    }
+
     if let Err(e) =
-        solilang::serve::serve_folder_with_options_and_mode(path, port, live_reload, mode, workers)
+        solilang::serve::serve_folder_with_options_and_mode(path, port, dev_mode, mode, workers)
     {
         eprintln!("Error: {}", e);
         process::exit(70);
     }
+}
+
+/// Kill the previous soli process if the PID file exists.
+#[cfg(unix)]
+fn kill_previous_process(pid_file: &Path) {
+    if !pid_file.exists() {
+        return;
+    }
+
+    // Read the PID from the file
+    let mut file = match File::open(pid_file) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+
+    let mut pid_str = String::new();
+    if file.read_to_string(&mut pid_str).is_err() {
+        return;
+    }
+
+    let pid: i32 = match pid_str.trim().parse() {
+        Ok(p) => p,
+        Err(_) => {
+            // Invalid PID, remove the stale file
+            let _ = fs::remove_file(pid_file);
+            return;
+        }
+    };
+
+    // Check if the process exists and is named "soli"
+    let cmdline_path = format!("/proc/{}/cmdline", pid);
+    if let Ok(mut cmdline_file) = File::open(&cmdline_path) {
+        let mut cmdline = String::new();
+        if cmdline_file.read_to_string(&mut cmdline).is_ok() {
+            // cmdline contains null-separated arguments, check if it's a soli process
+            let is_soli = cmdline.split('\0').any(|arg| {
+                arg.ends_with("/soli") || arg == "soli"
+            });
+
+            if is_soli {
+                println!("Killing previous soli process (PID: {})", pid);
+                if let Err(e) = kill(Pid::from_raw(pid), Signal::SIGTERM) {
+                    eprintln!("Warning: Failed to kill process {}: {}", pid, e);
+                } else {
+                    // Wait a bit for the process to terminate
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+
+                    // Check if process is still running, force kill if necessary
+                    if Path::new(&cmdline_path).exists() {
+                        println!("Process still running, sending SIGKILL...");
+                        let _ = kill(Pid::from_raw(pid), Signal::SIGKILL);
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                }
+            }
+        }
+    }
+
+    // Remove the old PID file
+    let _ = fs::remove_file(pid_file);
 }
 
 fn run_file(path: &str, options: &Options) {

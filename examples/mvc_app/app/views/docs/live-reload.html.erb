@@ -1,0 +1,115 @@
+<div class="max-w-3xl mx-auto">
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Live Reload</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Experience instant feedback. Soli's development server automatically detects changes and updates your browser without a restart.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-green-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-green-400 mb-1">Zero Configuration</h4>
+                <p class="text-green-200/80 text-sm">
+                    Live reload is enabled by default in development mode. No browser extensions or complex build tools required.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">How It Works</h2>
+    <p class="text-gray-400 mb-6">
+        When you run the development server, Soli watches your project files. When a change is detected:
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-indigo-500/50 transition-all">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg class="w-16 h-16 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">1. File Changed</h3>
+            <p class="text-gray-400 text-sm">You save a controller, view, or model file.</p>
+        </div>
+
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-purple-500/50 transition-all">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg class="w-16 h-16 text-purple-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">2. Recompile</h3>
+            <p class="text-gray-400 text-sm">Soli instantly recompiles the necessary bytecode in memory.</p>
+        </div>
+
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-green-500/50 transition-all">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg class="w-16 h-16 text-green-500" fill="currentColor" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">3. Refresh</h3>
+            <p class="text-gray-400 text-sm">The server notifies your browser via WebSocket to refresh the page.</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Starting the Server</h2>
+    <p class="text-gray-400 mb-6">Use the CLI to start your app in development mode:</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Terminal</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Run with hot reload (default)
+soli serve .
+
+# Specify port
+soli serve . --port 8080</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Styling with Tailwind</h2>
+    <p class="text-gray-400 mb-6">
+        For CSS changes to reflect instantly, you need to run the Tailwind watcher in parallel.
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">package.json</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-json text-sm">"scripts": {
+  "watch:css": "tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css --watch",
+  "dev": "concurrently \"npm run watch:css\" \"soli serve .\""
+}</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-yellow-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            Production Note
+        </h4>
+        <p class="text-yellow-200/80 text-sm">
+            Live reload is disabled automatically when you build for release (`cargo build --release`). 
+            Your production app will be optimized for performance, not developer experience.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/installation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Installation &rarr;</h3>
+            <p class="text-sm text-gray-400">Start a new project.</p>
+        </a>
+        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn about request handling.</p>
+        </a>
+    </div>
+</div>

@@ -69,10 +69,26 @@ fn websockets(req: Any) -> Any {
     });
 }
 
+fn live_reload(req: Any) -> Any {
+    return render("docs/live-reload", {
+        "title": "Live Reload",
+        "section": "development_tools",
+        "layout": "layouts/docs"
+    });
+}
+
 fn soli_language(req: Any) -> Any {
     return render("docs/soli-language", {
         "title": "Soli Language Reference",
         "section": "language_reference",
+        "layout": "layouts/docs"
+    });
+}
+
+fn i18n(req: Any) -> Any {
+    return render("docs/i18n", {
+        "title": "Internationalization",
+        "section": "core_concepts",
         "layout": "layouts/docs"
     });
 }

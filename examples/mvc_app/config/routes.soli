@@ -19,7 +19,9 @@ get("/docs/models", "docs#models");
 get("/docs/views", "docs#views");
 get("/docs/middleware", "docs#middleware");
 get("/docs/websockets", "docs#websockets");
+get("/docs/live-reload", "docs#live_reload");
 get("/docs/soli-language", "docs#soli_language");
+get("/docs/i18n", "docs#i18n");
 
 // WebSocket Demo
 get("/websocket", "websocket#demo");

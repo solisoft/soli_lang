@@ -8,6 +8,7 @@
 
 mod hot_reload;
 pub mod live_reload;
+mod live_reload_ws;  // WebSocket-based live reload
 mod middleware;
 mod router;
 pub mod websocket;
@@ -82,29 +83,29 @@ struct ResponseData {
     body: String,
 }
 
-/// Serve an MVC application from a folder with live reload enabled by default.
+/// Serve an MVC application from a folder in production mode by default.
 pub fn serve_folder(folder: &Path, port: u16) -> Result<(), RuntimeError> {
-    serve_folder_with_options(folder, port, true)
+    serve_folder_with_options(folder, port, false)
 }
 
 /// Serve an MVC application from a folder with configurable options.
 pub fn serve_folder_with_options(
     folder: &Path,
     port: u16,
-    live_reload: bool,
+    dev_mode: bool,
 ) -> Result<(), RuntimeError> {
     // Default to number of CPU cores for optimal parallelism
     let num_workers = std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(4); // Fallback to 4 if unable to detect
-    serve_folder_with_options_and_mode(folder, port, live_reload, ExecutionMode::Bytecode, num_workers)
+    serve_folder_with_options_and_mode(folder, port, dev_mode, ExecutionMode::Bytecode, num_workers)
 }
 
 /// Serve an MVC application from a folder with configurable options and execution mode.
 pub fn serve_folder_with_options_and_mode(
     folder: &Path,
     port: u16,
-    live_reload: bool,
+    dev_mode: bool,
     mode: ExecutionMode,
     workers: usize,
 ) -> Result<(), RuntimeError> {
@@ -179,8 +180,8 @@ pub fn serve_folder_with_options_and_mode(
         track_view_files(&views_dir, &mut file_tracker)?;
     }
 
-    // Set live reload flag for template injection
-    live_reload::set_live_reload_enabled(live_reload);
+    // Set live reload flag for template injection (only in dev mode)
+    live_reload::set_live_reload_enabled(dev_mode);
 
     // Load routes from config/routes.soli if it exists
     let routes_file = folder.join("config").join("routes.soli");
@@ -268,10 +269,11 @@ pub fn serve_folder_with_options_and_mode(
         middleware_dir,
         public_dir,
         file_tracker,
-        live_reload,
+        dev_mode,
         mode,
         workers,
         views_dir,
+        routes_file,
     )
 }
 
@@ -544,6 +546,8 @@ struct HotReloadVersions {
     views: AtomicU64,
     /// Incremented when static files (CSS, JS) change
     static_files: AtomicU64,
+    /// Incremented when routes.soli changes
+    routes: AtomicU64,
 }
 
 impl HotReloadVersions {
@@ -553,6 +557,7 @@ impl HotReloadVersions {
             middleware: AtomicU64::new(0),
             views: AtomicU64::new(0),
             static_files: AtomicU64::new(0),
+            routes: AtomicU64::new(0),
         }
     }
 }
@@ -618,12 +623,13 @@ fn run_hyper_server_worker_pool(
     middleware_dir: PathBuf,
     public_dir: PathBuf,
     _file_tracker: FileTracker,
-    live_reload: bool,
+    dev_mode: bool,
     _mode: ExecutionMode,
     num_workers: usize,
     views_dir: PathBuf,
+    routes_file: PathBuf,
 ) -> Result<(), RuntimeError> {
-    let reload_tx = if live_reload {
+    let reload_tx = if dev_mode {
         let (tx, _) = broadcast::channel::<()>(16);
         Some(tx)
     } else {
@@ -646,9 +652,12 @@ fn run_hyper_server_worker_pool(
     let worker_queues_for_tokio = worker_queues.clone();
 
     println!("\nServer listening on http://0.0.0.0:{}", port);
-    println!("Hot reload enabled - edit controllers/middleware/views to see changes");
-    if live_reload {
-        println!("Live reload enabled - browsers will auto-refresh on changes");
+    if dev_mode {
+        println!("Development mode - hot reload enabled, no caching");
+        println!("  Edit controllers/middleware/views to see changes");
+        println!("  Browsers will auto-refresh on changes");
+    } else {
+        println!("Production mode - caching enabled, no hot reload");
     }
     if public_dir.exists() {
         println!("Static files served from {}", public_dir.display());
@@ -658,6 +667,7 @@ fn run_hyper_server_worker_pool(
     // Wrap public_dir in Arc for cheap cloning across connections
     let public_dir_arc = Arc::new(public_dir.clone());
     let ws_registry_for_tokio = ws_registry.clone();
+    let dev_mode_for_tokio = dev_mode;
 
     // Channel to pass runtime handle from tokio thread to main thread
     let (runtime_handle_tx, runtime_handle_rx) = std::sync::mpsc::channel::<tokio::runtime::Handle>();
@@ -687,6 +697,7 @@ fn run_hyper_server_worker_pool(
                 let _ws_registry = ws_registry_for_tokio.clone();
                 let ws_event_tx = ws_event_tx.clone(); // crossbeam Sender is cheap to clone
                 let shutdown_flag = shutdown_flag_for_tokio.clone();
+                let dev_mode = dev_mode_for_tokio;
 
                 tokio::spawn(async move {
                     let service = service_fn(move |req| {
@@ -710,6 +721,7 @@ fn run_hyper_server_worker_pool(
                                 reload_tx,
                                 public_dir,
                                 ws_event_tx,
+                                dev_mode,
                             )
                             .await
                         }
@@ -737,6 +749,7 @@ fn run_hyper_server_worker_pool(
     let watch_views_dir = views_dir.clone();
     let watch_middleware_dir = middleware_dir.clone();
     let watch_public_dir = public_dir.clone();
+    let watch_routes_file = routes_file.clone();
     let browser_reload_tx = reload_tx.clone();
     thread::spawn(move || {
         let mut file_tracker = FileTracker::new();
@@ -759,6 +772,11 @@ fn run_hyper_server_worker_pool(
                     file_tracker.track(&path);
                 }
             }
+        }
+
+        // Track routes.soli file
+        if watch_routes_file.exists() {
+            file_tracker.track(&watch_routes_file);
         }
 
         // Track view files recursively
@@ -810,6 +828,7 @@ fn run_hyper_server_worker_pool(
             let mut controllers_changed = false;
             let mut middleware_changed = false;
             let mut static_files_changed = false;
+            let mut routes_changed = false;
 
             for path in &changed {
                 println!("   {}", path.display());
@@ -822,7 +841,9 @@ fn run_hyper_server_worker_pool(
                 }
 
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.ends_with("_controller.soli") {
+                    if name == "routes.soli" {
+                        routes_changed = true;
+                    } else if name.ends_with("_controller.soli") {
                         controllers_changed = true;
                     } else if name.ends_with(".soli") && path.starts_with(&watch_middleware_dir) {
                         middleware_changed = true;
@@ -851,6 +872,10 @@ fn run_hyper_server_worker_pool(
             if static_files_changed {
                 hot_reload_versions_for_watcher.static_files.fetch_add(1, Ordering::Release);
                 println!("   ✓ Signaled static file reload to all workers");
+            }
+            if routes_changed {
+                hot_reload_versions_for_watcher.routes.fetch_add(1, Ordering::Release);
+                println!("   ✓ Signaled routes reload to all workers");
             }
 
             // Notify browser for live reload
@@ -886,6 +911,7 @@ fn run_hyper_server_worker_pool(
         let views_dir = views_dir.clone();
         let hot_reload_versions = hot_reload_versions.clone();
         let runtime_handle = runtime_handle.clone();
+        let routes_file = routes_file.clone();
 
         let builder = thread::Builder::new().name(format!("worker-{}", i));
         let handler = builder.spawn(move || {
@@ -893,7 +919,7 @@ fn run_hyper_server_worker_pool(
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut interpreter = Interpreter::new();
 
-                worker_loop(i, work_rx, models_dir, middleware_dir, ws_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle);
+                worker_loop(i, work_rx, models_dir, middleware_dir, ws_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle, routes_file);
             }));
 
             if result.is_err() {
@@ -934,6 +960,7 @@ fn worker_loop(
     views_dir: PathBuf,
     hot_reload_versions: Arc<HotReloadVersions>,
     runtime_handle: tokio::runtime::Handle,
+    routes_file: PathBuf,
 ) {
     // Initialize routes in this worker thread
     set_worker_routes(routes);
@@ -946,6 +973,11 @@ fn worker_loop(
     // Load controllers in this worker so functions are defined in environment
     load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
 
+    // Define DSL helpers for routes (needed for hot reload)
+    if let Err(e) = define_routes_dsl(interpreter) {
+        eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
+    }
+
     let _worker_routes = get_routes();
 
     let check_interval = Duration::from_millis(100);
@@ -957,6 +989,7 @@ fn worker_loop(
     let mut last_middleware_version = hot_reload_versions.middleware.load(Ordering::Acquire);
     let mut last_views_version = hot_reload_versions.views.load(Ordering::Acquire);
     let mut last_static_files_version = hot_reload_versions.static_files.load(Ordering::Acquire);
+    let mut last_routes_version = hot_reload_versions.routes.load(Ordering::Acquire);
 
     const BATCH_SIZE: usize = 64;
 
@@ -966,17 +999,16 @@ fn worker_loop(
         let current_middleware = hot_reload_versions.middleware.load(Ordering::Acquire);
         let current_views = hot_reload_versions.views.load(Ordering::Acquire);
         let current_static_files = hot_reload_versions.static_files.load(Ordering::Acquire);
+        let current_routes = hot_reload_versions.routes.load(Ordering::Acquire);
 
         if current_controllers != last_controllers_version {
             last_controllers_version = current_controllers;
-            println!("Worker {}: Reloading controllers", worker_id);
             // Re-load all controllers
             load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
         }
 
         if current_middleware != last_middleware_version {
             last_middleware_version = current_middleware;
-            println!("Worker {}: Reloading middleware", worker_id);
             // Clear and reload middleware
             let mut file_tracker = FileTracker::new();
             if let Err(e) = load_middleware(interpreter, &middleware_dir, &mut file_tracker) {
@@ -986,18 +1018,22 @@ fn worker_loop(
 
         if current_views != last_views_version {
             last_views_version = current_views;
-            println!("Worker {}: Clearing template cache", worker_id);
             clear_template_cache();
         }
 
         // Static files changed - trigger browser refresh via SSE
         if current_static_files != last_static_files_version {
             last_static_files_version = current_static_files;
-            println!("Worker {}: Static files changed", worker_id);
             // Notify browser for live reload (browsers will re-fetch CSS/JS)
             if let Some(ref tx) = _reload_tx {
                 let _ = tx.send(());
             }
+        }
+
+        // Routes changed - reload routes.soli
+        if current_routes != last_routes_version {
+            last_routes_version = current_routes;
+            reload_routes_in_worker(worker_id, interpreter, &routes_file);
         }
 
         // Process WebSocket events first (quick non-blocking check)
@@ -1094,6 +1130,94 @@ fn load_controllers_in_worker(worker_id: usize, interpreter: &mut Interpreter, c
     }
 }
 
+/// Define DSL helpers for routes in the interpreter.
+/// This must be called before routes.soli can be executed.
+fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
+    let dsl_source = r#"
+        fn resources(name: Any, block: Any) {
+            router_resource_enter(name, null);
+            if (block != null) { block(); }
+            router_resource_exit();
+        }
+
+        fn namespace(name: Any, block: Any) {
+            router_namespace_enter(name);
+            if (block != null) { block(); }
+            router_namespace_exit();
+        }
+
+        fn member(block: Any) {
+            router_member_enter();
+            if (block != null) { block(); }
+            router_member_exit();
+        }
+
+        fn collection(block: Any) {
+            router_collection_enter();
+            if (block != null) { block(); }
+            router_collection_exit();
+        }
+
+        fn middleware(mw_names: Any, block: Any) {
+            router_middleware_scope(mw_names);
+            if (block != null) { block(); }
+            router_middleware_scope_exit();
+        }
+
+        fn get(path: Any, action: Any) { router_match("GET", path, action); }
+        fn post(path: Any, action: Any) { router_match("POST", path, action); }
+        fn put(path: Any, action: Any) { router_match("PUT", path, action); }
+        fn delete(path: Any, action: Any) { router_match("DELETE", path, action); }
+        fn patch(path: Any, action: Any) { router_match("PATCH", path, action); }
+
+        fn websocket(path: Any, action: Any) { router_websocket(path, action); }
+    "#;
+
+    let tokens = crate::lexer::Scanner::new(dsl_source)
+        .scan_tokens()
+        .map_err(|e| RuntimeError::General {
+            message: format!("DSL Lexer error: {}", e),
+            span: Span::default(),
+        })?;
+    let program = crate::parser::Parser::new(tokens)
+        .parse()
+        .map_err(|e| RuntimeError::General {
+            message: format!("DSL Parser error: {}", e),
+            span: Span::default(),
+        })?;
+    interpreter.interpret(&program)
+}
+
+/// Reload routes in a worker thread.
+/// Clears existing routes, resets router context, and re-executes routes.soli.
+fn reload_routes_in_worker(
+    worker_id: usize,
+    interpreter: &mut Interpreter,
+    routes_file: &Path,
+) {
+    // 1. Clear existing routes
+    crate::interpreter::builtins::server::clear_routes();
+
+    // 2. Clear WebSocket routes
+    crate::serve::websocket::clear_websocket_routes();
+
+    // 3. Reset router context
+    crate::interpreter::builtins::router::reset_router_context();
+
+    // 4. Re-execute routes.soli (DSL helpers are already defined in interpreter)
+    if routes_file.exists() {
+        if let Err(e) = execute_file(interpreter, routes_file) {
+            eprintln!("Worker {}: Error reloading routes: {}", worker_id, e);
+            return;
+        }
+    }
+
+    // 5. Rebuild route index
+    crate::interpreter::builtins::server::rebuild_route_index();
+
+    println!("Worker {}: Routes reloaded successfully", worker_id);
+}
+
 /// Data for WebSocket events sent to the interpreter thread.
 struct WebSocketEventData {
     path: String,
@@ -1122,6 +1246,7 @@ async fn handle_hyper_request(
     reload_tx: Option<broadcast::Sender<()>>,
     public_dir: Arc<PathBuf>,
     ws_event_tx: channel::Sender<WebSocketEventData>,
+    dev_mode: bool,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let method = req.method().to_string().to_uppercase();
     let uri = req.uri();
@@ -1129,6 +1254,19 @@ async fn handle_hyper_request(
 
     // Check for WebSocket upgrade request
     if hyper_tungstenite::is_upgrade_request(&req) {
+        // Handle live reload WebSocket endpoint
+        if path == "/__livereload_ws" {
+            if let Some(ref tx) = reload_tx {
+                return live_reload_ws::handle_live_reload_websocket(req, tx.subscribe()).await;
+            } else {
+                // Live reload disabled
+                return Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Full::new(Bytes::from("Live reload is disabled")))
+                    .unwrap());
+            }
+        }
+
         // Check if there's a WebSocket route for this path
         let routes = crate::serve::websocket::get_websocket_routes();
         let has_ws_route = routes.iter().any(|r| r.path_pattern == path);
@@ -1173,12 +1311,34 @@ async fn handle_hyper_request(
                     Some("svg") => "image/svg+xml",
                     Some("html") => "text/html",
                     Some("json") => "application/json",
+                    Some("woff") => "font/woff",
+                    Some("woff2") => "font/woff2",
+                    Some("ttf") => "font/ttf",
+                    Some("gif") => "image/gif",
                     _ => "application/octet-stream",
                 };
 
-                return Ok(Response::builder()
+                let mut response_builder = Response::builder()
                     .status(StatusCode::OK)
-                    .header("Content-Type", mime_type)
+                    .header("Content-Type", mime_type);
+
+                // Add caching headers in production mode (not dev mode)
+                if !dev_mode {
+                    // Get file modification time for ETag
+                    if let Ok(metadata) = std::fs::metadata(&file_path) {
+                        if let Ok(modified) = metadata.modified() {
+                            let etag = format!("\"{:x}\"", modified
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs());
+                            response_builder = response_builder
+                                .header("ETag", etag)
+                                .header("Cache-Control", "public, max-age=31536000, immutable");
+                        }
+                    }
+                }
+
+                return Ok(response_builder
                     .body(Full::new(Bytes::from(content)))
                     .unwrap());
             }

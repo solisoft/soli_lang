@@ -1,353 +1,171 @@
-<h1>Views & Templates</h1>
-<p class="lead text-xl text-gray-300 mb-8">
-    Views handle the presentation layer of your application, rendering HTML templates with dynamic data from controllers.
-</p>
+<div class="max-w-3xl mx-auto">
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Views & Templates</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Views handle the presentation layer of your application. Soli uses a familiar, expressive template syntax that combines HTML with dynamic logic.
+        </p>
+    </div>
 
-<div class="callout callout-info">
-    <strong>ERB Syntax:</strong> Soli uses ERB-style templates. Use <code>&lt;%= %&gt;</code> for output and <code>&lt;% %&gt;</code> for logic that doesn't output.
-</div>
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-blue-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-blue-400 mb-1">ERB Syntax</h4>
+                <p class="text-blue-200/80 text-sm">
+                    Soli uses ERB-style tags. Use <code>&lt;%= ... %&gt;</code> to output values, and <code>&lt;% ... %&gt;</code> for logic like loops or conditionals.
+                </p>
+            </div>
+        </div>
+    </div>
 
-<h2>Template Syntax</h2>
-<p>Templates combine HTML with embedded Soli code for dynamic content.</p>
-
-<h3>Output Variables</h3>
-<p>Use <code>&lt;%= %&gt;</code> to output values passed from the controller:</p>
-<pre><code class="language-erb">&lt;!-- Basic variable output --&gt;
+    <h2 class="text-2xl font-bold text-white mb-6">Template Syntax</h2>
+    
+    <h3 class="text-xl font-semibold text-white mb-4">Output Variables</h3>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">template.html.erb</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- Basic variable output --&gt;
 &lt;h1&gt;&lt;%= title %&gt;&lt;/h1&gt;
 &lt;p&gt;Hello, &lt;%= name %&gt;!&lt;/p&gt;
-&lt;p&gt;Count: &lt;%= count %&gt;&lt;/p&gt;
 
-&lt;!-- Accessing nested data --&gt;
+&lt;!-- Accessing hash data --&gt;
 &lt;p&gt;User: &lt;%= user["name"] %&gt;&lt;/p&gt;
-&lt;p&gt;Email: &lt;%= user["email"] %&gt;&lt;/p&gt;
 
 &lt;!-- Expressions --&gt;
-&lt;p&gt;Total: $&lt;%= price * quantity %&gt;&lt;/p&gt;
-&lt;p&gt;Items: &lt;%= items.length() %&gt;&lt;/p&gt;</code></pre>
+&lt;p&gt;Total: $&lt;%= price * quantity %&gt;&lt;/p&gt;</code></pre>
+        </div>
+    </div>
 
-<h3>Control Flow</h3>
-<p>Use <code>&lt;% %&gt;</code> for logic without output:</p>
-<pre><code class="language-erb">&lt;!-- Conditionals --&gt;
+    <h3 class="text-xl font-semibold text-white mb-4">Control Flow</h3>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">template.html.erb</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- Conditionals --&gt;
 &lt;% if user_logged_in %&gt;
-    &lt;nav&gt;
-        &lt;span&gt;Welcome, &lt;%= user["name"] %&gt;!&lt;/span&gt;
-        &lt;a href="/logout"&gt;Logout&lt;/a&gt;
-    &lt;/nav&gt;
+    &lt;span&gt;Welcome back!&lt;/span&gt;
 &lt;% else %&gt;
-    &lt;nav&gt;
-        &lt;a href="/login"&gt;Login&lt;/a&gt;
-        &lt;a href="/register"&gt;Register&lt;/a&gt;
-    &lt;/nav&gt;
+    &lt;a href="/login"&gt;Login&lt;/a&gt;
 &lt;% end %&gt;
 
 &lt;!-- Loops --&gt;
-&lt;ul class="post-list"&gt;
+&lt;ul&gt;
     &lt;% for post in posts %&gt;
-        &lt;li&gt;
-            &lt;h3&gt;&lt;%= post["title"] %&gt;&lt;/h3&gt;
-            &lt;p&gt;&lt;%= post["excerpt"] %&gt;&lt;/p&gt;
-            &lt;a href="/posts/&lt;%= post["id"] %&gt;"&gt;Read more&lt;/a&gt;
-        &lt;/li&gt;
+        &lt;li&gt;&lt;%= post["title"] %&gt;&lt;/li&gt;
     &lt;% end %&gt;
-&lt;/ul&gt;
+&lt;/ul&gt;</code></pre>
+        </div>
+    </div>
 
-&lt;!-- Conditional classes --&gt;
-&lt;div class="alert &lt;%= if error %&gt;alert-error&lt;% else %&gt;alert-success&lt;% end %&gt;"&gt;
-    &lt;%= message %&gt;
-&lt;/div&gt;</code></pre>
+    <h2 class="text-2xl font-bold text-white mb-6">Layouts</h2>
+    <p class="text-gray-400 mb-6">Layouts define the outer shell of your pages. Use <code>&lt;%= yield %&gt;</code> to inject the view content.</p>
 
-<h3>Helper Functions</h3>
-<p>Built-in helpers for common template tasks:</p>
-<pre><code class="language-erb">&lt;!-- HTML escaping (prevents XSS) --&gt;
-&lt;p&gt;&lt;%= h(user_input) %&gt;&lt;/p&gt;
-&lt;p&gt;&lt;%= html_escape(content) %&gt;&lt;/p&gt;
-
-&lt;!-- JSON encoding --&gt;
-&lt;script&gt;
-    const data = &lt;%= json_encode(user_data) %&gt;;
-&lt;/script&gt;
-
-&lt;!-- Date formatting --&gt;
-&lt;p&gt;Published: &lt;%= format_date(post["created_at"], "%B %d, %Y") %&gt;&lt;/p&gt;
-
-&lt;!-- Number formatting --&gt;
-&lt;p&gt;Price: $&lt;%= format_number(price, 2) %&gt;&lt;/p&gt;
-
-&lt;!-- String helpers --&gt;
-&lt;p&gt;&lt;%= truncate(content, 100) %&gt;...&lt;/p&gt;
-&lt;p&gt;&lt;%= capitalize(name) %&gt;&lt;/p&gt;</code></pre>
-
-<h2>Layouts</h2>
-<p>Layouts wrap your views with common HTML structure like headers and footers.</p>
-
-<h3>Creating a Layout</h3>
-<pre><code class="language-erb">&lt;!-- app/views/layouts/application.html.erb --&gt;
-&lt;!DOCTYPE html&gt;
-&lt;html lang="en"&gt;
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">app/views/layouts/application.html.erb</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
 &lt;head&gt;
-    &lt;meta charset="UTF-8"&gt;
-    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
-    &lt;title&gt;&lt;%= title %&gt; - My App&lt;/title&gt;
-    &lt;link rel="stylesheet" href="/css/application.css"&gt;
+    &lt;title&gt;&lt;%= title %&gt;&lt;/title&gt;
 &lt;/head&gt;
 &lt;body&gt;
-    &lt;header&gt;
-        &lt;nav&gt;
-            &lt;a href="/"&gt;Home&lt;/a&gt;
-            &lt;a href="/about"&gt;About&lt;/a&gt;
-            &lt;a href="/contact"&gt;Contact&lt;/a&gt;
-        &lt;/nav&gt;
-    &lt;/header&gt;
-
+    &lt;nav&gt;...&lt;/nav&gt;
+    
     &lt;main&gt;
         &lt;%= yield %&gt;
     &lt;/main&gt;
-
-    &lt;footer&gt;
-        &lt;p&gt;&amp;copy; 2026 My App. All rights reserved.&lt;/p&gt;
-    &lt;/footer&gt;
-
-    &lt;script src="/js/application.js"&gt;&lt;/script&gt;
 &lt;/body&gt;
 &lt;/html&gt;</code></pre>
-
-<h3>Using Layouts</h3>
-<p>Specify layout in controller or use the default:</p>
-<pre><code class="language-soli">// Use default layout (layouts/application)
-fn index(req: Any) -> Any {
-    return render("home/index", {
-        "title": "Welcome"
-    });
-}
-
-// Use custom layout
-fn docs(req: Any) -> Any {
-    return render("docs/index", {
-        "title": "Documentation"
-    }, "layouts/docs");
-}
-
-// No layout (API response)
-fn api_users(req: Any) -> Any {
-    return {
-        "status": 200,
-        "headers": { "Content-Type": "application/json" },
-        "body": json_encode(users)
-    };
-}</code></pre>
-
-<h3>Layout in Class Controllers</h3>
-<pre><code class="language-soli">class DocsController extends ApplicationController {
-    static {
-        // All actions use this layout
-        this.layout = "layouts/docs";
-    }
-
-    fn index(req: Any) -> Any {
-        return render("docs/index", { "title": "Docs" });
-    }
-}</code></pre>
-
-<h2>Partials</h2>
-<p>Partials are reusable template fragments. Name them with an underscore prefix.</p>
-
-<h3>Creating Partials</h3>
-<pre><code class="language-erb">&lt;!-- app/views/partials/_user_card.html.erb --&gt;
-&lt;div class="user-card"&gt;
-    &lt;img src="&lt;%= user["avatar"] %&gt;" alt="&lt;%= user["name"] %&gt;"&gt;
-    &lt;h3&gt;&lt;%= user["name"] %&gt;&lt;/h3&gt;
-    &lt;p&gt;&lt;%= user["email"] %&gt;&lt;/p&gt;
-    &lt;span class="badge"&gt;&lt;%= user["role"] %&gt;&lt;/span&gt;
-&lt;/div&gt;
-
-&lt;!-- app/views/partials/_alert.html.erb --&gt;
-&lt;div class="alert alert-&lt;%= type %&gt;"&gt;
-    &lt;strong&gt;&lt;%= title %&gt;&lt;/strong&gt;
-    &lt;p&gt;&lt;%= message %&gt;&lt;/p&gt;
-&lt;/div&gt;</code></pre>
-
-<h3>Using Partials</h3>
-<pre><code class="language-erb">&lt;!-- Single partial --&gt;
-&lt;%= render_partial("partials/user_card", { "user": current_user }) %&gt;
-
-&lt;!-- Loop with partials --&gt;
-&lt;div class="user-grid"&gt;
-    &lt;% for user in users %&gt;
-        &lt;%= render_partial("partials/user_card", { "user": user }) %&gt;
-    &lt;% end %&gt;
-&lt;/div&gt;
-
-&lt;!-- Alert partial with different data --&gt;
-&lt;% if error %&gt;
-    &lt;%= render_partial("partials/alert", {
-        "type": "error",
-        "title": "Error",
-        "message": error
-    }) %&gt;
-&lt;% end %&gt;
-
-&lt;% if success %&gt;
-    &lt;%= render_partial("partials/alert", {
-        "type": "success",
-        "title": "Success",
-        "message": success
-    }) %&gt;
-&lt;% end %&gt;</code></pre>
-
-<h2>Forms</h2>
-<p>Build forms that submit to your controllers:</p>
-<pre><code class="language-erb">&lt;!-- app/views/users/new.html.erb --&gt;
-&lt;form action="/users" method="POST"&gt;
-    &lt;div class="form-group"&gt;
-        &lt;label for="name"&gt;Name&lt;/label&gt;
-        &lt;input type="text" id="name" name="name" value="&lt;%= user["name"] %&gt;" required&gt;
-    &lt;/div&gt;
-
-    &lt;div class="form-group"&gt;
-        &lt;label for="email"&gt;Email&lt;/label&gt;
-        &lt;input type="email" id="email" name="email" value="&lt;%= user["email"] %&gt;" required&gt;
-    &lt;/div&gt;
-
-    &lt;div class="form-group"&gt;
-        &lt;label for="role"&gt;Role&lt;/label&gt;
-        &lt;select id="role" name="role"&gt;
-            &lt;option value="user" &lt;%= if user["role"] == "user" %&gt;selected&lt;% end %&gt;&gt;User&lt;/option&gt;
-            &lt;option value="admin" &lt;%= if user["role"] == "admin" %&gt;selected&lt;% end %&gt;&gt;Admin&lt;/option&gt;
-        &lt;/select&gt;
-    &lt;/div&gt;
-
-    &lt;button type="submit" class="btn btn-primary"&gt;Create User&lt;/button&gt;
-&lt;/form&gt;</code></pre>
-
-<h2>Static Assets</h2>
-<p>Reference static files from the <code>public/</code> directory:</p>
-<pre><code class="language-erb">&lt;!-- CSS --&gt;
-&lt;link rel="stylesheet" href="/css/application.css"&gt;
-&lt;link rel="stylesheet" href="/css/components/buttons.css"&gt;
-
-&lt;!-- JavaScript --&gt;
-&lt;script src="/js/application.js"&gt;&lt;/script&gt;
-
-&lt;!-- Images --&gt;
-&lt;img src="/images/logo.png" alt="Logo"&gt;
-&lt;img src="/images/users/&lt;%= user["avatar"] %&gt;" alt="Avatar"&gt;
-
-&lt;!-- Favicons --&gt;
-&lt;link rel="icon" href="/favicon.ico"&gt;
-&lt;link rel="apple-touch-icon" href="/images/apple-touch-icon.png"&gt;</code></pre>
-
-<div class="callout callout-tip">
-    <strong>Pro Tip:</strong> Use TailwindCSS for utility-first styling. Run <code>npm run build:css</code> to compile your styles.
-</div>
-
-<h2>Passing Data to Views</h2>
-<p>Controllers pass data as a hash to views:</p>
-<pre><code class="language-soli">fn show(req: Any) -> Any {
-    let user_id = req["params"]["id"];
-    let user = User.find(user_id);
-    let posts = Post.where("author_id", "==", user_id).find();
-
-    return render("users/show", {
-        "title": user["name"] + "'s Profile",
-        "user": user,
-        "posts": posts,
-        "post_count": posts.length(),
-        "is_own_profile": req["session"]["user_id"] == user_id
-    });
-}</code></pre>
-
-<p>All hash keys become variables in the template:</p>
-<pre><code class="language-erb">&lt;!-- app/views/users/show.html.erb --&gt;
-&lt;h1&gt;&lt;%= user["name"] %&gt;&lt;/h1&gt;
-
-&lt;% if is_own_profile %&gt;
-    &lt;a href="/users/&lt;%= user["id"] %&gt;/edit" class="btn"&gt;Edit Profile&lt;/a&gt;
-&lt;% end %&gt;
-
-&lt;h2&gt;Posts (&lt;%= post_count %&gt;)&lt;/h2&gt;
-&lt;% for post in posts %&gt;
-    &lt;article&gt;
-        &lt;h3&gt;&lt;%= post["title"] %&gt;&lt;/h3&gt;
-        &lt;p&gt;&lt;%= truncate(post["content"], 200) %&gt;&lt;/p&gt;
-    &lt;/article&gt;
-&lt;% end %&gt;</code></pre>
-
-<div class="callout callout-warning">
-    <strong>Security:</strong> Always use <code>h()</code> or <code>html_escape()</code> when outputting user-generated content to prevent XSS attacks.
-</div>
-
-<h2>File Organization</h2>
-<p>Organize views by controller with shared components in partials:</p>
-<pre><code class="language-text">app/views/
-├── home/                      # home_controller views
-│   ├── index.html.erb
-│   ├── about.html.erb
-│   └── contact.html.erb
-├── users/                     # users_controller views
-│   ├── index.html.erb
-│   ├── show.html.erb
-│   ├── new.html.erb
-│   ├── edit.html.erb
-│   └── _form.html.erb         # Shared form partial
-├── posts/                     # posts_controller views
-│   ├── index.html.erb
-│   ├── show.html.erb
-│   └── _card.html.erb         # Post card partial
-├── partials/                  # Shared partials
-│   ├── _header.html.erb
-│   ├── _footer.html.erb
-│   ├── _alert.html.erb
-│   ├── _pagination.html.erb
-│   └── _user_card.html.erb
-└── layouts/                   # Layout templates
-    ├── application.html.erb   # Default layout
-    ├── admin.html.erb         # Admin panel layout
-    └── docs.html.erb          # Documentation layout</code></pre>
-
-<div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-    <div class="flex items-start gap-3">
-        <div class="text-indigo-400 mt-0.5">
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-            </svg>
-        </div>
-        <div>
-            <h4 class="text-indigo-400 font-medium">View Best Practices</h4>
-            <ul class="text-sm text-indigo-200 mt-2 space-y-1">
-                <li>Keep views simple and focused on presentation</li>
-                <li>Never put business logic in views - use controllers</li>
-                <li>Use partials to avoid repetition</li>
-                <li>Always escape user input with <code>h()</code></li>
-                <li>Name partials with underscore prefix (<code>_partial.html.erb</code>)</li>
-            </ul>
         </div>
     </div>
-</div>
 
-<h2>Next Steps</h2>
-<ul class="space-y-2">
-    <li>
-        <a href="/docs/controllers" class="text-indigo-400 hover:text-indigo-300">
-            Controllers
+    <h2 class="text-2xl font-bold text-white mb-6">Partials</h2>
+    <p class="text-gray-400 mb-6">Reuse components across views. Partials are named with a leading underscore.</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Usage</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- Render _user_card.html.erb --&gt;
+&lt;%= render_partial("partials/user_card", { "user": user }) %&gt;</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Passing Data</h2>
+    <p class="text-gray-400 mb-6">Pass a hash of data from your controller to the view.</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">app/controllers/posts_controller.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn show(req) {
+    let post = Post.find(req.params["id"]);
+    
+    return render("posts/show", {
+        "title": post["title"],
+        "post": post
+    });
+}</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-yellow-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            Security Warning
+        </h4>
+        <p class="text-yellow-200/80 text-sm">
+            Always use <code>h()</code> or <code>html_escape()</code> when outputting user-generated content to prevent XSS attacks. 
+            Soli escapes output in <code>&lt;%= %&gt;</code> by default, but be cautious with raw output.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Best Practices</h2>
+    <ul class="space-y-4 mb-12">
+        <li class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Keep logic out of views. If it's complex, it belongs in a <strong>helper</strong> or <strong>controller</strong>.</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Use <strong>partials</strong> for small, reusable components like buttons, cards, or alerts.</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Organize views into folders matching your controller names.</span>
+        </li>
+    </ul>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
+            <p class="text-sm text-gray-400">Pass the data that fuels your templates.</p>
         </a>
-        - Pass data to views and handle requests
-    </li>
-    <li>
-        <a href="/docs/middleware" class="text-indigo-400 hover:text-indigo-300">
-            Middleware
+        <a href="/docs/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Routing &rarr;</h3>
+            <p class="text-sm text-gray-400">Define the URLs that display your views.</p>
         </a>
-        - Process requests before they reach controllers
-    </li>
-    <li>
-        <a href="/docs/models" class="text-indigo-400 hover:text-indigo-300">
-            Models & ORM
-        </a>
-        - Work with database data
-    </li>
-    <li>
-        <a href="/docs/routing" class="text-indigo-400 hover:text-indigo-300">
-            Routing
-        </a>
-        - Define URL patterns for your views
-    </li>
-</ul>
+    </div>
+</div>

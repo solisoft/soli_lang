@@ -93,6 +93,7 @@ impl Model {
             methods: HashMap::new(),
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
+            native_methods: HashMap::new(),
             constructor: None,
         };
         env.define("Model".to_string(), Value::Class(Rc::new(model_class)));
@@ -546,6 +547,7 @@ impl Model {
             methods: HashMap::new(),
             static_methods: HashMap::new(),
             native_static_methods,
+            native_methods: HashMap::new(),
             constructor: None,
         };
         env.define("Field".to_string(), Value::Class(Rc::new(field_class)));

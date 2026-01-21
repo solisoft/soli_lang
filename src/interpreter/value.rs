@@ -380,6 +380,7 @@ pub struct Class {
     pub methods: HashMap<String, Rc<Function>>,
     pub static_methods: HashMap<String, Rc<Function>>,
     pub native_static_methods: HashMap<String, Rc<NativeFunction>>,
+    pub native_methods: HashMap<String, Rc<NativeFunction>>,
     pub constructor: Option<Rc<Function>>,
 }
 
@@ -390,6 +391,16 @@ impl Class {
         }
         if let Some(ref superclass) = self.superclass {
             return superclass.find_method(name);
+        }
+        None
+    }
+
+    pub fn find_native_method(&self, name: &str) -> Option<Rc<NativeFunction>> {
+        if let Some(method) = self.native_methods.get(name) {
+            return Some(method.clone());
+        }
+        if let Some(ref superclass) = self.superclass {
+            return superclass.find_native_method(name);
         }
         None
     }

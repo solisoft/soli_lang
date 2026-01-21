@@ -1043,7 +1043,7 @@ curl http://localhost:3000/users/1
 
 ## Cryptographic Functions
 
-Soli provides built-in functions for secure password hashing using Argon2, the winner of the Password Hashing Competition and the recommended algorithm for password storage.
+Soli provides built-in functions for secure password hashing using Argon2, the winner of the Password Hashing Competition and the recommended algorithm for password storage. Additionally, Soli includes X25519 key exchange and Ed25519 digital signature functions for secure communication.
 
 ### argon2_hash
 
@@ -1128,6 +1128,130 @@ if (verify_login("secure_password_123", user["password_hash"])) {
 - Use `argon2_verify()` to check passwords - never compare hashes directly
 - Each call to `argon2_hash()` generates a unique salt, so the same password produces different hashes
 :::
+
+### X25519 Key Exchange
+
+X25519 is an elliptic curve key agreement scheme used for secure communication and key derivation.
+
+#### x25519_keypair
+
+Generates a new X25519 key pair.
+
+```rust
+x25519_keypair()
+```
+
+**Parameters:** None
+
+**Returns:** `Hash` - A hash with `private` and `public` keys as hex strings
+
+```rust
+let keys = x25519_keypair();
+let private_key = keys["private"];  // 64-char hex string
+let public_key = keys["public"];    // 64-char hex string
+```
+
+#### x25519_shared_secret
+
+Computes a shared secret from a private key and a peer's public key. This is used in the Diffie-Hellman key exchange.
+
+```rust
+x25519_shared_secret(private_key, public_key)
+```
+
+**Parameters:**
+- `private_key`: Your private key (32 bytes as hex string or array)
+- `public_key`: Peer's public key (32 bytes as hex string or array)
+
+**Returns:** `String` - The shared secret as a 64-char hex string
+
+```rust
+// Alice generates her key pair
+let alice_keys = x25519_keypair();
+
+// Bob generates his key pair
+let bob_keys = x25519_keypair();
+
+// They exchange public keys (in a real scenario, send these over the network)
+let alice_public = alice_keys["public"];
+let bob_public = bob_keys["public"];
+
+// Each computes the shared secret
+let alice_shared = x25519_shared_secret(alice_keys["private"], bob_public);
+let bob_shared = x25519_shared_secret(bob_keys["private"], alice_public);
+
+// Both should have the same shared secret
+print(alice_shared == bob_shared);  // true
+```
+
+#### x25519_public_key
+
+Derives the public key from a private key.
+
+```rust
+x25519_public_key(private_key)
+```
+
+**Parameters:**
+- `private_key`: Private key (32 bytes as hex string or array)
+
+**Returns:** `String` - The public key as a 64-char hex string
+
+```rust
+let keys = x25519_keypair();
+let derived_public = x25519_public_key(keys["private"]);
+print(derived_public == keys["public"]);  // true
+```
+
+#### x25519
+
+Performs raw X25519 scalar multiplication for advanced use cases.
+
+```rust
+x25519(basepoint, scalar)
+```
+
+**Parameters:**
+- `basepoint`: A point on the curve (32 bytes as hex string or array)
+- `scalar`: A scalar to multiply (32 bytes as hex string or array)
+
+**Returns:** `String` - The result as a 64-char hex string
+
+```rust
+// Multiply the X25519 basepoint by a scalar
+let result = x25519("0900000000000000000000000000000000000000000000000000000000000000", private_key);
+```
+
+### Ed25519 Digital Signatures
+
+Ed25519 is an elliptic curve signature scheme used for digital signatures.
+
+#### ed25519_keypair
+
+Generates a new Ed25519 key pair for digital signatures.
+
+```rust
+ed25519_keypair()
+```
+
+**Parameters:** None
+
+**Returns:** `Hash` - A hash with `private` and `public` keys as hex strings
+
+```rust
+let keys = ed25519_keypair();
+let private_key = keys["private"];  // 64-char hex string
+let public_key = keys["public"];    // 64-char hex string
+```
+
+### Security Best Practices
+
+When using cryptographic functions:
+
+- **Key Storage**: Store private keys securely. Never commit them to version control.
+- **Key Exchange**: Use `x25519_shared_secret()` to establish shared secrets, then derive symmetric keys from them.
+- **Randomness**: All key generation functions use cryptographically secure random number generators.
+- **Key Clamping**: X25519 private keys are automatically clamped according to the specification.
 
 ---
 
@@ -2019,6 +2143,11 @@ Soli uses Rust's regex syntax, which supports:
 | `http_server_listen(port)` | Int | - | Start HTTP server (blocking) |
 | `argon2_hash(password)` | String | String | Hash password with Argon2id |
 | `argon2_verify(password, hash)` | String, String | Bool | Verify password against hash |
+| `x25519_keypair()` | - | Hash | Generate X25519 key pair |
+| `x25519_shared_secret(private, public)` | String/Array, String/Array | String | Compute shared secret |
+| `x25519_public_key(private)` | String/Array | String | Derive public key from private |
+| `x25519(basepoint, scalar)` | String/Array, String/Array | String | X25519 scalar multiplication |
+| `ed25519_keypair()` | - | Hash | Generate Ed25519 key pair |
 | `barf(path, content)` | String, String/Array<Int> | Void | Write file (text or binary) |
 | `slurp(path, mode?)` | String, String? | String/Array<Int> | Read file (text or binary) |
 | `new Solidb(host, db)` | String, String | Instance | Create SoliDB client |

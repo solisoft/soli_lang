@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
-    <link rel="stylesheet" href="/css/application.css">
+    <link rel="stylesheet" href="<%= public_path("css/application.css") %>">
     <style>
         body { font-family: 'Inter', sans-serif; }
         code, pre { font-family: 'JetBrains Mono', monospace; }
@@ -32,12 +32,16 @@
         }
 
         /* Code block styling */
+        pre, code, .hljs {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+        }
+
         pre code.hljs {
-            padding: 1.5rem;
-            border-radius: 0.75rem;
             font-size: 0.875rem;
             line-height: 1.75;
-            background: #0d1117 !important;
+            font-family: 'JetBrains Mono', monospace;
         }
 
         /* Inline code styling */
@@ -242,6 +246,28 @@
                                 WebSockets
                             </a>
                         </li>
+                        <li>
+                            <a href="/docs/i18n" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Internationalization' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                Internationalization
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h5 class="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Development Tools
+                    </h5>
+                    <ul class="space-y-1">
+                        <li>
+                            <a href="/docs/live-reload" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Live Reload' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                Live Reload
+                            </a>
+                        </li>
                     </ul>
                 </div>
 
@@ -335,6 +361,30 @@
                             <li>
                                 <a href="/docs/websockets" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'WebSockets' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
                                     WebSockets
+                                </a>
+                            </li>
+                            <li>
+                                <a href="/docs/i18n" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Internationalization' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                    Internationalization
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+
+
+                    <div>
+                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                            <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            Development Tools
+                        </h5>
+                        <ul class="space-y-1">
+                            <li>
+                                <a href="/docs/live-reload" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Live Reload' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                    Live Reload
                                 </a>
                             </li>
                         </ul>

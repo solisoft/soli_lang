@@ -7,7 +7,7 @@ use crate::ast::*;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::is_server_listen_marker;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Function, Instance, Value, ValueMethod};
+use crate::interpreter::value::{Function, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
 use super::{ControlFlow, Interpreter, RuntimeResult};
@@ -336,7 +336,23 @@ impl Interpreter {
                 if let Some(value) = inst.borrow().get(name) {
                     return Ok(value);
                 }
-                // Then check for method
+                // Then check for native method
+                if let Some(native_method) = inst.borrow().class.find_native_method(name) {
+                    // Create a wrapper that will call the native method with 'this'
+                    let instance_clone = inst.clone();
+                    let native_method_clone = native_method.clone();
+                    return Ok(Value::NativeFunction(NativeFunction::new(
+                        &format!("{}.{}", inst.borrow().class.name, name),
+                        None,
+                        move |args| {
+                            // Prepend 'this' as first argument (the instance)
+                            let mut new_args = vec![Value::Instance(instance_clone.clone())];
+                            new_args.extend(args.iter().cloned());
+                            (native_method_clone.func)(new_args)
+                        },
+                    )));
+                }
+                // Then check for user-defined method
                 if let Some(method) = inst.borrow().class.find_method(name) {
                     // Bind 'this'
                     let bound_env = Environment::with_enclosing(method.closure.clone());

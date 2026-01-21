@@ -16,6 +16,7 @@ This guide provides a complete reference to the Soli programming language, cover
 10. [Pipeline Operator](#pipeline-operator)
 11. [Modules](#modules)
 12. [Built-in Functions](#built-in-functions)
+13. [DateTime & Duration](#datetime--duration)
 
 ---
 
@@ -1025,6 +1026,41 @@ my-project/
 |----------|-------------|
 | `argon2_hash(password)` | Hash password with Argon2id |
 | `argon2_verify(password, hash)` | Verify password against hash |
+| `x25519_keypair()` | Generate X25519 key pair, returns `{private, public}` |
+| `x25519_shared_secret(private, public)` | Compute shared secret from key pair |
+| `x25519_public_key(private)` | Derive public key from private key |
+| `x25519(basepoint, scalar)` | Perform X25519 scalar multiplication |
+| `ed25519_keypair()` | Generate Ed25519 key pair for digital signatures |
+
+### X25519 Key Exchange Example
+
+```soli
+// Alice generates her key pair
+let alice_keys = x25519_keypair();
+let alice_private = alice_keys["private"];
+let alice_public = alice_keys["public"];
+
+// Bob generates his key pair
+let bob_keys = x25519_keypair();
+let bob_private = bob_keys["private"];
+let bob_public = bob_keys["public"];
+
+// They exchange public keys and compute shared secret
+let alice_shared = x25519_shared_secret(alice_private, bob_public);
+let bob_shared = x25519_shared_secret(bob_private, alice_public);
+
+// Both now have the same shared secret (for key derivation)
+print(alice_shared == bob_shared);  // true
+```
+
+### Ed25519 Key Pair Example
+
+```soli
+// Generate Ed25519 key pair for digital signatures
+let keys = ed25519_keypair();
+let private_key = keys["private"];  // 64-char hex string
+let public_key = keys["public"];    // 64-char hex string
+```
 
 ### HTML Functions
 
@@ -1043,7 +1079,99 @@ my-project/
 
 ---
 
-## Best Practices
+## DateTime & Duration
+
+The `DateTime` and `Duration` classes provide comprehensive date and time functionality.
+
+### Creating DateTime Instances
+
+```soli
+// Current local time
+let now = datetime_now();
+
+// Current UTC time
+let utc_now = DateTime.utc();
+
+// Parse from string
+let parsed = DateTime.parse("2024-01-15T10:30:00");
+```
+
+### DateTime Instance Methods
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `year()` | Int | Get year (4-digit) |
+| `month()` | Int | Get month (1-12) |
+| `day()` | Int | Get day of month (1-31) |
+| `hour()` | Int | Get hour (0-23) |
+| `minute()` | Int | Get minute (0-59) |
+| `second()` | Int | Get second (0-59) |
+| `weekday()` | String | Get day name ("monday"-"sunday") |
+| `to_unix()` | Int | Get Unix timestamp (seconds since epoch) |
+| `to_iso()` | String | Get ISO 8601 formatted string |
+| `to_string()` | String | Get human-readable string |
+| `add(dur)` | DateTime | Add a Duration to this DateTime |
+| `sub(dur)` | DateTime | Subtract a Duration from this DateTime |
+
+### DateTime Arithmetic
+
+```soli
+let now = DateTime.utc();
+let tomorrow = now.add(Duration.days(1));
+let yesterday = now.sub(Duration.days(1));
+let next_week = now.add(Duration.weeks(1));
+```
+
+### DateTime Example
+
+```soli
+let now = DateTime.utc();
+print("Year: " + str(now.year()));
+print("Month: " + str(now.month()));
+print("Day: " + str(now.day()));
+print("Weekday: " + now.weekday());
+print("Unix timestamp: " + str(now.to_unix()));
+```
+
+### Duration Class
+
+```soli
+// Duration between two DateTimes
+let start = DateTime.parse("2024-01-01T00:00:00");
+let end = DateTime.parse("2024-01-02T12:00:00");
+let dur = Duration.between(start, end);
+
+// Duration from value
+let dur = Duration.seconds(3600);      // 1 hour
+let dur = Duration.minutes(60);        // 60 minutes
+let dur = Duration.hours(24);          // 24 hours
+let dur = Duration.days(7);            // 7 days
+let dur = Duration.weeks(2);           // 2 weeks
+```
+
+### Duration Instance Methods
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `total_seconds()` | Float | Total duration in seconds |
+| `total_minutes()` | Float | Total duration in minutes |
+| `total_hours()` | Float | Total duration in hours |
+| `total_days()` | Float | Total duration in days |
+| `total_weeks()` | Float | Total duration in weeks |
+| `to_string()` | String | Human-readable string |
+
+### Example
+
+```soli
+let start = DateTime.parse("2024-01-01T00:00:00");
+let end = DateTime.parse("2024-01-02T12:00:00");
+let dur = Duration.between(start, end);
+
+print("Hours: " + str(dur.total_hours()));  // 36.0
+print("Days: " + str(dur.total_days()));    // 1.5
+```
+
+---
 
 ### Variables & Types
 

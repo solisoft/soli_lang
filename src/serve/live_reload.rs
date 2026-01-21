@@ -3,6 +3,9 @@
 //! This module provides Server-Sent Events (SSE) functionality that allows
 //! browsers to automatically refresh when file changes are detected during
 //! development.
+//!
+//! The actual live reload script now uses WebSocket for better reliability,
+//! with SSE kept as a fallback for compatibility.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -11,6 +14,10 @@ use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 use tokio::sync::broadcast;
+
+// Re-export the WebSocket-based live reload script
+// Note: Using crate:: to avoid circular imports
+pub use crate::serve::live_reload_ws::LIVE_RELOAD_SCRIPT;
 
 /// Global flag indicating whether live reload is enabled.
 static LIVE_RELOAD_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -63,41 +70,8 @@ pub async fn handle_live_reload_sse(
                 .body(Full::new(Bytes::from("retry: 100\n: keepalive\n\n")))
                 .unwrap()
         }
-    }
+        }
 }
-
-/// The JavaScript snippet that gets injected into HTML responses.
-///
-/// This creates an EventSource connection to the `/__livereload` endpoint
-/// and reloads the page when a reload event is received.
-pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
-(function(){
-    if (window.__livereload) return;
-    window.__livereload = true;
-
-    var retryDelay = 100;
-
-    function connect() {
-        var es = new EventSource('/__livereload');
-
-        es.addEventListener('reload', function() {
-            location.reload();
-        });
-
-        es.onopen = function() {
-            retryDelay = 100;
-        };
-
-        es.onerror = function() {
-            es.close();
-            retryDelay = Math.min(retryDelay * 2, 5000);
-            setTimeout(connect, retryDelay);
-        };
-    }
-
-    connect();
-})();
-</script>"#;
 
 /// Find the last occurrence of an ASCII pattern in a string, case-insensitive.
 /// Does NOT allocate any intermediate strings - works directly on bytes.
@@ -131,30 +105,35 @@ fn rfind_ascii_case_insensitive(haystack: &str, needle: &[u8]) -> Option<usize> 
 ///
 /// Inserts the script before the closing `</body>` tag if present,
 /// otherwise appends it to the end of the HTML.
+///
+/// Uses the WebSocket-based live reload script from live_reload_ws module.
 pub fn inject_live_reload_script(html: &str) -> String {
     // Skip if already injected
     if html.contains("__livereload_script_injected") {
         return html.to_string();
     }
 
+    // Use the re-exported script constant
+    let script = LIVE_RELOAD_SCRIPT;
+
     // Try to find </body> (case-insensitive) without allocating a lowercase copy
     // Using byte slices for ASCII HTML tags
     if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
-        let mut result = String::with_capacity(html.len() + LIVE_RELOAD_SCRIPT.len());
+        let mut result = String::with_capacity(html.len() + script.len());
         result.push_str(&html[..pos]);
-        result.push_str(LIVE_RELOAD_SCRIPT);
+        result.push_str(script);
         result.push_str(&html[pos..]);
         result
     } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
         // Fallback: insert before </html>
-        let mut result = String::with_capacity(html.len() + LIVE_RELOAD_SCRIPT.len());
+        let mut result = String::with_capacity(html.len() + script.len());
         result.push_str(&html[..pos]);
-        result.push_str(LIVE_RELOAD_SCRIPT);
+        result.push_str(script);
         result.push_str(&html[pos..]);
         result
     } else {
         // Last resort: append at the end
-        format!("{}{}", html, LIVE_RELOAD_SCRIPT)
+        format!("{}{}", html, script)
     }
 }
 

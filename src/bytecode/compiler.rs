@@ -165,6 +165,16 @@ impl Compiler {
             "regex_split",
             "regex_capture",
             "regex_escape",
+            // DateTime functions
+            "datetime_now",
+            "datetime_parse",
+            "datetime_utc",
+            "duration_between",
+            "duration_seconds",
+            "duration_minutes",
+            "duration_hours",
+            "duration_days",
+            "duration_weeks",
         ];
 
         for (i, name) in natives.iter().enumerate() {

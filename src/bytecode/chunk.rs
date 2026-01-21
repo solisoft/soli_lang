@@ -266,6 +266,8 @@ pub enum VMValue {
     Instance(Rc<RefCell<VMInstance>>),
     /// Bound method (instance + closure)
     BoundMethod(Rc<RefCell<VMInstance>>, Rc<RefCell<Closure>>),
+    /// Bound native method (instance + class name + method name)
+    BoundNativeMethod(Rc<RefCell<VMInstance>>, String, String),
     /// Iterator state
     Iterator(Rc<RefCell<VMIterator>>),
 }
@@ -285,6 +287,7 @@ impl VMValue {
             VMValue::Class(_) => "Class",
             VMValue::Instance(_) => "Instance",
             VMValue::BoundMethod(_, _) => "Method",
+            VMValue::BoundNativeMethod(_, _, _) => "Method",
             VMValue::Iterator(_) => "Iterator",
         }
     }
@@ -339,6 +342,9 @@ impl PartialEq for VMValue {
             (VMValue::Array(a), VMValue::Array(b)) => Rc::ptr_eq(a, b),
             (VMValue::Hash(a), VMValue::Hash(b)) => Rc::ptr_eq(a, b),
             (VMValue::Instance(a), VMValue::Instance(b)) => Rc::ptr_eq(a, b),
+            (VMValue::BoundNativeMethod(a, _, _), VMValue::BoundNativeMethod(b, _, _)) => {
+                Rc::ptr_eq(a, b)
+            }
             _ => false,
         }
     }
@@ -390,6 +396,14 @@ impl fmt::Display for VMValue {
                     inst.borrow().class.borrow().name
                 )
             }
+            VMValue::BoundNativeMethod(inst, _, method_name) => {
+                write!(
+                    f,
+                    "<bound native method {} of {}>",
+                    method_name,
+                    inst.borrow().class.borrow().name
+                )
+            }
             VMValue::Iterator(_) => write!(f, "<iterator>"),
         }
     }
@@ -403,6 +417,8 @@ pub struct VMClass {
     pub static_methods: HashMap<String, Rc<RefCell<Closure>>>,
     pub constructor: Option<Rc<RefCell<Closure>>>,
     pub superclass: Option<Rc<RefCell<VMClass>>>,
+    /// Native method handlers (class name -> method name -> handler)
+    pub native_methods: HashMap<String, fn(&VMInstance) -> Result<VMValue, String>>,
 }
 
 impl VMClass {
@@ -413,6 +429,7 @@ impl VMClass {
             static_methods: HashMap::new(),
             constructor: None,
             superclass: None,
+            native_methods: HashMap::new(),
         }
     }
 
@@ -422,6 +439,19 @@ impl VMClass {
         }
         if let Some(ref superclass) = self.superclass {
             return superclass.borrow().find_method(name);
+        }
+        None
+    }
+
+    pub fn find_native_method(
+        &self,
+        name: &str,
+    ) -> Option<fn(&VMInstance) -> Result<VMValue, String>> {
+        if let Some(method) = self.native_methods.get(name) {
+            return Some(method.clone());
+        }
+        if let Some(ref superclass) = self.superclass {
+            return superclass.borrow().find_native_method(name);
         }
         None
     }
@@ -440,6 +470,12 @@ impl VMInstance {
             class,
             fields: HashMap::new(),
         }
+    }
+
+    pub fn with_field(class: Rc<RefCell<VMClass>>, name: String, value: VMValue) -> Self {
+        let mut fields = HashMap::new();
+        fields.insert(name, value);
+        Self { class, fields }
     }
 
     pub fn get(&self, name: &str) -> Option<VMValue> {

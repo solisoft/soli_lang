@@ -1,53 +1,63 @@
-<h1>Routing</h1>
+<div class="max-w-3xl mx-auto">
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Routing</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Routes map HTTP requests to controller actions. Define your application's URL structure in <code>config/routes.soli</code>.
+        </p>
+    </div>
 
-<p class="lead text-xl text-gray-300 mb-8">
-    Routes map HTTP requests to controller actions. Define them in <code>config/routes.soli</code>.
-</p>
+    <h2 class="text-2xl font-bold text-white mb-6">HTTP Methods</h2>
+    <p class="text-gray-400 mb-6">Use these helpers to define routes for different HTTP methods:</p>
 
-<h2>HTTP Methods</h2>
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-12">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-4 font-semibold text-white">Method</th>
+                    <th class="px-6 py-4 font-semibold text-white">Description</th>
+                    <th class="px-6 py-4 font-semibold text-white">Example</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">get</td>
+                    <td class="px-6 py-4 text-gray-400">Retrieve a resource</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">get("/users", "users#index")</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">post</td>
+                    <td class="px-6 py-4 text-gray-400">Create a new resource</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">post("/users", "users#create")</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">put</td>
+                    <td class="px-6 py-4 text-gray-400">Update a resource completely</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">put("/users/:id", "users#update")</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">patch</td>
+                    <td class="px-6 py-4 text-gray-400">Update a resource partially</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">patch("/users/:id", "users#patch")</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">delete</td>
+                    <td class="px-6 py-4 text-gray-400">Delete a resource</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">delete("/users/:id", "users#delete")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 
-<p>Use these helpers to define routes for different HTTP methods:</p>
+    <h2 class="text-2xl font-bold text-white mb-6">Basic Routes</h2>
 
-<table class="w-full my-6">
-    <thead>
-        <tr class="border-b border-gray-700">
-            <th class="text-left py-2 px-4">Method</th>
-            <th class="text-left py-2 px-4">Description</th>
-            <th class="text-left py-2 px-4">Example</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>get</code></td>
-            <td class="py-2 px-4">Retrieve a resource</td>
-            <td class="py-2 px-4"><code>get("/users", "users#index")</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>post</code></td>
-            <td class="py-2 px-4">Create a new resource</td>
-            <td class="py-2 px-4"><code>post("/users", "users#create")</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>put</code></td>
-            <td class="py-2 px-4">Update a resource completely</td>
-            <td class="py-2 px-4"><code>put("/users/:id", "users#update")</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>patch</code></td>
-            <td class="py-2 px-4">Update a resource partially</td>
-            <td class="py-2 px-4"><code>patch("/users/:id", "users#patch")</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>delete</code></td>
-            <td class="py-2 px-4">Delete a resource</td>
-            <td class="py-2 px-4"><code>delete("/users/:id", "users#delete")</code></td>
-        </tr>
-    </tbody>
-</table>
-
-<h2>Basic Routes</h2>
-
-<pre><code class="language-soli">// Root page
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">config/routes.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Root page
 get("/", "home#index");
 
 // Static pages
@@ -56,12 +66,18 @@ get("/contact", "home#contact");
 
 // Form submissions
 post("/contact", "home#submit_contact");</code></pre>
+        </div>
+    </div>
 
-<h2>Route Parameters</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Route Parameters</h2>
+    <p class="text-gray-400 mb-6">Use <code>:param_name</code> to capture dynamic segments:</p>
 
-<p>Use <code>:param_name</code> to capture dynamic segments:</p>
-
-<pre><code class="language-soli">// Capture user ID
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">config/routes.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Capture user ID
 get("/users/:id", "users#show");
 
 // Multiple parameters
@@ -69,10 +85,17 @@ get("/posts/:post_id/comments/:comment_id", "comments#show");
 
 // Optional parameters
 get("/users/:id?", "users#show");</code></pre>
+        </div>
+    </div>
 
-<p>Access parameters in your controller:</p>
+    <p class="text-gray-400 mb-4">Access parameters in your controller:</p>
 
-<pre><code class="language-soli">fn show(req: Any) -> Any {
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">app/controllers/users_controller.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn show(req: Any) -> Any {
     let user_id = req["params"]["id"];
     let post_id = req["params"]["post_id"];
 
@@ -81,12 +104,18 @@ get("/users/:id?", "users#show");</code></pre>
         "body": "User ID: " + user_id
     };
 }</code></pre>
+        </div>
+    </div>
 
-<h2>Query Parameters</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Query Parameters</h2>
+    <p class="text-gray-400 mb-6">Query strings are automatically parsed and available in <code>req["query"]</code>:</p>
 
-<p>Query strings are automatically parsed:</p>
-
-<pre><code class="language-soli">// URL: /search?q=solilang&page=1
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">app/controllers/search_controller.soli</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// URL: /search?q=solilang&page=1
 
 fn search(req: Any) -> Any {
     let query = req["query"]["q"];      // "solilang"
@@ -97,151 +126,106 @@ fn search(req: Any) -> Any {
         "body": "Searching for: " + query
     };
 }</code></pre>
+        </div>
+    </div>
 
-<h2>RESTful Resources</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">RESTful Resources</h2>
+    <p class="text-gray-400 mb-6">Generate standard CRUD routes automatically with <code>resources()</code>:</p>
 
-<p>Generate standard CRUD routes automatically with <code>resources()</code>:</p>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">resources("users", null);</code></pre>
+        </div>
+    </div>
 
-<pre><code class="language-soli">resources("users", null);</code></pre>
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-12">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-4 font-semibold text-white">Method</th>
+                    <th class="px-6 py-4 font-semibold text-white">Path</th>
+                    <th class="px-6 py-4 font-semibold text-white">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="px-6 py-4 text-indigo-300 font-mono">GET</td><td class="px-6 py-4 font-mono text-gray-400">/users</td><td class="px-6 py-4 text-gray-400">index</td></tr>
+                <tr><td class="px-6 py-4 text-indigo-300 font-mono">GET</td><td class="px-6 py-4 font-mono text-gray-400">/users/new</td><td class="px-6 py-4 text-gray-400">new</td></tr>
+                <tr><td class="px-6 py-4 text-indigo-300 font-mono">POST</td><td class="px-6 py-4 font-mono text-gray-400">/users</td><td class="px-6 py-4 text-gray-400">create</td></tr>
+                <tr><td class="px-6 py-4 text-indigo-300 font-mono">GET</td><td class="px-6 py-4 font-mono text-gray-400">/users/:id</td><td class="px-6 py-4 text-gray-400">show</td></tr>
+                <tr><td class="px-6 py-4 text-indigo-300 font-mono">GET</td><td class="px-6 py-4 font-mono text-gray-400">/users/:id/edit</td><td class="px-6 py-4 text-gray-400">edit</td></tr>
+                <tr><td class="px-6 py-4 text-indigo-300 font-mono">PUT</td><td class="px-6 py-4 font-mono text-gray-400">/users/:id</td><td class="px-6 py-4 text-gray-400">update</td></tr>
+                <tr><td class="px-6 py-4 text-indigo-300 font-mono">DELETE</td><td class="px-6 py-4 font-mono text-gray-400">/users/:id</td><td class="px-6 py-4 text-gray-400">delete</td></tr>
+            </tbody>
+        </table>
+    </div>
 
-<p>This creates the following routes:</p>
+    <h2 class="text-2xl font-bold text-white mb-6">Namespaces</h2>
+    <p class="text-gray-400 mb-6">Group routes under a common prefix, like <code>/admin</code>:</p>
 
-<table class="w-full my-6">
-    <thead>
-        <tr class="border-b border-gray-700">
-            <th class="text-left py-2 px-4">Method</th>
-            <th class="text-left py-2 px-4">Path</th>
-            <th class="text-left py-2 px-4">Controller#Action</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4">GET</td>
-            <td class="py-2 px-4"><code>/users</code></td>
-            <td class="py-2 px-4"><code>users#index</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4">GET</td>
-            <td class="py-2 px-4"><code>/users/new</code></td>
-            <td class="py-2 px-4"><code>users#new</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4">POST</td>
-            <td class="py-2 px-4"><code>/users</code></td>
-            <td class="py-2 px-4"><code>users#create</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4">GET</td>
-            <td class="py-2 px-4"><code>/users/:id</code></td>
-            <td class="py-2 px-4"><code>users#show</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4">GET</td>
-            <td class="py-2 px-4"><code>/users/:id/edit</code></td>
-            <td class="py-2 px-4"><code>users#edit</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4">PUT</td>
-            <td class="py-2 px-4"><code>/users/:id</code></td>
-            <td class="py-2 px-4"><code>users#update</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4">DELETE</td>
-            <td class="py-2 px-4"><code>/users/:id</code></td>
-            <td class="py-2 px-4"><code>users#delete</code></td>
-        </tr>
-    </tbody>
-</table>
-
-<h2>Namespaces</h2>
-
-<p>Group routes under a common prefix:</p>
-
-<pre><code class="language-soli">namespace("admin", -> {
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">namespace("admin", -> {
     get("/dashboard", "admin#dashboard");
     get("/users", "admin#users");
     post("/users", "admin#create_user");
 });</code></pre>
+        </div>
+    </div>
 
-<p>Creates routes like <code>/admin/dashboard</code>, <code>/admin/users</code>.</p>
+    <h2 class="text-2xl font-bold text-white mb-6">Scoped Middleware</h2>
+    <p class="text-gray-400 mb-6">Apply middleware only to specific route blocks:</p>
 
-<h2>Scoped Middleware</h2>
-
-<p>Apply middleware to specific routes:</p>
-
-<pre><code class="language-soli">// Only /admin/* routes require authentication
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Only /admin/* routes require authentication
 middleware("authenticate", -> {
     get("/admin", "admin#index");
     get("/admin/users", "admin#users");
-    get("/admin/settings", "admin#settings");
 });
 
 // Public routes - no auth needed
 get("/", "home#index");
 get("/about", "home#about");</code></pre>
+        </div>
+    </div>
 
-<h2>Nested Resources</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Nested Resources</h2>
 
-<pre><code class="language-soli">namespace("api", -> {
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">namespace("api", -> {
     resources("users", -> {
         resources("posts", -> {
             resources("comments", null);
         });
     });
-});</code></pre>
+});
+// Creates: /api/users/:user_id/posts/:post_id/comments/:id</code></pre>
+        </div>
+    </div>
 
-<p>Creates routes like <code>/api/users/:user_id/posts/:post_id/comments/:id</code></p>
-
-<h2>Route Priority</h2>
-
-<p>Routes are matched in order of specificity:</p>
-<ol class="list-decimal list-inside space-y-2 my-4">
-    <li>Static routes (e.g., <code>/about</code>)</li>
-    <li>Parameter routes (e.g., <code>/users/:id</code>)</li>
-    <li>Wildcard routes (e.g., <code>/*</code>)</li>
-</ol>
-
-<h2>Controller Action Format</h2>
-
-<p>Use <code>controller#action</code> format:</p>
-
-<table class="w-full my-6">
-    <thead>
-        <tr class="border-b border-gray-700">
-            <th class="text-left py-2 px-4">Format</th>
-            <th class="text-left py-2 px-4">Meaning</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>home#index</code></td>
-            <td class="py-2 px-4">Function <code>index</code> in <code>home_controller.soli</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>users#show</code></td>
-            <td class="py-2 px-4">Function <code>show</code> in <code>users_controller.soli</code></td>
-        </tr>
-        <tr class="border-b border-gray-800">
-            <td class="py-2 px-4"><code>docs#index</code></td>
-            <td class="py-2 px-4">Function <code>index</code> in <code>docs.soli</code></td>
-        </tr>
-    </tbody>
-</table>
-
-<div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-    <div class="flex items-start gap-3">
-        <div class="text-indigo-400 mt-0.5">
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
             </svg>
-        </div>
-        <div>
-            <h4 class="text-indigo-400 font-medium">Auto-Derived Routes</h4>
-            <p class="text-sm text-indigo-200 mt-1">
-                You can also rely on automatic route derivation. A function <code>index</code> in
-                <code>home_controller.soli</code> automatically handles <code>GET /home</code>.
-                See the Controllers documentation for details.
-            </p>
-        </div>
+            Auto-Derived Routes
+        </h4>
+        <p class="text-indigo-200/80 text-sm">
+            Soli can automatically map routes to controllers based on naming conventions. 
+            Defining a method named <code>index</code> in <code>home_controller.soli</code> automatically handles <code>GET /home</code>.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn how to handle the requests you've routed.</p>
+        </a>
+        <a href="/docs/middleware" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Middleware &rarr;</h3>
+            <p class="text-sm text-gray-400">Add authentication and logging to your routes.</p>
+        </a>
     </div>
 </div>

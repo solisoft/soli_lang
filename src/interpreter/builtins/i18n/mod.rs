@@ -1,57 +1,82 @@
-//! i18n (internationalization) built-in functions for Soli.
+//! i18n (internationalization) built-in class for Soli.
+//!
+//! Provides the I18n class with static methods for internationalization:
+//! - locale management
+//! - string translation
+//! - pluralization
+//! - number, currency, and date formatting
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{Class, NativeFunction, Value};
 
-/// Register i18n built-in functions in the given environment.
-pub fn register_i18n_builtins(env: &mut Environment) {
-    // __i18n_locale() - Get current locale
-    env.define(
-        "__i18n_locale".to_string(),
-        Value::NativeFunction(NativeFunction::new("__i18n_locale", Some(0), |_args| {
-            let locale = env.get_locale().unwrap_or_else(|| "en".to_string());
-            Ok(Value::String(locale))
+// Thread-local storage for the current locale
+thread_local! {
+    static CURRENT_LOCALE: RefCell<String> = RefCell::new("en".to_string());
+}
+
+fn get_locale() -> String {
+    CURRENT_LOCALE.with(|l| l.borrow().clone())
+}
+
+fn set_locale(locale: String) {
+    CURRENT_LOCALE.with(|l| *l.borrow_mut() = locale);
+}
+
+/// Register the I18n class in the given environment.
+pub fn register_i18n_class(env: &mut Environment) {
+    let mut i18n_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+
+    // I18n.locale() - Get current locale
+    i18n_static_methods.insert(
+        "locale".to_string(),
+        Rc::new(NativeFunction::new("I18n.locale", Some(0), |_args| {
+            Ok(Value::String(get_locale()))
         })),
     );
 
-    // __i18n_set_locale(locale) - Set current locale
-    env.define(
-        "__i18n_set_locale".to_string(),
-        Value::NativeFunction(NativeFunction::new(
-            "__i18n_set_locale",
+    // I18n.set_locale(locale) - Set current locale
+    i18n_static_methods.insert(
+        "set_locale".to_string(),
+        Rc::new(NativeFunction::new(
+            "I18n.set_locale",
             Some(1),
             |args| match &args[0] {
                 Value::String(locale) => {
-                    env.set_locale(locale.clone());
+                    set_locale(locale.clone());
                     Ok(Value::String(locale.clone()))
                 }
-                _ => Err("__i18n_set_locale expects a string".to_string()),
+                _ => Err("I18n.set_locale expects a string".to_string()),
             },
         )),
     );
 
-    // __i18n_translate(key, locale?, translations?) - Translate a string
-    env.define(
-        "__i18n_translate".to_string(),
-        Value::NativeFunction(NativeFunction::new("__i18n_translate", None, |args| {
+    // I18n.translate(key, locale?, translations?) - Translate a string
+    i18n_static_methods.insert(
+        "translate".to_string(),
+        Rc::new(NativeFunction::new("I18n.translate", None, |args| {
             let key = match &args[0] {
                 Value::String(s) => s.clone(),
-                _ => return Err("__i18n_translate expects a key string".to_string()),
+                _ => return Err("I18n.translate expects a key string".to_string()),
             };
 
             let locale = if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => s.clone(),
-                    _ => return Err("__i18n_translate locale must be a string".to_string()),
+                    Value::Null => get_locale(),
+                    _ => return Err("I18n.translate locale must be a string or null".to_string()),
                 }
             } else {
-                env.get_locale().unwrap_or_else(|| "en".to_string())
+                get_locale()
             };
 
             let translations = if args.len() > 2 {
                 match &args[2] {
                     Value::Hash(h) => h.borrow().clone(),
-                    _ => return Err("__i18n_translate translations must be a Hash".to_string()),
+                    _ => return Err("I18n.translate translations must be a Hash".to_string()),
                 }
             } else {
                 Vec::new()
@@ -82,41 +107,44 @@ pub fn register_i18n_builtins(env: &mut Environment) {
         })),
     );
 
-    // __i18n_plural(key, n, locale?, translations?) - Get plural form
-    env.define(
-        "__i18n_plural".to_string(),
-        Value::NativeFunction(NativeFunction::new("__i18n_plural", None, |args| {
+    // I18n.plural(key, n, locale?, translations?) - Get plural form
+    i18n_static_methods.insert(
+        "plural".to_string(),
+        Rc::new(NativeFunction::new("I18n.plural", None, |args| {
             let key = match &args[0] {
                 Value::String(s) => s.clone(),
-                _ => return Err("__i18n_plural expects a key string".to_string()),
+                _ => return Err("I18n.plural expects a key string".to_string()),
             };
 
             let n = match &args[1] {
                 Value::Int(i) => *i,
                 Value::Float(f) => *f as i64,
-                _ => return Err("__i18n_plural expects a number".to_string()),
+                _ => return Err("I18n.plural expects a number".to_string()),
             };
 
             let locale = if args.len() > 2 {
                 match &args[2] {
                     Value::String(s) => s.clone(),
-                    _ => return Err("__i18n_plural locale must be a string".to_string()),
+                    Value::Null => get_locale(),
+                    _ => return Err("I18n.plural locale must be a string or null".to_string()),
                 }
             } else {
-                env.get_locale().unwrap_or_else(|| "en".to_string())
+                get_locale()
             };
 
             let translations = if args.len() > 3 {
                 match &args[3] {
                     Value::Hash(h) => h.borrow().clone(),
-                    _ => return Err("__i18n_plural translations must be a Hash".to_string()),
+                    _ => return Err("I18n.plural translations must be a Hash".to_string()),
                 }
             } else {
                 Vec::new()
             };
 
-            // Simple pluralization: use _one suffix for singular, _other for plural
-            let plural_key = if n == 1 {
+            // Simple pluralization: use _zero for 0, _one for 1, _other for plural
+            let plural_key = if n == 0 {
+                format!("{}.{}_zero", locale, key)
+            } else if n == 1 {
                 format!("{}.{}_one", locale, key)
             } else {
                 format!("{}.{}_other", locale, key)
@@ -137,23 +165,26 @@ pub fn register_i18n_builtins(env: &mut Environment) {
         })),
     );
 
-    // __i18n_format_number(n, locale?) - Format number with locale
-    env.define(
-        "__i18n_format_number".to_string(),
-        Value::NativeFunction(NativeFunction::new("__i18n_format_number", None, |args| {
+    // I18n.format_number(n, locale?) - Format number with locale
+    i18n_static_methods.insert(
+        "format_number".to_string(),
+        Rc::new(NativeFunction::new("I18n.format_number", None, |args| {
             let n = match &args[0] {
                 Value::Int(i) => *i as f64,
                 Value::Float(f) => *f,
-                _ => return Err("__i18n_format_number expects a number".to_string()),
+                _ => return Err("I18n.format_number expects a number".to_string()),
             };
 
             let locale = if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => s.clone(),
-                    _ => return Err("__i18n_format_number locale must be a string".to_string()),
+                    Value::Null => get_locale(),
+                    _ => {
+                        return Err("I18n.format_number locale must be a string or null".to_string())
+                    }
                 }
             } else {
-                env.get_locale().unwrap_or_else(|| "en".to_string())
+                get_locale()
             };
 
             let formatted = match locale.as_str() {
@@ -170,33 +201,36 @@ pub fn register_i18n_builtins(env: &mut Environment) {
         })),
     );
 
-    // __i18n_format_currency(amount, currency, locale?) - Format currency
-    env.define(
-        "__i18n_format_currency".to_string(),
-        Value::NativeFunction(NativeFunction::new(
-            "__i18n_format_currency",
+    // I18n.format_currency(amount, currency, locale?) - Format currency
+    i18n_static_methods.insert(
+        "format_currency".to_string(),
+        Rc::new(NativeFunction::new(
+            "I18n.format_currency",
             None,
             |args| {
                 let amount = match &args[0] {
                     Value::Int(i) => *i as f64,
                     Value::Float(f) => *f,
-                    _ => return Err("__i18n_format_currency expects a number".to_string()),
+                    _ => return Err("I18n.format_currency expects a number".to_string()),
                 };
 
                 let currency = match &args[1] {
                     Value::String(s) => s.clone(),
-                    _ => return Err("__i18n_format_currency expects a currency code".to_string()),
+                    _ => return Err("I18n.format_currency expects a currency code".to_string()),
                 };
 
                 let locale = if args.len() > 2 {
                     match &args[2] {
                         Value::String(s) => s.clone(),
+                        Value::Null => get_locale(),
                         _ => {
-                            return Err("__i18n_format_currency locale must be a string".to_string())
+                            return Err(
+                                "I18n.format_currency locale must be a string or null".to_string()
+                            )
                         }
                     }
                 } else {
-                    env.get_locale().unwrap_or_else(|| "en".to_string())
+                    get_locale()
                 };
 
                 let symbol = match currency.as_str() {
@@ -213,7 +247,7 @@ pub fn register_i18n_builtins(env: &mut Environment) {
                 };
 
                 let int_part = amount as i64;
-                let frac_part = ((amount - int_part as f64) * 100.0) as i64;
+                let frac_part = ((amount - int_part as f64) * 100.0).round() as i64;
                 let int_str = int_part.to_string();
                 let formatted_int: String = int_str
                     .chars()
@@ -228,7 +262,10 @@ pub fn register_i18n_builtins(env: &mut Environment) {
                     .collect();
 
                 let result = if frac_part > 0 {
-                    format!("{}{}{:02}", symbol, formatted_int, frac_part)
+                    format!(
+                        "{}{}{}{}",
+                        symbol, formatted_int, decimal_sep, format!("{:02}", frac_part)
+                    )
                 } else {
                     format!("{}{}", symbol, formatted_int)
                 };
@@ -237,22 +274,23 @@ pub fn register_i18n_builtins(env: &mut Environment) {
         )),
     );
 
-    // __i18n_format_date(ts, locale?) - Format date with locale
-    env.define(
-        "__i18n_format_date".to_string(),
-        Value::NativeFunction(NativeFunction::new("__i18n_format_date", None, |args| {
+    // I18n.format_date(ts, locale?) - Format date with locale
+    i18n_static_methods.insert(
+        "format_date".to_string(),
+        Rc::new(NativeFunction::new("I18n.format_date", None, |args| {
             let ts = match &args[0] {
                 Value::Int(n) => *n,
-                _ => return Err("__i18n_format_date requires a timestamp".to_string()),
+                _ => return Err("I18n.format_date requires a timestamp".to_string()),
             };
 
             let locale = if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => s.clone(),
-                    _ => return Err("__i18n_format_date locale must be a string".to_string()),
+                    Value::Null => get_locale(),
+                    _ => return Err("I18n.format_date locale must be a string or null".to_string()),
                 }
             } else {
-                env.get_locale().unwrap_or_else(|| "en".to_string())
+                get_locale()
             };
 
             let dt = match chrono::DateTime::from_timestamp(ts, 0) {
@@ -261,6 +299,7 @@ pub fn register_i18n_builtins(env: &mut Environment) {
             };
             let local = dt.with_timezone(&chrono::Local);
 
+            use chrono::Datelike;
             let formatted = match locale.as_str() {
                 "fr" => format!(
                     "{:02}/{:02}/{:04}",
@@ -290,4 +329,17 @@ pub fn register_i18n_builtins(env: &mut Environment) {
             Ok(Value::String(formatted))
         })),
     );
+
+    // Create the I18n class
+    let i18n_class = Class {
+        name: "I18n".to_string(),
+        superclass: None,
+        methods: HashMap::new(),
+        static_methods: HashMap::new(),
+        native_static_methods: i18n_static_methods,
+        native_methods: HashMap::new(),
+        constructor: None,
+    };
+
+    env.define("I18n".to_string(), Value::Class(Rc::new(i18n_class)));
 }
