@@ -1432,16 +1432,6 @@ async fn handle_hyper_request(
             let file_path = public_dir.join(relative_path);
 
             if file_path.exists() && file_path.is_file() {
-                let content = match std::fs::read(&file_path) {
-                    Ok(c) => c,
-                    Err(_) => {
-                        return Ok(Response::builder()
-                            .status(StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(Full::new(Bytes::from("Error reading file")))
-                            .unwrap())
-                    }
-                };
-
                 let mime_type = match file_path.extension().and_then(|e| e.to_str()) {
                     Some("css") => "text/css",
                     Some("js") => "application/javascript",
@@ -1458,27 +1448,66 @@ async fn handle_hyper_request(
                     _ => "application/octet-stream",
                 };
 
-                let mut response_builder = Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", mime_type);
-
-                // Add caching headers in production mode (not dev mode)
+                // In production mode, check for conditional request (If-None-Match)
                 if !dev_mode {
-                    // Get file modification time for ETag
                     if let Ok(metadata) = std::fs::metadata(&file_path) {
                         if let Ok(modified) = metadata.modified() {
                             let etag = format!("\"{:x}\"", modified
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs());
-                            response_builder = response_builder
+
+                            // Check If-None-Match header
+                            if let Some(if_none_match) = req.headers().get("if-none-match") {
+                                if let Ok(client_etag) = if_none_match.to_str() {
+                                    // ETags match - return 304 Not Modified (skip file read!)
+                                    if client_etag == etag || client_etag == format!("W/{}", etag) {
+                                        return Ok(Response::builder()
+                                            .status(StatusCode::NOT_MODIFIED)
+                                            .header("ETag", &etag)
+                                            .header("Cache-Control", "public, max-age=31536000, immutable")
+                                            .body(Full::new(Bytes::new()))
+                                            .unwrap());
+                                    }
+                                }
+                            }
+
+                            // ETags don't match or no If-None-Match - read and serve file
+                            let content = match std::fs::read(&file_path) {
+                                Ok(c) => c,
+                                Err(_) => {
+                                    return Ok(Response::builder()
+                                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                        .body(Full::new(Bytes::from("Error reading file")))
+                                        .unwrap())
+                                }
+                            };
+
+                            return Ok(Response::builder()
+                                .status(StatusCode::OK)
+                                .header("Content-Type", mime_type)
                                 .header("ETag", etag)
-                                .header("Cache-Control", "public, max-age=31536000, immutable");
+                                .header("Cache-Control", "public, max-age=31536000, immutable")
+                                .body(Full::new(Bytes::from(content)))
+                                .unwrap());
                         }
                     }
                 }
 
-                return Ok(response_builder
+                // Dev mode or metadata unavailable - serve without caching
+                let content = match std::fs::read(&file_path) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        return Ok(Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(Full::new(Bytes::from("Error reading file")))
+                            .unwrap())
+                    }
+                };
+
+                return Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", mime_type)
                     .body(Full::new(Bytes::from(content)))
                     .unwrap());
             }
