@@ -288,14 +288,12 @@ pub fn serve_folder_with_options_and_mode(
 fn compile_tailwind_css(folder: &Path) -> bool {
     let tailwind_config = folder.join("tailwind.config.js");
     if !tailwind_config.exists() {
-        eprintln!("   [Tailwind] Config not found at: {}", tailwind_config.display());
         return false;
     }
 
     // Check for package.json with build:css script
     let package_json = folder.join("package.json");
     if !package_json.exists() {
-        eprintln!("   [Tailwind] package.json not found at: {}", package_json.display());
         return false;
     }
 
@@ -937,11 +935,25 @@ fn run_hyper_server_worker_pool(
                 println!("   ✓ Signaled template cache clear to all workers");
 
                 // Recompile Tailwind CSS when views change (new classes may have been added)
-                compile_tailwind_css(&watch_folder);
+                if compile_tailwind_css(&watch_folder) {
+                    static_files_changed = true; // CSS was regenerated
+                    // Update tracker so output CSS isn't detected as changed on next iteration
+                    let output_css = watch_folder.join("public").join("css").join("application.css");
+                    if output_css.exists() {
+                        file_tracker.track(&output_css);
+                    }
+                }
             }
             if source_css_changed {
                 // Recompile Tailwind CSS when source CSS changes
-                compile_tailwind_css(&watch_folder);
+                if compile_tailwind_css(&watch_folder) {
+                    static_files_changed = true; // CSS was regenerated
+                    // Update tracker so output CSS isn't detected as changed on next iteration
+                    let output_css = watch_folder.join("public").join("css").join("application.css");
+                    if output_css.exists() {
+                        file_tracker.track(&output_css);
+                    }
+                }
             }
             if static_files_changed {
                 hot_reload_versions_for_watcher.static_files.fetch_add(1, Ordering::Release);

@@ -90,8 +90,8 @@ pub async fn handle_live_reload_websocket(
             match tokio::time::timeout(Duration::from_secs(60), reload_rx.recv()).await {
                 Ok(Ok(())) => {
                     // Reload signal received
-                    if let Err(e) = tx.send(Ok(tungstenite::Message::Text("reload".to_string()))).await {
-                        eprintln!("[LiveReload WS] Failed to send reload: {}", e);
+                    if let Err(_) = tx.send(Ok(tungstenite::Message::Text("reload".to_string()))).await {
+                        // Client disconnected - this is normal during page reload
                         break;
                     }
                 }
@@ -101,8 +101,8 @@ pub async fn handle_live_reload_websocket(
                 }
                 Err(_) => {
                     // Timeout - send keepalive ping
-                    if let Err(e) = tx.send(Ok(tungstenite::Message::Ping(vec![]))).await {
-                        eprintln!("[LiveReload WS] Failed to send ping: {}", e);
+                    if let Err(_) = tx.send(Ok(tungstenite::Message::Ping(vec![]))).await {
+                        // Client disconnected
                         break;
                     }
                 }
