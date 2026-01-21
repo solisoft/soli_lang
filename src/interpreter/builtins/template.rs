@@ -139,14 +139,20 @@ fn inject_template_helpers(data: &Value) -> Value {
                         // Build full file path
                         let full_path = public_dir.join(&path);
 
-                        // Compute MD5 hash
-                        let hash = compute_file_md5(&full_path)?;
-
-                        // Return path with query parameter
-                        if path.contains('?') {
-                            Ok(Value::String(format!("/{}&v={}", path, hash)))
-                        } else {
-                            Ok(Value::String(format!("/{}?v={}", path, hash)))
+                        // Compute MD5 hash if file exists, otherwise return path without hash
+                        match compute_file_md5(&full_path) {
+                            Ok(hash) => {
+                                // Return path with query parameter
+                                if path.contains('?') {
+                                    Ok(Value::String(format!("/{}&v={}", path, hash)))
+                                } else {
+                                    Ok(Value::String(format!("/{}?v={}", path, hash)))
+                                }
+                            }
+                            Err(_) => {
+                                // File doesn't exist, return path without hash
+                                Ok(Value::String(format!("/{}", path)))
+                            }
                         }
                     }));
 
