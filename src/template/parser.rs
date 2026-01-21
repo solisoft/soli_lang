@@ -19,6 +19,8 @@ pub enum Expr {
     BoolLit(bool),
     /// Null literal
     Null,
+    /// Array literal: [1, 2, 3]
+    ArrayLit(Vec<Expr>),
     /// Simple variable lookup: name
     Var(String),
     /// Field access: expr.field
@@ -508,6 +510,16 @@ pub fn compile_expr(expr: &str) -> Expr {
     }
     if expr == "null" {
         return Expr::Null;
+    }
+
+    // Check for array literals: [1, 2, 3]
+    if expr.starts_with('[') && expr.ends_with(']') {
+        let inner = &expr[1..expr.len() - 1];
+        if inner.trim().is_empty() {
+            return Expr::ArrayLit(Vec::new());
+        }
+        let elements = parse_function_args(inner);
+        return Expr::ArrayLit(elements);
     }
 
     // Check for logical operators (lower precedence than comparison)

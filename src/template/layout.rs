@@ -139,6 +139,14 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
         Expr::BoolLit(b) => Ok(Value::Bool(*b)),
         Expr::Null => Ok(Value::Null),
 
+        Expr::ArrayLit(elements) => {
+            let values: Result<Vec<Value>, String> = elements
+                .iter()
+                .map(|e| evaluate_expr(e, data))
+                .collect();
+            Ok(Value::Array(Rc::new(RefCell::new(values?))))
+        }
+
         Expr::Var(name) => get_hash_value(data, name),
 
         Expr::Field(base, field) => {

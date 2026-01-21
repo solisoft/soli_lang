@@ -115,6 +115,14 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
         Expr::BoolLit(b) => Ok(Value::Bool(*b)),
         Expr::Null => Ok(Value::Null),
 
+        Expr::ArrayLit(elements) => {
+            let values: Result<Vec<Value>, String> = elements
+                .iter()
+                .map(|e| evaluate_expr(e, data))
+                .collect();
+            Ok(Value::Array(Rc::new(RefCell::new(values?))))
+        }
+
         Expr::Var(name) => get_hash_value(data, name),
 
         Expr::Field(base, field) => {
@@ -187,7 +195,8 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
                     // Call the native function
                     (nf.func)(evaluated_args)
                 }
-                _ => Err(format!("'{}' is not a function", name)),
+                Value::Null => Err(format!("'{}' is not defined (function not found in template context)", name)),
+                _ => Err(format!("'{}' is not a function, got {}", name, func_value.type_name())),
             }
         }
     }
