@@ -133,6 +133,10 @@ impl TemplateCache {
         layout_name: &str,
         partial_renderer: &dyn Fn(&str, &Value) -> Result<String, String>,
     ) -> Result<String, String> {
+        // Strip "layouts/" prefix if present to avoid double prefixing
+        let layout_name = layout_name.trim_start_matches("layouts/");
+        let layout_name = layout_name.trim_start_matches("layouts");
+
         // Use the cache for layouts too (layouts/name.html.erb)
         let layout_template = format!("layouts/{}", layout_name);
 
@@ -258,6 +262,13 @@ impl TemplateCache {
 
 /// Create a response hash for rendered HTML content.
 pub fn html_response(body: String, status: i64) -> Value {
+    // Inject live reload script if enabled
+    let body = if crate::serve::live_reload::is_live_reload_enabled() {
+        crate::serve::live_reload::inject_live_reload_script(&body)
+    } else {
+        body
+    };
+
     let headers = Value::Hash(Rc::new(RefCell::new(vec![(
         Value::String("Content-Type".to_string()),
         Value::String("text/html; charset=utf-8".to_string()),

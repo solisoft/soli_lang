@@ -30,6 +30,49 @@ pub struct WorkerRoute {
 // Routes contain handler names that are looked up in each worker's interpreter.
 thread_local! {
     pub static ROUTES: RefCell<Vec<Route>> = RefCell::new(Vec::new());
+    // Method-indexed route cache for O(1) method lookup + O(m) route search
+    // where m = routes for that method, instead of O(n) for all routes
+    static ROUTE_INDEX: RefCell<RouteIndex> = RefCell::new(RouteIndex::new());
+}
+
+/// Method-indexed route cache for faster lookups.
+/// Groups routes by HTTP method and provides fast exact-match lookup.
+#[derive(Clone, Default)]
+pub struct RouteIndex {
+    /// Routes grouped by HTTP method
+    by_method: HashMap<String, Vec<usize>>,  // method -> indices into ROUTES
+    /// Exact path matches for fast lookup (method:path -> route index)
+    exact_matches: HashMap<String, usize>,
+    /// Version counter to detect stale index
+    version: u64,
+}
+
+impl RouteIndex {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Rebuild the index from the current routes.
+    fn rebuild(&mut self, routes: &[Route]) {
+        self.by_method.clear();
+        self.exact_matches.clear();
+
+        for (idx, route) in routes.iter().enumerate() {
+            // Add to method index
+            self.by_method
+                .entry(route.method.clone())
+                .or_insert_with(Vec::new)
+                .push(idx);
+
+            // Add exact matches (routes without dynamic segments)
+            if !route.path_pattern.contains(':') {
+                let key = format!("{}:{}", route.method, route.path_pattern);
+                self.exact_matches.insert(key, idx);
+            }
+        }
+
+        self.version += 1;
+    }
 }
 
 // Track if routes are "direct" (http_server_get/post) vs MVC (get/post DSL)
@@ -48,6 +91,7 @@ pub fn is_direct_routes_mode() -> bool {
 /// Clear all registered routes (useful for testing or restarting).
 pub fn clear_routes() {
     ROUTES.with(|routes| routes.borrow_mut().clear());
+    ROUTE_INDEX.with(|index| *index.borrow_mut() = RouteIndex::new());
 }
 
 /// Clear routes that match a specific path prefix.
@@ -88,6 +132,49 @@ pub fn get_routes() -> Vec<Route> {
     ROUTES.with(|routes| routes.borrow().clone())
 }
 
+/// Rebuild the route index from current routes.
+/// Call this after modifying routes to enable fast lookups.
+pub fn rebuild_route_index() {
+    ROUTES.with(|routes| {
+        ROUTE_INDEX.with(|index| {
+            index.borrow_mut().rebuild(&routes.borrow());
+        });
+    });
+}
+
+/// Find a matching route by method and path using the index.
+/// Returns the matched route (cloned) and extracted parameters.
+/// This is more efficient than iterating through all routes.
+pub fn find_route(method: &str, path: &str) -> Option<(Route, HashMap<String, String>)> {
+    ROUTES.with(|routes| {
+        ROUTE_INDEX.with(|index| {
+            let routes = routes.borrow();
+            let index = index.borrow();
+
+            // Fast path: try exact match first
+            let exact_key = format!("{}:{}", method, path);
+            if let Some(&idx) = index.exact_matches.get(&exact_key) {
+                if let Some(route) = routes.get(idx) {
+                    return Some((route.clone(), HashMap::new()));
+                }
+            }
+
+            // Fall back to method-indexed search with pattern matching
+            if let Some(indices) = index.by_method.get(method) {
+                for &idx in indices {
+                    if let Some(route) = routes.get(idx) {
+                        if let Some(params) = match_path(&route.path_pattern, path) {
+                            return Some((route.clone(), params));
+                        }
+                    }
+                }
+            }
+
+            None
+        })
+    })
+}
+
 /// Convert routes to worker-safe routes (without middleware Values).
 pub fn routes_to_worker_routes(routes: &[Route]) -> Vec<WorkerRoute> {
     routes
@@ -104,6 +191,7 @@ pub fn routes_to_worker_routes(routes: &[Route]) -> Vec<WorkerRoute> {
 /// Used by worker threads to initialize their route tables from the main thread.
 pub fn set_routes(routes: Vec<Route>) {
     ROUTES.with(|r| *r.borrow_mut() = routes);
+    rebuild_route_index();
 }
 
 /// Set worker routes in the current thread's storage (for worker threads).
@@ -119,6 +207,7 @@ pub fn set_worker_routes(routes: Vec<WorkerRoute>) {
         })
         .collect();
     ROUTES.with(|r| *r.borrow_mut() = routes);
+    rebuild_route_index();
 }
 
 /// Register a route.
@@ -189,7 +278,18 @@ pub fn parse_query_string(query: &str) -> HashMap<String, String> {
     result
 }
 
+// Pre-allocated static keys for request hash to avoid repeated String allocations
+thread_local! {
+    static KEY_METHOD: Value = Value::String("method".to_string());
+    static KEY_PATH: Value = Value::String("path".to_string());
+    static KEY_PARAMS: Value = Value::String("params".to_string());
+    static KEY_QUERY: Value = Value::String("query".to_string());
+    static KEY_HEADERS: Value = Value::String("headers".to_string());
+    static KEY_BODY: Value = Value::String("body".to_string());
+}
+
 /// Build a request hash from HTTP request data.
+/// Uses thread-local cached keys to avoid repeated String allocations.
 pub fn build_request_hash(
     method: &str,
     path: &str,
@@ -198,44 +298,64 @@ pub fn build_request_hash(
     headers: HashMap<String, String>,
     body: String,
 ) -> Value {
-    let params_pairs: Vec<(Value, Value)> = params
-        .into_iter()
-        .map(|(k, v)| (Value::String(k), Value::String(v)))
-        .collect();
+    // Pre-allocate with known capacity
+    let params_pairs: Vec<(Value, Value)> = if params.is_empty() {
+        Vec::new()
+    } else {
+        params
+            .into_iter()
+            .map(|(k, v)| (Value::String(k), Value::String(v)))
+            .collect()
+    };
 
-    let query_pairs: Vec<(Value, Value)> = query
-        .into_iter()
-        .map(|(k, v)| (Value::String(k), Value::String(v)))
-        .collect();
+    let query_pairs: Vec<(Value, Value)> = if query.is_empty() {
+        Vec::new()
+    } else {
+        query
+            .into_iter()
+            .map(|(k, v)| (Value::String(k), Value::String(v)))
+            .collect()
+    };
 
-    let header_pairs: Vec<(Value, Value)> = headers
-        .into_iter()
-        .map(|(k, v)| (Value::String(k), Value::String(v)))
-        .collect();
+    let header_pairs: Vec<(Value, Value)> = if headers.is_empty() {
+        Vec::new()
+    } else {
+        headers
+            .into_iter()
+            .map(|(k, v)| (Value::String(k), Value::String(v)))
+            .collect()
+    };
 
-    let request_pairs: Vec<(Value, Value)> = vec![
-        (
-            Value::String("method".to_string()),
-            Value::String(method.to_string()),
-        ),
-        (
-            Value::String("path".to_string()),
-            Value::String(path.to_string()),
-        ),
-        (
-            Value::String("params".to_string()),
-            Value::Hash(Rc::new(RefCell::new(params_pairs))),
-        ),
-        (
-            Value::String("query".to_string()),
-            Value::Hash(Rc::new(RefCell::new(query_pairs))),
-        ),
-        (
-            Value::String("headers".to_string()),
-            Value::Hash(Rc::new(RefCell::new(header_pairs))),
-        ),
-        (Value::String("body".to_string()), Value::String(body)),
-    ];
+    // Build request hash using cached keys
+    let request_pairs: Vec<(Value, Value)> = KEY_METHOD.with(|key_method| {
+        KEY_PATH.with(|key_path| {
+            KEY_PARAMS.with(|key_params| {
+                KEY_QUERY.with(|key_query| {
+                    KEY_HEADERS.with(|key_headers| {
+                        KEY_BODY.with(|key_body| {
+                            vec![
+                                (key_method.clone(), Value::String(method.to_string())),
+                                (key_path.clone(), Value::String(path.to_string())),
+                                (
+                                    key_params.clone(),
+                                    Value::Hash(Rc::new(RefCell::new(params_pairs))),
+                                ),
+                                (
+                                    key_query.clone(),
+                                    Value::Hash(Rc::new(RefCell::new(query_pairs))),
+                                ),
+                                (
+                                    key_headers.clone(),
+                                    Value::Hash(Rc::new(RefCell::new(header_pairs))),
+                                ),
+                                (key_body.clone(), Value::String(body)),
+                            ]
+                        })
+                    })
+                })
+            })
+        })
+    });
 
     Value::Hash(Rc::new(RefCell::new(request_pairs)))
 }

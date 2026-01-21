@@ -248,7 +248,12 @@ impl fmt::Display for Value {
                     FutureState::Error(e) => write!(f, "<error: {}>", e),
                 }
             }
-            Value::Method(method) => write!(f, "<method {}.{}>", method.receiver.type_name(), method.method_name),
+            Value::Method(method) => write!(
+                f,
+                "<method {}.{}>",
+                method.receiver.type_name(),
+                method.method_name
+            ),
         }
     }
 }
@@ -286,7 +291,10 @@ impl Function {
 
     pub fn arity(&self) -> usize {
         // Return the number of required parameters (params without defaults)
-        self.params.iter().filter(|p| p.default_value.is_none()).count()
+        self.params
+            .iter()
+            .filter(|p| p.default_value.is_none())
+            .count()
     }
 
     /// Full arity including optional parameters
@@ -296,12 +304,17 @@ impl Function {
 
     /// Check if a parameter at index has a default value
     pub fn param_has_default(&self, index: usize) -> bool {
-        self.params.get(index).map(|p| p.default_value.is_some()).unwrap_or(false)
+        self.params
+            .get(index)
+            .map(|p| p.default_value.is_some())
+            .unwrap_or(false)
     }
 
     /// Get the default value expression for a parameter at index
     pub fn param_default_value(&self, index: usize) -> Option<&Expr> {
-        self.params.get(index).and_then(|p| p.default_value.as_ref())
+        self.params
+            .get(index)
+            .and_then(|p| p.default_value.as_ref())
     }
 }
 
@@ -342,7 +355,12 @@ pub struct ValueMethod {
 
 impl fmt::Debug for ValueMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<method {}.{}>", self.receiver.type_name(), self.method_name)
+        write!(
+            f,
+            "<method {}.{}>",
+            self.receiver.type_name(),
+            self.method_name
+        )
     }
 }
 
@@ -361,6 +379,7 @@ pub struct Class {
     pub superclass: Option<Rc<Class>>,
     pub methods: HashMap<String, Rc<Function>>,
     pub static_methods: HashMap<String, Rc<Function>>,
+    pub native_static_methods: HashMap<String, Rc<NativeFunction>>,
     pub constructor: Option<Rc<Function>>,
 }
 

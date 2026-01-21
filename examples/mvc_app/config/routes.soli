@@ -14,6 +14,9 @@ get("/docs/introduction", "docs#introduction");
 get("/docs/installation", "docs#installation");
 get("/docs/routing", "docs#routing");
 get("/docs/controllers", "docs#controllers");
+get("/docs/models", "docs#models");
+get("/docs/views", "docs#views");
+get("/docs/middleware", "docs#middleware");
 
 print("Routes loaded!");
 

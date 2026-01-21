@@ -8,27 +8,55 @@ fn index(req: Any) -> Any {
 fn introduction(req: Any) -> Any {
     return render("docs/introduction", {
         "title": "Introduction",
-        "section": "getting_started"
-    }, "layouts/docs");
+        "section": "getting_started",
+        "layout": "layouts/docs"
+    });
 }
 
 fn installation(req: Any) -> Any {
     return render("docs/installation", {
         "title": "Installation",
-        "section": "getting_started"
-    }, "layouts/docs");
+        "section": "getting_started",
+        "layout": "layouts/docs"
+    });
 }
 
 fn routing(req: Any) -> Any {
     return render("docs/routing", {
         "title": "Routing",
-        "section": "core_concepts"
-    }, "layouts/docs");
+        "section": "core_concepts",
+        "layout": "layouts/docs"
+    });
 }
 
 fn controllers(req: Any) -> Any {
     return render("docs/controllers", {
         "title": "Controllers",
-        "section": "core_concepts"
-    }, "layouts/docs");
+        "section": "core_concepts",
+        "layout": "layouts/docs"
+    });
+}
+
+fn middleware(req: Any) -> Any {
+    return render("docs/middleware", {
+        "title": "Middleware",
+        "section": "core_concepts",
+        "layout": "layouts/docs"
+    });
+}
+
+fn views(req: Any) -> Any {
+    return render("docs/views", {
+        "title": "Views",
+        "section": "core_concepts",
+        "layout": "layouts/docs"
+    });
+}
+
+fn models(req: Any) -> Any {
+    return render("docs/models", {
+        "title": "Models & ORM",
+        "section": "core_concepts",
+        "layout": "layouts/docs"
+    });
 }

@@ -1,29 +1,540 @@
 <h1>Controllers</h1>
-<p class="lead">Controllers are the glue between your routes and views.</p>
+<p class="lead text-xl text-gray-300 mb-8">
+    Controllers handle HTTP requests, process data, and return responses. Soli supports both class-based OOP controllers and function-based controllers.
+</p>
 
-<h2>Example Controller</h2>
-<p>Controllers are defined in <code>app/controllers/</code> and contain functions for each action:</p>
+<h2>Class-Based Controllers (Recommended)</h2>
+<p>
+    Class-based controllers provide a structured way to organize your code with support for inheritance, before/after actions, and shared layouts.
+</p>
 
+<h3>Basic Structure</h3>
 <pre><code class="language-soli">// app/controllers/posts_controller.soli
 
-fn index(req: Any) -> Any {
-    let posts = Post.all();
-    return render("posts/index", { "posts": posts });
-}
+class PostsController extends ApplicationController {
+    static {
+        this.layout = "layouts/posts";
+    }
 
-fn show(req: Any) -> Any {
-    let id = req.params["id"];
-    let post = Post.find(id);
-    return render("posts/show", { "post": post });
+    fn index(req: Any) -> Any {
+        let posts = Post.all();
+        return render("posts/index", {
+            "title": "All Posts",
+            "posts": posts
+        });
+    }
+
+    fn show(req: Any) -> Any {
+        let id = req.params["id"];
+        let post = Post.find(id);
+
+        if post == null {
+            return error(404, "Post not found");
+        }
+
+        return render("posts/show", {
+            "title": post["title"],
+            "post": post
+        });
+    }
+
+    fn create(req: Any) -> Any {
+        let title = req.params["title"];
+        let content = req.params["content"];
+
+        let post = Post.create({
+            "title": title,
+            "content": content
+        });
+
+        return redirect("/posts/" + post["id"]);
+    }
+
+    // Private helper - not exposed as a route (prefix with _)
+    fn _validate_post(params: Any) -> Bool {
+        return params["title"] != null && params["title"] != "";
+    }
 }</code></pre>
 
-<h2>Parameters</h2>
-<p>Access request parameters via <code>req.params</code>:</p>
+<h3>Base Controller</h3>
+<p>
+    Create a base <code>ApplicationController</code> for shared functionality across all controllers.
+</p>
+<pre><code class="language-soli">// app/controllers/application_controller.soli
 
-<pre><code class="language-soli">let id = req.params["id"];
-let query = req.params["q"];</code></pre>
+class ApplicationController extends Controller {
+    static {
+        this.layout = "layouts/application";
 
-<h2>Rendering</h2>
-<p>Use the <code>render</code> helper to render a view template. You can optionally specify a layout (default is "application").</p>
+        // Run for all actions in all controllers that extend this
+        this.before_action = fn(req) {
+            // Load current user from session
+            let user_id = req.session["user_id"];
+            if user_id != null {
+                req["current_user"] = User.find(user_id);
+            }
+            return req;
+        };
+    }
+}</code></pre>
 
-<pre><code class="language-soli">return render("home/index", { "title": "Home" });</code></pre>
+<h3>Before Actions</h3>
+<p>
+    Execute code before controller actions run. Use this for authentication, loading resources, or validation.
+</p>
+<pre><code class="language-soli">class PostsController extends ApplicationController {
+    static {
+        // Run before ALL actions
+        this.before_action = fn(req) {
+            print("Processing request: " + req.path);
+            return req;
+        };
+
+        // Run before SPECIFIC actions only
+        this.before_action(:show, :edit, :update, :delete) = fn(req) {
+            let post = Post.find(req.params["id"]);
+            if post == null {
+                // Return early with error response
+                return error(404, "Post not found");
+            }
+            // Add post to request for use in action
+            req["post"] = post;
+            return req;
+        };
+    }
+
+    fn show(req: Any) -> Any {
+        // Post is already loaded by before_action
+        return render("posts/show", {
+            "post": req["post"]
+        });
+    }
+
+    fn edit(req: Any) -> Any {
+        return render("posts/edit", {
+            "post": req["post"]
+        });
+    }
+}</code></pre>
+
+<h3>After Actions</h3>
+<p>
+    Execute code after controller actions complete. Use this for logging, modifying responses, or cleanup.
+</p>
+<pre><code class="language-soli">class ApiController extends ApplicationController {
+    static {
+        // Run after all actions
+        this.after_action = fn(req, response) {
+            // Add timing header to response
+            response.headers["X-Response-Time"] = "42ms";
+            return response;
+        };
+
+        // Run after specific actions
+        this.after_action(:create, :update, :delete) = fn(req, response) {
+            // Log write operations
+            print("Write operation completed: " + req.method + " " + req.path);
+            return response;
+        };
+    }
+}</code></pre>
+
+<h3>Private Methods</h3>
+<p>
+    Methods prefixed with <code>_</code> are private and not exposed as routes.
+</p>
+<pre><code class="language-soli">class UsersController extends ApplicationController {
+    fn create(req: Any) -> Any {
+        if !_validate_user(req.params) {
+            return error(400, "Invalid user data");
+        }
+
+        let user = User.create(_sanitize_params(req.params));
+        return redirect("/users/" + user["id"]);
+    }
+
+    // Private - not a route
+    fn _validate_user(params: Any) -> Bool {
+        return params["email"] != null && params["password"] != null;
+    }
+
+    // Private - not a route
+    fn _sanitize_params(params: Any) -> Any {
+        return {
+            "email": params["email"],
+            "name": params["name"] ?? "Anonymous"
+        };
+    }
+}</code></pre>
+
+<h2>Function-Based Controllers</h2>
+<p>
+    For simpler use cases, you can use function-based controllers without classes.
+</p>
+<pre><code class="language-soli">// app/controllers/home_controller.soli
+
+// GET /
+fn index(req: Any) -> Any {
+    return render("home/index", {
+        "title": "Welcome",
+        "message": "Hello from Soli!"
+    });
+}
+
+// GET /health
+fn health(req: Any) -> Any {
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": "{\"status\":\"ok\"}"
+    };
+}
+
+// GET /about
+fn about(req: Any) -> Any {
+    return render("home/about", {
+        "title": "About Us"
+    });
+}</code></pre>
+
+<h2>Request Object</h2>
+<p>
+    The request object contains all information about the incoming HTTP request.
+</p>
+<pre><code class="language-soli">fn show(req: Any) -> Any {
+    // HTTP method: "GET", "POST", "PUT", "DELETE", etc.
+    let method = req.method;
+
+    // Request path
+    let path = req.path;
+
+    // Route parameters (from path like /users/:id)
+    let user_id = req.params["id"];
+
+    // Query string parameters (?page=2)
+    let page = req.params["page"] ?? "1";
+
+    // Form data and JSON body
+    let name = req.params["name"];
+    let email = req.params["email"];
+
+    // HTTP headers
+    let content_type = req.headers["Content-Type"];
+    let user_agent = req.headers["User-Agent"];
+    let auth_token = req.headers["Authorization"];
+
+    // Cookies
+    let session_id = req.cookies["session_id"];
+
+    // Raw body (for JSON API)
+    let raw_body = req.body;
+
+    // Session data
+    let user_id = req.session["user_id"];
+
+    return render("users/show", {
+        "method": method,
+        "user_id": user_id,
+        "page": page
+    });
+}</code></pre>
+
+<h2>Response Types</h2>
+<p>
+    Controllers can return different types of responses.
+</p>
+
+<h3>Render Templates</h3>
+<pre><code class="language-soli">// Simple render
+return render("home/index");
+
+// With data
+return render("posts/show", {
+    "title": post["title"],
+    "post": post
+});
+
+// With custom layout
+return render("special/page", {
+    "data": value,
+    "layout": "layouts/custom"
+});</code></pre>
+
+<h3>Redirect</h3>
+<pre><code class="language-soli">// Redirect to another URL
+return redirect("/posts");
+
+// Redirect with status (default 302)
+return redirect("/login", 301);
+
+// Redirect back to referrer
+return redirect(req.headers["Referer"] ?? "/");</code></pre>
+
+<h3>JSON Response</h3>
+<pre><code class="language-soli">// Return JSON directly
+return {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": json_encode({
+        "posts": posts,
+        "page": 1,
+        "total": 100
+    })
+};</code></pre>
+
+<h3>Error Responses</h3>
+<pre><code class="language-soli">// Simple error with status
+return error(404, "Post not found");
+
+// Custom error response
+return {
+    "status": 422,
+    "headers": { "Content-Type": "application/json" },
+    "body": json_encode({
+        "error": "Validation failed",
+        "details": ["Title is required"]
+    })
+};
+
+// Common error codes
+return error(400, "Bad Request");
+return error(401, "Unauthorized");
+return error(403, "Forbidden");
+return error(404, "Not Found");
+return error(500, "Internal Server Error");</code></pre>
+
+<h3>File Download</h3>
+<pre><code class="language-soli">return {
+    "status": 200,
+    "headers": {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": "attachment; filename=\"report.pdf\""
+    },
+    "body": read_file("/path/to/file.pdf")
+};</code></pre>
+
+<h2>Authentication Example</h2>
+<p>
+    A complete authentication flow using class-based controllers.
+</p>
+<pre><code class="language-soli">// app/controllers/sessions_controller.soli
+
+class SessionsController extends ApplicationController {
+    fn new(req: Any) -> Any {
+        return render("sessions/new", {
+            "title": "Login"
+        });
+    }
+
+    fn create(req: Any) -> Any {
+        let email = req.params["email"];
+        let password = req.params["password"];
+
+        let user = User.where("email", "==", email).first();
+
+        if user != null && verify_password(password, user["password_hash"]) {
+            req.session["user_id"] = user["id"];
+            return redirect("/dashboard");
+        }
+
+        return render("sessions/new", {
+            "title": "Login",
+            "error": "Invalid email or password"
+        });
+    }
+
+    fn delete(req: Any) -> Any {
+        req.session.clear();
+        return redirect("/");
+    }
+}
+
+// app/controllers/dashboard_controller.soli
+
+class DashboardController extends ApplicationController {
+    static {
+        // Require authentication for all actions
+        this.before_action = fn(req) {
+            if req.session["user_id"] == null {
+                return redirect("/login?redirect=" + req.path);
+            }
+            req["current_user"] = User.find(req.session["user_id"]);
+            return req;
+        };
+    }
+
+    fn index(req: Any) -> Any {
+        return render("dashboard/index", {
+            "title": "Dashboard",
+            "user": req["current_user"]
+        });
+    }
+}</code></pre>
+
+<h2>RESTful Resource Controller</h2>
+<p>
+    A complete CRUD controller for a resource.
+</p>
+<pre><code class="language-soli">class ArticlesController extends ApplicationController {
+    static {
+        this.layout = "layouts/articles";
+
+        // Load article for show, edit, update, delete
+        this.before_action(:show, :edit, :update, :delete) = fn(req) {
+            let article = Article.find(req.params["id"]);
+            if article == null {
+                return error(404, "Article not found");
+            }
+            req["article"] = article;
+            return req;
+        };
+    }
+
+    // GET /articles
+    fn index(req: Any) -> Any {
+        let articles = Article.all();
+        return render("articles/index", { "articles": articles });
+    }
+
+    // GET /articles/new
+    fn new(req: Any) -> Any {
+        return render("articles/new", { "article": {} });
+    }
+
+    // POST /articles
+    fn create(req: Any) -> Any {
+        let article = Article.create({
+            "title": req.params["title"],
+            "content": req.params["content"],
+            "author_id": req.session["user_id"]
+        });
+        return redirect("/articles/" + article["id"]);
+    }
+
+    // GET /articles/:id
+    fn show(req: Any) -> Any {
+        return render("articles/show", { "article": req["article"] });
+    }
+
+    // GET /articles/:id/edit
+    fn edit(req: Any) -> Any {
+        return render("articles/edit", { "article": req["article"] });
+    }
+
+    // PUT /articles/:id
+    fn update(req: Any) -> Any {
+        Article.update(req.params["id"], {
+            "title": req.params["title"],
+            "content": req.params["content"]
+        });
+        return redirect("/articles/" + req.params["id"]);
+    }
+
+    // DELETE /articles/:id
+    fn delete(req: Any) -> Any {
+        Article.delete(req.params["id"]);
+        return redirect("/articles");
+    }
+}</code></pre>
+
+<h2>Content Negotiation</h2>
+<p>
+    Return different formats based on Accept header.
+</p>
+<pre><code class="language-soli">class ApiPostsController extends ApplicationController {
+    fn show(req: Any) -> Any {
+        let post = Post.find(req.params["id"]);
+        let accept = req.headers["Accept"] ?? "text/html";
+
+        if accept.contains("application/json") {
+            return {
+                "status": 200,
+                "headers": { "Content-Type": "application/json" },
+                "body": json_encode(post)
+            };
+        }
+
+        return render("posts/show", { "post": post });
+    }
+}</code></pre>
+
+<h2>File Structure</h2>
+<pre><code class="language-text">app/controllers/
+├── application_controller.soli    # Base controller with shared config
+├── home_controller.soli           # Home/static pages
+├── posts_controller.soli          # Blog posts CRUD
+├── users_controller.soli          # User management
+├── sessions_controller.soli       # Login/logout
+└── api/
+    └── v1/
+        └── posts_controller.soli  # API endpoints</code></pre>
+
+<h2>Best Practices</h2>
+<ul class="space-y-3">
+    <li>
+        <strong>Use class-based controllers</strong> - They provide better organization with before/after actions and inheritance
+    </li>
+    <li>
+        <strong>Create a base ApplicationController</strong> - Put shared logic like authentication here
+    </li>
+    <li>
+        <strong>Use before_action for resource loading</strong> - DRY up your show/edit/update/delete actions
+    </li>
+    <li>
+        <strong>Prefix private methods with _</strong> - They won't be exposed as routes
+    </li>
+    <li>
+        <strong>Keep actions focused</strong> - Each action should do one thing well
+    </li>
+    <li>
+        <strong>Return appropriate status codes</strong> - Use error() for HTTP errors
+    </li>
+    <li>
+        <strong>Use layouts</strong> - Set layout in static block for consistent page structure
+    </li>
+</ul>
+
+<div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+    <div class="flex items-start gap-3">
+        <div class="text-indigo-400 mt-0.5">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+        </div>
+        <div>
+            <h4 class="text-indigo-400 font-medium">Controller Tips</h4>
+            <p class="text-sm text-indigo-200 mt-1">
+                Controllers should be thin - delegate complex logic to models or service objects.
+                Use before_action hooks to DRY up common operations like authentication and resource loading.
+            </p>
+        </div>
+    </div>
+</div>
+
+<h2>Next Steps</h2>
+<ul class="space-y-2">
+    <li>
+        <a href="/docs/views" class="text-indigo-400 hover:text-indigo-300">
+            Views & Templates
+        </a>
+        - Render HTML responses
+    </li>
+    <li>
+        <a href="/docs/middleware" class="text-indigo-400 hover:text-indigo-300">
+            Middleware
+        </a>
+        - Add request/response processing
+    </li>
+    <li>
+        <a href="/docs/models" class="text-indigo-400 hover:text-indigo-300">
+            Models & ORM
+        </a>
+        - Work with database data
+    </li>
+    <li>
+        <a href="/docs/routing" class="text-indigo-400 hover:text-indigo-300">
+            Routing
+        </a>
+        - Define URL patterns
+    </li>
+</ul>

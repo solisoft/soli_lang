@@ -363,6 +363,9 @@ impl Interpreter {
                 if let Some(method) = class.static_methods.get(name) {
                     return Ok(Value::Function(method.clone()));
                 }
+                if let Some(native_method) = class.native_static_methods.get(name) {
+                    return Ok(Value::NativeFunction(native_method.as_ref().clone()));
+                }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: class.name.clone(),
                     property: name.to_string(),

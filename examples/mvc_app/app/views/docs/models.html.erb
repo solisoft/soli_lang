@@ -1,0 +1,388 @@
+<h1>Models & ORM</h1>
+<p class="lead text-xl text-gray-300 mb-8">
+    Models handle the data layer of your application, providing type-safe database operations with SoliDB.
+</p>
+
+<h2>What is SoliDB?</h2>
+<p>
+    SoliDB is a lightweight, document-oriented database built into SoliLang. It stores data as JSON-like documents
+    in collections, making it perfect for modern web applications. Models provide a clean, type-safe interface
+    for working with your data.
+</p>
+
+<h2>Defining Models</h2>
+<p>
+    Create a model by extending the <code>Model</code> class and defining your fields:
+</p>
+<pre><code class="language-soli">// app/models/user.soli
+
+class User extends Model {
+    static {
+        // Set the collection name (defaults to model filename)
+        this.collection = "users";
+
+        // Define fields with types and validation
+        this.fields = {
+            // String field with validation
+            "name": Field.string({
+                required: true,
+                min_length: 2,
+                max_length: 100
+            }),
+
+            // Email field with format validation
+            "email": Field.string({
+                required: true,
+                unique: true,
+                index: true
+            }),
+
+            // Password hash
+            "password_hash": Field.string({
+                required: true
+            }),
+
+            // Age with numeric constraints
+            "age": Field.int({
+                min: 0,
+                max: 150
+            }),
+
+            // Boolean field
+            "active": Field.bool({
+                default: true
+            }),
+
+            // Timestamp fields
+            "created_at": Field.datetime(),
+            "updated_at": Field.datetime()
+        };
+    }
+}</code></pre>
+
+<h2>Field Types</h2>
+<p>SoliDB supports various field types for different data needs:</p>
+<pre><code class="language-soli">class Article extends Model {
+    static {
+        this.collection = "articles";
+        this.fields = {
+            // Text fields
+            "title": Field.string({ required: true, max_length: 200 }),
+            "content": Field.text(),  // Longer content
+
+            // Numeric fields
+            "views": Field.int({ default: 0, min: 0 }),
+            "price": Field.float({ min: 0.0 }),
+
+            // Boolean
+            "published": Field.bool({ default: false }),
+
+            // Date/Time
+            "published_at": Field.datetime(),
+            "created_at": Field.datetime(),
+
+            // JSON for flexible data
+            "metadata": Field.json(),
+
+            // Array of strings
+            "tags": Field.array(Field.string()),
+
+            // Reference to another model
+            "author_id": Field.reference("User")
+        };
+    }
+}</code></pre>
+
+<h2>CRUD Operations</h2>
+<p>Models provide simple methods for Create, Read, Update, and Delete operations:</p>
+
+<h3>Create</h3>
+<pre><code class="language-soli">// Create a new user
+let user = User.create({
+    "name": "Alice Johnson",
+    "email": "alice@example.com",
+    "age": 28
+});
+
+print(user["id"]);      // Generated ID
+print(user["name"]);    // "Alice Johnson"</code></pre>
+
+<h3>Read</h3>
+<pre><code class="language-soli">// Find by ID
+let user = User.find("abc123");
+
+// Find first matching record
+let active = User.where("active", "==", true).first();
+
+// Get all records
+let all_users = User.all();
+
+// Pagination
+let page1 = User.order_by("created_at", "desc").limit(10).find();
+let page2 = User.order_by("created_at", "desc")
+                .offset(10)
+                .limit(10)
+                .find();</code></pre>
+
+<h3>Update</h3>
+<pre><code class="language-soli">// Update a single record
+User.update("abc123", {
+    "name": "Alice Smith",
+    "age": 29
+});
+
+// Update with where clause
+User.where("status", "==", "pending")
+    .update({ "status": "active" });</code></pre>
+
+<h3>Delete</h3>
+<pre><code class="language-soli">// Delete by ID
+User.delete("abc123");
+
+// Delete with where clause
+User.where("active", "==", false).delete();</code></pre>
+
+<h2>Query Builder</h2>
+<p>Build complex queries with a fluent chainable API:</p>
+<pre><code class="language-soli">// Basic where clauses
+let adults = User.where("age", ">=", 18).find();
+let admins = User.where("role", "==", "admin").find();
+
+// Comparison operators: ==, !=, >, >=, <, <=
+let recent = User.where("created_at", ">", "2024-01-01").find();
+
+// Multiple conditions (AND)
+let active_admins = User.where("role", "==", "admin")
+                        .and_where("active", "==", true)
+                        .find();
+
+// OR conditions
+let special = User.where("tier", "==", "premium")
+                  .or_where("tier", "==", "enterprise")
+                  .find();
+
+// Ordering
+let alphabetical = User.order_by("name", "asc").find();
+let newest_first = User.order_by("created_at", "desc").find();
+
+// Aggregation
+let count = User.count();
+let avg_age = User.where("active", "==", true).avg("age");</code></pre>
+
+<h2>Relationships</h2>
+<p>Define relationships between models:</p>
+
+<h3>Has Many</h3>
+<pre><code class="language-soli">class User extends Model {
+    static {
+        this.collection = "users";
+        this.fields = { "name": Field.string() };
+    }
+
+    // User has many posts
+    static has_many(name: String, model: String) {
+        this.relationships.push(Relationship.has_many(name, "Post"));
+    }
+
+    // Get user's posts
+    fn posts(&mut self) -> Array {
+        return Post.where("author_id", "==", self["id"]).find();
+    }
+}
+
+class Post extends Model {
+    static {
+        this.collection = "posts";
+        this.fields = {
+            "title": Field.string(),
+            "author_id": Field.reference("User")
+        };
+    }
+
+    // Post belongs to a user
+    static belongs_to(name: String, model: String) {
+        this.relationships.push(Relationship.belongs_to(name, "User"));
+    }
+
+    // Get post author
+    fn author(&mut self) -> Any {
+        return User.find(self["author_id"]);
+    }
+}</code></pre>
+
+<h3>Has One</h3>
+<pre><code class="language-soli">class User extends Model {
+    static {
+        this.collection = "users";
+    }
+
+    // User has one profile
+    static has_one(name: String, model: String) {
+        this.relationships.push(Relationship.has_one(name, "Profile"));
+    }
+}
+
+class Profile extends Model {
+    static {
+        this.collection = "profiles";
+        this.fields = {
+            "bio": Field.text(),
+            "user_id": Field.reference("User")
+        };
+    }
+
+    // Profile belongs to a user
+    static belongs_to(name: String, model: String) {
+        this.relationships.push(Relationship.belongs_to(name, "User"));
+    }
+}</code></pre>
+
+<h2>Lifecycle Hooks</h2>
+<p>Run code at specific points in a model's lifecycle:</p>
+<pre><code class="language-soli">class User extends Model {
+    static {
+        this.collection = "users";
+        this.fields = {
+            "name": Field.string(),
+            "email": Field.string(),
+            "password_hash": Field.string(),
+            "welcome_sent": Field.bool({ default: false })
+        };
+
+        // Before create - hash password
+        this.before_create = fn(data) {
+            let password = data["password"] ?? "";
+            if password.length() > 0 {
+                data["password_hash"] = hash_password(password);
+                data.remove("password");
+            }
+            return data;
+        };
+
+        // After create - send welcome email
+        this.after_create = fn(user) {
+            send_welcome_email(user["email"]);
+            return user;
+        };
+
+        // Before update - track changes
+        this.before_update = fn(data, current) {
+            log_user_update(current["id"], data);
+            return data;
+        };
+
+        // After delete - cleanup
+        this.after_delete = fn(user) {
+            cleanup_user_data(user["id"]);
+            return user;
+        };
+    }
+}</code></pre>
+
+<h2>Migrations</h2>
+<p>Manage schema changes over time:</p>
+<pre><code class="language-soli">// Run migrations
+model_migrate();
+
+// Check migration status
+model_status();
+
+// Rollback last migration
+model_rollback();
+
+// Create a new migration
+// (creates a new file in app/models/migrations/)
+// Then edit the file to define changes</code></pre>
+
+<div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+    <div class="flex items-start gap-3">
+        <div class="text-indigo-400 mt-0.5">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+        </div>
+        <div>
+            <h4 class="text-indigo-400 font-medium">Model Best Practices</h4>
+            <p class="text-sm text-indigo-200 mt-1">
+                Keep models focused on data and business logic. Use controllers for request handling and views for presentation.
+                Define field validations at the model level to ensure data integrity.
+            </p>
+        </div>
+    </div>
+</div>
+
+<h2>Complete Example</h2>
+<pre><code class="language-soli">// app/models/task.soli
+
+class Task extends Model {
+    static {
+        this.collection = "tasks";
+        this.fields = {
+            "title": Field.string({ required: true, max_length: 200 }),
+            "description": Field.text(),
+            "completed": Field.bool({ default: false }),
+            "priority": Field.int({ default: 1, min: 1, max: 5 }),
+            "due_date": Field.datetime(),
+            "user_id": Field.reference("User")
+        };
+
+        // Only show incomplete tasks by default
+        static scope(name: String, query: Any) {
+            if name == "pending" {
+                return query.where("completed", "==", false);
+            }
+            return query;
+        }
+    }
+}
+
+// In a controller
+fn my_tasks(req: Any) -> Any {
+    let user_id = req["session"]["user_id"];
+    return render("tasks/index", {
+        "title": "My Tasks",
+        "tasks": Task.where("user_id", "==", user_id)
+                     .scope("pending")
+                     .order_by("priority", "desc")
+                     .find()
+    });
+}
+
+fn complete_task(req: Any) -> Any {
+    let task_id = req["params"]["id"];
+    Task.update(task_id, { "completed": true });
+    return redirect("/tasks");
+}</code></pre>
+
+<h2>Model File Organization</h2>
+<pre><code class="language-text">app/models/
+├── user.soli              # User model
+├── post.soli              # Blog post model
+├── comment.soli           # Comment model
+├── profile.soli           # User profile model
+└── migrations/            # Database migrations
+    ├── 001_create_users.soli
+    ├── 002_create_posts.soli
+    └── 003_add_comments.soli</code></pre>
+
+<h2>Next Steps</h2>
+<ul class="space-y-2">
+    <li>
+        <a href="/docs/middleware" class="text-indigo-400 hover:text-indigo-300">
+            Middleware
+        </a>
+        - Add request/response processing
+    </li>
+    <li>
+        <a href="/docs/views" class="text-indigo-400 hover:text-indigo-300">
+            Views & Templates
+        </a>
+        - Render HTML responses
+    </li>
+    <li>
+        <a href="/docs/controllers" class="text-indigo-400 hover:text-indigo-300">
+            Controllers
+        </a>
+        - Handle HTTP requests
+    </li>
+</ul>

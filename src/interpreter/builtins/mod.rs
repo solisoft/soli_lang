@@ -11,10 +11,12 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
 // Re-export submodules
+pub mod controller;
 pub mod crypto;
 pub mod dotenv;
 pub mod env;
 pub mod http;
+pub mod model;
 pub mod router;
 pub mod server;
 pub mod solidb;
@@ -731,6 +733,9 @@ pub fn register_builtins(env: &mut Environment) {
     // Register SoliDB functions
     solidb::register_solidb_builtins(env);
 
+    // Register Model/ORM functions
+    model::register_model_builtins(env);
+
     // Register dotenv functions
     dotenv::register_dotenv_builtins(env);
 
@@ -742,6 +747,9 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register router functions
     router::register_router_builtins(env);
+
+    // Register controller functions
+    controller::register_controller_builtins(env);
 
     // Register Error class and error types
     register_error_classes(env);
@@ -757,6 +765,7 @@ fn register_error_classes(env: &mut Environment) {
         superclass: None,
         methods: HashMap::new(),
         static_methods: HashMap::new(),
+        native_static_methods: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -772,10 +781,12 @@ fn register_error_classes(env: &mut Environment) {
             superclass: None,
             methods: HashMap::new(),
             static_methods: HashMap::new(),
+            native_static_methods: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
+        native_static_methods: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -791,10 +802,12 @@ fn register_error_classes(env: &mut Environment) {
             superclass: None,
             methods: HashMap::new(),
             static_methods: HashMap::new(),
+            native_static_methods: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
+        native_static_methods: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -810,10 +823,12 @@ fn register_error_classes(env: &mut Environment) {
             superclass: None,
             methods: HashMap::new(),
             static_methods: HashMap::new(),
+            native_static_methods: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
+        native_static_methods: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -829,10 +844,12 @@ fn register_error_classes(env: &mut Environment) {
             superclass: None,
             methods: HashMap::new(),
             static_methods: HashMap::new(),
+            native_static_methods: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
+        native_static_methods: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -848,10 +865,12 @@ fn register_error_classes(env: &mut Environment) {
             superclass: None,
             methods: HashMap::new(),
             static_methods: HashMap::new(),
+            native_static_methods: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
+        native_static_methods: HashMap::new(),
         constructor: None,
     };
     env.define(

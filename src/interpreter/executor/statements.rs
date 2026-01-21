@@ -293,6 +293,7 @@ impl Interpreter {
             superclass,
             methods,
             static_methods,
+            native_static_methods: HashMap::new(),
             constructor,
         };
 

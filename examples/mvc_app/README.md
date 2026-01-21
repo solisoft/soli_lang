@@ -2,16 +2,43 @@
 
 A comprehensive demonstration of the Solilang MVC Framework with scoped middleware support.
 
-## 🚀 Quick Start
+## Prerequisites
+
+- Rust and Cargo (latest stable)
+- Node.js (v16 or higher)
+- npm or yarn
+
+## Installation
 
 ```bash
-# Start the development server
-cargo run -- serve examples/mvc_app
+# Install dependencies
+npm install
+
+# Build CSS
+npm run build:css
 ```
 
-Visit [http://localhost:3000/docs](http://localhost:3000/docs) for full documentation.
+## Quick Start
 
-## 📁 Project Structure
+```bash
+# Start development server with hot reload
+npm run dev
+
+# Or use the shell script directly
+./dev.sh
+```
+
+Visit [http://localhost:3000](http://localhost:3000) for the app, and [http://localhost:3000/docs](http://localhost:3000/docs) for full documentation.
+
+## Alternative: Using Soli CLI directly
+
+If you have Soli installed globally:
+
+```bash
+soli serve examples/mvc_app
+```
+
+## Project Structure
 
 ```
 mvc_app/
@@ -92,7 +119,7 @@ namespace("api", -> {
 - **Architecture** - MVC pattern explanation
 - **Controllers** - Defining route handlers
 - **Middleware** - Request/response processing
-- **Scoped Middleware** - Fine-grained middleware control
+- **Views** - Template rendering and layouts
 - **Routing** - DSL helpers and patterns
 - **Resources** - RESTful route generation
 - **Configuration** - Middleware options
@@ -145,22 +172,23 @@ resources("users", null);
 
 ## 🧪 Testing
 
-### Public Routes (No Authentication)
+### Public Routes
 
 ```bash
 curl http://localhost:3000/
-curl http://localhost:3000/about
-curl http://localhost:3000/users
+curl http://localhost:3000/health
+curl http://localhost:3000/docs
 ```
 
-### Protected Routes (Require Authentication)
+### Documentation Routes
 
 ```bash
-# Without API key - returns 401
-curl http://localhost:3000/admin
-
-# With valid API key - succeeds
-curl -H "X-Api-Key: secret-key-123" http://localhost:3000/admin
+curl http://localhost:3000/docs/introduction
+curl http://localhost:3000/docs/installation
+curl http://localhost:3000/docs/routing
+curl http://localhost:3000/docs/controllers
+curl http://localhost:3000/docs/middleware
+curl http://localhost:3000/docs/views
 ```
 
 ## 🔥 Hot Reload
@@ -180,7 +208,7 @@ No restart needed!
 |------------|------|-------------|
 | `cors` | global_only | Adds CORS headers to all responses |
 | `logging` | global_only | Logs all HTTP requests |
-| `authenticate` | scope_only | Requires API key authentication |
+| `authenticate` | scope_only | Requires API key authentication (ready to use in routes) |
 
 ## 🏗️ Creating New Controllers
 

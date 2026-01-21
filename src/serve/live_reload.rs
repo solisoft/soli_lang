@@ -36,7 +36,7 @@ pub fn is_live_reload_enabled() -> bool {
 pub async fn handle_live_reload_sse(
     mut reload_rx: broadcast::Receiver<()>,
 ) -> Response<Full<Bytes>> {
-    match tokio::time::timeout(Duration::from_secs(30), reload_rx.recv()).await {
+    match tokio::time::timeout(Duration::from_secs(10), reload_rx.recv()).await {
         Ok(Ok(())) => {
             // Reload signal received - send reload event
             Response::builder()
@@ -77,6 +77,8 @@ pub async fn handle_live_reload_sse(
 /// and reloads the page when a reload event is received.
 pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
 (function(){
+    if (window.__livereload_script_injected) return;
+    window.__livereload_script_injected = true;
     var es = new EventSource('/__livereload');
     es.addEventListener('reload', function() {
         location.reload();
@@ -87,23 +89,65 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             es = new EventSource('/__livereload');
         }, 1000);
     };
+    window.addEventListener('beforeunload', function() {
+        es.close();
+    });
+    document.addEventListener('click', function(e) {
+        var link = e.target.closest('a');
+        if (link && link.href && link.href.startsWith(location.origin)) {
+            es.close();
+        }
+    });
 })();
 </script>"#;
+
+/// Find the last occurrence of an ASCII pattern in a string, case-insensitive.
+/// Does NOT allocate any intermediate strings - works directly on bytes.
+/// Only valid for ASCII needles (like HTML tags).
+#[inline]
+fn rfind_ascii_case_insensitive(haystack: &str, needle: &[u8]) -> Option<usize> {
+    let haystack_bytes = haystack.as_bytes();
+    let needle_len = needle.len();
+
+    if haystack_bytes.len() < needle_len {
+        return None;
+    }
+
+    // Search from the end
+    for i in (0..=(haystack_bytes.len() - needle_len)).rev() {
+        let mut matches = true;
+        for j in 0..needle_len {
+            if haystack_bytes[i + j].to_ascii_lowercase() != needle[j] {
+                matches = false;
+                break;
+            }
+        }
+        if matches {
+            return Some(i);
+        }
+    }
+    None
+}
 
 /// Inject the live reload script into HTML content.
 ///
 /// Inserts the script before the closing `</body>` tag if present,
 /// otherwise appends it to the end of the HTML.
 pub fn inject_live_reload_script(html: &str) -> String {
-    // Try to find </body> (case-insensitive)
-    let lower = html.to_lowercase();
-    if let Some(pos) = lower.rfind("</body>") {
+    // Skip if already injected
+    if html.contains("__livereload_script_injected") {
+        return html.to_string();
+    }
+
+    // Try to find </body> (case-insensitive) without allocating a lowercase copy
+    // Using byte slices for ASCII HTML tags
+    if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
         let mut result = String::with_capacity(html.len() + LIVE_RELOAD_SCRIPT.len());
         result.push_str(&html[..pos]);
         result.push_str(LIVE_RELOAD_SCRIPT);
         result.push_str(&html[pos..]);
         result
-    } else if let Some(pos) = lower.rfind("</html>") {
+    } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
         // Fallback: insert before </html>
         let mut result = String::with_capacity(html.len() + LIVE_RELOAD_SCRIPT.len());
         result.push_str(&html[..pos]);

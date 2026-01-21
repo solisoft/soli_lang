@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{NativeFunction, Value};
 use crate::template::parser::{parse_template, CompareOp, Expr, TemplateNode};
 
 /// Render content with a layout that has a yield placeholder.
@@ -195,6 +195,25 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
                 _ => Err(format!("Unknown method: {}", method)),
             }
         }
+
+        Expr::Call(name, args) => {
+            // Evaluate arguments
+            let evaluated_args: Result<Vec<Value>, String> =
+                args.iter().map(|arg| evaluate_expr(arg, data)).collect();
+
+            let evaluated_args = evaluated_args?;
+
+            // Look up the function in the data context (should be a NativeFunction)
+            let func_value = get_hash_value(data, name)?;
+
+            match func_value {
+                Value::NativeFunction(nf) => {
+                    // Call the native function
+                    (nf.func)(evaluated_args)
+                }
+                _ => Err(format!("'{}' is not a function", name)),
+            }
+        }
     }
 }
 
@@ -228,16 +247,19 @@ fn index_value(base: &Value, key: &Value) -> Result<Value, String> {
     }
 }
 
-/// Get a value from a hash by string key
+/// Get a value from a hash by string key.
+/// Optimized to avoid allocating a Value::String for comparison.
 #[inline]
 fn get_hash_value(value: &Value, key: &str) -> Result<Value, String> {
     match value {
         Value::Hash(hash) => {
             let hash = hash.borrow();
-            let key_value = Value::String(key.to_string());
+            // Direct string comparison without allocating Value::String
             for (k, v) in hash.iter() {
-                if k.hash_eq(&key_value) {
-                    return Ok(v.clone());
+                if let Value::String(k_str) = k {
+                    if k_str == key {
+                        return Ok(v.clone());
+                    }
                 }
             }
             Ok(Value::Null)
@@ -320,20 +342,56 @@ fn compare_values(a: &Value, b: &Value) -> Result<i32, String> {
     }
 }
 
-/// Create a new data context with an additional variable
+/// Create a new data context with an additional variable.
+/// Uses copy-on-write optimization: if the hash has only one reference,
+/// mutate in place; otherwise create a shallow clone.
 fn with_variable(data: &Value, name: &str, value: Value) -> Result<Value, String> {
     match data {
         Value::Hash(hash) => {
-            let mut new_hash: Vec<(Value, Value)> = hash.borrow().clone();
-            let key = Value::String(name.to_string());
+            // Check if we have exclusive access (Rc strong count == 1)
+            if Rc::strong_count(hash) == 1 {
+                // We have exclusive access - mutate in place
+                let mut hash_ref = hash.borrow_mut();
+                let key = Value::String(name.to_string());
 
-            // Remove existing key if present
-            new_hash.retain(|(k, _)| !k.hash_eq(&key));
+                // Find and update existing key, or append
+                let mut found = false;
+                for (k, v) in hash_ref.iter_mut() {
+                    if let Value::String(k_str) = k {
+                        if k_str == name {
+                            *v = value.clone();
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if !found {
+                    hash_ref.push((key, value));
+                }
+                drop(hash_ref);
+                Ok(data.clone())
+            } else {
+                // Multiple references - need to clone
+                let mut new_hash: Vec<(Value, Value)> = hash.borrow().clone();
+                let key = Value::String(name.to_string());
 
-            // Add new key-value pair
-            new_hash.push((key, value));
+                // Find and update existing key, or append
+                let mut found = false;
+                for (k, v) in new_hash.iter_mut() {
+                    if let Value::String(k_str) = k {
+                        if k_str == name {
+                            *v = value.clone();
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if !found {
+                    new_hash.push((key, value));
+                }
 
-            Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
+                Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
+            }
         }
         _ => Err("Data context must be a Hash".to_string()),
     }

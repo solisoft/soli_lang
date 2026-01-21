@@ -19,6 +19,9 @@ thread_local! {
 // Global views directory for initialization
 static VIEWS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
+// Global public directory for public_path() helper
+static PUBLIC_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
 /// Initialize the template system with the views directory.
 pub fn init_templates(views_dir: PathBuf) {
     // Store views dir globally
@@ -30,6 +33,13 @@ pub fn init_templates(views_dir: PathBuf) {
     TEMPLATE_CACHE.with(|cache| {
         *cache.borrow_mut() = Some(Rc::new(TemplateCache::new(views_dir)));
     });
+}
+
+/// Initialize the public directory for public_path() helper.
+pub fn init_public_dir(public_dir: PathBuf) {
+    if let Ok(mut dir) = PUBLIC_DIR.lock() {
+        *dir = Some(public_dir);
+    }
 }
 
 /// Clear the template cache (for hot reload).
@@ -74,6 +84,79 @@ fn get_template_cache() -> Result<Rc<TemplateCache>, String> {
 
         Err("Template system not initialized. Call init_templates() first.".to_string())
     })
+}
+
+/// Compute MD5 hash of file contents.
+fn compute_file_md5(path: &PathBuf) -> Result<String, String> {
+    let data = std::fs::read(path).map_err(|e| format!("Failed to read file for MD5: {}", e))?;
+
+    let hash = md5::compute(&data);
+    Ok(format!("{:x}", hash))
+}
+
+/// Inject template helper functions into the data context
+fn inject_template_helpers(data: &Value) -> Value {
+    match data {
+        Value::Hash(hash) => {
+            let mut new_hash: Vec<(Value, Value)> = hash.borrow().clone();
+
+            // Check if public_path already exists
+            let public_path_key = Value::String("public_path".to_string());
+            let has_public_path = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&public_path_key));
+
+            if !has_public_path {
+                // Create the public_path native function
+                let public_path_func =
+                    Value::NativeFunction(NativeFunction::new("public_path", Some(1), |args| {
+                        let path = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "public_path() expects string path, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+
+                        // Get public directory
+                        let public_dir = if let Ok(dir_guard) = PUBLIC_DIR.lock() {
+                            dir_guard.clone()
+                        } else {
+                            None
+                        };
+
+                        let public_dir = match public_dir {
+                            Some(dir) => dir,
+                            None => {
+                                // Default to "public" in current directory
+                                PathBuf::from("public")
+                            }
+                        };
+
+                        // Build full file path
+                        let full_path = public_dir.join(&path);
+
+                        // Compute MD5 hash
+                        let hash = compute_file_md5(&full_path)?;
+
+                        // Return path with query parameter
+                        if path.contains('?') {
+                            Ok(Value::String(format!("{}&v={}", path, hash)))
+                        } else {
+                            Ok(Value::String(format!("{}?v={}", path, hash)))
+                        }
+                    }));
+
+                new_hash.push((public_path_key, public_path_func));
+            }
+
+            Value::Hash(Rc::new(RefCell::new(new_hash)))
+        }
+        _ => data.clone(),
+    }
 }
 
 /// Register template-related builtin functions.
@@ -128,7 +211,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                 None
             };
 
-            // Extract layout option
+            // Extract layout option - check options hash first, then data hash
             let layout = if let Some(opts) = &options {
                 let opts = opts.borrow();
                 let layout_key = Value::String("layout".to_string());
@@ -139,15 +222,38 @@ pub fn register_template_builtins(env: &mut Environment) {
                         break;
                     }
                 }
-                match layout_value {
-                    Some(Value::String(s)) => Some(Some(s)),
-                    Some(Value::Bool(false)) => Some(None), // layout: false
-                    Some(Value::Null) => Some(None),
-                    None => None, // Use default
-                    _ => None,
-                }
+                layout_value
             } else {
                 None
+            };
+
+            // If not found in options, check data hash for layout key
+            let layout = if layout.is_none() {
+                if let Value::Hash(data_hash) = &data {
+                    let data_hash = data_hash.borrow();
+                    let layout_key = Value::String("layout".to_string());
+                    let mut layout_value = None;
+                    for (k, v) in data_hash.iter() {
+                        if k.hash_eq(&layout_key) {
+                            layout_value = Some(v.clone());
+                            break;
+                        }
+                    }
+                    layout_value
+                } else {
+                    None
+                }
+            } else {
+                layout
+            };
+
+            // Process layout value
+            let layout = match layout {
+                Some(Value::String(s)) => Some(Some(s)),
+                Some(Value::Bool(false)) => Some(None), // layout: false
+                Some(Value::Null) => Some(None),
+                None => None, // No layout specified
+                _ => None,
             };
 
             // Extract status option (default 200)
@@ -171,6 +277,9 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Get template cache and render
             let cache = get_template_cache()?;
 
+            // Inject template helper functions into data context
+            let data_with_helpers = inject_template_helpers(&data);
+
             // Convert layout option for render call
             let layout_arg = match &layout {
                 Some(Some(name)) => Some(Some(name.as_str())),
@@ -178,7 +287,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                 None => None,
             };
 
-            let rendered = cache.render(&template_name, &data, layout_arg)?;
+            let rendered = cache.render(&template_name, &data_with_helpers, layout_arg)?;
 
             Ok(html_response(rendered, status))
         })),
@@ -214,7 +323,11 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             // Get template cache and render
             let cache = get_template_cache()?;
-            let rendered = cache.render_partial(&partial_name, &data)?;
+
+            // Inject template helper functions into data context
+            let data_with_helpers = inject_template_helpers(&data);
+
+            let rendered = cache.render_partial(&partial_name, &data_with_helpers)?;
 
             // Return just the string for partials (they're typically embedded)
             Ok(Value::String(rendered))
@@ -242,6 +355,108 @@ pub fn register_template_builtins(env: &mut Environment) {
                 other => format!("{}", other),
             };
             Ok(Value::String(crate::template::renderer::html_escape(&s)))
+        })),
+    );
+
+    // redirect(url) - Create a redirect response (302 Found)
+    env.define(
+        "redirect".to_string(),
+        Value::NativeFunction(NativeFunction::new("redirect", Some(1), |args| {
+            let url = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "redirect() expects string URL, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let headers = Value::Hash(Rc::new(RefCell::new(vec![(
+                Value::String("Location".to_string()),
+                Value::String(url),
+            )])));
+
+            Ok(Value::Hash(Rc::new(RefCell::new(vec![
+                (Value::String("status".to_string()), Value::Int(302)),
+                (Value::String("headers".to_string()), headers),
+                (
+                    Value::String("body".to_string()),
+                    Value::String(String::new()),
+                ),
+            ]))))
+        })),
+    );
+
+    // render_json(data, status?) - Render JSON response with automatic content type
+    env.define(
+        "render_json".to_string(),
+        Value::NativeFunction(NativeFunction::new("render_json", None, |args| {
+            if args.is_empty() {
+                return Err("render_json() requires at least one argument".to_string());
+            }
+
+            let data = args[0].clone();
+            let status = if args.len() > 1 {
+                match &args[1] {
+                    Value::Int(n) => *n as i64,
+                    _ => 200,
+                }
+            } else {
+                200
+            };
+
+            let json_body = match &data {
+                Value::String(s) => s.clone(),
+                Value::Null => "null".to_string(),
+                _ => format!("{}", data),
+            };
+
+            let headers = Value::Hash(Rc::new(RefCell::new(vec![(
+                Value::String("Content-Type".to_string()),
+                Value::String("application/json; charset=utf-8".to_string()),
+            )])));
+
+            Ok(Value::Hash(Rc::new(RefCell::new(vec![
+                (Value::String("status".to_string()), Value::Int(status)),
+                (Value::String("headers".to_string()), headers),
+                (Value::String("body".to_string()), Value::String(json_body)),
+            ]))))
+        })),
+    );
+
+    // render_text(text, status?) - Render plain text response with automatic content type
+    env.define(
+        "render_text".to_string(),
+        Value::NativeFunction(NativeFunction::new("render_text", None, |args| {
+            if args.is_empty() {
+                return Err("render_text() requires at least one argument".to_string());
+            }
+
+            let text = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => format!("{}", other),
+            };
+
+            let status = if args.len() > 1 {
+                match &args[1] {
+                    Value::Int(n) => *n as i64,
+                    _ => 200,
+                }
+            } else {
+                200
+            };
+
+            let headers = Value::Hash(Rc::new(RefCell::new(vec![(
+                Value::String("Content-Type".to_string()),
+                Value::String("text/plain; charset=utf-8".to_string()),
+            )])));
+
+            Ok(Value::Hash(Rc::new(RefCell::new(vec![
+                (Value::String("status".to_string()), Value::Int(status)),
+                (Value::String("headers".to_string()), headers),
+                (Value::String("body".to_string()), Value::String(text)),
+            ]))))
         })),
     );
 }

@@ -52,7 +52,7 @@ fn print_usage() {
     eprintln!("  --disassemble   Print bytecode disassembly before execution");
     eprintln!("  --no-type-check Skip type checking");
     eprintln!("  --port PORT     Port for serve command (default: 3000)");
-    eprintln!("  --workers N     Number of worker threads (default: 8)");
+    eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
     eprintln!("  --no-live-reload  Disable browser auto-refresh on file changes");
     eprintln!("  --mode MODE     Execution mode for serve: tree-walk, bytecode (default), jit");
     eprintln!("  --help, -h      Show this help message");
@@ -96,7 +96,10 @@ fn parse_args() -> Options {
                 let mut port = 3000u16;
                 let mut live_reload = true;
                 let mut serve_mode = ExecutionMode::Bytecode;
-                let mut workers = 8usize;
+                // Default to number of CPU cores for optimal parallelism
+                let mut workers = std::thread::available_parallelism()
+                    .map(|p| p.get())
+                    .unwrap_or(4);
                 i += 1;
                 while i < args.len() {
                     if args[i] == "--port" {

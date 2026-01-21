@@ -147,6 +147,8 @@ pub fn register_middleware_with_options(
 }
 
 /// Get all registered middleware in execution order (must be called from interpreter thread).
+/// Note: This clones the middleware Vec. For performance-critical paths, use
+/// `with_middleware()` to iterate without cloning.
 pub fn get_middleware() -> Vec<Middleware> {
     MIDDLEWARE.with(|mw| {
         let mw = mw.borrow();
@@ -158,7 +160,25 @@ pub fn get_middleware() -> Vec<Middleware> {
     })
 }
 
+/// Execute a closure with a reference to the middleware list (avoids cloning).
+/// Returns None if there's no middleware, otherwise returns the closure result.
+#[inline]
+pub fn with_middleware<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&[Middleware]) -> R,
+{
+    MIDDLEWARE.with(|mw| {
+        let mw = mw.borrow();
+        if mw.is_empty() {
+            None
+        } else {
+            Some(f(&mw))
+        }
+    })
+}
+
 /// Check if there's any middleware registered (fast path).
+#[inline]
 pub fn has_middleware() -> bool {
     MIDDLEWARE.with(|mw| !mw.borrow().is_empty())
 }

@@ -1,0 +1,324 @@
+<h1>Middleware</h1>
+<p class="lead text-xl text-gray-300 mb-8">
+    Middleware provides a way to filter HTTP requests and responses, enabling cross-cutting concerns like authentication, logging, and CORS.
+</p>
+
+<h2>Middleware Attributes</h2>
+<p>Middleware functions support special comment attributes to control their behavior:</p>
+<pre><code class="language-soli">// app/middleware/logging.soli
+
+// order: 10
+// Execution order (lower runs first, default: 100)
+fn log_request(req: Any) -> Any {
+    let timestamp = datetime::now();
+    println(timestamp + " " + req.method + " " + req.path);
+    return req;
+}
+
+// global_only: true
+// Only run when applied globally, cannot be used in route-level scopes
+fn cors(req: Any) -> Any {
+    let response = req;
+    response.headers["Access-Control-Allow-Origin"] = "*";
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+    return response;
+}
+
+// scope_only: true
+// Only run when explicitly scoped to routes, never globally
+fn authenticate(req: Any) -> Any {
+    let token = req.headers["Authorization"];
+    if token == null || token == "" {
+        return error(401, "Unauthorized");
+    }
+    return req;
+}</code></pre>
+
+<h2>Creating Middleware</h2>
+<p>Create a file in <code>app/middleware/</code>:</p>
+<pre><code class="language-soli">// app/middleware/auth.soli
+
+// order: 20
+// scope_only: true
+fn authenticate(req: Any) -> Any {
+    let token = req.headers["Authorization"];
+
+    if token == null || token == "" {
+        return error(401, "Unauthorized");
+    }
+
+    // Validate token and add user to request
+    let user = validate_token(token);
+    if user == null {
+        return error(401, "Invalid token");
+    }
+
+    // Attach user to request for controller access
+    req["user"] = user;
+    return req;
+}
+
+// order: 30
+fn add_request_id(req: Any) -> Any {
+    let id = generate_uuid();
+    req["request_id"] = id;
+    return req;
+}</code></pre>
+
+<h3>Request Object</h3>
+<p>The request object contains:</p>
+<pre><code class="language-soli">{
+    "method": "GET",           // HTTP method
+    "path": "/users/123",      // Request path
+    "query": {},               // Query parameters
+    "headers": {},             // HTTP headers
+    "cookies": {},             // Cookies
+    "body": "",                // Request body (if applicable)
+    "params": {},              // Route parameters
+    "user": {...}              // Set by auth middleware
+}</code></pre>
+
+<h3>Returning Responses</h3>
+<p>Middleware can return responses to short-circuit the request:</p>
+<pre><code class="language-soli">// Return error response
+return error(401, "Unauthorized");
+
+// Return redirect
+return redirect("/login");
+
+// Return custom response
+return {
+    "status": 403,
+    "headers": {"Content-Type": "application/json"},
+    "body": json_encode({"error": "Access denied"})
+};</code></pre>
+
+<h2>Applying Middleware</h2>
+
+<h3>Global Middleware</h3>
+<p>Apply to all routes using <code>use()</code>:</p>
+<pre><code class="language-soli">// config/routes.soli
+
+// Apply logging and CORS to all routes
+use("middleware/logging");
+use("middleware/cors");
+
+get("/", "home#index");
+get("/about", "home#about");
+get("/users", "users#list");
+get("/users/:id", "users#show");</code></pre>
+
+<h3>Route-Scoped Middleware</h3>
+<p>Apply specific middleware to specific routes:</p>
+<pre><code class="language-soli">// config/routes.soli
+
+// Dashboard requires authentication
+get("/dashboard", "dashboard#index", ["auth"]);
+
+// Admin panel requires admin role
+get("/admin", "admin#panel", ["auth", "admin_only"]);
+
+// API routes with rate limiting
+get("/api/users", "api#users", ["auth", "rate_limit"]);
+post("/api/users", "api#create_user", ["auth", "rate_limit"]);
+
+// Public routes (no middleware)
+get("/public/docs", "docs#index");</code></pre>
+
+<h3>Combining Global and Scoped</h3>
+<pre><code class="language-soli">// config/routes.soli
+
+// Global logging for all requests
+use("middleware/logging");
+
+// Scoped authentication for protected routes
+get("/profile", "user#profile", ["auth"]);
+get("/settings", "user#settings", ["auth"]);
+get("/api/data", "api#data", ["auth", "api_key"]);
+
+// Public routes bypass auth
+get("/home", "home#index");
+get("/login", "auth#login");</code></pre>
+
+<h2>Execution Order</h2>
+<p>Middleware executes in this order:</p>
+<ol class="list-decimal list-inside space-y-2">
+    <li>Global middleware (sorted by <code>order</code>)</li>
+    <li>Scoped middleware for the route (sorted by <code>order</code>)</li>
+    <li>Controller action</li>
+    <li>Response flows back through scoped middleware</li>
+    <li>Response flows back through global middleware</li>
+</ol>
+
+<pre><code class="language-text">Request → [logging] → [cors] → [auth] → Controller → [auth] → [cors] → Response
+                (order: 10)    (order: 5)     (order: 20)</code></pre>
+
+<h2>Built-in Middleware</h2>
+
+<h3>Logging Middleware</h3>
+<p>Log all incoming requests with timing:</p>
+<pre><code class="language-soli">// app/middleware/logging.soli
+
+// order: 10
+fn log_request(req: Any) -> Any {
+    let timestamp = datetime::now();
+    println("[{}] {} {}", timestamp, req.method, req.path);
+    return req;
+}</code></pre>
+
+<h3>CORS Middleware</h3>
+<p>Handle Cross-Origin Resource Sharing:</p>
+<pre><code class="language-soli">// app/middleware/cors.soli
+
+// order: 5
+// global_only: true
+fn add_cors_headers(req: Any) -> Any {
+    let response = req;
+    response.headers["Access-Control-Allow-Origin"] = "*";
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+    response.headers["Access-Control-Max-Age"] = "86400";
+    return response;
+}</code></pre>
+
+<h3>Authentication Middleware</h3>
+<p>Session-based authentication:</p>
+<pre><code class="language-soli">// app/middleware/auth.soli
+
+// order: 20
+// scope_only: true
+fn authenticate(req: Any) -> Any {
+    let session_id = req.cookies["session_id"];
+
+    if session_id == null || session_id == "" {
+        return redirect("/login?redirect=" + req.path);
+    }
+
+    let session = get_session(session_id);
+    if session == null {
+        return redirect("/login?redirect=" + req.path);
+    }
+
+    // Check session expiry
+    if session["expires_at"] < datetime::now() {
+        delete_session(session_id);
+        return redirect("/login?reason=expired");
+    }
+
+    // Attach user to request
+    req["user"] = session["user"];
+    return req;
+}</code></pre>
+
+<h3>Rate Limiting</h3>
+<p>Prevent abuse by limiting requests:</p>
+<pre><code class="language-soli">// app/middleware/rate_limit.soli
+
+// order: 100
+fn rate_limit(req: Any) -> Any {
+    let ip = req.headers["X-Forwarded-For"] ?? req.headers["Remote-Addr"];
+    let key = "rate_limit:" + ip;
+
+    let current = redis_get(key) ?? 0;
+    if current >= 100 {
+        return error(429, "Too many requests");
+    }
+
+    redis_incr(key);
+    redis_expire(key, 60); // Reset after 60 seconds
+
+    return req;
+}</code></pre>
+
+<h3>Body Parsing</h3>
+<p>Parse JSON request bodies:</p>
+<pre><code class="language-soli">// app/middleware/body_parser.soli
+
+// order: 15
+fn parse_json(req: Any) -> Any {
+    let content_type = req.headers["Content-Type"] ?? "";
+
+    if content_type.contains("application/json") {
+        let body = req.body;
+        if body != null && body != "" {
+            req["parsed_body"] = json_decode(body);
+        }
+    }
+
+    return req;
+}</code></pre>
+
+<div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+    <div class="flex items-start gap-3">
+        <div class="text-indigo-400 mt-0.5">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+        </div>
+        <div>
+            <h4 class="text-indigo-400 font-medium">Middleware Best Practices</h4>
+            <p class="text-sm text-indigo-200 mt-1">
+                Keep middleware focused and single-purpose. Use <code>order</code> to control execution sequence.
+                Global middleware should be lightweight - save heavy processing for scoped middleware.
+            </p>
+        </div>
+    </div>
+</div>
+
+<h2>Middleware File Structure</h2>
+<pre><code class="language-text">app/middleware/
+├── logging.soli          # Request logging
+├── cors.soli             # CORS headers
+├── auth.soli             # Authentication
+├── rate_limit.soli       # Rate limiting
+└── body_parser.soli      # Body parsing</code></pre>
+
+<h2>Complete Example</h2>
+<pre><code class="language-soli">// config/routes.soli
+
+// Global middleware - runs on all requests
+use("middleware/cors");        // order: 5
+use("middleware/logging");     // order: 10
+
+// Public routes
+get("/", "home#index");
+get("/about", "home#about");
+get("/login", "auth#login");
+post("/auth/login", "auth#process_login");
+
+// Protected routes
+get("/dashboard", "dashboard#index", ["auth"]);
+get("/profile", "user#profile", ["auth"]);
+get("/settings", "user#settings", ["auth"]);
+
+// API routes with rate limiting
+get("/api/users", "api#users", ["auth", "rate_limit"]);
+get("/api/users/:id", "api#user_detail", ["auth", "rate_limit"]);
+post("/api/users", "api#create_user", ["auth", "rate_limit", "admin_only"]);
+
+// Admin routes
+get("/admin", "admin#panel", ["auth", "admin_only"]);
+post("/admin/users", "admin#create_user", ["auth", "admin_only"]);</code></pre>
+
+<h2>Next Steps</h2>
+<ul class="space-y-2">
+    <li>
+        <a href="/docs/controllers" class="text-indigo-400 hover:text-indigo-300">
+            Controllers
+        </a>
+        - Handle HTTP requests
+    </li>
+    <li>
+        <a href="/docs/views" class="text-indigo-400 hover:text-indigo-300">
+            Views & Templates
+        </a>
+        - Render HTML responses
+    </li>
+    <li>
+        <a href="/docs/models" class="text-indigo-400 hover:text-indigo-300">
+            Models & ORM
+        </a>
+        - Work with database data
+    </li>
+</ul>

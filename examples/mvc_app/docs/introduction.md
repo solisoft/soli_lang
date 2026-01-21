@@ -1,0 +1,56 @@
+# Introduction to SoliLang MVC
+
+The SoliLang MVC Framework provides a clean, locally compiled, and organized structure for building web applications.
+
+## Features
+
+### Type-Safe
+Built with Solilang's type system for compile-time safety and runtime reliability.
+
+### Hot Reload
+Instant updates during local development. Edit a file and see changes immediately.
+
+### Fast Compilation
+Native Rust compilation means your applications start instantly and run with minimal overhead.
+
+## Architecture
+
+The MVC pattern separates your application into three main layers:
+
+- **Model**: Manages data and business logic.
+- **View**: Handles presentation and HTML rendering.
+- **Controller**: Orchestrates the flow between models and views.
+
+## Quick Start
+
+```bash
+# Clone the MVC template
+git clone https://github.com/solilang/mvc-template myapp
+cd myapp
+
+# Install dependencies
+npm install
+
+# Start development server
+./dev.sh
+```
+
+## Directory Structure
+
+```
+mvc_app/
+├── app/
+│   ├── controllers/    # Request handlers
+│   ├── middleware/     # HTTP middleware
+│   ├── models/         # Data models
+│   └── views/          # Templates
+├── config/
+│   └── routes.soli     # Route definitions
+├── public/             # Static assets
+└── views/
+    └── layouts/        # Page layouts
+```
+
+## Design Philosophy
+
+Soli favors convention over configuration. By following standard naming patterns, you write less glue code and focus on building features.

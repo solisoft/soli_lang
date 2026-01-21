@@ -9,6 +9,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
     <link rel="stylesheet" href="/css/application.css">
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -18,6 +22,21 @@
         .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.1); border-radius: 3px; }
         .scrollbar-thin::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.2); }
+        /* Code block styling */
+        pre code.hljs {
+            padding: 1.25rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            line-height: 1.7;
+        }
+        /* Inline code styling */
+        :not(pre) > code {
+            background-color: rgba(99, 102, 241, 0.1);
+            color: #a5b4fc;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-size: 0.875em;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-300 antialiased h-full flex flex-col lg:flex-row">
@@ -69,6 +88,21 @@
                                 Controllers
                             </a>
                         </li>
+                        <li>
+                            <a href="/docs/middleware" class="block px-3 py-2 text-sm rounded-md transition-colors <%= if section == 'core_concepts' && title == 'Middleware' then 'bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-gray-800 hover:text-white' end %>">
+                                Middleware
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/docs/views" class="block px-3 py-2 text-sm rounded-md transition-colors <%= if section == 'core_concepts' && title == 'Views' then 'bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-gray-800 hover:text-white' end %>">
+                                Views
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/docs/models" class="block px-3 py-2 text-sm rounded-md transition-colors <%= if section == 'core_concepts' && title == 'Models & ORM' then 'bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-gray-800 hover:text-white' end %>">
+                                Models & ORM
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </nav>
@@ -93,5 +127,107 @@
         </div>
     </main>
 
+    <!-- Highlight.js initialization -->
+    <script>
+    // SoliLang language definition for highlight.js
+    hljs.registerLanguage('soli', function() {
+        return {
+            name: 'SoliLang',
+            aliases: ['soli'],
+            keywords: {
+                keyword: 'fn if else end return let for in while do break continue class extends static this super new import use as',
+                literal: 'null true false',
+                built_in: 'print println datetime now hash_password validate_token redirect error json_encode json_decode json_decode'
+            },
+            contains: [
+                // Comments - single line
+                {
+                    className: 'comment',
+                    begin: '//',
+                    end: '$',
+                    contains: [{
+                        begin: '\\\\[a-zA-Z]',
+                        end: ''
+                    }]
+                },
+                // Multi-line comments
+                {
+                    className: 'comment',
+                    begin: '/\\*',
+                    end: '\\*/',
+                    contains: [{
+                        begin: '\\\\[a-zA-Z]',
+                        end: ''
+                    }]
+                },
+                // Strings - double quoted
+                {
+                    className: 'string',
+                    begin: '"',
+                    end: '"',
+                    contains: [{
+                        begin: '\\\\[0-7]|\\\\[abfnrtv\\\\\'"]|\\\\x[0-9a-fA-F]{2}|\\\\u[0-9a-fA-F]{4}|\\\\U[0-9a-fA-F]{8}',
+                        relevance: 0
+                    }]
+                },
+                // Numbers
+                {
+                    className: 'number',
+                    begin: '-?\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?\\b',
+                    relevance: 0
+                },
+                // Class definition
+                {
+                    className: 'keyword',
+                    begin: 'class\\s+[A-Z][a-zA-Z0-9_]*',
+                    relevance: 10
+                },
+                // Function definition
+                {
+                    className: 'title.function',
+                    begin: 'fn\\s+[a-zA-Z_][a-zA-Z0-9_]*',
+                    relevance: 10
+                },
+                // Method calls and function calls
+                {
+                    className: 'title.function',
+                    begin: '[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()',
+                    relevance: 0
+                },
+                // Operators
+                {
+                    className: 'operator',
+                    begin: '==|!=|<=|>=|\\?\\?|&&|\\|\\||<<|>>|\\.\\.',
+                    relevance: 5
+                },
+                // Assignment operators
+                {
+                    className: 'operator',
+                    begin: '[-+*/%]=|=>',
+                    relevance: 5
+                },
+                // Hash key access
+                {
+                    className: 'attr',
+                    begin: '\\["',
+                    end: '"\\]',
+                    relevance: 2
+                },
+                // Type annotations
+                {
+                    className: 'type',
+                    begin: ':\\s*(Any|String|Int|Float|Bool|Array|Hash|Object)',
+                    relevance: 2
+                }
+            ],
+            illegal: '</'
+        };
+    });
+
+    // Initialize syntax highlighting
+    document.addEventListener('DOMContentLoaded', function() {
+        hljs.highlightAll();
+    });
+    </script>
 </body>
 </html>

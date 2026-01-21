@@ -35,6 +35,8 @@ pub enum Expr {
     Not(Box<Expr>),
     /// Method call: expr.length (for built-in methods)
     Method(Box<Expr>, String),
+    /// Function call: name(arg1, arg2, ...)
+    Call(String, Vec<Expr>),
 }
 
 /// Comparison operators
@@ -543,6 +545,24 @@ pub fn compile_expr(expr: &str) -> Expr {
         return Expr::Not(Box::new(inner));
     }
 
+    // Check for function calls like "name(arg1, arg2)"
+    if let Some(paren_pos) = expr.find('(') {
+        let name = &expr[..paren_pos];
+        // Check if this looks like a function name (alphanumeric with underscores)
+        if name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            let args_str = &expr[paren_pos..];
+            if let Some(close_paren) = find_matching_bracket_compile(args_str) {
+                let args_content = &args_str[1..close_paren];
+                let args = if args_content.trim().is_empty() {
+                    Vec::new()
+                } else {
+                    parse_function_args(args_content)
+                };
+                return Expr::Call(name.to_string(), args);
+            }
+        }
+    }
+
     // Parse variable access with optional chained lookups
     compile_variable_access(expr)
 }
@@ -686,6 +706,13 @@ fn find_matching_bracket_compile(s: &str) -> Option<usize> {
                     return Some(i);
                 }
             }
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
             _ => {}
         }
     }
@@ -742,6 +769,56 @@ fn compile_further_brackets(base: Expr, brackets: &str) -> Expr {
     } else {
         base
     }
+}
+
+/// Parse function arguments separated by commas
+fn parse_function_args(args_str: &str) -> Vec<Expr> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut string_char = ' ';
+
+    for c in args_str.chars() {
+        if in_string {
+            if c == string_char && current.chars().last() != Some('\\') {
+                in_string = false;
+            }
+            current.push(c);
+        } else {
+            match c {
+                '"' | '\'' => {
+                    in_string = true;
+                    string_char = c;
+                    current.push(c);
+                }
+                '(' | '[' => {
+                    depth += 1;
+                    current.push(c);
+                }
+                ')' | ']' => {
+                    depth -= 1;
+                    current.push(c);
+                }
+                ',' if depth == 0 => {
+                    if !current.trim().is_empty() {
+                        args.push(compile_expr(current.trim()));
+                    }
+                    current.clear();
+                }
+                _ => {
+                    current.push(c);
+                }
+            }
+        }
+    }
+
+    // Don't forget the last argument
+    if !current.trim().is_empty() {
+        args.push(compile_expr(current.trim()));
+    }
+
+    args
 }
 
 #[cfg(test)]
@@ -857,6 +934,21 @@ mod tests {
             vec![TemplateNode::Partial {
                 name: "users/_card".to_string(),
                 context: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_parse_function_call() {
+        let nodes = parse_template("<%= public_path(\"css/application.css\") %>").unwrap();
+        assert_eq!(
+            nodes,
+            vec![TemplateNode::Output {
+                expr: Expr::Call(
+                    "public_path".to_string(),
+                    vec![Expr::StringLit("css/application.css".to_string())],
+                ),
+                escaped: true,
             }]
         );
     }

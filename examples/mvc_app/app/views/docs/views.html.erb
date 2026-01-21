@@ -1,0 +1,98 @@
+<h1>Views</h1>
+<p class="lead">Views handle the presentation layer of your application.</p>
+
+<h2>Template Syntax</h2>
+<p>SoliLang uses ERB-style templates with <code>&lt;%= %&gt;</code> for output and <code>&lt;% %&gt;</code> for logic.</p>
+
+<h3>Output Variables</h3>
+<pre><code>&lt;h1&gt;&lt;%= title %&gt;&lt;/h1&gt;
+&lt;p&gt;Hello, &lt;%= name %&gt;!&lt;/p&gt;
+&lt;p&gt;Count: &lt;%= count %&gt;&lt;/p&gt;</code></pre>
+
+<h3>Control Flow</h3>
+<pre><code>&lt;% if user_logged_in %&gt;
+    &lt;p&gt;Welcome back!&lt;/p&gt;
+&lt;% else %&gt;
+    &lt;p&gt;Please log in.&lt;/p&gt;
+&lt;% end %&gt;
+
+&lt;% for item in items %&gt;
+    &lt;li&gt;&lt;%= item.name %&gt;&lt;/li&gt;
+&lt;% end %&gt;</code></pre>
+
+<h3>Helper Functions</h3>
+<pre><code>&lt;%= h(user_input) %&gt;          &lt;!-- HTML escape --&gt;
+&lt;%= html_escape(content) %&gt;   &lt;!-- Same as h() --&gt;
+&lt;%= json_encode(data) %&gt;      &lt;!-- Convert to JSON --&gt;</code></pre>
+
+<h2>Layouts</h2>
+<p>Wrap views in a common layout:</p>
+<pre><code>&lt;!-- app/views/layouts/application.html.erb --&gt;
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+    &lt;title&gt;&lt;%= title %&gt;&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;nav&gt;
+        &lt;a href="/"&gt;Home&lt;/a&gt;
+        &lt;a href="/about"&gt;About&lt;/a&gt;
+    &lt;/nav&gt;
+
+    &lt;main&gt;
+        &lt;%= yield %&gt;
+    &lt;/main&gt;
+
+    &lt;footer&gt;
+        &amp;copy; 2024 My App
+    &lt;/footer&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+<p>Use layout with render:</p>
+<pre><code>fn index(req: Any) -> Any {
+    return render("home/index", {
+        "title": "Welcome"
+    }, "layouts/application");
+}</code></pre>
+
+<h2>Partials</h2>
+<p>Reuse template fragments:</p>
+<pre><code>&lt;!-- app/views/partials/user_card.html.erb --&gt;
+&lt;div class="user-card"&gt;
+    &lt;h3&gt;&lt;%= user.name %&gt;&lt;/h3&gt;
+    &lt;p&gt;&lt;%= user.email %&gt;&lt;/p&gt;
+&lt;/div&gt;</code></pre>
+
+<p>Include partials:</p>
+<pre><code>&lt;%= render_partial("partials/user_card", {"user": current_user}) %&gt;
+
+&lt;% for user in users %&gt;
+    &lt;%= render_partial("partials/user_card", {"user": user}) %&gt;
+&lt;% end %&gt;</code></pre>
+
+<div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+    <div class="flex items-start gap-3">
+        <div class="text-indigo-400 mt-0.5">ℹ</div>
+        <div>
+            <h4 class="text-indigo-400 font-medium text-sm">View Best Practices</h4>
+            <p class="text-sm text-indigo-200 mt-1">Keep views simple and focused on presentation. Never put business logic in views. Use helper functions like <code>h()</code> for HTML escaping.</p>
+        </div>
+    </div>
+</div>
+
+<h2>File Organization</h2>
+<pre><code>app/views/
+├── home/
+│   ├── index.html.erb
+│   └── show.html.erb
+├── users/
+│   ├── _form.html.erb
+│   ├── edit.html.erb
+│   └── show.html.erb
+├── partials/
+│   ├── _header.html.erb
+│   └── _footer.html.erb
+└── layouts/
+    ├── application.html.erb
+    └── docs.html.erb</code></pre>
