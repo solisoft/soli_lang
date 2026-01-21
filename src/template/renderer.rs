@@ -181,6 +181,7 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
         }
 
         Expr::Call(name, args) => {
+            eprintln!("[DEBUG renderer] Looking up function '{}' in data context", name);
             // Evaluate arguments
             let evaluated_args: Result<Vec<Value>, String> =
                 args.iter().map(|arg| evaluate_expr(arg, data)).collect();
@@ -189,6 +190,7 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
 
             // Look up the function in the data context (should be a NativeFunction)
             let func_value = get_hash_value(data, name)?;
+            eprintln!("[DEBUG renderer] Found value type: {}", func_value.type_name());
 
             match func_value {
                 Value::NativeFunction(nf) => {
