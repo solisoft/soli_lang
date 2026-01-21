@@ -108,6 +108,7 @@ pub fn render_nodes(
 /// This is the fast path - no string parsing required.
 #[inline]
 fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
+    eprintln!("[DEBUG renderer eval] expr: {:?}", expr);
     match expr {
         Expr::StringLit(s) => Ok(Value::String(s.clone())),
         Expr::IntLit(n) => Ok(Value::Int(*n)),
