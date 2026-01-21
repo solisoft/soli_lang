@@ -132,6 +132,7 @@ pub fn render_layout_nodes(
 /// Evaluate a pre-compiled expression in the context of the data.
 #[inline]
 fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
+    eprintln!("[DEBUG layout eval] expr: {:?}", expr);
     match expr {
         Expr::StringLit(s) => Ok(Value::String(s.clone())),
         Expr::IntLit(n) => Ok(Value::Int(*n)),
