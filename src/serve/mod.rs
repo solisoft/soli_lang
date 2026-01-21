@@ -261,10 +261,12 @@ pub fn serve_folder_with_options_and_mode(
     // Public directory for static files
     let public_dir = folder.join("public");
 
-    // Compile Tailwind CSS on startup (dev mode only)
-    if dev_mode {
-        compile_tailwind_css(folder);
-    }
+    // Start Tailwind CSS watch process (dev mode only)
+    let tailwind_process = if dev_mode {
+        spawn_tailwind_watch(folder)
+    } else {
+        None
+    };
 
     // Always use hyper-based MVC server
     run_hyper_server_worker_pool(
@@ -280,12 +282,56 @@ pub fn serve_folder_with_options_and_mode(
         workers,
         views_dir,
         routes_file,
+        tailwind_process,
     )
 }
 
-/// Compile Tailwind CSS if tailwind.config.js exists in the project.
-/// Returns true if compilation was attempted.
-fn compile_tailwind_css(folder: &Path) -> bool {
+/// Spawn Tailwind in watch mode as a background process.
+/// Returns the child process handle if successful.
+fn spawn_tailwind_watch(folder: &Path) -> Option<std::process::Child> {
+    let tailwind_config = folder.join("tailwind.config.js");
+    if !tailwind_config.exists() {
+        return None;
+    }
+
+    let package_json = folder.join("package.json");
+    if !package_json.exists() {
+        return None;
+    }
+
+    println!("Starting Tailwind CSS in watch mode...");
+
+    // Use npx tailwindcss directly for watch mode
+    match std::process::Command::new("npx")
+        .args([
+            "tailwindcss",
+            "-i",
+            "./app/assets/css/application.css",
+            "-o",
+            "./public/css/application.css",
+            "--watch",
+        ])
+        .current_dir(folder)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => {
+            println!("   ✓ Tailwind CSS watch process started (PID: {})", child.id());
+            Some(child)
+        }
+        Err(e) => {
+            eprintln!("   ✗ Failed to start Tailwind watch: {}", e);
+            // Fall back to single compilation
+            compile_tailwind_css_once(folder);
+            None
+        }
+    }
+}
+
+/// Run a single Tailwind CSS compilation (fallback/initial).
+/// Returns true if compilation was successful.
+fn compile_tailwind_css_once(folder: &Path) -> bool {
     let tailwind_config = folder.join("tailwind.config.js");
     if !tailwind_config.exists() {
         return false;
@@ -319,6 +365,17 @@ fn compile_tailwind_css(folder: &Path) -> bool {
         Err(e) => {
             eprintln!("   ✗ Failed to run npm: {}", e);
             false
+        }
+    }
+}
+
+/// Touch the input CSS file to trigger Tailwind's watch mode.
+fn trigger_tailwind_rebuild(folder: &Path) {
+    let input_css = folder.join("app/assets/css/application.css");
+    if input_css.exists() {
+        // Touch file by reading and rewriting (works cross-platform)
+        if let Ok(content) = std::fs::read(&input_css) {
+            let _ = std::fs::write(&input_css, content);
         }
     }
 }
@@ -675,6 +732,7 @@ fn run_hyper_server_worker_pool(
     num_workers: usize,
     views_dir: PathBuf,
     routes_file: PathBuf,
+    tailwind_process: Option<std::process::Child>,
 ) -> Result<(), RuntimeError> {
     let reload_tx = if dev_mode {
         let (tx, _) = broadcast::channel::<()>(16);
@@ -799,7 +857,11 @@ fn run_hyper_server_worker_pool(
     let watch_public_dir = public_dir.clone();
     let watch_routes_file = routes_file.clone();
     let browser_reload_tx = reload_tx.clone();
+    let dev_mode_for_watcher = dev_mode;
     thread::spawn(move || {
+        // Hold onto the Tailwind process - it will be killed when dropped
+        let _tailwind_process = tailwind_process;
+
         let mut file_tracker = FileTracker::new();
 
         // Track all controller files
@@ -934,26 +996,18 @@ fn run_hyper_server_worker_pool(
                 hot_reload_versions_for_watcher.views.fetch_add(1, Ordering::Release);
                 println!("   ✓ Signaled template cache clear to all workers");
 
-                // Recompile Tailwind CSS when views change (new classes may have been added)
-                if compile_tailwind_css(&watch_folder) {
-                    static_files_changed = true; // CSS was regenerated
-                    // Update tracker so output CSS isn't detected as changed on next iteration
-                    let output_css = watch_folder.join("public").join("css").join("application.css");
-                    if output_css.exists() {
-                        file_tracker.track(&output_css);
-                    }
+                // Touch input CSS to trigger Tailwind watch mode rebuild
+                // (new classes may have been added to templates)
+                if dev_mode_for_watcher {
+                    trigger_tailwind_rebuild(&watch_folder);
+                    // Note: No need to set static_files_changed here - the file watcher
+                    // will detect when Tailwind updates public/css/application.css
                 }
             }
-            if source_css_changed {
-                // Recompile Tailwind CSS when source CSS changes
-                if compile_tailwind_css(&watch_folder) {
-                    static_files_changed = true; // CSS was regenerated
-                    // Update tracker so output CSS isn't detected as changed on next iteration
-                    let output_css = watch_folder.join("public").join("css").join("application.css");
-                    if output_css.exists() {
-                        file_tracker.track(&output_css);
-                    }
-                }
+            if source_css_changed && dev_mode_for_watcher {
+                // Tailwind watch mode handles source CSS changes automatically
+                // Touch input CSS to ensure rebuild is triggered
+                trigger_tailwind_rebuild(&watch_folder);
             }
             if static_files_changed {
                 hot_reload_versions_for_watcher.static_files.fetch_add(1, Ordering::Release);
