@@ -192,6 +192,42 @@ fn inject_template_helpers(data: &Value) -> Value {
                 new_hash.push((public_path_key, public_path_func));
             }
 
+            // Add strip_html() function if not present
+            let strip_html_key = Value::String("strip_html".to_string());
+            let has_strip_html = hash.borrow().iter().any(|(k, _)| k.hash_eq(&strip_html_key));
+
+            if !has_strip_html {
+                let strip_html_func =
+                    Value::NativeFunction(NativeFunction::new("strip_html", Some(1), |args| {
+                        let s = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "strip_html() expects string, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+
+                        let mut result = String::new();
+                        let mut in_tag = false;
+
+                        for c in s.chars() {
+                            if c == '<' {
+                                in_tag = true;
+                            } else if c == '>' {
+                                in_tag = false;
+                            } else if !in_tag {
+                                result.push(c);
+                            }
+                        }
+
+                        Ok(Value::String(result))
+                    }));
+
+                new_hash.push((strip_html_key, strip_html_func));
+            }
+
             Value::Hash(Rc::new(RefCell::new(new_hash)))
         }
         _ => data.clone(),
