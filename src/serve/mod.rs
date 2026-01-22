@@ -26,6 +26,7 @@ pub use websocket::{
     WebSocketConnection, WebSocketEvent, WebSocketHandlerAction, WebSocketRegistry,
 };
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -40,6 +41,7 @@ use bytes::Bytes;
 use crossbeam::channel;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
+use http_body_util::BodyExt;
 use http_body_util::Full;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
@@ -1585,6 +1587,18 @@ async fn handle_hyper_request(
         }
     }
 
+    // Development mode endpoints
+    if dev_mode {
+        // REPL endpoint
+        if path == "/__dev/repl" && method == "POST" {
+            return handle_dev_repl(req).await;
+        }
+        // Source code endpoint
+        if path == "/__dev/source" && method == "GET" {
+            return handle_dev_source(req).await;
+        }
+    }
+
     let query_str = uri.query().unwrap_or("");
 
     // Parse query string
@@ -2621,3 +2635,553 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
     finalize_response(call_handler(interpreter, &handler_name, request_hash))
 }
 
+/// Handle REPL execution for dev mode.
+async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    let body = req.into_body().collect().await?.to_bytes();
+    let body_str = String::from_utf8_lossy(&body);
+    
+    // Parse JSON body
+    let code = match serde_json::from_str::<serde_json::Value>(&body_str) {
+        Ok(json) => json.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(r#"{"error": "Invalid JSON body"}"#)))
+                .unwrap());
+        }
+    };
+
+    // Execute the code using the interpreter
+    let result = execute_repl_code(&code);
+    
+    let response_json = serde_json::json!({
+        "result": result.result,
+        "error": result.error
+    });
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Full::new(Bytes::from(response_json.to_string())))
+        .unwrap())
+}
+
+/// Handle source code fetching for dev mode.
+async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    let uri = req.uri();
+    let query = uri.query().unwrap_or("");
+    
+    // Parse query parameters
+    let file = query.split('&')
+        .filter_map(|p| {
+            let mut parts = p.split('=');
+            match (parts.next(), parts.next()) {
+                (Some("file"), Some(f)) => Some(("file", f)),
+                _ => None,
+            }
+        })
+        .find(|(k, _)| *k == "file")
+        .map(|(_, f)| urlencoding::decode(f).unwrap_or_else(|_| Cow::Borrowed(f)).into_owned())
+        .unwrap_or_else(String::new);
+
+    if file.is_empty() {
+        return Ok(Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(r#"{"error": "Missing file parameter"}"#)))
+            .unwrap());
+    }
+
+    // Try to read the file
+    let path = std::path::Path::new(&file);
+    if !path.exists() {
+        return Ok(Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(r#"{"error": "File not found"}"#)))
+            .unwrap());
+    }
+
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(r#"{"error": "Could not read file"}"#)))
+                .unwrap());
+        }
+    };
+
+    // Parse line from query
+    let line: usize = query.split('&')
+        .filter_map(|p| {
+            let mut parts = p.split('=');
+            match (parts.next(), parts.next()) {
+                (Some("line"), Some(l)) => l.parse().ok(),
+                _ => None,
+            }
+        })
+        .next()
+        .unwrap_or(1);
+
+    // Build lines map
+    let lines: std::collections::HashMap<usize, String> = content
+        .lines()
+        .enumerate()
+        .map(|(i, l)| (i + 1, l.to_string()))
+        .collect();
+
+    let response = serde_json::json!({
+        "file": file,
+        "line": line,
+        "lines": lines
+    });
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Full::new(Bytes::from(response.to_string())))
+        .unwrap())
+}
+
+struct ReplResult {
+    result: String,
+    error: Option<String>,
+}
+
+fn execute_repl_code(code: &str) -> ReplResult {
+    if code.trim().is_empty() {
+        return ReplResult {
+            result: "null".to_string(),
+            error: None,
+        };
+    }
+
+    // Create a new interpreter for the REPL
+    let mut interpreter = crate::interpreter::Interpreter::new();
+    
+    // Parse and execute the code
+    let tokens = crate::lexer::Scanner::new(code).scan_tokens();
+    let parse_result = tokens.map_err(|e| format!("Lexer error: {:?}", e))
+        .and_then(|tokens| {
+            crate::parser::Parser::new(tokens)
+                .parse()
+                .map_err(|e| format!("Parser error: {:?}", e))
+        });
+    
+    match parse_result {
+        Ok(program) => {
+            // Execute with a fresh environment
+            match interpreter.interpret(&program) {
+                Ok(_) => {
+                    ReplResult {
+                        result: "null".to_string(), // REPL doesn't return values
+                        error: None,
+                    }
+                }
+                Err(e) => ReplResult {
+                    result: "null".to_string(),
+                    error: Some(format!("Execution error: {:?}", e)),
+                },
+            }
+        }
+        Err(parse_errors) => {
+            ReplResult {
+                result: "null".to_string(),
+                error: Some(format!("Parse error: {:?}", parse_errors)),
+            }
+        }
+    }
+}
+
+/// Render the development error page with request details and REPL.
+pub fn render_dev_error_page(
+    error: &str,
+    error_type: &str,
+    location: &str,
+    stack_trace: &[String],
+    request_data: &HashMap<String, Value>,
+    interpreter: &Interpreter,
+) -> String {
+    let error_message = escape_html(error);
+    let error_type = escape_html(error_type);
+    let error_location = escape_html(location);
+
+    // Format stack trace
+    let mut stack_frames = Vec::new();
+    for (i, frame) in stack_trace.iter().enumerate() {
+        let parts: Vec<&str> = frame.split('\n').collect();
+        let func = parts.get(0).unwrap_or(&"unknown").trim_start_matches("at ");
+        let loc = parts.get(1).unwrap_or(&"");
+        
+        // Parse file:line from location
+        let mut file = loc.to_string();
+        let mut line = 0;
+        if let Some(parens_start) = loc.find('(') {
+            let before_parens = &loc[..parens_start];
+            if let Some(colon_pos) = before_parens.find(':') {
+                file = before_parens[..colon_pos].to_string();
+                if let Ok(l) = before_parens[colon_pos + 1..].parse::<usize>() {
+                    line = l;
+                }
+            }
+        }
+
+        stack_frames.push(format!(
+            r#"<div class="stack-frame px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors" onclick="showSource('{}', {}, this)">
+                <div class="flex items-start gap-3">
+                    <span class="text-gray-500 text-xs mt-0.5">{}</span>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-white truncate">{}</div>
+                        <div class="text-gray-400 text-sm truncate">{}</div>
+                    </div>
+                </div>
+            </div>"#,
+            escape_html(&file), line, i, escape_html(func), escape_html(&loc.trim())
+        ));
+    }
+
+    // Format request data
+    let request_params = format!("{:?}", request_data.get("params").unwrap_or(&Value::Null));
+    let request_query = format!("{:?}", request_data.get("query").unwrap_or(&Value::Null));
+    let request_body = format!("{:?}", request_data.get("body").unwrap_or(&Value::Null));
+    let request_headers = format!("{:?}", request_data.get("headers").unwrap_or(&Value::Null));
+    let request_session = format!("{:?}", request_data.get("session").unwrap_or(&Value::Null));
+    let request_method = request_data.get("method").map(|v| format!("{:?}", v)).unwrap_or_else(|| "UNKNOWN".to_string());
+    let request_path = request_data.get("path").map(|v| format!("{:?}", v)).unwrap_or_else(|| "/".to_string());
+    let request_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    format!(r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - {error_type}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .code-editor {{
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }}
+        .repl-output {{ min-height: 100px; max-height: 400px; overflow-y: auto; }}
+        .stack-frame {{ cursor: pointer; }}
+        .stack-frame:hover {{ background-color: rgba(99, 102, 241, 0.1); }}
+        .stack-frame.active {{ background-color: rgba(99, 102, 241, 0.2); border-left: 3px solid #6366f1; }}
+        .section-content {{ display: none; }}
+        .section-content.active {{ display: block; }}
+        .request-tab.active {{ background-color: rgba(99, 102, 241, 0.2); border-bottom: 2px solid #6366f1; }}
+        .loading-spinner {{
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid #6366f1;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }}
+        @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+    <div class="max-w-7xl mx-auto p-6">
+        <div class="mb-8 border-b border-white/10 pb-6">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-sm font-medium">{error_type}</div>
+                <span class="text-gray-500">Development Mode</span>
+            </div>
+            <h1 class="text-3xl font-bold text-white mb-2">{error_message}</h1>
+            <p class="text-gray-400">{error_location}</p>
+        </div>
+
+        <div class="mb-8 rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-white/10">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    <span class="font-semibold text-white">Interactive REPL</span>
+                </div>
+                <button onclick="clearRepl()" class="text-gray-400 hover:text-white text-sm">Clear</button>
+            </div>
+            <div class="p-4">
+                <div class="flex gap-2 mb-3">
+                    <input type="text" id="repl-input" class="flex-1 bg-gray-800 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 code-editor" placeholder="Type Soli code to inspect request state..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){{event.preventDefault();executeRepl();}}">
+                    <button onclick="executeRepl()" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2">
+                        <span>Run</span>
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="repl-output" class="repl-output bg-gray-800 rounded-lg p-4 text-sm code-editor min-h-[120px]">
+                    <div class="text-gray-500 italic">// Try: req["params"]["id"] or session["user_id"] or headers["Content-Type"]</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2">
+                <div class="mb-6">
+                    <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                        Stack Trace
+                    </h2>
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        {stack_frames}
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                        </svg>
+                        Source Code
+                    </h2>
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <div class="px-4 py-2 bg-gray-800 border-b border-white/10 flex items-center justify-between">
+                            <span id="source-file" class="text-sm text-gray-400 font-mono">Select a stack frame to view source</span>
+                            <span id="source-line" class="text-sm text-gray-500"></span>
+                        </div>
+                        <pre id="source-code" class="p-4 overflow-x-auto code-editor text-sm"><code class="language-soli text-gray-400">// Click on a stack frame above to see the source code</code></pre>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        Quick Inspect
+                    </h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <button onclick="quickInspect('req')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Request</div>
+                            <div class="text-sm text-white font-mono truncate">req</div>
+                        </button>
+                        <button onclick="quickInspect('req[\"params\"]')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Params</div>
+                            <div class="text-sm text-white font-mono truncate">params</div>
+                        </button>
+                        <button onclick="quickInspect('req[\"query\"]')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Query</div>
+                            <div class="text-sm text-white font-mono truncate">query</div>
+                        </button>
+                        <button onclick="quickInspect('req[\"body\"]')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Body</div>
+                            <div class="text-sm text-white font-mono truncate">body</div>
+                        </button>
+                        <button onclick="quickInspect('session')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Session</div>
+                            <div class="text-sm text-white font-mono truncate">session</div>
+                        </button>
+                        <button onclick="quickInspect('headers')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Headers</div>
+                            <div class="text-sm text-white font-mono truncate">headers</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Request Details
+                </h2>
+                <div class="flex border-b border-white/10 mb-4">
+                    <button class="request-tab active px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('params')">Params</button>
+                    <button class="request-tab px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('query')">Query</button>
+                    <button class="request-tab px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('body')">Body</button>
+                    <button class="request-tab px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('headers')">Headers</button>
+                    <button class="request-tab px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('session')">Session</button>
+                </div>
+                <div id="tab-params" class="section-content active">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_params}</code></pre>
+                    </div>
+                </div>
+                <div id="tab-query" class="section-content">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_query}</code></pre>
+                    </div>
+                </div>
+                <div id="tab-body" class="section-content">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_body}</code></pre>
+                    </div>
+                </div>
+                <div id="tab-headers" class="section-content">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_headers}</code></pre>
+                    </div>
+                </div>
+                <div id="tab-session" class="section-content">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_session}</code></pre>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <h3 class="text-lg font-semibold text-white mb-3">Environment</h3>
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <div class="divide-y divide-white/5">
+                            <div class="px-4 py-2 flex justify-between">
+                                <span class="text-gray-500">Time</span>
+                                <span class="text-gray-300 font-mono text-sm">{request_time}</span>
+                            </div>
+                            <div class="px-4 py-2 flex justify-between">
+                                <span class="text-gray-500">Method</span>
+                                <span class="text-gray-300 font-mono text-sm">{request_method}</span>
+                            </div>
+                            <div class="px-4 py-2 flex justify-between">
+                                <span class="text-gray-500">Path</span>
+                                <span class="text-gray-300 font-mono text-sm truncate ml-2">{request_path}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const sourceCache = {{}};
+        
+        function showRequestTab(tabName) {{
+            document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.request-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + tabName).classList.add('active');
+            event.target.classList.add('active');
+        }}
+
+        async function showSource(file, line, element) {{
+            document.querySelectorAll('.stack-frame').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+            document.getElementById('source-file').textContent = file + ':' + line;
+            document.getElementById('source-line').textContent = 'Line ' + line;
+
+            const cacheKey = file + ':' + line;
+            if (sourceCache[cacheKey]) {{
+                displaySource(sourceCache[cacheKey], line);
+                return;
+            }}
+
+            try {{
+                const response = await fetch('/__dev/source?file=' + encodeURIComponent(file) + '&line=' + line);
+                if (response.ok) {{
+                    const data = await response.json();
+                    sourceCache[cacheKey] = data;
+                    displaySource(data, line);
+                }} else {{
+                    document.getElementById('source-code').innerHTML = '<code class="text-gray-500">// Source not available</code>';
+                }}
+            }} catch (e) {{
+                document.getElementById('source-code').innerHTML = '<code class="text-gray-500">// Error loading source</code>';
+            }}
+        }}
+
+        function displaySource(data, highlightLine) {{
+            let html = '';
+            const start = Math.max(1, data.line - 5);
+            const end = data.line + 5;
+            for (let i = start; i <= end; i++) {{
+                const isErrorLine = i === data.line;
+                const lineNum = String(i).padStart(4, ' ');
+                const lineClass = isErrorLine ? 'bg-red-500/20 text-red-300' : 'text-gray-400';
+                const bgClass = isErrorLine ? 'bg-red-500/10' : '';
+                html += '<tr class="' + bgClass + '"><td class="text-gray-600 select-none pr-2">' + lineNum + '</td><td class="' + lineClass + '">' + (data.lines[i] || '') + '</td></tr>';
+            }}
+            document.getElementById('source-code').innerHTML = '<table class="w-full">' + html + '</table>';
+        }}
+
+        async function executeRepl() {{
+            const input = document.getElementById('repl-input');
+            const code = input.value.trim();
+            if (!code) return;
+
+            const output = document.getElementById('repl-output');
+            output.innerHTML += '<div class="flex items-center gap-2 text-gray-400 mt-2"><div class="loading-spinner"></div><span>Executing...</span></div>';
+            output.scrollTop = output.scrollHeight;
+
+            try {{
+                const response = await fetch('/__dev/repl', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ code: code }})
+                }});
+                const result = await response.json();
+                if (result.error) {{
+                    output.innerHTML += '<div class="text-red-400 mt-2">❌ ' + escapeHtml(result.error) + '</div>';
+                }} else {{
+                    output.innerHTML += '<div class="text-gray-300 mt-2"><span class="text-indigo-400">❯</span> <span class="text-gray-500">// ' + escapeHtml(code) + '</span></div>';
+                    output.innerHTML += '<div class="text-green-400 mt-1">' + escapeHtml(result.result) + '</div>';
+                }}
+            }} catch (e) {{
+                output.innerHTML += '<div class="text-red-400 mt-2">❌ Error: ' + escapeHtml(e.message) + '</div>';
+            }}
+            output.scrollTop = output.scrollHeight;
+            input.value = '';
+        }}
+
+        function quickInspect(expr) {{
+            document.getElementById('repl-input').value = expr;
+            executeRepl();
+        }}
+
+        function clearRepl() {{
+            document.getElementById('repl-output').innerHTML = '<div class="text-gray-500 italic">// REPL cleared.</div>';
+        }}
+
+        function escapeHtml(text) {{
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }}
+    </script>
+</body>
+</html>"#,
+        error_type = error_type,
+        error_message = error_message,
+        error_location = error_location,
+        stack_frames = stack_frames.join("\n"),
+        request_params = escape_html(&request_params),
+        request_query = escape_html(&request_query),
+        request_body = escape_html(&request_body),
+        request_headers = escape_html(&request_headers),
+        request_session = escape_html(&request_session),
+        request_method = escape_html(&request_method),
+        request_path = escape_html(&request_path),
+        request_time = request_time,
+    )
+}
+
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+pub fn get_source_file(file_path: &str, line: usize) -> Option<HashMap<String, HashMap<usize, String>>> {
+    let path = std::path::Path::new(file_path);
+    if !path.exists() {
+        return None;
+    }
+
+    let content = std::fs::read_to_string(path).ok()?;
+    let lines: HashMap<usize, String> = content
+        .lines()
+        .enumerate()
+        .map(|(i, line)| (i + 1, line.to_string()))
+        .collect();
+
+    Some([(file_path.to_string(), lines)].iter().cloned().collect())
+}

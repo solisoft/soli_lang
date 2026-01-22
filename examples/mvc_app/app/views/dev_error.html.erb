@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - <%= error_type %></title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .code-editor {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .repl-output {
+            min-height: 100px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .stack-frame {
+            cursor: pointer;
+        }
+        .stack-frame:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+        }
+        .stack-frame.active {
+            background-color: rgba(99, 102, 241, 0.2);
+            border-left: 3px solid #6366f1;
+        }
+        .section-content {
+            display: none;
+        }
+        .section-content.active {
+            display: block;
+        }
+        .request-tab.active {
+            background-color: rgba(99, 102, 241, 0.2);
+            border-bottom: 2px solid #6366f1;
+        }
+        .loading-spinner {
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid #6366f1;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+    <div class="max-w-7xl mx-auto p-6">
+        <!-- Header -->
+        <div class="mb-8 border-b border-white/10 pb-6">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-sm font-medium">
+                    <%= error_type %>
+                </div>
+                <span class="text-gray-500">Development Mode</span>
+            </div>
+            <h1 class="text-3xl font-bold text-white mb-2"><%= error_message %></h1>
+            <p class="text-gray-400"><%= error_location %></p>
+        </div>
+
+        <!-- Inline REPL -->
+        <div class="mb-8 rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-white/10">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    <span class="font-semibold text-white">Interactive REPL</span>
+                </div>
+                <button onclick="clearRepl()" class="text-gray-400 hover:text-white text-sm">
+                    Clear
+                </button>
+            </div>
+            <div class="p-4">
+                <div class="flex gap-2 mb-3">
+                    <input 
+                        type="text" 
+                        id="repl-input" 
+                        class="flex-1 bg-gray-800 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 code-editor"
+                        placeholder="Type Soli code to inspect request state..."
+                        onkeydown="handleReplKeydown(event)"
+                    >
+                    <button 
+                        onclick="executeRepl()"
+                        class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                        <span>Run</span>
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="repl-output" class="repl-output bg-gray-800 rounded-lg p-4 text-sm code-editor min-h-[120px]">
+                    <div class="text-gray-500 italic">// Try: req["params"]["id"] or session["user_id"] or headers["Content-Type"]</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column: Stack Trace -->
+            <div class="lg:col-span-2">
+                <div class="mb-6">
+                    <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                        Stack Trace
+                    </h2>
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <% stack_frames.each do |frame| %>
+                        <div class="stack-frame px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors" onclick="showSource('<%= frame[:file] %>', <%= frame[:line] %>, this)">
+                            <div class="flex items-start gap-3">
+                                <span class="text-gray-500 text-xs mt-0.5"><%= frame[:index] %></span>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-medium text-white truncate"><%= frame[:function] %></div>
+                                    <div class="text-gray-400 text-sm truncate"><%= frame[:file] %>:<%= frame[:line] %></div>
+                                </div>
+                            </div>
+                        </div>
+                        <% end %>
+                    </div>
+                </div>
+
+                <!-- Source Code Preview -->
+                <div class="mb-6">
+                    <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                        </svg>
+                        Source Code
+                    </h2>
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <div class="px-4 py-2 bg-gray-800 border-b border-white/10 flex items-center justify-between">
+                            <span id="source-file" class="text-sm text-gray-400 font-mono">Select a stack frame to view source</span>
+                            <span id="source-line" class="text-sm text-gray-500"></span>
+                        </div>
+                        <pre id="source-code" class="p-4 overflow-x-auto code-editor text-sm"><code class="language-soli text-gray-400">// Click on a stack frame above to see the source code</code></pre>
+                    </div>
+                </div>
+
+                <!-- Quick Inspect -->
+                <div class="mb-6">
+                    <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        Quick Inspect
+                    </h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <button onclick="quickInspect('req')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Request</div>
+                            <div class="text-sm text-white font-mono truncate">req</div>
+                        </button>
+                        <button onclick="quickInspect('req[\"params\"]')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Params</div>
+                            <div class="text-sm text-white font-mono truncate">params</div>
+                        </button>
+                        <button onclick="quickInspect('req[\"query\"]')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Query</div>
+                            <div class="text-sm text-white font-mono truncate">query</div>
+                        </button>
+                        <button onclick="quickInspect('req[\"body\"]')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Body</div>
+                            <div class="text-sm text-white font-mono truncate">body</div>
+                        </button>
+                        <button onclick="quickInspect('session')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Session</div>
+                            <div class="text-sm text-white font-mono truncate">session</div>
+                        </button>
+                        <button onclick="quickInspect('headers')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors">
+                            <div class="text-xs text-gray-500 mb-1">Headers</div>
+                            <div class="text-sm text-white font-mono truncate">headers</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Request Details -->
+            <div>
+                <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Request Details
+                </h2>
+                
+                <!-- Tabs -->
+                <div class="flex border-b border-white/10 mb-4">
+                    <button class="request-tab active px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('params')">Params</button>
+                    <button class="request-tab px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('query')">Query</button>
+                    <button class="request-tab px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('body')">Body</button>
+                    <button class="request-tab px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('headers')">Headers</button>
+                    <button class="request-tab px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors" onclick="showRequestTab('session')">Session</button>
+                </div>
+
+                <!-- Params -->
+                <div id="tab-params" class="section-content active">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400"><%= request_params %></code></pre>
+                    </div>
+                </div>
+
+                <!-- Query -->
+                <div id="tab-query" class="section-content">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400"><%= request_query %></code></pre>
+                    </div>
+                </div>
+
+                <!-- Body -->
+                <div id="tab-body" class="section-content">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400"><%= request_body %></code></pre>
+                    </div>
+                </div>
+
+                <!-- Headers -->
+                <div id="tab-headers" class="section-content">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400"><%= request_headers %></code></pre>
+                    </div>
+                </div>
+
+                <!-- Session -->
+                <div id="tab-session" class="section-content">
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400"><%= request_session %></code></pre>
+                    </div>
+                </div>
+
+                <!-- Environment Info -->
+                <div class="mt-6">
+                    <h3 class="text-lg font-semibold text-white mb-3">Environment</h3>
+                    <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
+                        <div class="divide-y divide-white/5">
+                            <div class="px-4 py-2 flex justify-between">
+                                <span class="text-gray-500">Time</span>
+                                <span class="text-gray-300 font-mono text-sm"><%= request_time %></span>
+                            </div>
+                            <div class="px-4 py-2 flex justify-between">
+                                <span class="text-gray-500">Method</span>
+                                <span class="text-gray-300 font-mono text-sm"><%= request_method %></span>
+                            </div>
+                            <div class="px-4 py-2 flex justify-between">
+                                <span class="text-gray-500">Path</span>
+                                <span class="text-gray-300 font-mono text-sm truncate ml-2"><%= request_path %></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden form for REPL execution -->
+    <form id="repl-form" action="/__dev/repl" method="POST" style="display: none;">
+        <input type="hidden" name="code" id="repl-code">
+        <input type="hidden" name="request_data" id="repl-request-data">
+    </form>
+
+    <script>
+        // Source code cache
+        const sourceCache = {};
+
+        // Tab switching
+        function showRequestTab(tabName) {
+            document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.request-tab').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById('tab-' + tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Stack frame source display
+        async function showSource(file, line, element) {
+            document.querySelectorAll('.stack-frame').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            document.getElementById('source-file').textContent = file + ':' + line;
+            document.getElementById('source-line').textContent = 'Line ' + line;
+
+            // Try to fetch source from server
+            const cacheKey = file + ':' + line;
+            if (sourceCache[cacheKey]) {
+                displaySource(sourceCache[cacheKey], line);
+                return;
+            }
+
+            try {
+                const response = await fetch('/__dev/source?file=' + encodeURIComponent(file) + '&line=' + line);
+                if (response.ok) {
+                    const data = await response.json();
+                    sourceCache[cacheKey] = data;
+                    displaySource(data, line);
+                } else {
+                    document.getElementById('source-code').innerHTML = '<code class="text-gray-500">// Source not available</code>';
+                }
+            } catch (e) {
+                document.getElementById('source-code').innerHTML = '<code class="text-gray-500">// Error loading source: ' + e.message + '</code>';
+            }
+        }
+
+        function displaySource(data, highlightLine) {
+            let html = '';
+            const start = Math.max(1, data.line - 5);
+            const end = data.line + 5;
+
+            for (let i = start; i <= end; i++) {
+                const isErrorLine = i === data.line;
+                const lineNum = String(i).padStart(4, ' ');
+                const lineClass = isErrorLine ? 'bg-red-500/20 text-red-300' : 'text-gray-400';
+                const bgClass = isErrorLine ? 'bg-red-500/10' : '';
+                html += '<tr class="' + bgClass + '"><td class="text-gray-600 select-none pr-2">' + lineNum + '</td><td class="' + lineClass + '">' + (data.lines[i] || '') + '</td></tr>';
+            }
+            document.getElementById('source-code').innerHTML = '<table class="w-full">' + html + '</table>';
+        }
+
+        // REPL functions
+        async function executeRepl() {
+            const input = document.getElementById('repl-input');
+            const code = input.value.trim();
+            if (!code) return;
+
+            const output = document.getElementById('repl-output');
+            
+            // Show loading
+            output.innerHTML += '<div class="flex items-center gap-2 text-gray-400 mt-2"><div class="loading-spinner"></div><span>Executing...</span></div>';
+            output.scrollTop = output.scrollHeight;
+
+            try {
+                const response = await fetch('/__dev/repl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+
+                const result = await response.json();
+
+                if (result.error) {
+                    output.innerHTML += '<div class="text-red-400 mt-2">❌ ' + escapeHtml(result.error) + '</div>';
+                } else {
+                    output.innerHTML += '<div class="text-gray-300 mt-2"><span class="text-indigo-400">❯</span> <span class="text-gray-500">// ' + code + '</span></div>';
+                    output.innerHTML += '<div class="text-green-400 mt-1">' + escapeHtml(result.result) + '</div>';
+                }
+            } catch (e) {
+                output.innerHTML += '<div class="text-red-400 mt-2">❌ Error: ' + escapeHtml(e.message) + '</div>';
+            }
+
+            output.scrollTop = output.scrollHeight;
+            input.value = '';
+        }
+
+        function quickInspect(expr) {
+            document.getElementById('repl-input').value = expr;
+            executeRepl();
+        }
+
+        function handleReplKeydown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                executeRepl();
+            }
+        }
+
+        function clearRepl() {
+            document.getElementById('repl-output').innerHTML = '<div class="text-gray-500 italic">// REPL cleared. Type code above to inspect request state.</div>';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+` to focus REPL
+            if (e.ctrlKey && e.key === '`') {
+                e.preventDefault();
+                document.getElementById('repl-input').focus();
+            }
+            // Escape to clear selection
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.stack-frame').forEach(el => el.classList.remove('active'));
+            }
+        });
+    </script>
+</body>
+</html>

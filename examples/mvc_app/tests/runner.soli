@@ -1,0 +1,37 @@
+// ============================================================================
+// MVC App Test Suite
+// ============================================================================
+//
+// This file runs all tests for the MVC application
+// Run with: soli test
+// ============================================================================
+
+// Load all test spec files
+print("Loading MVC App test suite...");
+
+// Home Controller Tests
+print("Running HomeController tests...");
+include("tests/home_controller_spec.soli");
+
+// Users Controller Tests
+print("Running UsersController tests...");
+include("tests/users_controller_spec.soli");
+
+// Middleware Tests
+print("Running Middleware tests...");
+include("tests/middleware_spec.soli");
+
+// Routes Tests
+print("Running Routes tests...");
+include("tests/routes_spec.soli");
+
+// Validation Tests
+print("Running Validation tests...");
+include("tests/validation_spec.soli");
+
+// JWT Tests
+print("Running JWT tests...");
+include("tests/jwt_spec.soli");
+
+print("All MVC App tests loaded successfully!");
+print("Run 'soli test' to execute the test suite.");

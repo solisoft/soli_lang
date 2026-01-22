@@ -66,6 +66,7 @@ walkdir = "2"
 serde_yaml = "0.9"
 rand = "0.8"
 glob = "0.3"
+urlencoding = "2"
 
 # JIT compilation dependencies (optional)
 cranelift = { version = "0.111", optional = true }
