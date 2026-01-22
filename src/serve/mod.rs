@@ -3010,8 +3010,24 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
 
     // Try to parse span info from error message
     let span_info = extract_span_from_error(&actual_error);
-    let error_file = span_info.file.clone().unwrap_or_else(|| "unknown".to_string());
     let error_line = span_info.line;
+
+    // Try to get file from error message, or fall back to first stack frame
+    let error_file = span_info.file.clone().or_else(|| {
+        // Try embedded stack trace first
+        for frame in &embedded_stack {
+            if let Some(file) = extract_file_from_frame(frame) {
+                return Some(file);
+            }
+        }
+        // Then try passed stack trace
+        for frame in stack_trace {
+            if let Some(file) = extract_file_from_frame(frame) {
+                return Some(file);
+            }
+        }
+        None
+    }).unwrap_or_else(|| "unknown".to_string());
 
     location = format!("{}:{}", error_file, error_line);
 
@@ -3087,22 +3103,45 @@ struct SpanInfo {
 }
 
 fn extract_span_from_error(error_msg: &str) -> SpanInfo {
-    // Try to find patterns like "at file:line" or "file:line"
-    let re = regex::Regex::new(r"([a-zA-Z_][a-zA-Z0-9_\-.]*\.soli):(\d+)").unwrap();
-    if let Some(caps) = re.captures(error_msg) {
+    // Try to find file path pattern like "./path/file.soli" or "path/file.soli"
+    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_-]+\.soli)").unwrap();
+    let file = file_re.captures(error_msg)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string());
+
+    // Try to find span format "at line:column" (e.g., "at 11:23")
+    // This is the standard Span display format from error messages
+    let span_re = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
+    if let Some(caps) = span_re.captures(error_msg) {
+        let line = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+        let column = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+        return SpanInfo { file, line, column };
+    }
+
+    // Try to find patterns like "file.soli:line"
+    let file_line_re = regex::Regex::new(r"([a-zA-Z_][a-zA-Z0-9_\-.]*\.soli):(\d+)").unwrap();
+    if let Some(caps) = file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
         return SpanInfo { file, line, column: 1 };
     }
 
     // Try to find "line X" or "line: X" patterns
-    let re2 = regex::Regex::new(r"(?:at\s+)?line\s*[=:]\s*(\d+)").unwrap();
-    if let Some(caps) = re2.captures(error_msg) {
+    let line_re = regex::Regex::new(r"(?:at\s+)?line\s*[=:]\s*(\d+)").unwrap();
+    if let Some(caps) = line_re.captures(error_msg) {
         let line = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
-        return SpanInfo { file: None, line, column: 1 };
+        return SpanInfo { file, line, column: 1 };
     }
 
-    SpanInfo { file: None, line: 1, column: 1 }
+    SpanInfo { file, line: 1, column: 1 }
+}
+
+/// Extract file path from a stack frame string like "func_name at ./path/file.soli:10"
+fn extract_file_from_frame(frame: &str) -> Option<String> {
+    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_-]+\.soli)").ok()?;
+    file_re.captures(frame)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
 }
 
 fn get_source_preview(file_path: &str, error_line: usize) -> Vec<String> {
@@ -3152,9 +3191,18 @@ pub fn render_dev_error_page(
     let error_location = escape_html(location);
 
     // Format stack trace
-    // Stack trace format: "{function_name} at {file}:{line}"
+    // Parse stack frames which can be in various formats:
+    // 1. "{function_name} at {file}:{line}" - from get_stack_trace()
+    // 2. "{file}:{line} at {span}" - when span info is appended
+    // 3. "{file}:{line} (error location)" - fallback format
     let mut stack_frames = Vec::new();
     let mut frame_index = 0;
+
+    // Regex to find .soli file paths with line numbers
+    let file_regex = regex::Regex::new(r"([./a-zA-Z0-9_-]+\.soli):(\d+)").unwrap();
+    // Regex to find span info after "at" (line:column)
+    let span_regex = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
+
     for frame in stack_trace.iter() {
         // Skip "Error: ..." entries - they're not actual stack frames
         if frame.starts_with("Error: ") {
@@ -3165,33 +3213,46 @@ pub fn render_dev_error_page(
         let mut file = "unknown".to_string();
         let mut line: usize = 0;
 
-        // Parse format: "function_name at file:line"
-        if let Some(at_pos) = frame.find(" at ") {
-            func = frame[..at_pos].to_string();
-            let location = &frame[at_pos + 4..]; // Skip " at "
+        // First, try to extract .soli file path
+        if let Some(caps) = file_regex.captures(frame) {
+            file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            // Get line from file:line pattern as fallback
+            line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+        }
 
-            // Find the last colon to separate file from line number
-            if let Some(last_colon) = location.rfind(':') {
-                file = location[..last_colon].to_string();
-                if let Ok(l) = location[last_colon + 1..].parse::<usize>() {
-                    line = l;
-                }
-            } else {
-                file = location.to_string();
+        // If there's a span after "at" (like "at 11:23"), prefer that line number
+        // because it's the actual error location, not the function definition line
+        if let Some(caps) = span_regex.captures(frame) {
+            if let Some(span_line) = caps.get(1).and_then(|m| m.as_str().parse().ok()) {
+                line = span_line;
             }
+        }
+
+        // Try to extract function name - look for pattern before " at "
+        if let Some(at_pos) = frame.find(" at ") {
+            let before_at = &frame[..at_pos];
+            // If what's before "at" doesn't contain .soli, it's the function name
+            if !before_at.contains(".soli") {
+                func = before_at.to_string();
+            } else {
+                // Extract from file name
+                func = extract_controller_name(&file);
+            }
+        } else if file != "unknown" {
+            // No " at " - extract function name from file
+            func = extract_controller_name(&file);
         } else {
             // Fallback: treat entire frame as function name
             func = frame.clone();
         }
 
-        // Extract a clean display name from the function
-        // "HomeController#index" -> "HomeController#index"
-        // Or extract controller name from file path if func is just the path
+        // Clean up function name - if it looks like a file path, extract the name
         let display_name = if func.contains('#') || func.contains("::") {
             func.clone()
-        } else if func.contains('/') {
-            // If func looks like a file path, extract the name
+        } else if func.contains('/') || func.contains(".soli") {
             extract_controller_name(&func)
+        } else if func == "unknown" && file != "unknown" {
+            extract_controller_name(&file)
         } else {
             func.clone()
         };
