@@ -23,6 +23,7 @@ pub fn create_app(name: &str) -> Result<(), String> {
     create_layout(app_path)?;
     create_index_view(app_path)?;
     create_css_file(app_path)?;
+    create_env_file(app_path)?;
     create_gitignore(app_path)?;
     create_readme(app_path, name)?;
 
@@ -39,6 +40,8 @@ fn create_directories(app_path: &Path) -> Result<(), String> {
         "app/views/home",
         "app/views/layouts",
         "config",
+        "db",
+        "db/migrations",
         "public",
         "public/css",
         "public/js",
@@ -311,6 +314,22 @@ fn create_css_file(app_path: &Path) -> Result<(), String> {
     write_file(&app_path.join("public/css/app.css"), content)
 }
 
+fn create_env_file(app_path: &Path) -> Result<(), String> {
+    let content = r#"# Database Configuration
+# These variables are used by soli db:migrate commands
+
+SOLIDB_HOST=http://localhost:6745
+SOLIDB_DATABASE=default
+SOLIDB_USERNAME=admin
+SOLIDB_PASSWORD=admin
+
+# Application Settings
+# APP_ENV=development
+# APP_SECRET=your-secret-key-here
+"#;
+    write_file(&app_path.join(".env"), content)
+}
+
 fn create_gitignore(app_path: &Path) -> Result<(), String> {
     let content = r#"# Soli MVC
 soli.pid
@@ -395,11 +414,39 @@ soli serve . -d
 │       └── layouts/     # Layout templates
 ├── config/
 │   └── routes.soli      # Route definitions
+├── db/
+│   └── migrations/      # Database migrations
 ├── public/              # Static assets
 │   ├── css/
 │   ├── js/
 │   └── images/
 └── tests/               # Test files
+```
+
+## Database Migrations
+
+Generate a new migration:
+
+```bash
+soli db:migrate generate create_users
+```
+
+Run pending migrations:
+
+```bash
+soli db:migrate up
+```
+
+Rollback last migration:
+
+```bash
+soli db:migrate down
+```
+
+Check migration status:
+
+```bash
+soli db:migrate status
 ```
 
 ## Documentation

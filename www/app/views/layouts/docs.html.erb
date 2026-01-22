@@ -240,11 +240,6 @@
                             </a>
                         </li>
                         <li>
-                            <a href="/docs/models" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Models & ORM' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                Models & ORM
-                            </a>
-                        </li>
-                        <li>
                             <a href="/docs/websockets" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'WebSockets' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
                                 WebSockets
                             </a>
@@ -257,6 +252,27 @@
                         <li>
                             <a href="/docs/request-params" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Request Parameters' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
                                 Request Parameters
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h5 class="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                        <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                        </svg>
+                        Database
+                    </h5>
+                    <ul class="space-y-1">
+                        <li>
+                            <a href="/docs/models" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Models & ORM' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                Models & ORM
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/docs/migrations" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Migrations' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                Migrations
                             </a>
                         </li>
                     </ul>
@@ -372,11 +388,6 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="/docs/models" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Models & ORM' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Models & ORM
-                                </a>
-                            </li>
-                            <li>
                                 <a href="/docs/websockets" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'WebSockets' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
                                     WebSockets
                                 </a>
@@ -394,7 +405,26 @@
                         </ul>
                     </div>
 
-
+                    <div>
+                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                            <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                            </svg>
+                            Database
+                        </h5>
+                        <ul class="space-y-1">
+                            <li>
+                                <a href="/docs/models" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Models & ORM' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                    Models & ORM
+                                </a>
+                            </li>
+                            <li>
+                                <a href="/docs/migrations" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Migrations' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                    Migrations
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
 
                     <div>
                         <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">

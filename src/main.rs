@@ -43,6 +43,19 @@ enum Command {
         coverage_min: Option<f64>,
         no_coverage: bool,
     },
+    /// Database migration commands
+    DbMigrate {
+        action: DbMigrateAction,
+        folder: String,
+    },
+}
+
+/// Database migration action
+enum DbMigrateAction {
+    Up,
+    Down,
+    Status,
+    Generate { name: String },
 }
 
 /// CLI options parsed from arguments.
@@ -60,11 +73,14 @@ fn print_usage() {
     eprintln!("       soli new <app_name>");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--mode MODE]");
     eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
+    eprintln!("       soli db:migrate <up|down|status> [folder]");
+    eprintln!("       soli db:migrate generate <name> [folder]");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>  Create a new Soli MVC application");
     eprintln!("  serve <folder>  Start MVC server from a project folder");
     eprintln!("  test [path]     Run tests (default: tests/ directory)");
+    eprintln!("  db:migrate      Database migration commands");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --tree-walk     Use tree-walking interpreter (default)");
@@ -99,6 +115,10 @@ fn print_usage() {
     eprintln!("  soli test spec.soli           Run specific test file");
     eprintln!("  soli test --coverage          Run tests with coverage");
     eprintln!("  soli test --jobs=4            Run tests with 4 workers");
+    eprintln!("  soli db:migrate up            Run pending migrations");
+    eprintln!("  soli db:migrate down          Rollback last migration");
+    eprintln!("  soli db:migrate status        Show migration status");
+    eprintln!("  soli db:migrate generate create_users  Generate new migration");
 }
 
 fn parse_args() -> Options {
@@ -124,6 +144,52 @@ fn parse_args() -> Options {
                 }
                 let name = args[i].clone();
                 options.command = Command::New { name };
+                return options;
+            }
+            "db:migrate" => {
+                // Parse db:migrate command
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("db:migrate command requires an action (up, down, status, generate)");
+                    print_usage();
+                    process::exit(64);
+                }
+
+                let action_str = args[i].clone();
+                let action = match action_str.as_str() {
+                    "up" => DbMigrateAction::Up,
+                    "down" => DbMigrateAction::Down,
+                    "status" => DbMigrateAction::Status,
+                    "generate" => {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("db:migrate generate requires a migration name");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        DbMigrateAction::Generate {
+                            name: args[i].clone(),
+                        }
+                    }
+                    _ => {
+                        eprintln!(
+                            "Unknown db:migrate action: {} (valid: up, down, status, generate)",
+                            action_str
+                        );
+                        print_usage();
+                        process::exit(64);
+                    }
+                };
+
+                // Check for optional folder argument
+                i += 1;
+                let folder = if i < args.len() && !args[i].starts_with('-') {
+                    args[i].clone()
+                } else {
+                    ".".to_string()
+                };
+
+                options.command = Command::DbMigrate { action, folder };
                 return options;
             }
             "serve" => {
@@ -336,6 +402,7 @@ fn main() {
         Command::Repl => run_repl(options.mode),
         Command::Run { file } => run_file(file, &options),
         Command::New { name } => run_new(name),
+        Command::DbMigrate { action, folder } => run_db_migrate(action, folder),
         Command::Serve {
             folder,
             port,
@@ -444,6 +511,87 @@ fn run_new(name: &str) {
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);
+        }
+    }
+}
+
+fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
+    use solilang::migration::{DbConfig, MigrationRunner};
+
+    let app_path = Path::new(folder);
+
+    if !app_path.exists() {
+        eprintln!("Error: Folder '{}' does not exist", folder);
+        process::exit(1);
+    }
+
+    // Load database config from .env file and environment
+    let config = DbConfig::from_env(app_path);
+
+    match action {
+        DbMigrateAction::Up => {
+            println!();
+            println!("  \x1b[1mRunning migrations...\x1b[0m");
+            println!();
+
+            let runner = MigrationRunner::new(config, app_path);
+            match runner.migrate_up() {
+                Ok(result) => {
+                    println!();
+                    println!("  \x1b[32m{}\x1b[0m", result.message);
+                    println!();
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        DbMigrateAction::Down => {
+            println!();
+            println!("  \x1b[1mRolling back migration...\x1b[0m");
+            println!();
+
+            let runner = MigrationRunner::new(config, app_path);
+            match runner.migrate_down() {
+                Ok(result) => {
+                    println!();
+                    println!("  \x1b[32m{}\x1b[0m", result.message);
+                    println!();
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        DbMigrateAction::Status => {
+            let runner = MigrationRunner::new(config, app_path);
+            match runner.status() {
+                Ok(status) => {
+                    solilang::migration::print_status(&status);
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        DbMigrateAction::Generate { name } => {
+            match solilang::migration::generate_migration(app_path, name) {
+                Ok(path) => {
+                    println!();
+                    println!(
+                        "  \x1b[32mCreated migration:\x1b[0m {}",
+                        path.display()
+                    );
+                    println!();
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
+                }
+            }
         }
     }
 }

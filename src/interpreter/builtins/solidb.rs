@@ -308,6 +308,15 @@ fn register_solidb_class(env: &mut Environment) {
         ("explain", 1),
         ("ping", 0),
         ("connected", 0),
+        // Collection management
+        ("create_collection", 1),
+        ("drop_collection", 1),
+        ("list_collections", 0),
+        ("collection_stats", 1),
+        // Index management
+        ("create_index", 4),
+        ("drop_index", 2),
+        ("list_indexes", 1),
     ];
 
     for (method_name, min_args) in method_definitions {
@@ -754,6 +763,318 @@ fn register_solidb_class(env: &mut Environment) {
                             }))
                         }
                         "connected" => Ok(Value::Bool(state_connected)),
+                        "create_collection" => {
+                            let name = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "create_collection() expects string name, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let collection_type = if args.len() > 2 {
+                                match &args[2] {
+                                    Value::String(s) => Some(s.clone()),
+                                    Value::Null => None,
+                                    other => {
+                                        return Err(format!(
+                                            "create_collection() expects string or null type, got {}",
+                                            other.type_name()
+                                        ))
+                                    }
+                                }
+                            } else {
+                                None
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(spawn_db_future(move || {
+                                tokio::runtime::Runtime::new()
+                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
+                                    .block_on(async {
+                                        let mut client = SoliDBClient::connect(&host)
+                                            .await
+                                            .map_err(|e| format!("Failed to connect: {}", e))?;
+                                        if let (Some(u), Some(p)) =
+                                            (auth_username.as_deref(), auth_password.as_deref())
+                                        {
+                                            client
+                                                .auth(&database, u, p)
+                                                .await
+                                                .map_err(|e| format!("Auth failed: {}", e))?;
+                                        }
+                                        client
+                                            .create_collection(&database, &name, collection_type.as_deref())
+                                            .await
+                                            .map_err(|e| format!("Create collection failed: {}", e))?;
+                                        Ok(format!("Created collection: {}", name))
+                                    })
+                            }))
+                        }
+                        "drop_collection" => {
+                            let name = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "drop_collection() expects string name, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(spawn_db_future(move || {
+                                tokio::runtime::Runtime::new()
+                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
+                                    .block_on(async {
+                                        let mut client = SoliDBClient::connect(&host)
+                                            .await
+                                            .map_err(|e| format!("Failed to connect: {}", e))?;
+                                        if let (Some(u), Some(p)) =
+                                            (auth_username.as_deref(), auth_password.as_deref())
+                                        {
+                                            client
+                                                .auth(&database, u, p)
+                                                .await
+                                                .map_err(|e| format!("Auth failed: {}", e))?;
+                                        }
+                                        client
+                                            .delete_collection(&database, &name)
+                                            .await
+                                            .map_err(|e| format!("Drop collection failed: {}", e))?;
+                                        Ok(format!("Dropped collection: {}", name))
+                                    })
+                            }))
+                        }
+                        "list_collections" => {
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(spawn_db_future(move || {
+                                tokio::runtime::Runtime::new()
+                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
+                                    .block_on(async {
+                                        let mut client = SoliDBClient::connect(&host)
+                                            .await
+                                            .map_err(|e| format!("Failed to connect: {}", e))?;
+                                        if let (Some(u), Some(p)) =
+                                            (auth_username.as_deref(), auth_password.as_deref())
+                                        {
+                                            client
+                                                .auth(&database, u, p)
+                                                .await
+                                                .map_err(|e| format!("Auth failed: {}", e))?;
+                                        }
+                                        let collections = client
+                                            .list_collections(&database)
+                                            .await
+                                            .map_err(|e| format!("List collections failed: {}", e))?;
+                                        Ok(serde_json::to_string(&collections).unwrap_or_default())
+                                    })
+                            }))
+                        }
+                        "collection_stats" => {
+                            let collection = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "collection_stats() expects string collection, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(spawn_db_future(move || {
+                                tokio::runtime::Runtime::new()
+                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
+                                    .block_on(async {
+                                        let mut client = SoliDBClient::connect(&host)
+                                            .await
+                                            .map_err(|e| format!("Failed to connect: {}", e))?;
+                                        if let (Some(u), Some(p)) =
+                                            (auth_username.as_deref(), auth_password.as_deref())
+                                        {
+                                            client
+                                                .auth(&database, u, p)
+                                                .await
+                                                .map_err(|e| format!("Auth failed: {}", e))?;
+                                        }
+                                        let stats = client
+                                            .collection_stats(&database, &collection)
+                                            .await
+                                            .map_err(|e| format!("Collection stats failed: {}", e))?;
+                                        Ok(serde_json::to_string(&stats).unwrap_or_default())
+                                    })
+                            }))
+                        }
+                        "create_index" => {
+                            let collection = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "create_index() expects string collection, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let name = match &args[2] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "create_index() expects string index name, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let fields: Vec<String> = match &args[3] {
+                                Value::Array(arr) => {
+                                    let borrowed = arr.borrow();
+                                    borrowed
+                                        .iter()
+                                        .filter_map(|v| {
+                                            if let Value::String(s) = v {
+                                                Some(s.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect()
+                                }
+                                Value::String(s) => vec![s.clone()],
+                                other => {
+                                    return Err(format!(
+                                        "create_index() expects array or string fields, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let (unique, sparse) = if args.len() > 4 {
+                                match &args[4] {
+                                    Value::Bool(b) => (*b, false),
+                                    Value::Hash(hash) => {
+                                        let borrowed = hash.borrow();
+                                        let unique = borrowed
+                                            .iter()
+                                            .find(|(k, _)| matches!(k, Value::String(s) if s == "unique"))
+                                            .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
+                                            .unwrap_or(false);
+                                        let sparse = borrowed
+                                            .iter()
+                                            .find(|(k, _)| matches!(k, Value::String(s) if s == "sparse"))
+                                            .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
+                                            .unwrap_or(false);
+                                        (unique, sparse)
+                                    }
+                                    _ => (false, false),
+                                }
+                            } else {
+                                (false, false)
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(spawn_db_future(move || {
+                                tokio::runtime::Runtime::new()
+                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
+                                    .block_on(async {
+                                        let mut client = SoliDBClient::connect(&host)
+                                            .await
+                                            .map_err(|e| format!("Failed to connect: {}", e))?;
+                                        if let (Some(u), Some(p)) =
+                                            (auth_username.as_deref(), auth_password.as_deref())
+                                        {
+                                            client
+                                                .auth(&database, u, p)
+                                                .await
+                                                .map_err(|e| format!("Auth failed: {}", e))?;
+                                        }
+                                        client
+                                            .create_index(&database, &collection, &name, fields, unique, sparse)
+                                            .await
+                                            .map_err(|e| format!("Create index failed: {}", e))?;
+                                        Ok(format!("Created index: {} on {}", name, collection))
+                                    })
+                            }))
+                        }
+                        "drop_index" => {
+                            let collection = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "drop_index() expects string collection, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let name = match &args[2] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "drop_index() expects string index name, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(spawn_db_future(move || {
+                                tokio::runtime::Runtime::new()
+                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
+                                    .block_on(async {
+                                        let mut client = SoliDBClient::connect(&host)
+                                            .await
+                                            .map_err(|e| format!("Failed to connect: {}", e))?;
+                                        if let (Some(u), Some(p)) =
+                                            (auth_username.as_deref(), auth_password.as_deref())
+                                        {
+                                            client
+                                                .auth(&database, u, p)
+                                                .await
+                                                .map_err(|e| format!("Auth failed: {}", e))?;
+                                        }
+                                        client
+                                            .delete_index(&database, &collection, &name)
+                                            .await
+                                            .map_err(|e| format!("Drop index failed: {}", e))?;
+                                        Ok(format!("Dropped index: {} from {}", name, collection))
+                                    })
+                            }))
+                        }
+                        "list_indexes" => {
+                            let collection = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "list_indexes() expects string collection, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(spawn_db_future(move || {
+                                tokio::runtime::Runtime::new()
+                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
+                                    .block_on(async {
+                                        let mut client = SoliDBClient::connect(&host)
+                                            .await
+                                            .map_err(|e| format!("Failed to connect: {}", e))?;
+                                        if let (Some(u), Some(p)) =
+                                            (auth_username.as_deref(), auth_password.as_deref())
+                                        {
+                                            client
+                                                .auth(&database, u, p)
+                                                .await
+                                                .map_err(|e| format!("Auth failed: {}", e))?;
+                                        }
+                                        let indexes = client
+                                            .list_indexes(&database, &collection)
+                                            .await
+                                            .map_err(|e| format!("List indexes failed: {}", e))?;
+                                        Ok(serde_json::to_string(&indexes).unwrap_or_default())
+                                    })
+                            }))
+                        }
                         _ => Err(format!("Unknown method: {}", method)),
                     }
                 },

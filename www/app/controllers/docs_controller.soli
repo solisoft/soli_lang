@@ -56,7 +56,15 @@ fn views(req: Any) -> Any {
 fn models(req: Any) -> Any {
     return render("docs/models", {
         "title": "Models & ORM",
-        "section": "core_concepts",
+        "section": "database",
+        "layout": "layouts/docs"
+    });
+}
+
+fn migrations(req: Any) -> Any {
+    return render("docs/migrations", {
+        "title": "Migrations",
+        "section": "database",
         "layout": "layouts/docs"
     });
 }

@@ -80,3 +80,4 @@ Soli favors convention over configuration. By following standard naming patterns
 - **[Request Parameters](/docs/request-params)** - Unified access to route, query, and body parameters
 - **[Testing](/docs/testing)** - BDD testing framework with coverage reporting
 - **[Models](/docs/models)** - ORM-style data modeling with CRUD operations
+- **[Migrations](/docs/migrations)** - Database schema versioning and management

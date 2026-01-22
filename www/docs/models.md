@@ -230,3 +230,7 @@ describe("User model", fn() {
 2. **Use meaningful class names** - They become collection names automatically
 3. **Add custom methods** - Encapsulate business logic in model methods
 4. **Use relationships** - Create methods that return related models
+
+## Database Migrations
+
+To manage your database schema, see the [Migrations Guide](/docs/migrations) for creating collections and indexes.

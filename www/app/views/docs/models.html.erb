@@ -4,87 +4,61 @@
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Models & ORM</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Manage your application's data layer with type-safe database operations.
-            SoliDB provides a lightweight, document-oriented interface that feels natural.
+            Models manage data and business logic in your MVC application.
+            SoliLang provides a simple OOP-style interface for database operations.
         </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Defining Models</h2>
-    <p class="text-gray-400 mb-6">Create models by extending the <code>Model</code> class and defining a schema.</p>
+    <p class="text-gray-400 mb-4">
+        Create model files in <code>app/models/</code>. The collection name is <strong class="text-white">automatically derived</strong> from the class name:
+    </p>
+    <ul class="text-gray-400 mb-6 space-y-1 ml-4">
+        <li><code>User</code> &rarr; <code>"users"</code></li>
+        <li><code>BlogPost</code> &rarr; <code>"blog_posts"</code></li>
+        <li><code>UserProfile</code> &rarr; <code>"user_profiles"</code></li>
+    </ul>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5">
             <span class="text-xs text-gray-400 font-mono">app/models/user.soli</span>
         </div>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class User extends Model {
-    static {
-        // Collection name (defaults to filename)
-        this.collection = "users";
-
-        // Schema definition
-        this.fields = {
-            "name": Field.string({
-                required: true,
-                min_length: 2
-            }),
-            "email": Field.string({
-                required: true,
-                unique: true,
-                index: true
-            }),
-            "age": Field.int({ min: 0 }),
-            "active": Field.bool({ default: true }),
-            "created_at": Field.datetime()
-        };
-    }
-}</code></pre>
+<pre><code class="language-soli text-sm">class User extends Model { }</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Field Types</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">Field.string()</code>
-            <p class="text-sm text-gray-400 mt-1">Text content. Options: <code>min_length</code>, <code>max_length</code>, <code>regex</code>.</p>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5">
+            <span class="text-xs text-gray-400 font-mono">app/models/blog_post.soli</span>
         </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">Field.int() / Field.float()</code>
-            <p class="text-sm text-gray-400 mt-1">Numeric values. Options: <code>min</code>, <code>max</code>.</p>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class BlogPost extends Model { }</code></pre>
         </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">Field.bool()</code>
-            <p class="text-sm text-gray-400 mt-1">True/False flag. Option: <code>default</code>.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">Field.datetime()</code>
-            <p class="text-sm text-gray-400 mt-1">Timestamps and dates.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">Field.array(type)</code>
-            <p class="text-sm text-gray-400 mt-1">List of values. E.g., <code>Field.array(Field.string())</code>.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">Field.reference("Model")</code>
-            <p class="text-sm text-gray-400 mt-1">Foreign key relationship to another model.</p>
-        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <p class="text-indigo-200/80 text-sm">
+            That's it! No need to manually specify collection names or field definitions.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">CRUD Operations</h2>
-    
+
     <div class="space-y-8 mb-12">
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                 <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">CREATE</span>
-                Insert Data
+                Creating Records
             </h3>
             <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let user = User.create({
-    "name": "Alice Johnson",
     "email": "alice@example.com",
-    "age": 28
-});</code></pre>
+    "name": "Alice",
+    "age": 30
+});
+// Inserts into "users" collection</code></pre>
                 </div>
             </div>
         </div>
@@ -92,18 +66,19 @@
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                 <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">READ</span>
-                Query Data
+                Finding Records
             </h3>
             <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Find by ID
-let user = User.find("abc123");
+let user = User.find("user123");
 
-// Fluent query interface
-let users = User.where("active", "==", true)
-                .order("created_at", "desc")
-                .limit(10)
-                .find();</code></pre>
+// Find all
+let users = User.all();
+
+// Find with where clause
+let adults = User.where("age", ">=", 18);
+let active = User.where("status", "==", "active");</code></pre>
                 </div>
             </div>
         </div>
@@ -111,16 +86,14 @@ let users = User.where("active", "==", true)
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                 <span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs font-mono">UPDATE</span>
-                Modify Data
+                Updating Records
             </h3>
             <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
                 <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Update single record
-User.update("abc123", { "age": 29 });
-
-// Bulk update
-User.where("status", "==", "pending")
-    .update({ "status": "active" });</code></pre>
+<pre><code class="language-soli text-sm">User.update("user123", {
+    "name": "Alice Smith",
+    "age": 31
+});</code></pre>
                 </div>
             </div>
         </div>
@@ -128,61 +101,234 @@ User.where("status", "==", "pending")
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                 <span class="px-2 py-1 rounded bg-red-500/20 text-red-400 text-xs font-mono">DELETE</span>
-                Remove Data
+                Deleting Records
             </h3>
             <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
                 <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">User.delete("abc123");</code></pre>
+<pre><code class="language-soli text-sm">User.delete("user123");</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">COUNT</span>
+                Counting Records
+            </h3>
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let total = User.count();</code></pre>
                 </div>
             </div>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Relationships</h2>
-    <p class="text-gray-400 mb-6">Define associations between your models.</p>
+    <h2 class="text-2xl font-bold text-white mb-6">Static Methods Reference</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.create(data)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Insert a new document</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.find(id)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Get document by ID</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(field, op, value)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Query with filter</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.all()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Get all documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.update(id, data)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Update a document</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.delete(id)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Delete a document</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.count()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Count all documents</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Where Operators</h2>
+    <p class="text-gray-400 mb-4">The <code>where</code> method supports these comparison operators:</p>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+            <code class="text-indigo-300">"=="</code>
+            <p class="text-xs text-gray-400 mt-1">Equal</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+            <code class="text-indigo-300">"!="</code>
+            <p class="text-xs text-gray-400 mt-1">Not equal</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+            <code class="text-indigo-300">">"</code>
+            <p class="text-xs text-gray-400 mt-1">Greater than</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+            <code class="text-indigo-300">">="</code>
+            <p class="text-xs text-gray-400 mt-1">Greater or equal</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+            <code class="text-indigo-300">"<"</code>
+            <p class="text-xs text-gray-400 mt-1">Less than</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+            <code class="text-indigo-300">"<="</code>
+            <p class="text-xs text-gray-400 mt-1">Less or equal</p>
+        </div>
+    </div>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/models/post.soli</span>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Find users older than 30
+let users = User.where("age", ">", 30);
+
+// Find posts by author
+let posts = BlogPost.where("author_id", "==", "user123");</code></pre>
         </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Relationships</h2>
+    <p class="text-gray-400 mb-6">Implement relationships using model methods:</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class Post extends Model {
-    static {
-        this.fields = {
-            "title": Field.string(),
-            "author_id": Field.reference("User")
-        };
+    fn author() -> Any {
+        return User.find(this.author_id);
+    }
+}
 
-        // Post belongs to a user
-        this.belongs_to("author", "User");
+class User extends Model {
+    fn posts() -> Any {
+        return Post.where("author_id", "==", this.id);
     }
 }
 
 // Usage
-let user = post.author();</code></pre>
+let post = Post.find("post123");
+let author = post.author();
+
+let user = User.find("user123");
+let user_posts = user.posts();</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Lifecycle Hooks</h2>
-    <p class="text-gray-400 mb-6">Intercept model events to add custom logic.</p>
+    <h2 class="text-2xl font-bold text-white mb-6">Custom Methods</h2>
+    <p class="text-gray-400 mb-6">Add custom methods to your models:</p>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">static {
-    // Hash password before saving
-    this.before_create = fn(data) {
-        if data["password"] {
-            data["password_hash"] = hash(data["password"]);
-            data.remove("password");
-        }
-        return data;
-    };
+<pre><code class="language-soli text-sm">class User extends Model {
+    fn is_admin() -> Bool {
+        return this.role == "admin";
+    }
 
-    // Send email after creation
-    this.after_create = fn(user) {
-        Mailer.send_welcome(user["email"]);
-    };
+    fn full_name() -> String {
+        return this.first_name + " " + this.last_name;
+    }
+}
+
+// Usage
+let user = User.find("user123");
+if user.is_admin() {
+    print("Welcome, admin " + user.full_name());
 }</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// app/models/user.soli
+class User extends Model {
+    fn posts() -> Any {
+        return Post.where("user_id", "==", this.id);
+    }
+
+    fn is_adult() -> Bool {
+        return this.age >= 18;
+    }
+}
+
+// app/models/blog_post.soli
+class BlogPost extends Model {
+    fn author() -> Any {
+        return User.find(this.user_id);
+    }
+}
+
+// Usage in controller
+class UsersController extends Controller {
+    fn index() -> Any {
+        let users = User.all();
+        return this.render("users/index", { "users": users });
+    }
+
+    fn show(id: String) -> Any {
+        let user = User.find(id);
+        let posts = user.posts();
+        return this.render("users/show", {
+            "user": user,
+            "posts": posts
+        });
+    }
+
+    fn create() -> Any {
+        let user = User.create({
+            "name": this.params["name"],
+            "email": this.params["email"],
+            "age": this.params["age"]
+        });
+        return this.redirect("/users/" + user.id);
+    }
+}</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Testing Models</h2>
+    <p class="text-gray-400 mb-6">See the <a href="/docs/testing" class="text-indigo-400 hover:text-indigo-300">Testing Guide</a> for comprehensive information on testing models.</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">describe("User model", fn() {
+    test("creates user with valid data", fn() {
+        let user = User.create({
+            "email": "test@example.com",
+            "name": "Test User"
+        });
+        expect(user.email).to_equal("test@example.com");
+    });
+
+    test("finds user by ID", fn() {
+        let user = User.create({ "name": "Alice" });
+        let found = User.find(user.id);
+        expect(found.name).to_equal("Alice");
+    });
+
+    test("counts users", fn() {
+        User.create({ "name": "Alice" });
+        User.create({ "name": "Bob" });
+        expect(User.count()).to_equal(2);
+    });
+});</code></pre>
         </div>
     </div>
 
@@ -191,23 +337,25 @@ let user = post.author();</code></pre>
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
             </svg>
-            Pro Tip
+            Best Practices
         </h4>
-        <p class="text-indigo-200/80 text-sm">
-            Keep your models focused on data consistency and business rules. 
-            Validation logic belongs here, not in the controller.
-        </p>
+        <ul class="text-indigo-200/80 text-sm space-y-2">
+            <li><strong>Keep models simple</strong> - Just extend <code>Model</code>, no configuration needed</li>
+            <li><strong>Use meaningful class names</strong> - They become collection names automatically</li>
+            <li><strong>Add custom methods</strong> - Encapsulate business logic in model methods</li>
+            <li><strong>Use relationships</strong> - Create methods that return related models</li>
+        </ul>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Migrations &rarr;</h3>
+            <p class="text-sm text-gray-400">Create collections and indexes with database migrations.</p>
+        </a>
         <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Testing &rarr;</h3>
-            <p class="text-sm text-gray-400">Learn how to test models with factories and database isolation.</p>
-        </a>
-        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
-            <p class="text-sm text-gray-400">Use your models to handle requests.</p>
+            <p class="text-sm text-gray-400">Learn how to test models with database isolation.</p>
         </a>
     </div>
 </div>
