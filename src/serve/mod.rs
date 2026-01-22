@@ -3732,11 +3732,11 @@ pub fn render_dev_error_page(
             }}
         }});
 
-        // Auto-select the first stack frame on page load
+        // Auto-select the latest (last) stack frame on page load
         document.addEventListener('DOMContentLoaded', function() {{
-            const firstFrame = document.querySelector('.stack-frame');
-            if (firstFrame) {{
-                firstFrame.click();
+            const frames = document.querySelectorAll('.stack-frame');
+            if (frames.length > 0) {{
+                frames[frames.length - 1].click();
             }}
         }});
     </script>
