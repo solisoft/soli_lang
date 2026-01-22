@@ -93,6 +93,11 @@ impl Interpreter {
         let vars = self.environment.borrow().get_all_variables();
         let mut json_parts = Vec::new();
 
+        eprintln!("[DEBUG] serialize_environment_for_debug - found {} variables", vars.len());
+        for (name, value) in &vars {
+            eprintln!("[DEBUG]   var: {} = {:?}", name, value.type_name());
+        }
+
         for (name, value) in vars {
             // Skip functions and classes - they're not useful in the debug view
             match &value {
@@ -104,7 +109,9 @@ impl Interpreter {
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }
 
-        format!("{{{}}}", json_parts.join(", "))
+        let result = format!("{{{}}}", json_parts.join(", "));
+        eprintln!("[DEBUG] serialize_environment_for_debug result: {}", result);
+        result
     }
 
     /// Convert a Value to a JSON string representation.
