@@ -629,6 +629,7 @@ fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result<(), Runtim
             })?;
 
     // Execute (skip type checking for flexibility)
+    interpreter.set_source_path(path.to_path_buf());
     interpreter.interpret(&program)
 }
 
@@ -2904,8 +2905,8 @@ fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
             }
         }
         Err(_) => {
-            // Try as expression - wrap in return statement with semicolon
-            let wrapped_code = format!("return {};", code);
+            // Try as expression - wrap in a block that returns the value
+            let wrapped_code = format!("let _repl_result = {}; _repl_result", code);
             let tokens = crate::lexer::Scanner::new(&wrapped_code).scan_tokens();
             let parse_result = tokens.map_err(|e| format!("{:?}", e))
                 .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
@@ -2914,9 +2915,9 @@ fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
                 Ok(program) => {
                     match interpreter.interpret(&program) {
                         Ok(_) => {
-                            // Get the return value from environment
-                            let return_val = interpreter.environment.borrow().get("_return_");
-                            let result_str = match return_val {
+                            // Get the result from environment
+                            let result_val = interpreter.environment.borrow().get("_repl_result");
+                            let result_str = match result_val {
                                 Some(v) => format!("{:?}", v),
                                 None => "null".to_string(),
                             };
@@ -3375,6 +3376,7 @@ pub fn render_dev_error_page(
 
     <script>
         const sourceCache = {{}};
+        const currentRequestData = {request_data_json};
         
         function showRequestTab(tabName) {{
             document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
@@ -3425,8 +3427,13 @@ pub fn render_dev_error_page(
 
         async function executeRepl() {{
             const input = document.getElementById('repl-input');
-            const code = input.value.trim();
+            let code = input.value.trim();
             if (!code) return;
+
+            // Expand @ to lastResult (e.g., @ + 10 becomes (4) + 10)
+            if (lastResult !== null) {{
+                code = code.replace(/@/g, '(' + lastResult + ')');
+            }}
 
             // Add to history
             if (code && history[history.length - 1] !== code) {{
@@ -3449,7 +3456,7 @@ pub fn render_dev_error_page(
                     output.innerHTML += '<div class="text-red-400 mt-2">❌ ' + escapeHtml(result.error) + '</div>';
                     lastResult = null;
                 }} else {{
-                    output.innerHTML += '<div class="text-gray-300 mt-2"><span class="text-indigo-400">❯</span> <span class="text-gray-500">// ' + escapeHtml(code) + '</span></div>';
+                    output.innerHTML += '<div class="text-gray-300 mt-2"><span class="text-indigo-400">❯</span> <span class="text-gray-500">// ' + escapeHtml(input.value.trim()) + '</span></div>';
                     if (result.result && result.result !== "ok") {{
                         output.innerHTML += '<div class="text-green-400 mt-1">' + escapeHtml(result.result) + '</div>';
                         lastResult = result.result;
