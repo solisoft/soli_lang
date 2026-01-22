@@ -206,7 +206,6 @@ pub fn serve_folder_with_options_and_mode(
     // Load routes from config/routes.soli if it exists
     let routes_file = folder.join("config").join("routes.soli");
     if routes_file.exists() {
-        println!("Loading routes from config/routes.soli");
 
         // Define DSL helpers in Soli
         // Note: Using named functions for blocks since lambda expressions are not supported
@@ -567,10 +566,6 @@ fn load_controller(
 
         if is_oop_controller {
             // OOP controller: methods are inside the class, resolved at runtime
-            println!(
-                "  {} {} -> {}#{}()",
-                route.method, route.path, class_name, route.function_name
-            );
         } else {
             // Function-based controller: look up the function in the environment
             let func_value = interpreter
@@ -590,11 +585,6 @@ fn load_controller(
                 controller_key,
                 &route.function_name,
                 func_value.clone(),
-            );
-
-            println!(
-                "  {} {} -> {}()",
-                route.method, route.path, route.function_name
             );
         }
 

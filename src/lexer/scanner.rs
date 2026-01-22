@@ -61,7 +61,13 @@ impl<'a> Scanner<'a> {
             ')' => Ok(self.make_token(TokenKind::RightParen)),
             '{' => Ok(self.make_token(TokenKind::LeftBrace)),
             '}' => Ok(self.make_token(TokenKind::RightBrace)),
-            '[' => Ok(self.make_token(TokenKind::LeftBracket)),
+            '[' => {
+                if self.match_char('[') {
+                    self.scan_multiline_string()
+                } else {
+                    Ok(self.make_token(TokenKind::LeftBracket))
+                }
+            }
             ']' => Ok(self.make_token(TokenKind::RightBracket)),
             ',' => Ok(self.make_token(TokenKind::Comma)),
             '.' => {
@@ -274,6 +280,48 @@ impl<'a> Scanner<'a> {
         } else {
             Ok(Token::new(TokenKind::StringLiteral(value), span))
         }
+    }
+
+    /// Scan a Lua-style multiline string delimited by [[ and ]].
+    /// Content is raw (no escape sequences processed).
+    fn scan_multiline_string(&mut self) -> Result<Token, LexerError> {
+        let start_position = self.start_pos;
+        let start_line = self.start_line;
+        let mut value = String::new();
+
+        loop {
+            match self.peek() {
+                None => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some(']') => {
+                    if self.peek_next() == Some(']') {
+                        self.advance(); // consume first ]
+                        self.advance(); // consume second ]
+                        break;
+                    } else {
+                        value.push(']');
+                        self.advance();
+                    }
+                }
+                Some('\n') => {
+                    value.push('\n');
+                    self.advance();
+                    self.line += 1;
+                    self.column = 1;
+                }
+                Some(c) => {
+                    value.push(c);
+                    self.advance();
+                }
+            }
+        }
+
+        let end_position = self.current_pos;
+        let end_column = self.column;
+        let span = Span::new(start_position, end_position, start_line, end_column);
+
+        Ok(Token::new(TokenKind::StringLiteral(value), span))
     }
 
     fn parse_interpolation_parts(s: &str) -> Vec<String> {
@@ -547,5 +595,75 @@ mod tests {
         let tokens = scan(r#" "Hello \(name)!" "#);
         println!("TEST OUTPUT: {:?}", tokens);
         // Should have: Literal("Hello "), InterpolatedString marker, Literal("name"), Literal("!")
+    }
+
+    #[test]
+    fn test_multiline_string() {
+        assert_eq!(
+            scan("[[hello]]"),
+            vec![
+                TokenKind::StringLiteral("hello".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiline_string_with_newlines() {
+        assert_eq!(
+            scan("[[line1\nline2]]"),
+            vec![
+                TokenKind::StringLiteral("line1\nline2".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiline_string_raw() {
+        // Backslash-n should be literal, not a newline
+        assert_eq!(
+            scan(r"[[hello\nworld]]"),
+            vec![
+                TokenKind::StringLiteral(r"hello\nworld".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiline_string_with_single_bracket() {
+        assert_eq!(
+            scan("[[a]b]]"),
+            vec![
+                TokenKind::StringLiteral("a]b".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_empty_multiline_string() {
+        assert_eq!(
+            scan("[[]]"),
+            vec![
+                TokenKind::StringLiteral("".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_single_bracket_still_works() {
+        // Single [ should still produce LeftBracket
+        assert_eq!(
+            scan("[1]"),
+            vec![
+                TokenKind::LeftBracket,
+                TokenKind::IntLiteral(1),
+                TokenKind::RightBracket,
+                TokenKind::Eof
+            ]
+        );
     }
 }

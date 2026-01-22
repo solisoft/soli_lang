@@ -26,6 +26,16 @@ impl FileTracker {
         }
     }
 
+    /// Create a new file tracker with a custom check interval.
+    #[cfg(test)]
+    pub fn with_check_interval(interval: Duration) -> Self {
+        Self {
+            files: HashMap::new(),
+            last_check: Instant::now() - interval, // Start in the past so first check works
+            check_interval: interval,
+        }
+    }
+
     /// Start tracking a file, recording its current modification time.
     pub fn track(&mut self, path: &Path) {
         if let Ok(metadata) = std::fs::metadata(path) {
@@ -108,7 +118,8 @@ mod tests {
 
     #[test]
     fn test_file_tracker_basic() {
-        let mut tracker = FileTracker::new();
+        // Use a short check interval for testing (no throttle delay)
+        let mut tracker = FileTracker::with_check_interval(std::time::Duration::from_millis(0));
         assert_eq!(tracker.tracked_count(), 0);
 
         // Create a temp file
@@ -126,8 +137,8 @@ mod tests {
         let changes = tracker.get_changed_files();
         assert!(changes.is_empty());
 
-        // Wait a bit and modify
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        // Wait enough for filesystem mtime granularity (some filesystems have 1s resolution)
+        std::thread::sleep(std::time::Duration::from_millis(1100));
         std::fs::write(&temp_file, "modified content").unwrap();
 
         // Should detect change

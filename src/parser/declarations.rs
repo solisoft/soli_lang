@@ -98,7 +98,7 @@ impl Parser {
             }
         };
 
-        self.expect(&TokenKind::Semicolon)?;
+        self.match_token(&TokenKind::Semicolon);
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
@@ -304,7 +304,7 @@ impl Parser {
             None
         };
 
-        self.expect(&TokenKind::Semicolon)?;
+        self.match_token(&TokenKind::Semicolon);
         let span = start_span.merge(&self.previous_span());
 
         Ok(FieldDecl {
@@ -355,7 +355,7 @@ impl Parser {
             None
         };
 
-        self.expect(&TokenKind::Semicolon)?;
+        self.match_token(&TokenKind::Semicolon);
         let span = start_span.merge(&self.previous_span());
 
         Ok(InterfaceMethod {
@@ -384,7 +384,7 @@ impl Parser {
             None
         };
 
-        self.expect(&TokenKind::Semicolon)?;
+        self.match_token(&TokenKind::Semicolon);
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(

@@ -119,20 +119,88 @@ pub async fn handle_live_reload_websocket(
 
 /// The client-side JavaScript for WebSocket-based live reload.
 ///
-/// This script connects to the WebSocket endpoint and reloads the page
-/// when a reload signal is received. Falls back to SSE if WebSocket fails.
+/// This script connects to the WebSocket endpoint and performs an async
+/// content replacement when a reload signal is received, preserving scroll position.
+/// Falls back to SSE if WebSocket fails.
 pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
 (function(){
     if (window.__livereload) return;
     window.__livereload = {
         connected: false,
-        reconnecting: false
+        reconnecting: false,
+        reloading: false
     };
 
     var retryDelay = 100;
     var maxRetryDelay = 5000;
     var ws = null;
     var es = null;
+
+    // Simple DOM morphing - only update what changed
+    function morphChildren(oldParent, newParent) {
+        var oldNodes = Array.from(oldParent.childNodes);
+        var newNodes = Array.from(newParent.childNodes);
+
+        // Update existing nodes and add new ones
+        for (var i = 0; i < newNodes.length; i++) {
+            var newNode = newNodes[i];
+            var oldNode = oldNodes[i];
+
+            if (!oldNode) {
+                // New node - append it
+                oldParent.appendChild(newNode.cloneNode(true));
+            } else {
+                morphNode(oldParent, oldNode, newNode);
+            }
+        }
+
+        // Remove extra old nodes
+        while (oldParent.childNodes.length > newNodes.length) {
+            oldParent.removeChild(oldParent.lastChild);
+        }
+    }
+
+    function morphNode(parent, oldNode, newNode) {
+        // Quick check: if identical, skip entirely
+        if (oldNode.nodeType === newNode.nodeType) {
+            if (oldNode.nodeType === 3) {
+                // Text node
+                if (oldNode.textContent !== newNode.textContent) {
+                    oldNode.textContent = newNode.textContent;
+                }
+                return;
+            }
+            if (oldNode.nodeType === 1 && oldNode.tagName === newNode.tagName) {
+                // Same element - check if content is identical via outerHTML
+                if (oldNode.outerHTML === newNode.outerHTML) {
+                    return; // Completely identical, skip
+                }
+                // Different content - update attributes and recurse
+                morphAttributes(oldNode, newNode);
+                morphChildren(oldNode, newNode);
+                return;
+            }
+        }
+        // Different node types or tags - replace entirely
+        parent.replaceChild(newNode.cloneNode(true), oldNode);
+    }
+
+    function morphAttributes(oldEl, newEl) {
+        // Remove old attributes not in new
+        var oldAttrs = Array.from(oldEl.attributes);
+        for (var i = 0; i < oldAttrs.length; i++) {
+            if (!newEl.hasAttribute(oldAttrs[i].name)) {
+                oldEl.removeAttribute(oldAttrs[i].name);
+            }
+        }
+        // Set new attributes
+        var newAttrs = Array.from(newEl.attributes);
+        for (var i = 0; i < newAttrs.length; i++) {
+            if (oldEl.getAttribute(newAttrs[i].name) !== newAttrs[i].value) {
+                oldEl.setAttribute(newAttrs[i].name, newAttrs[i].value);
+            }
+        }
+    }
 
     function reconnect() {
         if (window.__livereload.reconnecting) return;
@@ -144,11 +212,122 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
         }, retryDelay);
     }
 
+    function asyncReload() {
+        if (window.__livereload.reloading) return;
+        window.__livereload.reloading = true;
+
+        fetch(window.location.href, {
+            headers: { 'X-Live-Reload': 'true' },
+            cache: 'no-store'
+        })
+        .then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.text();
+        })
+        .then(function(html) {
+            // Parse the new HTML
+            var parser = new DOMParser();
+            var newDoc = parser.parseFromString(html, 'text/html');
+
+            // Update stylesheets - force reload all with cache busting
+            var oldStyles = document.querySelectorAll('link[rel="stylesheet"]');
+            var timestamp = Date.now();
+            oldStyles.forEach(function(oldStyle) {
+                var href = oldStyle.getAttribute('href');
+                if (href) {
+                    var baseHref = href.split('?')[0];
+                    var newLink = document.createElement('link');
+                    newLink.rel = 'stylesheet';
+                    newLink.href = baseHref + '?_lr=' + timestamp;
+                    newLink.onload = function() {
+                        if (oldStyle.parentNode) oldStyle.parentNode.removeChild(oldStyle);
+                    };
+                    oldStyle.parentNode.insertBefore(newLink, oldStyle.nextSibling);
+                }
+            });
+
+            // Update inline styles
+            var newInlineStyles = newDoc.querySelectorAll('style');
+            var oldInlineStyles = document.querySelectorAll('style');
+            oldInlineStyles.forEach(function(s) {
+                if (!s.textContent.includes('__livereload')) s.remove();
+            });
+            newInlineStyles.forEach(function(s) {
+                document.head.appendChild(s.cloneNode(true));
+            });
+
+            // Morph body content - only update what changed
+            var newBody = newDoc.body;
+            if (newBody) {
+                morphChildren(document.body, newBody);
+            }
+
+            // Re-execute all scripts in body (both inline and external)
+            var scripts = document.body.querySelectorAll('script');
+            var scriptsToLoad = [];
+            scripts.forEach(function(oldScript) {
+                if (oldScript.textContent.includes('__livereload')) return;
+
+                var newScript = document.createElement('script');
+
+                // Copy attributes
+                Array.from(oldScript.attributes).forEach(function(attr) {
+                    newScript.setAttribute(attr.name, attr.value);
+                });
+
+                if (oldScript.src) {
+                    // External script - add cache busting and load sequentially
+                    var baseSrc = oldScript.src.split('?')[0];
+                    newScript.src = baseSrc + '?_lr=' + Date.now();
+                    scriptsToLoad.push(newScript);
+                } else {
+                    // Inline script - execute immediately
+                    newScript.textContent = oldScript.textContent;
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                }
+            });
+
+            // Load external scripts sequentially
+            function loadNextScript(index) {
+                if (index >= scriptsToLoad.length) return;
+                var script = scriptsToLoad[index];
+                script.onload = function() { loadNextScript(index + 1); };
+                script.onerror = function() { loadNextScript(index + 1); };
+                document.body.appendChild(script);
+            }
+            loadNextScript(0);
+
+            // Update title if changed
+            if (newDoc.title) {
+                document.title = newDoc.title;
+            }
+
+            // Re-initialize common libraries after DOM update
+            if (typeof hljs !== 'undefined') {
+                hljs.highlightAll();
+            }
+            if (typeof Prism !== 'undefined') {
+                Prism.highlightAll();
+            }
+
+            // Dispatch event for custom re-initialization
+            document.dispatchEvent(new CustomEvent('livereload:update'));
+
+            console.log('[livereload] Content updated');
+            window.__livereload.reloading = false;
+        })
+        .catch(function(error) {
+            console.log('[livereload] Async reload failed, doing full reload:', error);
+            window.__livereload.reloading = false;
+            location.reload();
+        });
+    }
+
     function connect() {
         // Try WebSocket first
         var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         var wsUrl = protocol + '//' + window.location.host + '/__livereload_ws';
-        
+
         try {
             ws = new WebSocket(wsUrl);
             ws.__livereload = true;
@@ -168,7 +347,7 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
         ws.onmessage = function(event) {
             if (event.data === 'reload') {
                 console.log('[livereload] Reload signal received');
-                location.reload();
+                asyncReload();
             } else if (event.data === 'ping') {
                 // Keepalive response if needed
             }
@@ -191,9 +370,9 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
     function connectSSE() {
         // Fallback to Server-Sent Events
         es = new EventSource('/__livereload');
-        
+
         es.addEventListener('reload', function() {
-            location.reload();
+            asyncReload();
         });
 
         es.onerror = function() {

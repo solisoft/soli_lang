@@ -1,0 +1,61 @@
+// ============================================================================
+// Solilang MVC Routes Configuration
+// ============================================================================
+
+// Root path
+get("/", "home#index");
+
+// Public routes
+get("/health", "home#health");
+get("/up", "home#up");
+
+// Documentation
+get("/docs", "docs#index");
+get("/docs/introduction", "docs#introduction");
+get("/docs/installation", "docs#installation");
+get("/docs/routing", "docs#routing");
+get("/docs/controllers", "docs#controllers");
+get("/docs/models", "docs#models");
+get("/docs/views", "docs#views");
+get("/docs/middleware", "docs#middleware");
+get("/docs/websockets", "docs#websockets");
+get("/docs/live-reload", "docs#live_reload");
+get("/docs/soli-language", "docs#soli_language");
+get("/docs/i18n", "docs#i18n");
+get("/docs/authentication", "docs#authentication");
+get("/docs/sessions", "docs#sessions");
+get("/docs/validation", "docs#validation");
+get("/docs/testing", "docs#testing");
+get("/docs/debugging", "docs#debugging");
+get("/docs/request-params", "docs#request_params");
+
+// WebSocket Demo
+get("/websocket", "websocket#demo");
+router_websocket("/ws/chat", "websocket#chat_handler");
+
+// ============================================================================
+// Users Controller - Authentication, Sessions, and Validation Demo
+// ============================================================================
+
+// Authentication routes
+get("/users/login", "users#login");
+post("/users/login", "users#login_post");
+get("/users/register", "users#register");
+post("/users/register", "users#register_post");
+get("/users/logout", "users#logout");
+get("/users/profile", "users#profile");
+
+// Session management
+get("/users/regenerate-session", "users#regenerate_session");
+
+// Validation demo
+get("/users/validation-demo", "users#validation_demo");
+post("/users/validate-registration", "users#validate_registration");
+
+// JWT demo endpoints
+post("/users/create-token", "users#create_token");
+post("/users/verify-token", "users#verify_token");
+post("/users/decode-token", "users#decode_token");
+
+print("Routes loaded!");
+

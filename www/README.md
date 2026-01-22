@@ -1,49 +1,263 @@
-# Starlight Starter Kit: Basics
+# Solilang MVC Framework Example
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+A comprehensive demonstration of the Solilang MVC Framework with scoped middleware support.
 
-```
-npm create astro@latest -- --template starlight
-```
+## Prerequisites
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+- Rust and Cargo (latest stable)
+- Node.js (v16 or higher)
+- npm or yarn
 
-## 🚀 Project Structure
+## Installation
 
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+```bash
+# Install dependencies
+npm install
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+## Quick Start
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+```bash
+# Start development server with hot reload and automatic Tailwind CSS compilation
+soli serve . --dev
 
-Static assets, like favicons, can be placed in the `public/` directory.
+# Or use the shell script
+./dev.sh
+```
 
-## 🧞 Commands
+Visit [http://localhost:3000](http://localhost:3000) for the app, and [http://localhost:3000/docs](http://localhost:3000/docs) for full documentation.
 
-All commands are run from the root of the project, from a terminal:
+## Tailwind CSS Integration
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+When running in dev mode (`--dev`), Soli automatically handles Tailwind CSS:
 
-## 👀 Want to learn more?
+- **On startup**: Compiles Tailwind CSS automatically
+- **On view changes**: Recompiles when you edit `.erb` template files
+- **On source CSS changes**: Recompiles when files in `app/assets/css/` change
 
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+No need to run a separate Tailwind watcher - just use `soli serve . --dev`!
+
+### Requirements for Tailwind integration
+
+- `tailwind.config.js` in project root
+- `package.json` with a `build:css` script
+- Node.js and npm installed
+
+### Production
+
+For production, use without the `--dev` flag:
+
+```bash
+soli serve .
+```
+
+## Project Structure
+
+```
+mvc_app/
+├── app/
+│   ├── controllers/          # Route handlers
+│   │   ├── home_controller.soli
+│   │   ├── users_controller.soli
+│   │   └── admin_controller.soli
+│   ├── middleware/           # Middleware functions
+│   │   ├── auth.soli         # Authentication (scope_only)
+│   │   ├── cors.soli         # CORS headers (global_only)
+│   │   └── logging.soli      # Request logging (global_only)
+│   ├── models/               # Data models
+│   └── views/                # Templates
+│       ├── home/
+│       └── layouts/
+├── config/
+│   └── routes.soli           # Route definitions
+├── public/                   # Static files
+│   └── docs.html             # Framework documentation
+└── README.md                 # This file
+```
+
+## 🎯 Key Features
+
+### 1. Scoped Middleware
+
+Apply middleware only to specific routes:
+
+```soli
+// Only /admin/* routes require authentication
+middleware("authenticate", -> {
+    get("/admin", "admin#index");
+    get("/admin/users", "admin#users");
+});
+
+// Public routes - no auth needed
+get("/", "home#index");
+```
+
+### 2. Middleware Types
+
+| Type | Option | Behavior |
+|------|--------|----------|
+| Global-Only | `// global_only: true` | Runs for ALL routes, cannot be scoped |
+| Scope-Only | `// scope_only: true` | Only runs when explicitly scoped |
+| Regular | No option | Runs globally by default, can also be scoped |
+
+### 3. RESTful Resources
+
+Generate standard CRUD routes automatically:
+
+```soli
+resources("users", null);
+```
+
+Creates: `GET /users`, `POST /users`, `GET /users/:id`, etc.
+
+### 4. Namespaces
+
+Group routes under a common prefix:
+
+```soli
+namespace("api", -> {
+    middleware("authenticate", -> {
+        get("/api/users", "users#index");
+    });
+});
+```
+
+## 📚 Documentation
+
+**Full documentation available at:** [http://localhost:3000/docs](http://localhost:3000/docs)
+
+### Topics Covered
+
+- **Getting Started** - Installation and quick start guide
+- **Architecture** - MVC pattern explanation
+- **Controllers** - Defining route handlers
+- **Middleware** - Request/response processing
+- **Views** - Template rendering and layouts
+- **Routing** - DSL helpers and patterns
+- **Resources** - RESTful route generation
+- **Configuration** - Middleware options
+
+## 🔧 Configuration
+
+### Middleware Options
+
+Configure middleware behavior using special comments:
+
+```soli
+// order: 20          // Execution order (lower runs first)
+// global_only: true  // Only runs globally, cannot be scoped
+// scope_only: true   // Only runs when explicitly scoped
+```
+
+### Route DSL
+
+Available helpers in `routes.soli`:
+
+| Helper | Description |
+|--------|-------------|
+| `get(path, action)` | GET request |
+| `post(path, action)` | POST request |
+| `put(path, action)` | PUT request |
+| `delete(path, action)` | DELETE request |
+| `patch(path, action)` | PATCH request |
+| `resources(name, block)` | RESTful resource routes |
+| `namespace(name, block)` | Route grouping |
+| `middleware(name, block)` | Scoped middleware |
+
+## 📝 Example Routes
+
+```soli
+// config/routes.soli
+
+// Scoped authentication middleware
+middleware("authenticate", -> {
+    get("/admin", "admin#index");
+    get("/admin/users", "admin#users");
+});
+
+// Public routes
+get("/", "home#index");
+get("/about", "home#about");
+
+// RESTful resources
+resources("users", null);
+```
+
+## 🧪 Testing
+
+### Public Routes
+
+```bash
+curl http://localhost:3000/
+curl http://localhost:3000/health
+curl http://localhost:3000/docs
+```
+
+### Documentation Routes
+
+```bash
+curl http://localhost:3000/docs/introduction
+curl http://localhost:3000/docs/installation
+curl http://localhost:3000/docs/routing
+curl http://localhost:3000/docs/controllers
+curl http://localhost:3000/docs/middleware
+curl http://localhost:3000/docs/views
+```
+
+## 🔥 Hot Reload
+
+The development server supports hot reload:
+
+- Edit controllers → changes apply immediately
+- Edit middleware → changes apply immediately
+- Edit routes → routes are reloaded
+- Edit templates → pages are refreshed + **Tailwind CSS recompiles automatically**
+- Edit source CSS (`app/assets/css/`) → Tailwind CSS recompiles automatically
+
+No restart needed!
+
+## 📦 Middleware Reference
+
+| Middleware | Type | Description |
+|------------|------|-------------|
+| `cors` | global_only | Adds CORS headers to all responses |
+| `logging` | global_only | Logs all HTTP requests |
+| `authenticate` | scope_only | Requires API key authentication (ready to use in routes) |
+
+## 🏗️ Creating New Controllers
+
+1. Create `app/controllers/name_controller.soli`:
+
+```soli
+fn index(req: Any) -> Any {
+    return {"status": 200, "body": "Hello!"};
+}
+
+fn show(req: Any) -> Any {
+    let id = req["params"]["id"];
+    return {"status": 200, "body": "User " + id};
+}
+```
+
+2. Add routes in `config/routes.soli`:
+
+```soli
+get("/users", "users#index");
+get("/users/:id", "users#show");
+```
+
+## 🔒 Security Notes
+
+- The `authenticate` middleware uses a demo API key (`secret-key-123`)
+- In production, use proper authentication (JWT, sessions, etc.)
+- CORS is configured for development; configure properly for production
+
+## 📖 Learn More
+
+- **Full Docs:** [http://localhost:3000/docs](http://localhost:3000/docs)
+- **GitHub:** https://github.com/solilang/solilang
+- **Examples:** See `examples/mvc_app/`
+
+---
+
+Built with ❤️ using [Solilang](https://github.com/solilang/solilang)
