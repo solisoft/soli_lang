@@ -25,6 +25,7 @@ get("/docs/i18n", "docs#i18n");
 get("/docs/authentication", "docs#authentication");
 get("/docs/sessions", "docs#sessions");
 get("/docs/validation", "docs#validation");
+get("/docs/testing", "docs#testing");
 get("/docs/request-params", "docs#request_params");
 
 // WebSocket Demo

@@ -117,6 +117,14 @@ fn validation(req: Any) -> Any {
     });
 }
 
+fn testing(req: Any) -> Any {
+    return render("docs/testing", {
+        "title": "Testing",
+        "section": "development_tools",
+        "layout": "layouts/docs"
+    });
+}
+
 fn request_params(req: Any) -> Any {
     return render("docs/request-params", {
         "title": "Request Parameters",

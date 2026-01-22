@@ -440,3 +440,7 @@ The router automatically:
 6. **Use private helper methods** - Methods starting with `_` are not exposed
 7. **Create ApplicationController** - Base class for shared configuration
 8. **Use layouts consistently** - Set default layout in ApplicationController
+
+## Testing Controllers
+
+See the [Testing Guide](/docs/testing) for comprehensive information on testing controllers with both HTTP integration tests and direct action calls.

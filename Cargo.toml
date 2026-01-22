@@ -61,6 +61,12 @@ solidb-client = "0.5.0"
 daemonize = "0.5"
 nix = { version = "0.29", features = ["signal", "process"] }
 
+# Test framework
+walkdir = "2"
+serde_yaml = "0.9"
+rand = "0.8"
+glob = "0.3"
+
 # JIT compilation dependencies (optional)
 cranelift = { version = "0.111", optional = true }
 cranelift-module = { version = "0.111", optional = true }

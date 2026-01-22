@@ -118,3 +118,23 @@ group("/api", [], {
 2. Keep routes simple and predictable
 3. Use route parameters for resource identifiers
 4. Apply authentication/authorization middleware where needed
+
+## Testing Routes
+
+See the [Testing Guide](/docs/testing) for comprehensive information on testing routes with HTTP integration tests.
+
+```soli
+describe("User routes", fn() {
+    test("GET /users returns list", fn() {
+        let response = TestHTTP.get("/users");
+        expect(response.status).to_equal(200);
+    });
+    
+    test("POST /users creates user", fn() {
+        let response = TestHTTP.post("/users", hash(
+            "email": "test@example.com"
+        ));
+        expect(response.status).to_equal(201);
+    });
+});
+```

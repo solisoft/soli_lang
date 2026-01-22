@@ -6,9 +6,11 @@ mod statements;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::ast::*;
+use crate::coverage::CoverageTracker;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::register_builtins;
 use crate::interpreter::builtins::server::{
@@ -30,6 +32,8 @@ pub(crate) enum ControlFlow {
 /// The Solilang interpreter.
 pub struct Interpreter {
     pub(crate) environment: Rc<RefCell<Environment>>,
+    pub(crate) coverage_tracker: Option<Rc<RefCell<CoverageTracker>>>,
+    pub(crate) current_source_path: Option<PathBuf>,
 }
 
 impl Interpreter {
@@ -39,6 +43,35 @@ impl Interpreter {
 
         Self {
             environment: globals,
+            coverage_tracker: None,
+            current_source_path: None,
+        }
+    }
+
+    pub fn with_coverage_tracker(tracker: Rc<RefCell<CoverageTracker>>) -> Self {
+        let globals = Rc::new(RefCell::new(Environment::new()));
+        register_builtins(&mut globals.borrow_mut());
+
+        Self {
+            environment: globals,
+            coverage_tracker: Some(tracker),
+            current_source_path: None,
+        }
+    }
+
+    pub fn set_coverage_tracker(&mut self, tracker: Rc<RefCell<CoverageTracker>>) {
+        self.coverage_tracker = Some(tracker);
+    }
+
+    pub fn set_source_path(&mut self, path: PathBuf) {
+        self.current_source_path = Some(path);
+    }
+
+    pub fn record_coverage(&self, line: usize) {
+        if let Some(ref tracker) = self.coverage_tracker {
+            if let Some(ref path) = self.current_source_path {
+                tracker.borrow_mut().record_line_hit(path, line);
+            }
         }
     }
 

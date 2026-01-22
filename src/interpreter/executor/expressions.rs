@@ -15,6 +15,7 @@ use super::{ControlFlow, Interpreter, RuntimeResult};
 impl Interpreter {
     /// Evaluate an expression.
     pub(crate) fn evaluate(&mut self, expr: &Expr) -> RuntimeResult<Value> {
+        self.record_coverage(expr.span.line);
         match &expr.kind {
             ExprKind::IntLiteral(n) => Ok(Value::Int(*n)),
             ExprKind::FloatLiteral(n) => Ok(Value::Float(*n)),

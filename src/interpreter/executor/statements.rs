@@ -14,6 +14,7 @@ use super::{ControlFlow, Interpreter, RuntimeResult};
 impl Interpreter {
     /// Execute a statement, returning control flow information.
     pub(crate) fn execute(&mut self, stmt: &Stmt) -> RuntimeResult<ControlFlow> {
+        self.record_coverage(stmt.span.line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 self.evaluate(expr)?;

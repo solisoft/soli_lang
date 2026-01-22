@@ -78,3 +78,5 @@ Soli favors convention over configuration. By following standard naming patterns
 - **[Sessions](/docs/sessions)** - Cookie-based session management
 - **[Validation](/docs/validation)** - Schema-based input validation
 - **[Request Parameters](/docs/request-params)** - Unified access to route, query, and body parameters
+- **[Testing](/docs/testing)** - BDD testing framework with coverage reporting
+- **[Models](/docs/models)** - ORM-style data modeling with CRUD operations

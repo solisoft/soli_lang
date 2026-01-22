@@ -11,12 +11,14 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
 // Re-export submodules
+pub mod assertions;
 pub mod controller;
 pub mod crypto;
 pub mod datetime;
 pub mod datetime_class;
 pub mod dotenv;
 pub mod env;
+pub mod factories;
 pub mod http;
 pub mod i18n;
 pub mod jwt;
@@ -27,6 +29,7 @@ pub mod server;
 pub mod session;
 pub mod solidb;
 pub mod template;
+pub mod test_dsl;
 pub mod validation;
 
 /// Register all built-in functions in the given environment.
@@ -834,6 +837,15 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register JWT builtins
     jwt::register_jwt_builtins(env);
+
+    // Register factory builtins
+    factories::register_factories(env);
+
+    // Register assertion builtins
+    assertions::register_assertions(env);
+
+    // Register test DSL builtins
+    test_dsl::register_test_builtins(env);
 
     // Register Error class and error types
     register_error_classes(env);
