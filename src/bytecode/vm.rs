@@ -157,6 +157,7 @@ enum NativeId {
     HtmlEscape,
     HtmlUnescape,
     SanitizeHtml,
+    StripHtml,
     // Regex functions
     RegexMatch,
     RegexFind,
@@ -258,6 +259,7 @@ impl NativeId {
             NativeId::HtmlEscape => Some(1),
             NativeId::HtmlUnescape => Some(1),
             NativeId::SanitizeHtml => Some(1),
+            NativeId::StripHtml => Some(1),
             // Regex functions
             NativeId::RegexMatch => Some(2),
             NativeId::RegexFind => Some(2),
@@ -1786,6 +1788,30 @@ impl VM {
                 }
                 if in_tag {
                     result.push_str(&current_tag);
+                }
+                Ok(VMValue::String(Rc::new(result)))
+            }
+            NativeId::StripHtml => {
+                let s = match &args[0] {
+                    VMValue::String(s) => s.as_str(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "strip_html requires a string",
+                            Span::default(),
+                        ))
+                    }
+                };
+                let mut result = String::new();
+                let mut in_tag = false;
+
+                for c in s.chars() {
+                    if c == '<' {
+                        in_tag = true;
+                    } else if c == '>' {
+                        in_tag = false;
+                    } else if !in_tag {
+                        result.push(c);
+                    }
                 }
                 Ok(VMValue::String(Rc::new(result)))
             }

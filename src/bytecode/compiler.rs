@@ -165,6 +165,7 @@ impl Compiler {
             "html_escape",
             "html_unescape",
             "sanitize_html",
+            "strip_html",
             // Regex functions
             "regex_match",
             "regex_find",

@@ -792,6 +792,31 @@ pub fn register_builtins(env: &mut Environment) {
         })),
     );
 
+    // strip_html(string) -> string - removes all HTML tags
+    env.define(
+        "strip_html".to_string(),
+        Value::NativeFunction(NativeFunction::new("strip_html", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => {
+                    let mut result = String::new();
+                    let mut in_tag = false;
+
+                    for c in s.chars() {
+                        if c == '<' {
+                            in_tag = true;
+                        } else if c == '>' {
+                            in_tag = false;
+                        } else if !in_tag {
+                            result.push(c);
+                        }
+                    }
+                    Ok(Value::String(result))
+                }
+                other => Err(format!("strip_html expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
     // Register HTTP client functions
     http::register_http_builtins(env);
 
