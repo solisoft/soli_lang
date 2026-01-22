@@ -3476,7 +3476,6 @@ pub fn render_dev_error_page(
         let history = [];
         let historyIndex = -1;
         let lastResult = null;
-        let currentRequestData = '';
 
         function navigateHistory(direction) {{
             const input = document.getElementById('repl-input');
@@ -3555,6 +3554,7 @@ pub fn render_dev_error_page(
         error_message = error_message,
         error_location = error_location,
         stack_frames = stack_frames.join("\n"),
+        request_data_json = request_data_json,
         request_params = escape_html(&request_params),
         request_query = escape_html(&request_query),
         request_body = escape_html(&request_body),
