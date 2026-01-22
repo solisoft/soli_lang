@@ -228,6 +228,51 @@ fn inject_template_helpers(data: &Value) -> Value {
                 new_hash.push((strip_html_key, strip_html_func));
             }
 
+            // Add substring() function if not present
+            let substring_key = Value::String("substring".to_string());
+            let has_substring = hash.borrow().iter().any(|(k, _)| k.hash_eq(&substring_key));
+
+            if !has_substring {
+                let substring_func =
+                    Value::NativeFunction(NativeFunction::new("substring", Some(3), |args| {
+                        let s = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "substring() expects string as first argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let start = match &args[1] {
+                            Value::Int(n) => *n as usize,
+                            other => {
+                                return Err(format!(
+                                    "substring() expects int as second argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let end = match &args[2] {
+                            Value::Int(n) => *n as usize,
+                            other => {
+                                return Err(format!(
+                                    "substring() expects int as third argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+
+                        let chars: Vec<char> = s.chars().collect();
+                        let end = end.min(chars.len());
+                        let start = start.min(end);
+                        let result: String = chars[start..end].iter().collect();
+                        Ok(Value::String(result))
+                    }));
+
+                new_hash.push((substring_key, substring_func));
+            }
+
             Value::Hash(Rc::new(RefCell::new(new_hash)))
         }
         _ => data.clone(),
