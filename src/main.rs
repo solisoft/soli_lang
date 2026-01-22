@@ -661,7 +661,7 @@ impl ReplState {
 
 fn run_test(
     path: Option<&str>,
-    jobs: usize,
+    _jobs: usize,
     coverage: bool,
     coverage_min: Option<f64>,
     _no_coverage: bool,
@@ -707,7 +707,7 @@ fn run_test(
 
     let mut passed = 0;
     let mut failed = 0;
-    let mut pending = 0;
+    let pending = 0;
 
     for test_file in &test_files {
         match std::fs::read_to_string(test_file) {

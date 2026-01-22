@@ -10,6 +10,7 @@ thread_local! {
 
 pub struct CoverageTracker {
     global_coverage: Rc<RefCell<AggregatedCoverage>>,
+    #[allow(dead_code)]
     config: CoverageConfig,
     executable_lines: HashMap<PathBuf, HashMap<usize, String>>,
 }

@@ -55,7 +55,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::interpreter::value::{Class, Value};
 
 /// Register all controller built-ins in the environment.
 pub fn register_controller_builtins(env: &mut Environment) {

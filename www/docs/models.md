@@ -1,246 +1,232 @@
 # Models
 
-Models manage data and business logic in your MVC application. SoliLang provides an ORM-style interface for database operations.
+Models manage data and business logic in your MVC application. SoliLang provides a simple OOP-style interface for database operations.
 
 ## Defining Models
 
-Create model files in `app/models/`:
+Create model files in `app/models/`. The collection name is **automatically derived** from the class name:
+
+- `User` → `"users"`
+- `BlogPost` → `"blog_posts"`
+- `UserProfile` → `"user_profiles"`
 
 ```soli
 // app/models/user.soli
-class User extends Model {
-    static {
-        this.collection = "users";
-        this.fields = [
-            "email",
-            "name",
-            "password_hash",
-            "created_at",
-            "updated_at"
-        ];
-        this.soft_deletes = true;
-    }
-}
+class User extends Model { }
 ```
-
-## Field Types
-
-Models support various field types:
 
 ```soli
-class User extends Model {
-    static {
-        this.collection = "users";
-        this.fields = [
-            "email",           # String
-            "age",             # Integer
-            "balance",         # Float
-            "is_active",       # Boolean
-            "metadata",        # Hash
-            "tags",            # Array
-            "created_at"       # DateTime
-        ];
-    }
-}
+// app/models/blog_post.soli
+class BlogPost extends Model { }
 ```
+
+That's it! No need to manually specify collection names or field definitions.
 
 ## CRUD Operations
 
 ### Creating Records
 
 ```soli
-let user = User.create(hash(
-    "email": "test@example.com",
-    "name": "Test User"
-));
+let user = User.create({
+    "email": "alice@example.com",
+    "name": "Alice",
+    "age": 30
+});
+// Inserts into "users" collection
 ```
 
 ### Finding Records
 
 ```soli
-# Find by ID
+// Find by ID
 let user = User.find("user123");
 
-# Find first matching
-let user = User.find_by("email", "test@example.com");
-
-# Find all
+// Find all
 let users = User.all();
 
-# Find with where clause
-let users = User.where("age", ">", 18);
-let users = User.where("status", "==", "active");
+// Find with where clause
+let adults = User.where("age", ">=", 18);
+let active = User.where("status", "==", "active");
 ```
 
 ### Updating Records
 
 ```soli
-let user = User.find("user123");
-user.name = "New Name";
-user.save();
+User.update("user123", {
+    "name": "Alice Smith",
+    "age": 31
+});
 ```
 
 ### Deleting Records
 
 ```soli
-let user = User.find("user123");
-user.delete();
-
-# Soft delete (if enabled)
-user.soft_delete();
+User.delete("user123");
 ```
 
-## Model Relationships
-
-### Has Many
+### Counting Records
 
 ```soli
-class User extends Model {
-    static {
-        this.collection = "users";
-        this.fields = ["email", "name"];
-    }
-}
+let total = User.count();
+```
 
+## Static Methods Reference
+
+| Method | Description |
+|--------|-------------|
+| `Model.create(data)` | Insert a new document |
+| `Model.find(id)` | Get document by ID |
+| `Model.where(field, op, value)` | Query with filter |
+| `Model.all()` | Get all documents |
+| `Model.update(id, data)` | Update a document |
+| `Model.delete(id)` | Delete a document |
+| `Model.count()` | Count all documents |
+
+## Where Operators
+
+The `where` method supports these comparison operators:
+
+- `"=="` - Equal
+- `"!="` - Not equal
+- `">"` - Greater than
+- `">="` - Greater than or equal
+- `"<"` - Less than
+- `"<="` - Less than or equal
+
+```soli
+// Find users older than 30
+let users = User.where("age", ">", 30);
+
+// Find posts by author
+let posts = BlogPost.where("author_id", "==", "user123");
+```
+
+## Relationships
+
+Implement relationships using model methods:
+
+```soli
 class Post extends Model {
-    static {
-        this.collection = "posts";
-        this.fields = ["title", "content", "user_id"];
-    }
-    
-    fn user() -> Any {
-        return User.find(this.user_id);
+    fn author() -> Any {
+        return User.find(this.author_id);
     }
 }
 
-# Usage
+class User extends Model {
+    fn posts() -> Any {
+        return Post.where("author_id", "==", this.id);
+    }
+}
+
+// Usage
+let post = Post.find("post123");
+let author = post.author();
+
 let user = User.find("user123");
-let posts = Post.where("user_id", "==", user.id);
+let user_posts = user.posts();
 ```
 
-### Has One
+## Custom Methods
 
-```soli
-class Profile extends Model {
-    static {
-        this.collection = "profiles";
-        this.fields = ["user_id", "bio", "avatar"];
-    }
-    
-    fn user() -> Any {
-        return User.find(this.user_id);
-    }
-}
-```
-
-## Model Hooks
+Add custom methods to your models:
 
 ```soli
 class User extends Model {
-    static {
-        this.collection = "users";
-        this.fields = ["email", "name"];
-    }
-    
-    fn before_save() -> Any {
-        if this.email == null {
-            return Error.new("Email is required");
-        }
-        return this;
-    }
-    
-    fn after_create() -> Any {
-        # Send welcome email
-        return this;
-    }
-}
-```
-
-## Model Methods
-
-Add custom methods to models:
-
-```soli
-class User extends Model {
-    static {
-        this.collection = "users";
-        this.fields = ["email", "name", "role"];
-    }
-    
     fn is_admin() -> Bool {
         return this.role == "admin";
     }
-    
+
     fn full_name() -> String {
-        return this.name;
+        return this.first_name + " " + this.last_name;
     }
-    
-    fn update_login_time() -> Any {
-        this.last_login = DateTime.now();
-        this.save();
-        return this;
-    }
+}
+
+// Usage
+let user = User.find("user123");
+if user.is_admin() {
+    print("Welcome, admin " + user.full_name());
 }
 ```
 
-## Database Connection
-
-Configure database connection in `config/routes.soli`:
+## Complete Example
 
 ```soli
-# Connect to SoliDB
-model_connect("localhost", "myapp_db");
+// app/models/user.soli
+class User extends Model {
+    fn posts() -> Any {
+        return Post.where("user_id", "==", this.id);
+    }
 
-# With authentication
-model_connect("localhost", "myapp_db", username: "admin", password: "secret");
-```
+    fn is_adult() -> Bool {
+        return this.age >= 18;
+    }
+}
 
-## Migrations
+// app/models/post.soli
+class BlogPost extends Model {
+    fn author() -> Any {
+        return User.find(this.user_id);
+    }
+}
 
-Create database schema:
+// Usage in controller
+class UsersController extends Controller {
+    fn index() -> Any {
+        let users = User.all();
+        return this.render("users/index", { "users": users });
+    }
 
-```soli
-migration("20240101_create_users", "Create users table", fn() {
-    create_collection("users");
-    add_field("users", "email", "string", required: true);
-    add_field("users", "name", "string", required: true);
-    add_field("users", "password_hash", "string");
-    add_field("users", "created_at", "datetime");
-    add_field("users", "updated_at", "datetime");
-    add_index("users", "email", unique: true);
-});
+    fn show(id: String) -> Any {
+        let user = User.find(id);
+        let posts = user.posts();
+        return this.render("users/show", {
+            "user": user,
+            "posts": posts
+        });
+    }
+
+    fn create() -> Any {
+        let user = User.create({
+            "name": this.params["name"],
+            "email": this.params["email"],
+            "age": this.params["age"]
+        });
+        return this.redirect("/users/" + user.id);
+    }
+}
 ```
 
 ## Testing Models
 
-See the [Testing Guide](/docs/testing) for comprehensive information on testing models with factories and database isolation.
+See the [Testing Guide](/docs/testing) for comprehensive information on testing models.
 
 ```soli
 describe("User model", fn() {
     test("creates user with valid data", fn() {
-        with_transaction(fn() {
-            let user = Factory.create("user");
-            expect(User.count()).to_equal(1);
-            expect(user.email).to_be_valid_email();
+        let user = User.create({
+            "email": "test@example.com",
+            "name": "Test User"
         });
+        expect(user.email).to_equal("test@example.com");
     });
-    
-    test("finds user by email", fn() {
-        with_transaction(fn() {
-            let user = Factory.create("user", hash("email": "test@example.com"));
-            let found = User.find_by("email", "test@example.com");
-            expect(found.id).to_equal(user.id);
-        });
+
+    test("finds user by ID", fn() {
+        let user = User.create({ "name": "Alice" });
+        let found = User.find(user.id);
+        expect(found.name).to_equal("Alice");
+    });
+
+    test("counts users", fn() {
+        User.create({ "name": "Alice" });
+        User.create({ "name": "Bob" });
+        expect(User.count()).to_equal(2);
     });
 });
 ```
 
 ## Best Practices
 
-1. **Keep models focused** - Single responsibility per model
-2. **Use migrations** - Version control your schema
-3. **Add indexes** - Optimize frequent queries
-4. **Use soft deletes** - Preserve data history
-5. **Validate input** - Use model-level validation
-6. **Use relationships** - Leverage associations
-7. **Add timestamps** - Track created_at/updated_at
+1. **Keep models simple** - Just extend `Model`, no configuration needed
+2. **Use meaningful class names** - They become collection names automatically
+3. **Add custom methods** - Encapsulate business logic in model methods
+4. **Use relationships** - Create methods that return related models

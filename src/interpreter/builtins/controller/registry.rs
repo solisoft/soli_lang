@@ -16,19 +16,19 @@ use super::controller::{AfterAction, BeforeAction, ControllerAction, ControllerI
 use crate::interpreter::value::{Instance, Value};
 use crate::interpreter::Interpreter;
 
-/// Global registry of all controllers.
-/// Uses RwLock to allow concurrent reads (most operations) while only blocking for writes.
+// Global registry of all controllers.
+// Uses RwLock to allow concurrent reads (most operations) while only blocking for writes.
 lazy_static::lazy_static! {
     pub static ref CONTROLLER_REGISTRY: RwLock<ControllerRegistry> = RwLock::new(ControllerRegistry::new());
 }
 
-/// Thread-local controller instances for current request.
+// Thread-local controller instances for current request.
 thread_local! {
     static CURRENT_CONTROLLER: RefCell<Option<Value>> = RefCell::new(None);
 }
 
-/// Thread-local cache for pre-compiled handler programs.
-/// Key: handler source string, Value: parsed Program
+// Thread-local cache for pre-compiled handler programs.
+// Key: handler source string, Value: parsed Program
 thread_local! {
     static HANDLER_PROGRAM_CACHE: RefCell<HashMap<String, crate::ast::Program>> = RefCell::new(HashMap::new());
 }
@@ -661,10 +661,10 @@ pub fn call_controller_action(
 fn call_function_value(
     func: &Value,
     args: &[Value],
-    interpreter: &mut Interpreter,
+    _interpreter: &mut Interpreter,
 ) -> Result<Value, String> {
     match func {
-        Value::Function(func_data) => {
+        Value::Function(_func_data) => {
             // For bytecode functions, we'd need to call them properly
             // For now, this is a placeholder
             Err("Function calls not yet implemented for OOP controllers".to_string())

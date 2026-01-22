@@ -51,13 +51,12 @@ use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, oneshot};
 use tokio_tungstenite::WebSocketStream;
-use tungstenite::protocol::WebSocketConfig;
 use uuid::Uuid;
 
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
-    build_request_hash, build_request_hash_with_parsed, extract_response, find_route, get_routes,
-    match_path, parse_form_urlencoded_body, parse_json_body, parse_query_string, rebuild_route_index,
+    build_request_hash_with_parsed, extract_response, find_route, get_routes,
+    parse_form_urlencoded_body, parse_json_body, parse_query_string,
     register_route_with_handler, routes_to_worker_routes, set_worker_routes, ParsedBody, WorkerRoute,
 };
 use crate::interpreter::builtins::session::{
@@ -87,6 +86,7 @@ struct RequestData {
     headers: HashMap<String, String>,
     body: String,
     /// Raw body bytes (for multipart parsing)
+    #[allow(dead_code)]
     body_bytes: Option<Vec<u8>>,
     /// Pre-parsed form fields from multipart
     multipart_form: Option<HashMap<String, String>>,
@@ -1690,6 +1690,7 @@ async fn handle_hyper_request(
 }
 
 /// Check if the request is a WebSocket upgrade request.
+#[allow(dead_code)]
 fn is_websocket_upgrade(req: &Request<Incoming>) -> bool {
     if req.method() != hyper::Method::GET {
         return false;
@@ -2234,7 +2235,7 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
 fn call_class_method(
     interpreter: &mut Interpreter,
     class: &Rc<crate::interpreter::value::Class>,
-    instance: &Value,
+    _instance: &Value,
     method_name: &str,
     request_hash: &Value,
 ) -> Result<Value, String> {
@@ -2413,6 +2414,7 @@ fn setup_controller_context(controller: &Value, req: &Value, params: &Value, ses
 }
 
 /// Call a controller method with the request hash.
+#[allow(dead_code)]
 fn call_controller_method(request_hash: &Value, method_name: &str, interpreter: &mut Interpreter) -> Result<Value, String> {
     // Look up the function in the environment and call it with the request hash
     let method_value = match interpreter.environment.borrow().get(method_name) {
@@ -2987,7 +2989,7 @@ fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::
 /// If `breakpoint_env_json` is provided, it will be used to populate REPL variables.
 fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String], breakpoint_env_json: Option<&str>) -> String {
     let error_type = if breakpoint_env_json.is_some() { "Breakpoint" } else { "RuntimeError" };
-    let mut location = "unknown:0".to_string();
+    let location;
     let mut full_stack_trace: Vec<String> = Vec::new();
 
     // Extract error message and stack trace from the combined error
@@ -3035,7 +3037,7 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
     }
 
     // Get source code around the error line
-    let source_preview = get_source_preview(&error_file, error_line);
+    let _source_preview = get_source_preview(&error_file, error_line);
 
     let mut request_hash_map = HashMap::new();
     request_hash_map.insert("method".to_string(), Value::String(request_data.method.clone()));
@@ -3095,6 +3097,7 @@ fn extract_json_field(json: &str, field: &str) -> Option<String> {
     None
 }
 
+#[allow(dead_code)]
 struct SpanInfo {
     file: Option<String>,
     line: usize,
@@ -3208,7 +3211,6 @@ pub fn render_dev_error_page(
             continue;
         }
 
-        let mut func = "unknown".to_string();
         let mut file = "unknown".to_string();
         let mut line: usize = 0;
 
@@ -3228,22 +3230,22 @@ pub fn render_dev_error_page(
         }
 
         // Try to extract function name - look for pattern before " at "
-        if let Some(at_pos) = frame.find(" at ") {
+        let func = if let Some(at_pos) = frame.find(" at ") {
             let before_at = &frame[..at_pos];
             // If what's before "at" doesn't contain .soli, it's the function name
             if !before_at.contains(".soli") {
-                func = before_at.to_string();
+                before_at.to_string()
             } else {
                 // Extract from file name
-                func = extract_controller_name(&file);
+                extract_controller_name(&file)
             }
         } else if file != "unknown" {
             // No " at " - extract function name from file
-            func = extract_controller_name(&file);
+            extract_controller_name(&file)
         } else {
             // Fallback: treat entire frame as function name
-            func = frame.clone();
-        }
+            frame.clone()
+        };
 
         // Clean up function name - if it looks like a file path, extract the name
         let display_name = if func.contains('#') || func.contains("::") {
@@ -3767,7 +3769,7 @@ fn escape_html(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-pub fn get_source_file(file_path: &str, line: usize) -> Option<HashMap<String, HashMap<usize, String>>> {
+pub fn get_source_file(file_path: &str, _line: usize) -> Option<HashMap<String, HashMap<usize, String>>> {
     let path = std::path::Path::new(file_path);
     if !path.exists() {
         return None;

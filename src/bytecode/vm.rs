@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
 
-use chrono::{DateTime, Datelike, TimeZone, Timelike};
+use chrono::{Datelike, Timelike};
 
 // Thread-local storage for I18n locale
 thread_local! {
@@ -3464,7 +3464,7 @@ impl VM {
                 self.stack[callee_idx] = VMValue::Instance(instance);
                 self.call_closure_frame(method, arg_count + 1)?;
             }
-            VMValue::BoundNativeMethod(instance, class_name, method_name) => {
+            VMValue::BoundNativeMethod(instance, _class_name, method_name) => {
                 // Call the native method directly
                 let inst = instance;
                 let result = call_datetime_method(&inst.borrow(), &method_name)

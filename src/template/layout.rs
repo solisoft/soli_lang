@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::Value;
 use crate::template::parser::{parse_template, CompareOp, Expr, TemplateNode};
 
 /// Render content with a layout that has a yield placeholder.

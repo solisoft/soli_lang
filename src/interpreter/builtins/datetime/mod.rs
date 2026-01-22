@@ -1,13 +1,11 @@
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 use crate::span::Span;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 mod datetime_inner {
     use crate::interpreter::value::Value;
     use crate::span::Span;
-    use chrono::{DateTime, Datelike, Local, TimeZone, Timelike};
+    use chrono::{Datelike, Timelike};
     use std::cell::RefCell;
     use std::rc::Rc;
 

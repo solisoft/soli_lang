@@ -9,6 +9,7 @@ use crate::interpreter::value::{NativeFunction, Value};
 
 #[derive(Debug, Clone)]
 struct FactoryDefinition {
+    #[allow(dead_code)]
     name: String,
     data: Value,
 }
@@ -42,7 +43,7 @@ impl FactoryRegistry {
         }
     }
 
-    fn create_with(&self, name: &str, overrides: &Value) -> Result<Value, String> {
+    fn create_with(&self, _name: &str, overrides: &Value) -> Result<Value, String> {
         Ok(overrides.clone())
     }
 

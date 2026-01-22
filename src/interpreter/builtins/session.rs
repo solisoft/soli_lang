@@ -20,6 +20,7 @@ use crate::interpreter::value::{NativeFunction, Value};
 #[derive(Clone)]
 struct Session {
     data: HashMap<String, JsonValue>,
+    #[allow(dead_code)]
     created_at: Instant,
     last_accessed: Instant,
 }
@@ -145,7 +146,7 @@ lazy_static! {
     static ref SESSION_STORE: InMemorySessionStore = InMemorySessionStore::new();
 }
 
-/// Thread-local current session ID (set per-request from cookie).
+// Thread-local current session ID (set per-request from cookie).
 thread_local! {
     static CURRENT_SESSION_ID: RefCell<Option<String>> = const { RefCell::new(None) };
 }

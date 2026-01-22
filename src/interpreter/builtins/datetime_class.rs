@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use chrono::{Datelike, Local, TimeZone, Timelike};
+use chrono::{Datelike, Local, Timelike};
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, Instance, NativeFunction, Value};

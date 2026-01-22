@@ -146,7 +146,7 @@ impl CoverageReporter {
 
     fn html_dashboard(&self, coverage: &AggregatedCoverage) -> String {
         let total_percent = coverage.total_line_coverage_percent();
-        let pie_data = format!(
+        let _pie_data = format!(
             "{{\"labels\": [\"Covered\", \"Uncovered\"], \"data\": [{}, {}]}}",
             coverage.covered_lines(),
             coverage.total_lines() - coverage.covered_lines()

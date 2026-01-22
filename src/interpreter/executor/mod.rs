@@ -331,7 +331,7 @@ impl Interpreter {
     }
 
     fn handle_http_connection(&mut self, stream: std::net::TcpStream) -> RuntimeResult<()> {
-        use std::io::{BufRead, Read, Write};
+        use std::io::{BufRead, Read};
 
         let mut stream = stream;
         let mut reader = std::io::BufReader::new(&mut stream);
