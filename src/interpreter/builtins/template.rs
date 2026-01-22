@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Mutex;
 
+use crate::interpreter::builtins::datetime::helpers as datetime_helpers;
+use crate::interpreter::builtins::html;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 use crate::template::{html_response, TemplateCache};
@@ -199,32 +201,11 @@ fn inject_template_helpers(data: &Value) -> Value {
             if !has_strip_html {
                 let strip_html_func =
                     Value::NativeFunction(NativeFunction::new("strip_html", Some(1), |args| {
-                        let s = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "strip_html() expects string, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-
-                        let mut result = String::new();
-                        let mut in_tag = false;
-
-                        for c in s.chars() {
-                            if c == '<' {
-                                in_tag = true;
-                            } else if c == '>' {
-                                in_tag = false;
-                            } else if !in_tag {
-                                result.push(c);
-                            }
+                        match &args[0] {
+                            Value::String(s) => Ok(Value::String(html::strip_html(s))),
+                            other => Err(format!("strip_html() expects string, got {}", other.type_name())),
                         }
-
-                        Ok(Value::String(result))
                     }));
-
                 new_hash.push((strip_html_key, strip_html_func));
             }
 
@@ -262,14 +243,8 @@ fn inject_template_helpers(data: &Value) -> Value {
                                 ))
                             }
                         };
-
-                        let chars: Vec<char> = s.chars().collect();
-                        let end = end.min(chars.len());
-                        let start = start.min(end);
-                        let result: String = chars[start..end].iter().collect();
-                        Ok(Value::String(result))
+                        Ok(Value::String(html::substring(&s, start, end)))
                     }));
-
                 new_hash.push((substring_key, substring_func));
             }
 
@@ -284,15 +259,8 @@ fn inject_template_helpers(data: &Value) -> Value {
                             Value::String(s) => s.clone(),
                             other => format!("{}", other),
                         };
-                        let escaped = s
-                            .replace('&', "&amp;")
-                            .replace('<', "&lt;")
-                            .replace('>', "&gt;")
-                            .replace('"', "&quot;")
-                            .replace('\'', "&#39;");
-                        Ok(Value::String(escaped))
+                        Ok(Value::String(html::html_escape(&s)))
                     }));
-
                 new_hash.push((html_escape_key, html_escape_func));
             }
 
@@ -303,31 +271,11 @@ fn inject_template_helpers(data: &Value) -> Value {
             if !has_html_unescape {
                 let html_unescape_func =
                     Value::NativeFunction(NativeFunction::new("html_unescape", Some(1), |args| {
-                        let s = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "html_unescape() expects string, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        let mut result = s;
-                        let replacements = [
-                            ("&amp;", "&"),
-                            ("&lt;", "<"),
-                            ("&gt;", ">"),
-                            ("&quot;", "\""),
-                            ("&#39;", "'"),
-                            ("&apos;", "'"),
-                            ("&nbsp;", " "),
-                        ];
-                        for (from, to) in replacements {
-                            result = result.replace(from, to);
+                        match &args[0] {
+                            Value::String(s) => Ok(Value::String(html::html_unescape(s))),
+                            other => Err(format!("html_unescape() expects string, got {}", other.type_name())),
                         }
-                        Ok(Value::String(result))
                     }));
-
                 new_hash.push((html_unescape_key, html_unescape_func));
             }
 
@@ -338,65 +286,197 @@ fn inject_template_helpers(data: &Value) -> Value {
             if !has_sanitize_html {
                 let sanitize_html_func =
                     Value::NativeFunction(NativeFunction::new("sanitize_html", Some(1), |args| {
-                        let s = match &args[0] {
-                            Value::String(s) => s.clone(),
+                        match &args[0] {
+                            Value::String(s) => Ok(Value::String(html::sanitize_html(s))),
+                            other => Err(format!("sanitize_html() expects string, got {}", other.type_name())),
+                        }
+                    }));
+                new_hash.push((sanitize_html_key, sanitize_html_func));
+            }
+
+            // Add datetime_now() function if not present
+            let datetime_now_key = Value::String("datetime_now".to_string());
+            let has_datetime_now = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_now_key));
+
+            if !has_datetime_now {
+                let datetime_now_func =
+                    Value::NativeFunction(NativeFunction::new("datetime_now", Some(0), |_args| {
+                        Ok(Value::Int(datetime_helpers::datetime_now()))
+                    }));
+                new_hash.push((datetime_now_key, datetime_now_func));
+            }
+
+            // Add datetime_format() function if not present
+            let datetime_format_key = Value::String("datetime_format".to_string());
+            let has_datetime_format = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_format_key));
+
+            if !has_datetime_format {
+                let datetime_format_func =
+                    Value::NativeFunction(NativeFunction::new("datetime_format", Some(2), |args| {
+                        let timestamp = match &args[0] {
+                            Value::Int(n) => *n,
+                            Value::String(s) => {
+                                // Try to parse string as timestamp
+                                datetime_helpers::datetime_parse(s).unwrap_or(0)
+                            }
                             other => {
                                 return Err(format!(
-                                    "sanitize_html() expects string, got {}",
+                                    "datetime_format() expects timestamp (int) or date string as first argument, got {}",
                                     other.type_name()
                                 ))
                             }
                         };
-                        let mut result = String::new();
-                        let mut in_tag = false;
-                        let mut tag_buffer = String::new();
-
-                        for c in s.chars() {
-                            if c == '<' {
-                                in_tag = true;
-                                tag_buffer.clear();
-                                tag_buffer.push(c);
-                            } else if c == '>' {
-                                if in_tag {
-                                    tag_buffer.push(c);
-                                    let tag = tag_buffer.trim().to_lowercase();
-                                    let is_closing = tag.starts_with("</");
-                                    let is_self_closing = tag.ends_with("/>");
-                                    let tag_name = if is_closing {
-                                        tag.trim_start_matches('<').trim_start_matches('/').trim_end_matches('>').split_whitespace().next().unwrap_or("")
-                                    } else {
-                                        tag.trim_start_matches('<').trim_end_matches('/').trim_end_matches('>').split_whitespace().next().unwrap_or("")
-                                    };
-                                    let allowed_tags = ["p", "br", "b", "i", "u", "em", "strong", "a", "ul", "ol", "li", "blockquote", "code", "pre", "h1", "h2", "h3", "h4", "h5", "h6", "span", "div", "img"];
-                                    let is_allowed = allowed_tags.contains(&tag_name);
-                                    let is_dangerous_attr = tag.contains("javascript:") || tag.contains("onload=") || tag.contains("onerror=") || tag.contains("onclick=");
-                                    if is_allowed && !is_dangerous_attr {
-                                        let cleaned_tag = if is_closing {
-                                            format!("</{}>", tag_name)
-                                        } else if is_self_closing {
-                                            format!("<{}/>", tag_name)
-                                        } else {
-                                            format!("<{}>", tag_name)
-                                        };
-                                        result.push_str(&cleaned_tag);
-                                    }
-                                    in_tag = false;
-                                } else {
-                                    result.push(c);
-                                }
-                            } else if in_tag {
-                                tag_buffer.push(c);
-                            } else {
-                                result.push(c);
+                        let format = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "datetime_format() expects string format as second argument, got {}",
+                                    other.type_name()
+                                ))
                             }
-                        }
-                        if in_tag {
-                            result.push_str(&tag_buffer);
-                        }
-                        Ok(Value::String(result))
+                        };
+                        Ok(Value::String(datetime_helpers::datetime_format(timestamp, &format)))
                     }));
+                new_hash.push((datetime_format_key, datetime_format_func));
+            }
 
-                new_hash.push((sanitize_html_key, sanitize_html_func));
+            // Add datetime_parse() function if not present
+            let datetime_parse_key = Value::String("datetime_parse".to_string());
+            let has_datetime_parse = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_parse_key));
+
+            if !has_datetime_parse {
+                let datetime_parse_func =
+                    Value::NativeFunction(NativeFunction::new("datetime_parse", Some(1), |args| {
+                        let s = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "datetime_parse() expects string, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        match datetime_helpers::datetime_parse(&s) {
+                            Some(ts) => Ok(Value::Int(ts)),
+                            None => Ok(Value::Null),
+                        }
+                    }));
+                new_hash.push((datetime_parse_key, datetime_parse_func));
+            }
+
+            // Add datetime_add_days() function if not present
+            let datetime_add_days_key = Value::String("datetime_add_days".to_string());
+            let has_datetime_add_days = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_add_days_key));
+
+            if !has_datetime_add_days {
+                let datetime_add_days_func =
+                    Value::NativeFunction(NativeFunction::new("datetime_add_days", Some(2), |args| {
+                        let timestamp = match &args[0] {
+                            Value::Int(n) => *n,
+                            other => {
+                                return Err(format!(
+                                    "datetime_add_days() expects timestamp (int) as first argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let days = match &args[1] {
+                            Value::Int(n) => *n,
+                            other => {
+                                return Err(format!(
+                                    "datetime_add_days() expects int as second argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        Ok(Value::Int(datetime_helpers::datetime_add_days(timestamp, days)))
+                    }));
+                new_hash.push((datetime_add_days_key, datetime_add_days_func));
+            }
+
+            // Add datetime_add_hours() function if not present
+            let datetime_add_hours_key = Value::String("datetime_add_hours".to_string());
+            let has_datetime_add_hours = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_add_hours_key));
+
+            if !has_datetime_add_hours {
+                let datetime_add_hours_func =
+                    Value::NativeFunction(NativeFunction::new("datetime_add_hours", Some(2), |args| {
+                        let timestamp = match &args[0] {
+                            Value::Int(n) => *n,
+                            other => {
+                                return Err(format!(
+                                    "datetime_add_hours() expects timestamp (int) as first argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let hours = match &args[1] {
+                            Value::Int(n) => *n,
+                            other => {
+                                return Err(format!(
+                                    "datetime_add_hours() expects int as second argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        Ok(Value::Int(datetime_helpers::datetime_add_hours(timestamp, hours)))
+                    }));
+                new_hash.push((datetime_add_hours_key, datetime_add_hours_func));
+            }
+
+            // Add datetime_diff() function if not present
+            let datetime_diff_key = Value::String("datetime_diff".to_string());
+            let has_datetime_diff = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_diff_key));
+
+            if !has_datetime_diff {
+                let datetime_diff_func =
+                    Value::NativeFunction(NativeFunction::new("datetime_diff", Some(2), |args| {
+                        let t1 = match &args[0] {
+                            Value::Int(n) => *n,
+                            other => {
+                                return Err(format!(
+                                    "datetime_diff() expects timestamp (int) as first argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let t2 = match &args[1] {
+                            Value::Int(n) => *n,
+                            other => {
+                                return Err(format!(
+                                    "datetime_diff() expects timestamp (int) as second argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        Ok(Value::Int(datetime_helpers::datetime_diff(t1, t2)))
+                    }));
+                new_hash.push((datetime_diff_key, datetime_diff_func));
+            }
+
+            // Add time_ago() function if not present
+            let time_ago_key = Value::String("time_ago".to_string());
+            let has_time_ago = hash.borrow().iter().any(|(k, _)| k.hash_eq(&time_ago_key));
+
+            if !has_time_ago {
+                let time_ago_func =
+                    Value::NativeFunction(NativeFunction::new("time_ago", Some(1), |args| {
+                        let timestamp = match &args[0] {
+                            Value::Int(n) => *n,
+                            Value::String(s) => {
+                                // Try to parse string as timestamp
+                                datetime_helpers::datetime_parse(s).unwrap_or(0)
+                            }
+                            other => {
+                                return Err(format!(
+                                    "time_ago() expects timestamp (int) or date string, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        Ok(Value::String(datetime_helpers::time_ago(timestamp)))
+                    }));
+                new_hash.push((time_ago_key, time_ago_func));
             }
 
             Value::Hash(Rc::new(RefCell::new(new_hash)))

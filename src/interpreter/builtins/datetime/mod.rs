@@ -1,3 +1,5 @@
+pub mod helpers;
+
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 use crate::span::Span;
