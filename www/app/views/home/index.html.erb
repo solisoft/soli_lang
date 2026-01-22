@@ -74,38 +74,99 @@
                 <!-- Glow effect behind the code window -->
                 <div class="absolute -inset-4 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 rounded-2xl blur-2xl"></div>
 
-                <div class="relative rounded-2xl bg-gray-950 shadow-2xl ring-1 ring-white/10 overflow-hidden">
-                    <!-- Window header -->
+                <div class="relative rounded-2xl bg-gray-950 shadow-2xl ring-1 ring-white/10 overflow-hidden" id="mvc-demo">
+                    <!-- Window header with Tabs -->
                     <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-white/5">
                         <div class="flex items-center gap-2">
-                            <div class="flex gap-1.5">
+                            <div class="flex gap-1.5 mr-4">
                                 <div class="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 transition-colors cursor-pointer"></div>
                                 <div class="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-500 transition-colors cursor-pointer"></div>
                                 <div class="w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-500 transition-colors cursor-pointer"></div>
                             </div>
+                            
+                            <!-- Tabs -->
+                            <div class="flex space-x-1 bg-black/20 p-1 rounded-lg">
+                                <button onclick="switchTab('model')" id="tab-model" class="px-3 py-1 text-xs font-medium rounded-md transition-all text-white bg-white/10 shadow-sm">Model</button>
+                                <button onclick="switchTab('view')" id="tab-view" class="px-3 py-1 text-xs font-medium rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5">View</button>
+                                <button onclick="switchTab('controller')" id="tab-controller" class="px-3 py-1 text-xs font-medium rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5">Controller</button>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2 px-3 py-1 rounded-md bg-white/5 text-xs font-mono text-gray-500">
+                        <div class="flex items-center gap-2 px-3 py-1 rounded-md bg-white/5 text-xs font-mono text-gray-500" id="file-path">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            app/controllers/users_controller.soli
+                            <span id="filename-display">app/models/post.soli</span>
                         </div>
-                        <div class="w-16"></div>
                     </div>
 
-                    <!-- Code content -->
-                    <div class="px-6 py-6 overflow-x-auto">
-<pre class="text-sm leading-7"><code class="language-soli"><span class="text-gray-500">// Define a RESTful controller with middleware</span>
-<span class="text-purple-400">fn</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>: <span class="text-yellow-200">Request</span>) -> <span class="text-yellow-200">Response</span> {
-    <span class="text-purple-400">let</span> users = <span class="text-yellow-200">User</span>.<span class="text-blue-400">where</span>({ <span class="text-green-400">"active"</span>: <span class="text-purple-400">true</span> })
-                    .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
-                    .<span class="text-blue-400">paginate</span>(<span class="text-orange-300">req</span>.<span class="text-blue-400">query</span>(<span class="text-green-400">"page"</span>), <span class="text-purple-400">20</span>);
+                    <!-- Code content areas -->
+                    <div class="px-6 py-6 overflow-x-auto min-h-[300px]">
+                        <!-- Model Content -->
+<div id="content-model">
+<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Post</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Model</span> {
+    <span class="text-purple-400">static</span> {
+        <span class="text-gray-500">// Schema definition</span>
+        <span class="text-blue-400">this</span>.<span class="text-blue-400">fields</span> = {
+            <span class="text-green-400">"title"</span>: <span class="text-yellow-200">Field</span>.<span class="text-blue-400">string</span>({
+                <span class="text-green-400">"required"</span>: <span class="text-purple-400">true</span>,
+                <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">3</span>
+            }),
+            <span class="text-green-400">"author_id"</span>: <span class="text-yellow-200">Field</span>.<span class="text-blue-400">reference</span>(<span class="text-green-400">"User"</span>)
+        };
 
-    <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"users/index"</span>, {
-        <span class="text-green-400">"users"</span>: users,
-        <span class="text-green-400">"title"</span>: <span class="text-green-400">"Team Members"</span>
-    });
+        <span class="text-gray-500">// Relationships</span>
+        <span class="text-blue-400">this</span>.<span class="text-blue-400">belongs_to</span>(<span class="text-green-400">"author"</span>, <span class="text-green-400">"User"</span>);
+        <span class="text-blue-400">this</span>.<span class="text-blue-400">has_many</span>(<span class="text-green-400">"comments"</span>, <span class="text-green-400">"Comment"</span>);
+    }
+
+    <span class="text-gray-500">// Scopes</span>
+    <span class="text-purple-400">static</span> <span class="text-purple-400">fn</span> <span class="text-blue-400">published</span>() {
+        <span class="text-purple-400">return</span> <span class="text-yellow-200">Post</span>.<span class="text-blue-400">where</span>({
+            <span class="text-green-400">"status"</span>: <span class="text-green-400">"published"</span>
+        });
+    }
 }</code></pre>
+                        </div>
+
+                        <!-- View Content -->
+                        <div id="content-view" class="hidden">
+<pre class="text-sm leading-7"><code class="language-html"><span class="text-gray-500">&lt;!-- ERB-style templates --&gt;</span>
+<span class="text-blue-400">&lt;h1&gt;</span><span class="text-white">&lt;%= @title %&gt;</span><span class="text-blue-400">&lt;/h1&gt;</span>
+
+<span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"posts"</span><span class="text-blue-400">&gt;</span>
+  <span class="text-white">&lt;% for post in @posts %&gt;</span>
+    <span class="text-blue-400">&lt;article&gt;</span>
+      <span class="text-blue-400">&lt;h2&gt;</span><span class="text-white">&lt;%= post["title"] %&gt;</span><span class="text-blue-400">&lt;/h2&gt;</span>
+      <span class="text-blue-400">&lt;p&gt;</span><span class="text-white">&lt;%= post["excerpt"] %&gt;</span><span class="text-blue-400">&lt;/p&gt;</span>
+      <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/posts/&lt;%= post["id"] %&gt;"</span><span class="text-blue-400">&gt;</span>
+        Read more
+      <span class="text-blue-400">&lt;/a&gt;</span>
+    <span class="text-blue-400">&lt;/article&gt;</span>
+  <span class="text-white">&lt;% end %&gt;</span>
+<span class="text-blue-400">&lt;/div&gt;</span></code></pre>
+                        </div>
+
+                        <!-- Controller Content -->
+                        <div id="content-controller" class="hidden">
+<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">fn</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>) {
+    <span class="text-purple-400">let</span> posts = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">published</span>()
+        .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
+        .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>);
+
+    <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, {
+        <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span>,
+        <span class="text-green-400">"posts"</span>: posts
+    });
+}
+
+<span class="text-purple-400">fn</span> <span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>) {
+    <span class="text-purple-400">let</span> post = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">new</span>(<span class="text-orange-300">req</span>.<span class="text-blue-400">body</span>());
+    <span class="text-purple-400">if</span> post.<span class="text-blue-400">save</span>() {
+        <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/posts"</span>);
+    }
+    <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/new"</span>);
+}</code></pre>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -210,118 +271,37 @@
     </div>
 </section>
 
-<!-- MVC Architecture Section -->
-<section class="relative py-24 sm:py-32 border-t border-white/5">
-    <div class="mx-auto max-w-7xl px-6 lg:px-8">
-        <div class="mx-auto max-w-2xl text-center mb-16">
-            <h2 class="text-base font-semibold leading-7 text-indigo-400 tracking-wide uppercase">MVC Architecture</h2>
-            <p class="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Model - View - Controller
-            </p>
-            <p class="mt-4 text-lg text-gray-400">
-                Clean separation of concerns with an expressive, Rails-inspired syntax.
-            </p>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            <!-- Model Example -->
-            <div class="rounded-2xl bg-gray-950 ring-1 ring-white/10 overflow-hidden">
-                <div class="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                    <span class="text-sm font-mono text-gray-400">app/models/post.soli</span>
-                    <span class="text-xs px-2 py-1 rounded bg-emerald-500/20 text-emerald-400">Model</span>
-                </div>
-                <div class="p-5">
-<pre class="text-sm leading-6"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Post</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Model</span> {
-    <span class="text-gray-500">// Validations</span>
-    <span class="text-blue-400">validates</span>(<span class="text-green-400">"title"</span>, {
-        <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
-        <span class="text-green-400">"length"</span>: { <span class="text-green-400">"min"</span>: <span class="text-orange-300">3</span> }
-    });
-
-    <span class="text-gray-500">// Relationships</span>
-    <span class="text-blue-400">belongs_to</span>(<span class="text-green-400">"user"</span>);
-    <span class="text-blue-400">has_many</span>(<span class="text-green-400">"comments"</span>);
-
-    <span class="text-gray-500">// Scopes</span>
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">published</span>() {
-        <span class="text-purple-400">return</span> <span class="text-yellow-200">Post</span>.<span class="text-blue-400">where</span>({
-            <span class="text-green-400">"status"</span>: <span class="text-green-400">"published"</span>
+<script>
+    function switchTab(tab) {
+        // Content
+        ['model', 'view', 'controller'].forEach(t => {
+            const el = document.getElementById('content-' + t);
+            if (t === tab) {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
         });
+
+        // Tabs
+        ['model', 'view', 'controller'].forEach(t => {
+            const btn = document.getElementById('tab-' + t);
+            if (t === tab) {
+                btn.className = "px-3 py-1 text-xs font-medium rounded-md transition-all text-white bg-white/10 shadow-sm";
+            } else {
+                btn.className = "px-3 py-1 text-xs font-medium rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5";
+            }
+        });
+
+        // Filename
+        const filenames = {
+            'model': 'app/models/post.soli',
+            'view': 'app/views/posts/index.html.erb',
+            'controller': 'app/controllers/posts_controller.soli'
+        };
+        document.getElementById('filename-display').textContent = filenames[tab];
     }
-}</code></pre>
-                </div>
-            </div>
-
-            <!-- View Example -->
-            <div class="rounded-2xl bg-gray-950 ring-1 ring-white/10 overflow-hidden">
-                <div class="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                    <span class="text-sm font-mono text-gray-400">app/views/posts/index.html.erb</span>
-                    <span class="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-400">View</span>
-                </div>
-                <div class="p-5">
-<pre class="text-sm leading-6"><code class="language-html"><span class="text-gray-500">&lt;!-- ERB-style templates --&gt;</span>
-<span class="text-blue-400">&lt;h1&gt;</span><span class="text-white">&lt;%= @title %&gt;</span><span class="text-blue-400">&lt;/h1&gt;</span>
-
-<span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"posts"</span><span class="text-blue-400">&gt;</span>
-  <span class="text-white">&lt;% for post in @posts %&gt;</span>
-    <span class="text-blue-400">&lt;article&gt;</span>
-      <span class="text-blue-400">&lt;h2&gt;</span><span class="text-white">&lt;%= post["title"] %&gt;</span><span class="text-blue-400">&lt;/h2&gt;</span>
-      <span class="text-blue-400">&lt;p&gt;</span><span class="text-white">&lt;%= post["excerpt"] %&gt;</span><span class="text-blue-400">&lt;/p&gt;</span>
-      <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/posts/&lt;%= post["id"] %&gt;"</span><span class="text-blue-400">&gt;</span>
-        Read more
-      <span class="text-blue-400">&lt;/a&gt;</span>
-    <span class="text-blue-400">&lt;/article&gt;</span>
-  <span class="text-white">&lt;% end %&gt;</span>
-<span class="text-blue-400">&lt;/div&gt;</span></code></pre>
-                </div>
-            </div>
-
-            <!-- Controller Example -->
-            <div class="rounded-2xl bg-gray-950 ring-1 ring-white/10 overflow-hidden">
-                <div class="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                    <span class="text-sm font-mono text-gray-400">app/controllers/posts_controller.soli</span>
-                    <span class="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400">Controller</span>
-                </div>
-                <div class="p-5">
-<pre class="text-sm leading-6"><code class="language-soli"><span class="text-purple-400">fn</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>) {
-    <span class="text-purple-400">let</span> posts = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">published</span>()
-        .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
-        .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>);
-
-    <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, {
-        <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span>,
-        <span class="text-green-400">"posts"</span>: posts
-    });
-}
-
-<span class="text-purple-400">fn</span> <span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>) {
-    <span class="text-purple-400">let</span> post = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">new</span>(<span class="text-orange-300">req</span>.<span class="text-blue-400">body</span>());
-    <span class="text-purple-400">if</span> post.<span class="text-blue-400">save</span>() {
-        <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/posts"</span>);
-    }
-    <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/new"</span>);
-}</code></pre>
-                </div>
-            </div>
-        </div>
-
-        <!-- Routes Section Below -->
-        <div class="mt-8 max-w-2xl mx-auto">
-            <div class="rounded-2xl bg-gray-950 ring-1 ring-white/10 overflow-hidden">
-                <div class="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                    <span class="text-sm font-mono text-gray-400">config/routes.soli</span>
-                    <span class="text-xs px-2 py-1 rounded bg-indigo-500/20 text-indigo-400">Routes</span>
-                </div>
-                <div class="p-5">
-<pre class="text-sm leading-6"><code class="language-soli"><span class="text-gray-500">// Simple and expressive routing</span>
-<span class="text-blue-400">get</span>(<span class="text-green-400">"/"</span>, <span class="text-green-400">"home#index"</span>);
-<span class="text-blue-400">resources</span>(<span class="text-green-400">"posts"</span>);          <span class="text-gray-500">// GET, POST, PUT, DELETE</span>
-<span class="text-blue-400">resources</span>(<span class="text-green-400">"users"</span>);          <span class="text-gray-500">// Full RESTful routes</span></code></pre>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
+</script>
 
 <!-- CTA Section -->
 <section class="relative py-24 sm:py-32">
