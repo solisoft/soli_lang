@@ -17,7 +17,15 @@ impl Interpreter {
         self.record_coverage(stmt.span.line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
-                self.evaluate(expr)?;
+                let value = self.evaluate(expr)?;
+                // Check for breakpoint marker
+                if matches!(value, Value::Breakpoint) {
+                    let env_json = self.serialize_environment_for_debug();
+                    return Err(RuntimeError::Breakpoint {
+                        span: expr.span,
+                        env_json,
+                    });
+                }
                 Ok(ControlFlow::Normal)
             }
 

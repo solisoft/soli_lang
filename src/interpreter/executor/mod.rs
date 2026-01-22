@@ -87,6 +87,86 @@ impl Interpreter {
         }
     }
 
+    /// Serialize the current environment for debugging.
+    /// Returns a JSON string with all variables (excluding functions/classes for simplicity).
+    pub fn serialize_environment_for_debug(&self) -> String {
+        let vars = self.environment.borrow().get_all_variables();
+        let mut json_parts = Vec::new();
+
+        for (name, value) in vars {
+            // Skip functions and classes - they're not useful in the debug view
+            match &value {
+                Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => continue,
+                _ => {}
+            }
+
+            let json_value = self.value_to_json(&value);
+            json_parts.push(format!(r#""{}": {}"#, name, json_value));
+        }
+
+        format!("{{{}}}", json_parts.join(", "))
+    }
+
+    /// Convert a Value to a JSON string representation.
+    fn value_to_json(&self, value: &Value) -> String {
+        match value {
+            Value::Null => "null".to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Int(n) => n.to_string(),
+            Value::Float(n) => n.to_string(),
+            Value::String(s) => {
+                // Escape string for JSON
+                let escaped = s
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\n', "\\n")
+                    .replace('\r', "\\r")
+                    .replace('\t', "\\t");
+                format!("\"{}\"", escaped)
+            }
+            Value::Array(arr) => {
+                let items: Vec<String> = arr
+                    .borrow()
+                    .iter()
+                    .map(|v| self.value_to_json(v))
+                    .collect();
+                format!("[{}]", items.join(", "))
+            }
+            Value::Hash(hash) => {
+                let pairs: Vec<String> = hash
+                    .borrow()
+                    .iter()
+                    .map(|(k, v)| {
+                        let key = match k {
+                            Value::String(s) => s.clone(),
+                            other => format!("{}", other),
+                        };
+                        let escaped_key = key
+                            .replace('\\', "\\\\")
+                            .replace('"', "\\\"");
+                        format!(r#""{}": {}"#, escaped_key, self.value_to_json(v))
+                    })
+                    .collect();
+                format!("{{{}}}", pairs.join(", "))
+            }
+            Value::Instance(inst) => {
+                let inst = inst.borrow();
+                let fields: Vec<String> = inst
+                    .fields
+                    .iter()
+                    .map(|(k, v)| format!(r#""{}": {}"#, k, self.value_to_json(v)))
+                    .collect();
+                format!(r#"{{"__class__": "{}", {}}}"#, inst.class.name, fields.join(", "))
+            }
+            Value::Function(_) => "\"<function>\"".to_string(),
+            Value::NativeFunction(_) => "\"<native function>\"".to_string(),
+            Value::Class(c) => format!("\"<class {}>\"", c.name),
+            Value::Future(_) => "\"<future>\"".to_string(),
+            Value::Method(_) => "\"<method>\"".to_string(),
+            Value::Breakpoint => "\"<breakpoint>\"".to_string(),
+        }
+    }
+
     /// Push a frame onto the call stack.
     /// If `source_path` is provided, it takes precedence over `current_source_path`.
     pub(crate) fn push_frame(&mut self, function_name: &str, span: Span, source_path: Option<String>) {

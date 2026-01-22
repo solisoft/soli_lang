@@ -2099,9 +2099,10 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
                     interpreter.pop_frame();
                     if dev_mode {
                         let stack_trace = interpreter.get_stack_trace();
-                        let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
+                        let breakpoint_env = e.breakpoint_env_json();
+                        let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, breakpoint_env);
                         ResponseData {
-                            status: 500,
+                            status: if e.is_breakpoint() { 200 } else { 500 },
                             headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
                             body: error_html,
                         }
@@ -2119,7 +2120,7 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
             interpreter.pop_frame();
             if dev_mode {
                 let stack_trace = interpreter.get_stack_trace();
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, None);
                 ResponseData {
                     status: 500,
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2179,7 +2180,7 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         Err(e) => {
             return Some(if dev_mode {
                 let stack_trace = interpreter.get_stack_trace();
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, None);
                 ResponseData {
                     status: 500,
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2215,7 +2216,7 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         Err(e) => {
             if dev_mode {
                 let stack_trace = interpreter.get_stack_trace();
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, None);
                 ResponseData {
                     status: 500,
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2630,7 +2631,7 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
                         let stack_trace = interpreter.get_stack_trace();
-                        let error_html = render_error_page(&err.to_string(), interpreter, data, &stack_trace);
+                        let error_html = render_error_page(&err.to_string(), interpreter, data, &stack_trace, None);
                         return finalize_response(ResponseData {
                             status: 500,
                             headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2647,9 +2648,10 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             Err(e) => {
                 if dev_mode {
                     let stack_trace = interpreter.get_stack_trace();
-                    let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace);
+                    let breakpoint_env = e.breakpoint_env_json();
+                    let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace, breakpoint_env);
                     return finalize_response(ResponseData {
-                        status: 500,
+                        status: if e.is_breakpoint() { 200 } else { 500 },
                         headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
                         body: error_html,
                     });
@@ -2694,7 +2696,7 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
                         let stack_trace = interpreter.get_stack_trace();
-                        let error_html = render_error_page(&err.to_string(), interpreter, data, &stack_trace);
+                        let error_html = render_error_page(&err.to_string(), interpreter, data, &stack_trace, None);
                         return finalize_response(ResponseData {
                             status: 500,
                             headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2711,9 +2713,10 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             Err(e) => {
                 if dev_mode {
                     let stack_trace = interpreter.get_stack_trace();
-                    let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace);
+                    let breakpoint_env = e.breakpoint_env_json();
+                    let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace, breakpoint_env);
                     return finalize_response(ResponseData {
-                        status: 500,
+                        status: if e.is_breakpoint() { 200 } else { 500 },
                         headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
                         body: error_html,
                     });
@@ -2750,9 +2753,10 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
 
     let code = json.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string();
     let request_data = json.get("request_data").cloned();
+    let breakpoint_env = json.get("breakpoint_env").cloned();
 
     // Execute the code using the interpreter
-    let result = execute_repl_code(&code, request_data);
+    let result = execute_repl_code(&code, request_data, breakpoint_env);
     
     let response_json = serde_json::json!({
         "result": result.result,
@@ -2850,7 +2854,7 @@ struct ReplResult {
     error: Option<String>,
 }
 
-fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>) -> ReplResult {
+fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakpoint_env: Option<serde_json::Value>) -> ReplResult {
     if code.trim().is_empty() {
         return ReplResult {
             result: "null".to_string(),
@@ -2859,6 +2863,18 @@ fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>) -> Rep
     }
 
     let mut interpreter = crate::interpreter::Interpreter::new();
+
+    // Set up breakpoint environment variables first (these are the captured variables)
+    if let Some(env_obj) = breakpoint_env {
+        if let serde_json::Value::Object(map) = env_obj {
+            for (name, value) in map {
+                // Skip internal variables
+                if !name.starts_with("__") {
+                    interpreter.environment.borrow_mut().define(name, convert_json_to_value(value));
+                }
+            }
+        }
+    }
 
     // Set up environment variables from request data
     if let Some(data) = request_data {
@@ -2973,8 +2989,9 @@ fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::
 }
 
 /// Helper function to render error page with full details.
-fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String]) -> String {
-    let error_type = "RuntimeError";
+/// If `breakpoint_env_json` is provided, it will be used to populate REPL variables.
+fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String], breakpoint_env_json: Option<&str>) -> String {
+    let error_type = if breakpoint_env_json.is_some() { "Breakpoint" } else { "RuntimeError" };
     let mut location = "unknown:0".to_string();
     let mut full_stack_trace: Vec<String> = Vec::new();
 
@@ -3032,6 +3049,7 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
         &location,
         &full_stack_trace,
         &request_data_json,
+        breakpoint_env_json,
     )
 }
 
@@ -3127,6 +3145,7 @@ pub fn render_dev_error_page(
     location: &str,
     stack_trace: &[String],
     request_data_json: &str,
+    breakpoint_env_json: Option<&str>,
 ) -> String {
     let error_message = escape_html(error);
     let error_type = escape_html(error_type);
@@ -3135,7 +3154,13 @@ pub fn render_dev_error_page(
     // Format stack trace
     // Stack trace format: "{function_name} at {file}:{line}"
     let mut stack_frames = Vec::new();
-    for (i, frame) in stack_trace.iter().enumerate() {
+    let mut frame_index = 0;
+    for frame in stack_trace.iter() {
+        // Skip "Error: ..." entries - they're not actual stack frames
+        if frame.starts_with("Error: ") {
+            continue;
+        }
+
         let mut func = "unknown".to_string();
         let mut file = "unknown".to_string();
         let mut line: usize = 0;
@@ -3159,11 +3184,19 @@ pub fn render_dev_error_page(
             func = frame.clone();
         }
 
-        let location_display = if file != "unknown" {
-            format!("{}:{}", file, line)
+        // Extract a clean display name from the function
+        // "HomeController#index" -> "HomeController#index"
+        // Or extract controller name from file path if func is just the path
+        let display_name = if func.contains('#') || func.contains("::") {
+            func.clone()
+        } else if func.contains('/') {
+            // If func looks like a file path, extract the name
+            extract_controller_name(&func)
         } else {
-            "unknown location".to_string()
+            func.clone()
         };
+
+        let location_display = format!("{}:{}", file, line);
 
         stack_frames.push(format!(
             r#"<div class="stack-frame px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors" onclick="showSource('{}', {}, this)">
@@ -3175,8 +3208,9 @@ pub fn render_dev_error_page(
                     </div>
                 </div>
             </div>"#,
-            escape_html(&file), line, i, escape_html(&func), escape_html(&location_display)
+            escape_html(&file), line, frame_index, escape_html(&display_name), escape_html(&location_display)
         ));
+        frame_index += 1;
     }
 
     // Parse request data from JSON
@@ -3385,7 +3419,8 @@ pub fn render_dev_error_page(
     <script>
         const sourceCache = {{}};
         const currentRequestData = {request_data_json};
-        
+        const breakpointEnv = {breakpoint_env_js};
+
         function showRequestTab(tabName) {{
             document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.request-tab').forEach(el => el.classList.remove('active'));
@@ -3457,7 +3492,7 @@ pub fn render_dev_error_page(
                 const response = await fetch('/__dev/repl', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ code: code, request_data: currentRequestData }})
+                    body: JSON.stringify({{ code: code, request_data: currentRequestData, breakpoint_env: breakpointEnv }})
                 }});
                 const result = await response.json();
                 if (result.error) {{
@@ -3639,10 +3674,21 @@ pub fn render_dev_error_page(
         error_location = error_location,
         stack_frames = stack_frames.join("\n"),
         request_data_json = request_data_json,
+        breakpoint_env_js = breakpoint_env_json.unwrap_or("null"),
         request_method = escape_html(&request_method),
         request_path = escape_html(&request_path),
         request_time = request_time,
     )
+}
+
+/// Extract controller name from a file path
+/// "./app/controllers/home_controller.soli" -> "home_controller"
+fn extract_controller_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string()
 }
 
 fn escape_html(s: &str) -> String {

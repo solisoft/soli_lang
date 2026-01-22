@@ -40,6 +40,8 @@ pub enum Value {
     Future(Arc<Mutex<FutureState>>),
     /// Method on a value (array/hash) - captures receiver and method name
     Method(ValueMethod),
+    /// Breakpoint marker - triggers debug mode when encountered
+    Breakpoint,
 }
 
 /// The type of HTTP future result
@@ -102,6 +104,7 @@ impl Value {
             Value::Instance(_) => "Instance",
             Value::Future(_) => "Future",
             Value::Method(_) => "Method",
+            Value::Breakpoint => "Breakpoint",
         }
     }
 
@@ -255,6 +258,7 @@ impl fmt::Display for Value {
                 method.receiver.type_name(),
                 method.method_name
             ),
+            Value::Breakpoint => write!(f, "<breakpoint>"),
         }
     }
 }

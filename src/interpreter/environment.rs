@@ -65,6 +65,22 @@ impl Environment {
     pub fn enclosing(&self) -> Option<Rc<RefCell<Environment>>> {
         self.enclosing.clone()
     }
+
+    /// Get all variables from this scope and all enclosing scopes.
+    /// Used for debugging (breakpoints).
+    pub fn get_all_variables(&self) -> HashMap<String, Value> {
+        let mut all_vars = HashMap::new();
+
+        // First get variables from enclosing scopes (so local ones can override)
+        if let Some(ref enclosing) = self.enclosing {
+            all_vars.extend(enclosing.borrow().get_all_variables());
+        }
+
+        // Then add/override with variables from current scope
+        all_vars.extend(self.values.clone());
+
+        all_vars
+    }
 }
 
 impl Default for Environment {

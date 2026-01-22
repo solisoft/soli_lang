@@ -251,6 +251,13 @@ pub enum RuntimeError {
 
     #[error("{message} at {span}")]
     General { message: String, span: Span },
+
+    #[error("Breakpoint hit at {span}")]
+    Breakpoint {
+        span: Span,
+        /// JSON-serialized environment variables for debugging
+        env_json: String,
+    },
 }
 
 impl RuntimeError {
@@ -299,6 +306,20 @@ impl RuntimeError {
             Self::NoSuchProperty { span, .. } => *span,
             Self::NotAClass(_, span) => *span,
             Self::General { span, .. } => *span,
+            Self::Breakpoint { span, .. } => *span,
+        }
+    }
+
+    /// Check if this is a breakpoint error.
+    pub fn is_breakpoint(&self) -> bool {
+        matches!(self, Self::Breakpoint { .. })
+    }
+
+    /// Get the environment JSON from a breakpoint error.
+    pub fn breakpoint_env_json(&self) -> Option<&str> {
+        match self {
+            Self::Breakpoint { env_json, .. } => Some(env_json),
+            _ => None,
         }
     }
 }

@@ -68,6 +68,14 @@ pub fn register_builtins(env: &mut Environment) {
         })),
     );
 
+    // break() - Trigger a breakpoint for debugging (opens dev page with REPL)
+    env.define(
+        "break".to_string(),
+        Value::NativeFunction(NativeFunction::new("break", Some(0), |_args| {
+            Ok(Value::Breakpoint)
+        })),
+    );
+
     // input(prompt?) - Read a line from stdin
     env.define(
         "input".to_string(),
