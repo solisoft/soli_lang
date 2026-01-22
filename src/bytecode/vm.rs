@@ -176,11 +176,13 @@ enum NativeId {
     DurationHours,
     DurationDays,
     DurationWeeks,
+    // Async functions
+    Await,
 }
 
 impl NativeId {
     fn from_u16(val: u16) -> Option<Self> {
-        if val <= NativeId::DurationWeeks as u16 {
+        if val <= NativeId::Await as u16 {
             Some(unsafe { std::mem::transmute(val) })
         } else {
             None
@@ -275,6 +277,8 @@ impl NativeId {
             NativeId::DurationHours => Some(1),
             NativeId::DurationDays => Some(1),
             NativeId::DurationWeeks => Some(1),
+            // Async functions
+            NativeId::Await => Some(1),
         }
     }
 }
@@ -2162,6 +2166,11 @@ impl VM {
                     VMValue::Float(s) => Ok(VMValue::Float(s / 604800.0)),
                     _ => Err(RuntimeError::new("Invalid duration value", Span::default())),
                 }
+            }
+            NativeId::Await => {
+                // For non-Future values, just return as-is
+                // Futures in the VM are not currently supported, so this is mostly a pass-through
+                Ok(args.into_iter().next().unwrap_or(VMValue::Null))
             }
         }
     }

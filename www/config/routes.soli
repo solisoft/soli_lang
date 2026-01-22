@@ -23,6 +23,7 @@ get("/docs/middleware", "docs#middleware");
 get("/docs/websockets", "docs#websockets");
 get("/docs/live-reload", "docs#live_reload");
 get("/docs/soli-language", "docs#soli_language");
+get("/docs/builtins", "docs#builtins");
 get("/docs/i18n", "docs#i18n");
 get("/docs/authentication", "docs#authentication");
 get("/docs/sessions", "docs#sessions");
@@ -30,6 +31,7 @@ get("/docs/validation", "docs#validation");
 get("/docs/testing", "docs#testing");
 get("/docs/debugging", "docs#debugging");
 get("/docs/request-params", "docs#request_params");
+get("/docs/scaffold", "docs#scaffold");
 
 // WebSocket Demo
 get("/websocket", "websocket#demo");

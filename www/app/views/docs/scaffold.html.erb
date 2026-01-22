@@ -1,0 +1,516 @@
+<div class="max-w-3xl mx-auto">
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Scaffold Generator</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Quickly generate complete MVC resources with models, controllers, views, tests, and migrations.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Basic Usage</h2>
+    <p class="text-gray-400 mb-6">Generate a scaffold for a resource:</p>
+
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">Terminal</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm font-mono text-gray-300"><span class="text-green-400">$</span> soli generate scaffold users
+<span class="text-green-400">$</span> soli generate scaffold products name:string price:decimal</pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">What Gets Generated</h2>
+    <p class="text-gray-400 mb-6">Running <code>soli generate scaffold users</code> creates:</p>
+
+    <div class="grid grid-cols-1 gap-4 mb-12">
+        <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+            </div>
+            <div>
+                <div class="font-medium text-white">Model</div>
+                <div class="text-sm text-gray-500">app/models/users_model.soli</div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+                </svg>
+            </div>
+            <div>
+                <div class="font-medium text-white">Controller</div>
+                <div class="text-sm text-gray-500">app/controllers/users_controller.soli</div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-pink-500/10 text-pink-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </div>
+            <div>
+                <div class="font-medium text-white">Views</div>
+                <div class="text-sm text-gray-500">app/views/users/ (index, show, new, edit, _form)</div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10 text-green-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <div class="font-medium text-white">Tests</div>
+                <div class="text-sm text-gray-500">tests/models/users_test.soli, tests/controllers/users_controller_test.soli</div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-500/10 text-yellow-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 19.5l11.25-11.25m0 0L11.25 6.75m11.25 11.25l-11.25 11.25m11.25-11.25H3m16.5 0H21m-1.5 0H12m-8.457 3.077l1.41-.513m14.095-5.13l1.41-.513M5.106 17.785l1.15-.964m11.49-9.642l1.149-.964M7.501 19.795l.75-1.3m7.5-12.99l.75-1.3m-6.063 16.658l.26-1.477m2.605-14.772l.26-1.477m0 17.726l-.26-1.477M10.698 4.614l-.26-1.477M16.5 19.794l-.75-1.299M7.5 4.205L12 12m6.894 5.785l-1.149-.964M6.256 7.178l-1.15-.964m15.352 8.864l-1.41-.513M4.954 9.435l-1.41-.514M12.002 12l-3.75 6.495" />
+                </svg>
+            </div>
+            <div>
+                <div class="font-medium text-white">Migration</div>
+                <div class="text-sm text-gray-500">db/migrations/*create_users_*.soli</div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                </svg>
+            </div>
+            <div>
+                <div class="font-medium text-white">Routes</div>
+                <div class="text-sm text-gray-500">Auto-added to config/routes.soli</div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Field Types</h2>
+    <p class="text-gray-400 mb-6">Specify fields with <code>name:type</code> syntax:</p>
+
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-12">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-4 font-semibold text-white">Type</th>
+                    <th class="px-6 py-4 font-semibold text-white">HTML Input</th>
+                    <th class="px-6 py-4 font-semibold text-white">Example</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">string</td>
+                    <td class="px-6 py-4 text-gray-400">text</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">name:string</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">text</td>
+                    <td class="px-6 py-4 text-gray-400">textarea</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">content:text</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">email</td>
+                    <td class="px-6 py-4 text-gray-400">email (unique index)</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">email:email</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">password</td>
+                    <td class="px-6 py-4 text-gray-400">password (unique index)</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">password:password</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">integer</td>
+                    <td class="px-6 py-4 text-gray-400">number</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">age:integer</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">float</td>
+                    <td class="px-6 py-4 text-gray-400">number</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">price:float</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">boolean</td>
+                    <td class="px-6 py-4 text-gray-400">checkbox</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">active:boolean</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">date</td>
+                    <td class="px-6 py-4 text-gray-400">date picker</td>
+                    <td class="px-6 py-4 font-mono text-gray-500">birthdate:date</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Generated Code</h2>
+    <p class="text-gray-400 mb-6">Running <code>soli generate scaffold users name:string email:text</code> generates:</p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Model</h3>
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">app/models/users_model.soli</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Users</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Model</span> {
+    <span class="text-gray-500">// Fields</span>
+    <span class="text-gray-500">// name (string)</span>
+    <span class="text-gray-500">// email (text)</span>
+
+    <span class="text-gray-500">// Validations (auto-generated)</span>
+    <span class="text-blue-400">validates</span>(<span class="text-green-400">"name"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
+    <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
+
+    <span class="text-gray-500">// Callbacks</span>
+    <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)
+}</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Controller</h3>
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">app/controllers/users_controller.soli</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">UsersController</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Controller</span> {
+    <span class="text-purple-400">fn</span> <span class="text-blue-400">index</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+        <span class="text-purple-400">let</span> users = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">all</span>();
+        <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"users/index"</span>, {
+            <span class="text-green-400">"users"</span>: users,
+            <span class="text-green-400">"title"</span>: <span class="text-green-400">"UsersController"</span>
+        });
+    }
+
+    <span class="text-purple-400">fn</span> <span class="text-blue-400">show</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+        <span class="text-purple-400">let</span> id = req[<span class="text-green-400">"params"</span>][<span class="text-green-400">"id"</span>];
+        <span class="text-purple-400">let</span> user = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">find</span>(id);
+        <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"users/show"</span>, {
+            <span class="text-green-400">"user"</span>: user,
+            <span class="text-green-400">"title"</span>: <span class="text-green-400">"View User"</span>
+        });
+    }
+
+    <span class="text-purple-400">fn</span> <span class="text-blue-400">create</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(req[<span class="text-green-400">"params"</span>]);
+        <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>] == <span class="text-purple-400">true</span> {
+            <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>);
+        }
+        <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"users/new"</span>, {
+            <span class="text-green-400">"user"</span>: result,
+            <span class="text-green-400">"title"</span>: <span class="text-green-400">"New User"</span>
+        });
+    }
+
+    <span class="text-purple-400">fn</span> <span class="text-blue-400">update</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+        <span class="text-purple-400">let</span> id = req[<span class="text-green-400">"params"</span>][<span class="text-green-400">"id"</span>];
+        <span class="text-yellow-200">Users</span>.<span class="text-blue-400">update</span>(id, req[<span class="text-green-400">"params"</span>]);
+        <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>);
+    }
+
+    <span class="text-purple-400">fn</span> <span class="text-blue-400">delete</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+        <span class="text-purple-400">let</span> id = req[<span class="text-green-400">"params"</span>][<span class="text-green-400">"id"</span>];
+        <span class="text-yellow-200">Users</span>.<span class="text-blue-400">delete</span>(id);
+        <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>);
+    }
+}</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Views</h3>
+
+    <h4 class="text-lg font-medium text-gray-300 mb-3">Index View</h4>
+    <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">app/views/users/index.html.erb</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"p-6"</span><span class="text-blue-400">&gt;</span>
+    <span class="text-blue-400">&lt;h1</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-2xl font-bold"</span><span class="text-blue-400">&gt;</span>Users<span class="text-blue-400">&lt;/h1&gt;</span>
+
+    <span class="text-blue-400">&lt;table</span> <span class="text-purple-400">class=</span><span class="text-green-400">"w-full"</span><span class="text-blue-400">&gt;</span>
+        <span class="text-blue-400">&lt;thead&gt;</span>
+            <span class="text-blue-400">&lt;tr&gt;</span>
+                <span class="text-blue-400">&lt;th&gt;</span>ID<span class="text-blue-400">&lt;/th&gt;</span>
+                <span class="text-blue-400">&lt;th&gt;</span>Name<span class="text-blue-400">&lt;/th&gt;</span>
+                <span class="text-blue-400">&lt;th&gt;</span>Actions<span class="text-blue-400">&lt;/th&gt;</span>
+            <span class="text-blue-400">&lt;/tr&gt;</span>
+        <span class="text-blue-400">&lt;/thead&gt;</span>
+        <span class="text-blue-400">&lt;tbody&gt;</span>
+            <span class="text-white">&lt;% for user in users %&gt;</span>
+            <span class="text-blue-400">&lt;tr&gt;</span>
+                <span class="text-blue-400">&lt;td&gt;</span><span class="text-white">&lt;%= user["id"] %&gt;</span><span class="text-blue-400">&lt;/td&gt;</span>
+                <span class="text-blue-400">&lt;td&gt;</span><span class="text-white">&lt;%= user["name"] %&gt;</span><span class="text-blue-400">&lt;/td&gt;</span>
+                <span class="text-blue-400">&lt;td&gt;</span>
+                    <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/users/&lt;%= user["id"] %&gt;"</span><span class="text-blue-400">&gt;</span>Show<span class="text-blue-400">&lt;/a&gt;</span>
+                    <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/users/&lt;%= user["id"] %&gt;/edit"</span><span class="text-blue-400">&gt;</span>Edit<span class="text-blue-400">&lt;/a&gt;</span>
+                <span class="text-blue-400">&lt;/td&gt;</span>
+            <span class="text-blue-400">&lt;/tr&gt;</span>
+            <span class="text-white">&lt;% end %&gt;</span>
+        <span class="text-blue-400">&lt;/tbody&gt;</span>
+    <span class="text-blue-400">&lt;/table&gt;</span>
+
+    <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/users/new"</span><span class="text-blue-400">&gt;</span>New User<span class="text-blue-400">&lt;/a&gt;</span>
+<span class="text-blue-400">&lt;/div&gt;</span></code></pre>
+        </div>
+    </div>
+
+    <h4 class="text-lg font-medium text-gray-300 mb-3">Form Partial (shared by new/edit)</h4>
+    <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">app/views/users/_form.html.erb</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;form</span> <span class="text-purple-400">action=</span><span class="text-green-400">"/users"</span> <span class="text-purple-400">method=</span><span class="text-green-400">"POST"</span><span class="text-blue-400">&gt;</span>
+    <span class="text-blue-400">&lt;input</span> <span class="text-purple-400">type=</span><span class="text-green-400">"text"</span> <span class="text-purple-400">name=</span><span class="text-green-400">"name"</span> <span class="text-purple-400">value=</span><span class="text-green-400">"&lt;%= user["name"] %&gt;"</span><span class="text-blue-400">&gt;</span>
+    <span class="text-blue-400">&lt;input</span> <span class="text-purple-400">type=</span><span class="text-green-400">"text"</span> <span class="text-purple-400">name=</span><span class="text-green-400">"email"</span> <span class="text-purple-400">value=</span><span class="text-green-400">"&lt;%= user["email"] %&gt;"</span><span class="text-blue-400">&gt;</span>
+    <span class="text-blue-400">&lt;button</span> <span class="text-purple-400">type=</span><span class="text-green-400">"submit"</span><span class="text-blue-400">&gt;</span>Submit<span class="text-blue-400">&lt;/button&gt;</span>
+    <span class="text-blue-400">&lt;/form&gt;</span></code></pre>
+        </div>
+    </div>
+
+    <h4 class="text-lg font-medium text-gray-300 mb-3">New View</h4>
+    <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">app/views/users/new.html.erb</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;h1</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-2xl font-bold mb-6"</span><span class="text-blue-400">&gt;</span>New User<span class="text-blue-400">&lt;/h1&gt;</span>
+
+<span class="text-white">&lt;%= render("users/_form", { "user": user }) %&gt;</span>
+
+<span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/users"</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-indigo-400 hover:text-indigo-300"</span><span class="text-blue-400">&gt;</span>&larr; Back to Users<span class="text-blue-400">&lt;/a&gt;</span></code></pre>
+        </div>
+    </div>
+
+    <h4 class="text-lg font-medium text-gray-300 mb-3">Edit View</h4>
+    <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">app/views/users/edit.html.erb</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;h1</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-2xl font-bold mb-6"</span><span class="text-blue-400">&gt;</span>Edit User<span class="text-blue-400">&lt;/h1&gt;</span>
+
+<span class="text-white">&lt;%= render("users/_form", { "user": user }) %&gt;</span>
+
+<span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/users"</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-indigo-400 hover:text-indigo-300"</span><span class="text-blue-400">&gt;</span>&larr; Back to Users<span class="text-blue-400">&lt;/a&gt;</span></code></pre>
+        </div>
+    </div>
+
+    <h4 class="text-lg font-medium text-gray-300 mb-3">Show View</h4>
+    <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">app/views/users/show.html.erb</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"p-6"</span><span class="text-blue-400">&gt;</span>
+    <span class="text-blue-400">&lt;h1</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-2xl font-bold mb-4"</span><span class="text-blue-400">&gt;</span>User Details<span class="text-blue-400">&lt;/h1&gt;</span>
+
+    <span class="text-blue-400">&lt;dl</span> <span class="text-purple-400">class=</span><span class="text-green-400">"space-y-4"</span><span class="text-blue-400">&gt;</span>
+        <span class="text-blue-400">&lt;div&gt;</span>
+            <span class="text-blue-400">&lt;dt</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-sm text-gray-400"</span><span class="text-blue-400">&gt;</span>ID<span class="text-blue-400">&lt;/dt&gt;</span>
+            <span class="text-blue-400">&lt;dd</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-lg text-white"</span><span class="text-blue-400">&gt;</span><span class="text-white">&lt;%= user["id"] %&gt;</span><span class="text-blue-400">&lt;/dd&gt;</span>
+        <span class="text-blue-400">&lt;/div&gt;</span>
+        <span class="text-blue-400">&lt;div&gt;</span>
+            <span class="text-blue-400">&lt;dt</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-sm text-gray-400"</span><span class="text-blue-400">&gt;</span>Name<span class="text-blue-400">&lt;/dt&gt;</span>
+            <span class="text-blue-400">&lt;dd</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-lg text-white"</span><span class="text-blue-400">&gt;</span><span class="text-white">&lt;%= user["name"] %&gt;</span><span class="text-blue-400">&lt;/dd&gt;</span>
+        <span class="text-blue-400">&lt;/div&gt;</span>
+    <span class="text-blue-400">&lt;/dl&gt;</span>
+
+    <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/users/&lt;%= user["id"] %&gt;/edit"</span> <span class="text-purple-400">class=</span><span class="text-green-400">"bg-yellow-600 text-white px-4 py-2 rounded"</span><span class="text-blue-400">&gt;</span>Edit<span class="text-blue-400">&lt;/a&gt;</span>
+    <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/users"</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-indigo-400 ml-4"</span><span class="text-blue-400">&gt;</span>&larr; Back<span class="text-blue-400">&lt;/a&gt;</span>
+<span class="text-blue-400">&lt;/div&gt;</span></code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Migration</h3>
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">db/migrations/*create_users_*.soli</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">fn</span> <span class="text-blue-400">up</span>(db: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    db.<span class="text-blue-400">create_collection</span>(<span class="text-green-400">"users"</span>);
+}
+
+<span class="text-purple-400">fn</span> <span class="text-blue-400">down</span>(db: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    db.<span class="text-blue-400">drop_collection</span>(<span class="text-green-400">"users"</span>);
+}</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Tests</h3>
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">tests/models/users_test.soli</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">describe</span>(<span class="text-green-400">"UsersModel"</span>, <span class="text-purple-400">fn</span>() {
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"should create valid record"</span>, <span class="text-purple-400">fn</span>() {
+        <span class="text-purple-400">let</span> data = { <span class="text-green-400">"name"</span>: <span class="text-green-400">"Test User"</span> };
+        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(data);
+        <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"valid"</span>], <span class="text-green-400">"Create should return valid"</span>);
+    })
+})</code></pre>
+        </div>
+    </div>
+
+    <h4 class="text-lg font-medium text-gray-300 mb-3">Controller Test</h4>
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">tests/controllers/users_controller_test.soli</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">describe</span>(<span class="text-green-400">"UsersController"</span>, <span class="text-purple-400">fn</span>() {
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"index action should render users list"</span>, <span class="text-purple-400">fn</span>() {
+        <span class="text-purple-400">let</span> req = { <span class="text-green-400">"params"</span>: {}, <span class="text-green-400">"session"</span>: {} };
+        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">UsersController</span>.<span class="text-blue-400">index</span>(req);
+        <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"status"</span>] == <span class="text-orange-300">200</span>, <span class="text-green-400">"Index should return 200"</span>);
+    })
+
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"show action should return single user"</span>, <span class="text-purple-400">fn</span>() {
+        <span class="text-purple-400">let</span> req = { <span class="text-green-400">"params"</span>: { <span class="text-green-400">"id"</span>: <span class="text-green-400">"test-id"</span> }, <span class="text-green-400">"session"</span>: {} };
+        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">UsersController</span>.<span class="text-blue-400">show</span>(req);
+        <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"status"</span>] == <span class="text-orange-300">200</span>, <span class="text-green-400">"Show should return 200"</span>);
+    })
+
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"create action should redirect on success"</span>, <span class="text-purple-400">fn</span>() {
+        <span class="text-purple-400">let</span> req = { <span class="text-green-400">"params"</span>: { <span class="text-green-400">"name"</span>: <span class="text-green-400">"Test"</span> }, <span class="text-green-400">"session"</span>: {} };
+        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">UsersController</span>.<span class="text-blue-400">create</span>(req);
+        <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"redirect"</span>] != <span class="text-purple-400">null</span>, <span class="text-green-400">"Create should redirect"</span>);
+    })
+
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"delete action should redirect"</span>, <span class="text-purple-400">fn</span>() {
+        <span class="text-purple-400">let</span> req = { <span class="text-green-400">"params"</span>: { <span class="text-green-400">"id"</span>: <span class="text-green-400">"test-id"</span> }, <span class="text-green-400">"session"</span>: {} };
+        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">UsersController</span>.<span class="text-blue-400">delete</span>(req);
+        <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"redirect"</span>] != <span class="text-purple-400">null</span>, <span class="text-green-400">"Delete should redirect"</span>);
+    })
+})</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Auto-Validations</h2>
+    <p class="text-gray-400 mb-6">Fields with types <code>string</code>, <code>text</code>, <code>email</code>, <code>password</code>, and <code>url</code> automatically get <code>presence: true</code> validation:</p>
+
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">app/models/users_model.soli</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Users</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Model</span> {
+    <span class="text-gray-500">// Fields</span>
+    <span class="text-gray-500">// name (string)</span>
+    <span class="text-gray-500">// email (email)</span>
+
+    <span class="text-gray-500">// Validations (auto-generated)</span>
+    <span class="text-blue-400">validates</span>(<span class="text-green-400">"name"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
+    <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
+
+    <span class="text-gray-500">// Callbacks</span>
+    <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)
+}</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Generated Routes</h2>
+    <p class="text-gray-400 mb-6">Scaffold automatically adds RESTful routes:</p>
+
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-12">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-4 font-semibold text-white">HTTP</th>
+                    <th class="px-6 py-4 font-semibold text-white">Path</th>
+                    <th class="px-6 py-4 font-semibold text-white">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="px-6 py-4 font-mono text-green-400">GET</td>
+                    <td class="px-6 py-4 font-mono text-gray-300">/users</td>
+                    <td class="px-6 py-4 text-gray-400">index</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-green-400">GET</td>
+                    <td class="px-6 py-4 font-mono text-gray-300">/users/new</td>
+                    <td class="px-6 py-4 text-gray-400">new</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-blue-400">POST</td>
+                    <td class="px-6 py-4 font-mono text-gray-300">/users</td>
+                    <td class="px-6 py-4 text-gray-400">create</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-green-400">GET</td>
+                    <td class="px-6 py-4 font-mono text-gray-300">/users/:id</td>
+                    <td class="px-6 py-4 text-gray-400">show</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-green-400">GET</td>
+                    <td class="px-6 py-4 font-mono text-gray-300">/users/:id/edit</td>
+                    <td class="px-6 py-4 text-gray-400">edit</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-yellow-400">PUT</td>
+                    <td class="px-6 py-4 font-mono text-gray-300">/users/:id</td>
+                    <td class="px-6 py-4 text-gray-400">update</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-red-400">DELETE</td>
+                    <td class="px-6 py-4 font-mono text-gray-300">/users/:id</td>
+                    <td class="px-6 py-4 text-gray-400">delete</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Example</h2>
+    <p class="text-gray-400 mb-6">Generate a complete blog posts resource:</p>
+
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">Terminal</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm font-mono text-gray-300"><span class="text-green-400">$</span> soli generate scaffold posts title:string content:text author:string published:boolean
+<span class="text-green-400">Success!</span> Created scaffold for posts</pre>
+        </div>
+    </div>
+
+    <div class="p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h3 class="text-lg font-semibold text-indigo-400 mb-2">Next Steps</h3>
+        <ul class="space-y-2 text-gray-300">
+            <li class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Run migrations: <code class="mx-1 text-indigo-300">soli db:migrate up</code>
+            </li>
+            <li class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Start server: <code class="mx-1 text-indigo-300">soli serve . --dev</code>
+            </li>
+            <li class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Visit: <code class="mx-1 text-indigo-300">http://localhost:3000/posts</code>
+            </li>
+        </ul>
+    </div>
+</div>

@@ -101,6 +101,14 @@ fn soli_language(req: Any) -> Any {
     });
 }
 
+fn builtins(req: Any) -> Any {
+    return render("docs/builtins", {
+        "title": "Built-in Functions",
+        "section": "language_reference",
+        "layout": "layouts/docs"
+    });
+}
+
 fn i18n(req: Any) -> Any {
     return render("docs/i18n", {
         "title": "Internationalization",
@@ -153,6 +161,14 @@ fn request_params(req: Any) -> Any {
     return render("docs/request-params", {
         "title": "Request Parameters",
         "section": "core_concepts",
+        "layout": "layouts/docs"
+    });
+}
+
+fn scaffold(req: Any) -> Any {
+    return render("docs/scaffold", {
+        "title": "Scaffold Generator",
+        "section": "development_tools",
         "layout": "layouts/docs"
     });
 }

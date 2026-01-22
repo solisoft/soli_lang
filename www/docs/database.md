@@ -73,6 +73,59 @@ SOLIDB_USERNAME=prod_user
 SOLIDB_PASSWORD=secure_password_here
 ```
 
+## Setting APP_ENV
+
+The `APP_ENV` environment variable controls which environment-specific `.env` file is loaded. When set, the system automatically:
+
+1. Loads the base `.env` file first
+2. Then loads `.env.{APP_ENV}` to override values
+
+This matches the convention used by Rails, Node.js, and other frameworks.
+
+### Option 1: Shell Environment (Recommended for CI/Production)
+
+Set `APP_ENV` when running commands:
+
+```bash
+# Run migrations in production
+APP_ENV=production soli db:migrate
+
+# Start server in test mode
+APP_ENV=test soli serve
+
+# Run with development settings (default)
+soli serve
+```
+
+### Option 2: In .env File (For Local Development)
+
+Set `APP_ENV` in your base `.env` file:
+
+```bash
+# .env
+APP_ENV=development
+SOLIDB_DATABASE=myapp_development
+```
+
+### File Loading Order
+
+```
+1. .env              (base configuration)
+2. .env.{APP_ENV}    (environment overrides)
+```
+
+Environment-specific values override base values. For example:
+
+```bash
+# .env
+SOLIDB_DATABASE=myapp_development
+
+# .env.production
+SOLIDB_DATABASE=myapp_production
+```
+
+Running `APP_ENV=production soli serve` will use `myapp_production` as the database.
+
 ## Starting SoliDB
 
 Before running your application, start the SoliDB server:

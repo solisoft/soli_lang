@@ -46,14 +46,15 @@ let user = User.find("user123");
 let users = User.all();
 
 // Find with where clause (SDBQL filter syntax)
-let adults = User.where("doc.age >= @age", { "age": 18 });
-let active = User.where("doc.status == @status", { "status": "active" });
+// Note: where() returns a QueryBuilder - call .all() to get results
+let adults = User.where("doc.age >= @age", { "age": 18 }).all();
+let active = User.where("doc.status == @status", { "status": "active" }).all();
 
 // Complex conditions
 let results = User.where("doc.age >= @min_age AND doc.role == @role", {
     "min_age": 21,
     "role": "admin"
-});
+}).all();
 ```
 
 ### Updating Records
@@ -211,6 +212,7 @@ class Post extends Model {
 }
 
 class User extends Model {
+    // Returns a QueryBuilder for chaining
     fn posts() -> Any {
         return Post.where("doc.author_id == @id", { "id": this.id });
     }
@@ -221,7 +223,10 @@ let post = Post.find("post123");
 let author = post.author();
 
 let user = User.find("user123");
-let user_posts = user.posts();
+// posts() returns QueryBuilder - chain .all() to get results
+let user_posts = user.posts().all();
+// Or chain more methods before executing
+let recent_posts = user.posts().order("created_at", "desc").limit(5).all();
 ```
 
 ## Custom Methods
@@ -352,6 +357,7 @@ describe("User model", fn() {
         User.create({ "name": "Alice", "age": 25 });
         User.create({ "name": "Bob", "age": 17 });
 
+        // where() returns QueryBuilder - chain .all() to get results
         let adults = User.where("doc.age >= @age", { "age": 18 }).all();
         expect(len(adults)).to_equal(1);
     });

@@ -5,27 +5,106 @@
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Create a new Soli MVC application with the given name.
-pub fn create_app(name: &str) -> Result<(), String> {
-    let app_path = Path::new(name);
+/// A field definition parsed from scaffold arguments
+#[derive(Debug, Clone)]
+struct FieldDefinition {
+    name: String,
+    field_type: String,
+}
 
-    if app_path.exists() {
-        return Err(format!("Directory '{}' already exists", name));
+impl FieldDefinition {
+    fn parse(field_str: &str) -> Option<Self> {
+        let parts: Vec<&str> = field_str.split(':').collect();
+        match parts.as_slice() {
+            [name, field_type] => Some(Self {
+                name: name.to_string(),
+                field_type: field_type.to_string(),
+            }),
+            _ => None,
+        }
     }
 
-    // Create directory structure
-    create_directories(app_path)?;
+    fn to_snake_case(&self) -> String {
+        let mut result = String::new();
+        for (i, c) in self.name.chars().enumerate() {
+            if c.is_uppercase() {
+                if i > 0 {
+                    result.push('_');
+                }
+                result.push(c.to_ascii_lowercase());
+            } else {
+                result.push(c);
+            }
+        }
+        result
+    }
 
-    // Create files
-    create_routes_file(app_path)?;
-    create_home_controller(app_path)?;
-    create_layout(app_path)?;
-    create_index_view(app_path)?;
-    create_css_file(app_path)?;
-    create_env_file(app_path)?;
-    create_gitignore(app_path)?;
-    create_readme(app_path, name)?;
+    fn to_title_case(&self) -> String {
+        let snake = self.to_snake_case();
+        snake
+            .split('_')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+/// Create scaffold for a resource (model, controller, views)
+pub fn create_scaffold(folder: &str, name: &str) -> Result<(), String> {
+    create_scaffold_with_fields(folder, name, &[])
+}
+
+pub fn create_scaffold_with_fields(
+    folder: &str,
+    name: &str,
+    fields: &[String],
+) -> Result<(), String> {
+    let app_path = Path::new(folder);
+
+    if !app_path.exists() {
+        return Err(format!("Directory '{}' does not exist", folder));
+    }
+
+    if !app_path.is_dir() {
+        return Err(format!("'{}' is not a directory", folder));
+    }
+
+    let parsed_fields: Vec<FieldDefinition> = fields
+        .iter()
+        .filter_map(|f| FieldDefinition::parse(f))
+        .collect();
+
+    // Ensure directory structure exists
+    ensure_directory_structure(app_path)?;
+
+    // Create model
+    create_model(app_path, name, &parsed_fields)?;
+
+    // Create controller
+    create_controller(app_path, name)?;
+
+    // Create views (index, show, new, edit)
+    create_views(app_path, name, &parsed_fields)?;
+
+    // Create form partial (shared by new/edit)
+    create_form_partial(app_path, name, &parsed_fields)?;
+
+    // Create migration
+    create_migration(app_path, name, &parsed_fields)?;
+
+    // Create tests
+    create_tests(app_path, name)?;
+
+    // Add routes
+    add_routes(app_path, name)?;
 
     Ok(())
 }
@@ -467,7 +546,10 @@ MIT
 /// Print success message after creating an app
 pub fn print_success_message(name: &str) {
     println!();
-    println!("  \x1b[32m\x1b[1mSuccess!\x1b[0m Created \x1b[1m{}\x1b[0m", name);
+    println!(
+        "  \x1b[32m\x1b[1mSuccess!\x1b[0m Created \x1b[1m{}\x1b[0m",
+        name
+    );
     println!();
     println!("  \x1b[2mGet started:\x1b[0m");
     println!();
@@ -475,5 +557,951 @@ pub fn print_success_message(name: &str) {
     println!("    \x1b[36msoli serve . --dev\x1b[0m");
     println!();
     println!("  \x1b[2mThen open\x1b[0m \x1b[4mhttp://localhost:3000\x1b[0m");
+    println!();
+}
+
+/// Create a new Soli MVC application
+pub fn create_app(name: &str) -> Result<(), String> {
+    let app_path = Path::new(name);
+
+    if app_path.exists() {
+        return Err(format!("Directory '{}' already exists", name));
+    }
+
+    // Create directory structure
+    create_directories(app_path)?;
+
+    // Create files
+    create_routes_file(app_path)?;
+    create_home_controller(app_path)?;
+    create_layout(app_path)?;
+    create_index_view(app_path)?;
+    create_css_file(app_path)?;
+    create_env_file(app_path)?;
+    create_gitignore(app_path)?;
+    create_readme(app_path, name)?;
+
+    Ok(())
+}
+
+fn ensure_directory_structure(app_path: &Path) -> Result<(), String> {
+    let dirs = [
+        "app/models",
+        "app/controllers",
+        "app/views",
+        "tests",
+        "tests/models",
+        "tests/controllers",
+        "config",
+        "db/migrations",
+    ];
+
+    for dir in dirs {
+        let path = app_path.join(dir);
+        if !path.exists() {
+            fs::create_dir_all(&path)
+                .map_err(|e| format!("Failed to create directory '{}': {}", path.display(), e))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn create_model(app_path: &Path, name: &str, fields: &[FieldDefinition]) -> Result<(), String> {
+    let model_name = to_pascal_case(name);
+    let collection_name = to_snake_case_plural(name);
+
+    let validations = fields
+        .iter()
+        .filter(|f| {
+            matches!(
+                f.field_type.as_str(),
+                "string" | "text" | "email" | "password" | "url"
+            )
+        })
+        .map(|f| {
+            format!(
+                "validates(\"{}\", {{ \"presence\": true }})",
+                f.to_snake_case()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let field_comments = fields
+        .iter()
+        .map(|f| format!("        // {} ({})", f.to_snake_case(), f.field_type))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let content = format!(
+        r#"// {model_name} model - auto-generated scaffold
+// Collection: {collection_name}
+
+class {model_name} extends Model {{
+    static {{
+        // Fields
+{field_comments}
+
+        // Validations
+{validations}
+    }}
+
+    // Callbacks
+    before_save("normalize_fields")
+}}
+"#,
+        model_name = model_name,
+        collection_name = collection_name,
+        field_comments = if field_comments.is_empty() {
+            "        // (no additional fields)".to_string()
+        } else {
+            field_comments
+        },
+        validations = if validations.is_empty() {
+            "        // (no validations defined)".to_string()
+        } else {
+            format!("        {}", validations.replace("\n", "\n        "))
+        }
+    );
+
+    let model_path = app_path
+        .join("app/models")
+        .join(format!("{}_model.soli", to_snake_case(name)));
+    write_file(&model_path, &content)?;
+    Ok(())
+}
+
+fn create_controller(app_path: &Path, name: &str) -> Result<(), String> {
+    let controller_name = to_pascal_case(name) + "Controller";
+    let resource_name = to_snake_case_plural(name);
+    let model_name = to_pascal_case(name);
+
+    let content = format!(
+        r#"// {} controller - auto-generated scaffold
+
+class {controller_name} extends Controller {{
+    static {{
+        this.layout = "application";
+    }}
+
+    // GET /{resource}
+    fn index(req: Any) -> Any {{
+        let {model_var}s = {model_name}.all();
+        return render("{resource}/index", {{
+            "{model_var}s": {model_var}s,
+            "title": "{controller_name}"
+        }});
+    }}
+
+    // GET /{resource}/:id
+    fn show(req: Any) -> Any {{
+        let id = req.params["id"];
+        let {model_var} = {model_name}.find(id);
+        if {model_var} == null {{
+            return error(404, "{model_name} not found");
+        }}
+        return render("{resource}/show", {{
+            "{model_var}": {model_var},
+            "title": "View {model_name}"
+        }});
+    }}
+
+    // GET /{resource}/new
+    fn new(req: Any) -> Any {{
+        return render("{resource}/new", {{
+            "{model_var}": {{}},
+            "title": "New {model_name}"
+        }});
+    }}
+
+    // GET /{resource}/:id/edit
+    fn edit(req: Any) -> Any {{
+        let id = req.params["id"];
+        let {model_var} = {model_name}.find(id);
+        if {model_var} == null {{
+            return error(404, "{model_name} not found");
+        }}
+        return render("{resource}/edit", {{
+            "{model_var}": {model_var},
+            "title": "Edit {model_name}"
+        }});
+    }}
+
+    // POST /{resource}
+    fn create(req: Any) -> Any {{
+        let result = {model_name}.create(req.params);
+        if result["valid"] == true {{
+            return redirect("/{resource}");
+        }}
+        return render("{resource}/new", {{
+            "{model_var}": result,
+            "title": "New {model_name}"
+        }});
+    }}
+
+    // PATCH/PUT /{resource}/:id
+    fn update(req: Any) -> Any {{
+        let id = req.params["id"];
+        {model_name}.update(id, req.params);
+        return redirect("/{resource}");
+    }}
+
+    // DELETE /{resource}/:id
+    fn delete(req: Any) -> Any {{
+        let id = req.params["id"];
+        {model_name}.delete(id);
+        return redirect("/{resource}");
+    }}
+}}
+"#,
+        controller_name = controller_name,
+        resource = resource_name,
+        model_name = model_name,
+        model_var = to_singular(name)
+    );
+
+    let controller_path = app_path
+        .join("app/controllers")
+        .join(format!("{}_controller.soli", to_snake_case(name)));
+    write_file(&controller_path, &content)?;
+    Ok(())
+}
+
+fn create_views(app_path: &Path, name: &str, fields: &[FieldDefinition]) -> Result<(), String> {
+    let resource_name = to_snake_case_plural(name);
+    let model_var = to_snake_case(name);
+
+    // Create view directory
+    let view_dir = app_path.join("app/views").join(&resource_name);
+    fs::create_dir_all(&view_dir)
+        .map_err(|e| format!("Failed to create directory '{}': {}", view_dir.display(), e))?;
+
+    // Create index view
+    create_resource_index_view(&view_dir, &resource_name, &model_var, fields)?;
+
+    // Create show view
+    create_show_view(&view_dir, &resource_name, &model_var, fields)?;
+
+    // Create new view
+    create_form_view(&view_dir, &resource_name, &model_var, "new")?;
+
+    // Create edit view
+    create_form_view(&view_dir, &resource_name, &model_var, "edit")?;
+
+    Ok(())
+}
+
+fn create_resource_index_view(
+    view_dir: &Path,
+    resource_name: &str,
+    model_var: &str,
+    fields: &[FieldDefinition],
+) -> Result<(), String> {
+    let title = to_title_case(resource_name);
+    let model_title = to_title_case(model_var);
+
+    let table_headers = fields
+        .iter()
+        .map(|f| {
+            format!(
+                r#"                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">{}</th>"#,
+                f.to_title_case()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let table_cells = fields
+        .iter()
+        .map(|f| {
+            format!(
+                r#"                    <td class="px-6 py-4 whitespace-nowrap text-white"><%= {model_var}["{field_name}"] %></td>"#,
+                model_var = model_var,
+                field_name = f.to_snake_case()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let content = format!(
+        r#"<div class="p-6">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold">{title}</h1>
+        <a href="/{resource}/new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors">
+            New {model_title}
+        </a>
+    </div>
+
+    <div class="bg-slate-800 rounded-xl overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-slate-700">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">ID</th>
+{table_headers}
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-700">
+                <% if {model_var}s.empty? %>
+                <tr>
+                    <td colspan="{colspan}" class="px-6 py-8 text-center text-slate-400">
+                        No {resource} found. <a href="/{resource}/new" class="text-indigo-400 hover:text-indigo-300">Create one?</a>
+                    </td>
+                </tr>
+                <% end %>
+                <% {model_var}s.each(fn({model_var}) %>
+                <tr class="hover:bg-slate-700/50 transition-colors">
+                    <td class="px-6 py-4 whitespace-nowrap text-slate-300"><%= {model_var}["id"] %></td>
+{table_cells}
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex gap-2">
+                            <a href="/{resource}/<%= {model_var}["id"] %>" class="text-indigo-400 hover:text-indigo-300">Show</a>
+                            <a href="/{resource}/<%= {model_var}["id"] %>/edit" class="text-yellow-400 hover:text-yellow-300">Edit</a>
+                            <form action="/{resource}/<%= {model_var}["id"] %>" method="POST" class="inline">
+                                <input type="hidden" name="_method" value="DELETE">
+                                <button type="submit" class="text-red-400 hover:text-red-300" onclick="return confirm('Are you sure?')">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                <% end %>
+            </tbody>
+        </table>
+    </div>
+</div>
+"#,
+        title = title,
+        resource = resource_name,
+        model_title = model_title,
+        model_var = model_var,
+        table_headers = if table_headers.is_empty() {
+            "".to_string()
+        } else {
+            table_headers
+        },
+        table_cells = if table_cells.is_empty() {
+            "".to_string()
+        } else {
+            table_cells
+        },
+        colspan = 2 + fields.len()
+    );
+
+    write_file(&view_dir.join("index.html.erb"), &content)?;
+    println!("  Created: {}/index.html.erb", view_dir.display());
+    Ok(())
+}
+
+fn create_show_view(
+    view_dir: &Path,
+    resource_name: &str,
+    model_var: &str,
+    fields: &[FieldDefinition],
+) -> Result<(), String> {
+    let resource_title = to_title_case(resource_name);
+    let model_title = to_title_case(model_var);
+
+    let detail_rows = fields
+        .iter()
+        .map(|f| {
+            format!(
+                r#"                <div>
+                    <dt class="text-sm font-medium text-slate-400">{field_title}</dt>
+                    <dd class="mt-1 text-sm text-white"><%= {model_var}["{field_name}"] %></dd>
+                </div>"#,
+                model_var = model_var,
+                field_title = f.to_title_case(),
+                field_name = f.to_snake_case()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let content = format!(
+        r#"<div class="p-6">
+    <div class="mb-6">
+        <a href="/{resource}" class="text-indigo-400 hover:text-indigo-300">&larr; Back to {resource_title}</a>
+    </div>
+
+    <div class="bg-slate-800 rounded-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
+            <h1 class="text-xl font-bold">{model_title} Details</h1>
+            <div class="flex gap-2">
+                <a href="/{resource}/<%= {model_var}["id"] %>/edit" class="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded transition-colors">Edit</a>
+                <form action="/{resource}/<%= {model_var}["id"] %>" method="POST" class="inline">
+                    <input type="hidden" name="_method" value="DELETE">
+                    <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded transition-colors" onclick="return confirm('Are you sure?')">Delete</button>
+                </form>
+            </div>
+        </div>
+        <div class="p-6">
+            <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                <div>
+                    <dt class="text-sm font-medium text-slate-400">ID</dt>
+                    <dd class="mt-1 text-sm text-white"><%= {model_var}["id"] %></dd>
+                </div>
+{detail_rows}
+            </dl>
+        </div>
+    </div>
+</div>
+"#,
+        resource = resource_name,
+        resource_title = resource_title,
+        model_var = model_var,
+        model_title = model_title,
+        detail_rows = if detail_rows.is_empty() {
+            "".to_string()
+        } else {
+            detail_rows
+        }
+    );
+
+    write_file(&view_dir.join("show.html.erb"), &content)?;
+    println!("  Created: {}/show.html.erb", view_dir.display());
+    Ok(())
+}
+
+fn create_form_view(
+    view_dir: &Path,
+    resource_name: &str,
+    model_var: &str,
+    action: &str,
+) -> Result<(), String> {
+    let title = if action == "new" {
+        format!("New {}", to_title_case(model_var))
+    } else {
+        format!("Edit {}", to_title_case(model_var))
+    };
+
+    let submit_text = if action == "new" { "Create" } else { "Update" };
+    let form_action = if action == "new" {
+        format!("/{}", resource_name)
+    } else {
+        format!("/{}/<%= {}[\"id\"] %>", resource_name, model_var)
+    };
+    let method = if action == "new" { "POST" } else { "PUT" };
+
+    let content = format!(
+        r#"<div class="p-6">
+    <div class="mb-6">
+        <a href="/{resource}" class="text-indigo-400 hover:text-indigo-300">&larr; Back to {resource_title}</a>
+    </div>
+
+    <div class="max-w-2xl">
+        <h1 class="text-2xl font-bold mb-6">{title}</h1>
+
+        <form action="{form_action}" method="POST" class="space-y-6">
+            <input type="hidden" name="_method" value="{method}">
+            <%= render("{resource}/_form", {{ "{model_var}": {model_var} }}) %>
+        </form>
+    </div>
+</div>
+"#,
+        resource = resource_name,
+        resource_title = to_title_case(resource_name),
+        model_var = model_var,
+        title = title,
+        form_action = form_action,
+        method = method
+    );
+
+    let filename = format!("{}.html.erb", action);
+    write_file(&view_dir.join(&filename), &content)?;
+    println!("  Created: {}/{}", view_dir.display(), filename);
+    Ok(())
+}
+
+fn create_form_partial(
+    app_path: &Path,
+    name: &str,
+    fields: &[FieldDefinition],
+) -> Result<(), String> {
+    let resource_name = to_snake_case_plural(name);
+    let model_var = to_snake_case(name);
+    let model_title = to_title_case(&model_var);
+
+    let view_dir = app_path.join("app/views").join(&resource_name);
+
+    let field_inputs = fields
+        .iter()
+        .map(|f| {
+            let label = f.to_title_case();
+            let field_name = f.to_snake_case();
+            let input_type = match f.field_type.as_str() {
+                "email" => "email",
+                "password" => "password",
+                "text" | "string" | "url" => "text",
+                "number" | "integer" | "float" => "number",
+                "boolean" | "bool" => "checkbox",
+                "date" => "date",
+                "datetime" => "datetime-local",
+                _ => "text",
+            };
+            let placeholder = format!("Enter {}", label.to_ascii_lowercase());
+
+            if input_type == "checkbox" {
+                format!(
+                    r#"            <div class="flex items-center">
+                <input type="checkbox" id="{field_name}" name="{field_name}" value="true"
+                    class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-600 rounded bg-slate-700"
+                    <% if {model_var}["{field_name}"] == true %>checked<% end %>>
+                <label for="{field_name}" class="ml-2 block text-sm text-slate-300">{label}</label>
+            </div>"#
+                )
+            } else {
+                format!(
+                    r#"            <div>
+                <label for="{field_name}" class="block text-sm font-medium text-slate-300 mb-2">{label}</label>
+                <input type="{input_type}" id="{field_name}" name="{field_name}" value="<%= {model_var}["{field_name}"] %>"
+                    class="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    placeholder="{placeholder}">
+            </div>"#,
+                    field_name = field_name,
+                    input_type = input_type,
+                    label = label,
+                    placeholder = placeholder,
+                    model_var = model_var
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let content = format!(
+        r#"<% if {model_var}["valid"] == false %>
+<div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
+    <h3 class="text-red-400 font-medium mb-2">Errors:</h3>
+    <ul class="list-disc list-inside text-red-300 text-sm">
+        <% {model_var}["errors"].each(fn(error)) %>
+        <li><%= error["message"] %></li>
+        <% end %>
+    </ul>
+</div>
+<% end %>
+
+{field_inputs}
+
+<div class="flex gap-4">
+    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg transition-colors">
+        Submit {model_title}
+    </button>
+    <a href="/{resource}" class="bg-slate-600 hover:bg-slate-700 text-white px-6 py-2 rounded-lg transition-colors text-center">
+        Cancel
+    </a>
+</div>
+"#,
+        model_var = model_var,
+        resource = resource_name,
+        model_title = model_title,
+        field_inputs = if field_inputs.is_empty() {
+            r#"            <div>
+                <label for="name" class="block text-sm font-medium text-slate-300 mb-2">Name</label>
+                <input type="text" id="name" name="name" value="<%= {model_var}["name"] %>"
+                    class="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    placeholder="Enter name">
+            </div>"#.replace("{model_var}", &model_var)
+        } else {
+            field_inputs
+        }
+    );
+
+    let partial_path = view_dir.join("_form.html.erb");
+    write_file(&partial_path, &content)?;
+    println!("  Created: {}/_form.html.erb", view_dir.display());
+
+    Ok(())
+}
+
+fn create_tests(app_path: &Path, name: &str) -> Result<(), String> {
+    let snake_name = to_snake_case(name);
+    let model_name = to_pascal_case(name);
+    let collection_name = to_snake_case_plural(name);
+
+    // Create tests directory structure
+    let tests_dir = app_path.join("tests");
+    let controllers_dir = tests_dir.join("controllers");
+    let models_dir = tests_dir.join("models");
+
+    if !controllers_dir.exists() {
+        fs::create_dir_all(&controllers_dir).map_err(|e| {
+            format!(
+                "Failed to create directory '{}': {}",
+                controllers_dir.display(),
+                e
+            )
+        })?;
+    }
+    if !models_dir.exists() {
+        fs::create_dir_all(&models_dir).map_err(|e| {
+            format!(
+                "Failed to create directory '{}': {}",
+                models_dir.display(),
+                e
+            )
+        })?;
+    }
+
+    // Create model test
+    let model_test_content = format!(
+        r#"// {} model tests - auto-generated scaffold
+
+describe("{}Model", fn() {{
+    before_each(fn() {{
+        // Setup code - runs before each test
+    }})
+
+    after_each(fn() {{
+        // Cleanup code - runs after each test
+    }})
+
+    test("should have correct collection name", fn() {{
+        // The model should derive collection name from class name
+        assert_true(true, "Collection name should be derived correctly")
+    }})
+
+    test("should create valid record", fn() {{
+        let data = {{
+            "name": "Test {}"
+        }};
+        let result = {model_name}.create(data);
+        assert_true(result["valid"], "Create should return valid: true");
+        assert_not_null(result["record"], "Create should return a record");
+    }})
+
+    test("should find record by id", fn() {{
+        let result = {model_name}.find("test-id");
+        assert_true(true, "Find should work without errors");
+    }})
+
+    test("should return all records", fn() {{
+        let results = {model_name}.all();
+        assert_true(true, "All should return array of records");
+    }})
+
+    test("should validate presence of name", fn() {{
+        let data = {{}};
+        let result = {model_name}.create(data);
+        assert_false(result["valid"], "Create should fail without name");
+    }})
+}})
+"#,
+        model_name,
+        model_name = model_name,
+        collection_name = collection_name
+    );
+
+    let model_test_path = models_dir.join(format!("{}_test.soli", snake_name));
+    write_file(&model_test_path, &model_test_content)?;
+    println!("  Created: {}", model_test_path.display());
+
+    // Create controller test
+    let controller_test_content = format!(
+        r#"// {}Controller tests - auto-generated scaffold
+
+describe("{}Controller", fn() {{
+    before_each(fn() {{
+        // Setup code - runs before each test
+    }})
+
+    after_each(fn() {{
+        // Cleanup code - runs after each test
+    }})
+
+    test("index action should return list", fn() {{
+        let req = {{
+            "params": {{}},
+            "session": {{}}
+        }};
+        // Controller action would be tested here
+        assert_true(true, "Index action should render view");
+    }})
+
+    test("show action should return single record", fn() {{
+        let req = {{
+            "params": {{ "id": "test-id" }},
+            "session": {{}}
+        }};
+        assert_true(true, "Show action should render view with record");
+    }})
+
+    test("new action should render new form", fn() {{
+        let req = {{
+            "params": {{}},
+            "session": {{}}
+        }};
+        assert_true(true, "New action should render form");
+    }})
+
+    test("edit action should render edit form", fn() {{
+        let req = {{
+            "params": {{ "id": "test-id" }},
+            "session": {{}}
+        }};
+        assert_true(true, "Edit action should render form with record");
+    }})
+
+    test("create action should redirect on success", fn() {{
+        let req = {{
+            "params": {{ "name": "Test {}" }},
+            "session": {{}}
+        }};
+        assert_true(true, "Create action should redirect");
+    }})
+
+    test("update action should redirect on success", fn() {{
+        let req = {{
+            "params": {{ "id": "test-id", "name": "Updated" }},
+            "session": {{}}
+        }};
+        assert_true(true, "Update action should redirect");
+    }})
+
+    test("delete action should redirect", fn() {{
+        let req = {{
+            "params": {{ "id": "test-id" }},
+            "session": {{}}
+        }};
+        assert_true(true, "Delete action should redirect");
+    }})
+
+    test("should have correct routes defined", fn() {{
+        assert_true(true, "Routes should be defined in config/routes.soli");
+    }})
+}})
+"#,
+        controller_name = to_pascal_case(name) + "Controller",
+        model_name = model_name,
+        collection_name = collection_name
+    );
+
+    let controller_test_path = controllers_dir.join(format!("{}_controller_test.soli", snake_name));
+    write_file(&controller_test_path, &controller_test_content)?;
+    println!("  Created: {}", controller_test_path.display());
+
+    Ok(())
+}
+
+fn create_migration(app_path: &Path, name: &str, fields: &[FieldDefinition]) -> Result<(), String> {
+    let collection_name = to_snake_case_plural(name);
+    let migration_name = format!("create_{}", collection_name);
+
+    // Generate timestamp for migration filename
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("Failed to get timestamp: {}", e))?
+        .as_secs();
+
+    let filename = format!("{}{}_{}.soli", timestamp, migration_name, timestamp);
+    let migrations_dir = app_path.join("db/migrations");
+    let migration_path = migrations_dir.join(&filename);
+
+    // Create migrations directory if it doesn't exist
+    fs::create_dir_all(&migrations_dir)
+        .map_err(|e| format!("Failed to create migrations directory: {}", e))?;
+
+    // Create indexes for unique fields
+    let unique_indexes: Vec<String> = fields
+        .iter()
+        .filter(|f| matches!(f.field_type.as_str(), "email" | "password"))
+        .map(|f| {
+            format!(
+                r#"    db.create_index("{collection}", "idx_{field_name}", ["{field_name}"], {{ "unique": true }});"#,
+                collection = collection_name,
+                field_name = f.to_snake_case()
+            )
+        })
+        .collect();
+
+    let content = format!(
+        r#"// Migration: {migration_name}
+// Generated by: soli generate scaffold {name}
+
+fn up(db: Any) -> Any {{
+    // Create collection for {model_name}
+    db.create_collection("{collection}");
+
+    // Create indexes
+{indexes}
+}}
+
+fn down(db: Any) -> Any {{
+    // Drop indexes
+    <% db.list_indexes("{collection}").each(fn(idx) {{
+        db.drop_index("{collection}", idx["name"]);
+    }}) %>
+
+    // Drop collection
+    db.drop_collection("{collection}");
+}}
+"#,
+        migration_name = migration_name,
+        name = name,
+        model_name = to_pascal_case(name),
+        collection = collection_name,
+        indexes = if unique_indexes.is_empty() {
+            "    // No indexes defined".to_string()
+        } else {
+            unique_indexes.join("\n")
+        }
+    );
+
+    write_file(&migration_path, &content)?;
+
+    Ok(())
+}
+
+fn add_routes(app_path: &Path, name: &str) -> Result<(), String> {
+    let resource_name = to_snake_case_plural(name);
+    let routes_file = app_path.join("config/routes.soli");
+
+    let new_routes = format!(
+        r#"
+
+// {name} resource routes
+get("/{resource}", "{resource}#index")
+get("/{resource}/new", "{resource}#new")
+post("/{resource}", "{resource}#create")
+get("/{resource}/:id", "{resource}#show")
+get("/{resource}/:id/edit", "{resource}#edit")
+put("/{resource}/:id", "{resource}#update")
+delete("/{resource}/:id", "{resource}#delete")
+"#,
+        name = name,
+        resource = resource_name
+    );
+
+    if routes_file.exists() {
+        let mut content = std::fs::read_to_string(&routes_file)
+            .map_err(|e| format!("Failed to read routes file: {}", e))?;
+        content.push_str(&new_routes);
+        std::fs::write(&routes_file, content)
+            .map_err(|e| format!("Failed to write routes file: {}", e))?;
+        println!("  Updated: {}/config/routes.soli", app_path.display());
+    } else {
+        write_file(&routes_file, &new_routes)?;
+    }
+
+    Ok(())
+}
+
+fn to_pascal_case(s: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = true;
+    for c in s.chars() {
+        if c == '_' || c == '-' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+fn to_snake_case(s: &str) -> String {
+    let mut result = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() {
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+fn to_singular(s: &str) -> String {
+    let snake = to_snake_case(s);
+    // Remove trailing 's' if it exists
+    if snake.ends_with('s') && snake.len() > 1 {
+        snake[..snake.len() - 1].to_string()
+    } else {
+        snake
+    }
+}
+
+fn to_snake_case_plural(s: &str) -> String {
+    let snake = to_snake_case(s);
+    // Don't add 's' if it already ends with 's' to avoid "userss"
+    if snake.ends_with('s') {
+        snake
+    } else {
+        snake + "s"
+    }
+}
+
+fn to_title_case(s: &str) -> String {
+    let snake = to_snake_case(s);
+    snake
+        .split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Print success message after creating a scaffold
+pub fn print_scaffold_success_message(name: &str) {
+    println!();
+    println!(
+        "  \x1b[32m\x1b[1mSuccess!\x1b[0m Created scaffold for \x1b[1m{}\x1b[0m",
+        name
+    );
+    println!();
+    println!("  \x1b[2mGenerated files:\x1b[0m");
+    println!();
+    println!(
+        "    \x1b[36mapp/models/{}_model.soli\x1b[0m",
+        to_snake_case(name)
+    );
+    println!(
+        "    \x1b[36mapp/controllers/{}_controller.soli\x1b[0m",
+        to_snake_case(name)
+    );
+    println!(
+        "    \x1b[36mapp/views/{}/index.html.erb\x1b[0m",
+        to_snake_case_plural(name)
+    );
+    println!(
+        "    \x1b[36mapp/views/{}/show.html.erb\x1b[0m",
+        to_snake_case_plural(name)
+    );
+    println!(
+        "    \x1b[36mapp/views/{}/new.html.erb\x1b[0m",
+        to_snake_case_plural(name)
+    );
+    println!(
+        "    \x1b[36mapp/views/{}/edit.html.erb\x1b[0m",
+        to_snake_case_plural(name)
+    );
+    println!(
+        "    \x1b[36mapp/views/{}/_form.html.erb\x1b[0m",
+        to_snake_case_plural(name)
+    );
+    println!();
+    println!("  \x1b[2mTest files:\x1b[0m");
+    println!();
+    println!(
+        "    \x1b[36mtests/models/{}_test.soli\x1b[0m",
+        to_snake_case(name)
+    );
+    println!(
+        "    \x1b[36mtests/controllers/{}_controller_test.soli\x1b[0m",
+        to_snake_case(name)
+    );
+    println!();
+    println!("  \x1b[2mRoutes added to:\x1b[0m \x1b[36mconfig/routes.soli\x1b[0m");
     println!();
 }

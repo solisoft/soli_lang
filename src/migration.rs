@@ -47,14 +47,9 @@ use std::path::{Path, PathBuf};
 
 use solidb_client::SoliDBClient;
 
-/// Load environment variables from a .env file
-fn load_env_file(app_path: &Path) {
-    let env_file = app_path.join(".env");
-    if !env_file.exists() {
-        return;
-    }
-
-    if let Ok(content) = fs::read_to_string(&env_file) {
+/// Load a single .env file, setting variables that aren't already set
+fn load_single_env_file(path: &Path) {
+    if let Ok(content) = fs::read_to_string(path) {
         for line in content.lines() {
             let line = line.trim();
             // Skip comments and empty lines
@@ -72,6 +67,29 @@ fn load_env_file(app_path: &Path) {
                     std::env::set_var(key, value);
                 }
             }
+        }
+    }
+}
+
+/// Load environment variables from .env files
+///
+/// Loading order:
+/// 1. Load base `.env` file first
+/// 2. If `APP_ENV` is set, load `.env.{APP_ENV}` to override values
+///
+/// This matches the convention used by Rails, Node.js, and other frameworks.
+fn load_env_file(app_path: &Path) {
+    // Load base .env first
+    let env_file = app_path.join(".env");
+    if env_file.exists() {
+        load_single_env_file(&env_file);
+    }
+
+    // Then load environment-specific file if APP_ENV is set
+    if let Ok(app_env) = std::env::var("APP_ENV") {
+        let env_specific = app_path.join(format!(".env.{}", app_env));
+        if env_specific.exists() {
+            load_single_env_file(&env_specific);
         }
     }
 }

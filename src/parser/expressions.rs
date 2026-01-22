@@ -107,6 +107,11 @@ impl Parser {
             TokenKind::Or => self.parse_lambda_empty_params(start_span),
             TokenKind::Arrow => self.parse_stabby_lambda(start_span),
 
+            // Allow 'await' keyword to be used as a function call: await(future)
+            TokenKind::Await => {
+                Ok(Expr::new(ExprKind::Variable("await".to_string()), start_span))
+            }
+
             _ => Err(ParserError::unexpected_token(
                 "expression",
                 format!("{}", token.kind),

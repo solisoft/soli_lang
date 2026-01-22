@@ -74,6 +74,7 @@ Soli favors convention over configuration. By following standard naming patterns
 
 ## Guides
 
+- **[Scaffold Generator](/docs/scaffold)** - Quickly generate complete MVC resources
 - **[Authentication](/docs/authentication)** - JWT-based stateless authentication
 - **[Sessions](/docs/sessions)** - Cookie-based session management
 - **[Validation](/docs/validation)** - Schema-based input validation

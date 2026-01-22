@@ -307,11 +307,16 @@
                                 Debugging
                             </a>
                         </li>
+                        <li>
+                            <a href="/docs/scaffold" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Scaffold Generator' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                Scaffold Generator
+                            </a>
+                        </li>
                     </ul>
                 </div>
 
                 <div>
-                    <h5 class="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                    <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                         <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                         </svg>
@@ -319,191 +324,16 @@
                     </h5>
                     <ul class="space-y-1">
                         <li>
-                            <a href="/docs/soli-language" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'language_reference' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                            <a href="/docs/soli-language" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'language_reference' && title == 'Soli Language Reference' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
                                 Soli Language
                             </a>
                         </li>
+                        <li>
+                            <a href="/docs/builtins" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'language_reference' && title == 'Built-in Functions' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                Built-in Functions
+                            </a>
+                        </li>
                     </ul>
-                </div>
-            </nav>
-        </div>
-    </aside>
-
-    <div class="flex h-full">
-        <!-- Desktop Sidebar -->
-        <aside class="hidden lg:flex lg:flex-col w-72 border-r border-white/5 bg-gray-950/50 h-screen sticky top-0">
-            <!-- Header -->
-            <div class="flex items-center gap-3 px-6 h-16 border-b border-white/5 flex-shrink-0">
-                <a href="/" class="flex items-center gap-3 group">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 group-hover:shadow-indigo-500/40 transition-shadow">S</div>
-                    <span class="font-bold text-lg text-white tracking-tight">Soli MVC</span>
-                </a>
-            </div>
-
-            <!-- Navigation -->
-            <nav class="flex-1 overflow-y-auto py-6 px-4">
-                <div class="space-y-8">
-                    <div>
-                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                            <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            Getting Started
-                        </h5>
-                        <ul class="space-y-1">
-                            <li>
-                                <a href="/docs/introduction" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'getting_started' && title == 'Introduction' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Introduction
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/installation" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'getting_started' && title == 'Installation' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Installation
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                            <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                            </svg>
-                            Core Concepts
-                        </h5>
-                        <ul class="space-y-1">
-                            <li>
-                                <a href="/docs/routing" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Routing' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Routing
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/controllers" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Controllers' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Controllers
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/middleware" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Middleware' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Middleware
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/views" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Views' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Views
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/websockets" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'WebSockets' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    WebSockets
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/i18n" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Internationalization' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Internationalization
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/request-params" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Request Parameters' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Request Parameters
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                            <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-                            </svg>
-                            Database
-                        </h5>
-                        <ul class="space-y-1">
-                            <li>
-                                <a href="/docs/database" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Database Configuration' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Configuration
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/models" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Models & ORM' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Models & ORM
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/migrations" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Migrations' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Migrations
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                            <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                            </svg>
-                            Security
-                        </h5>
-                        <ul class="space-y-1">
-                            <li>
-                                <a href="/docs/authentication" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Authentication with JWT' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Authentication
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/sessions" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Session Management' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Sessions
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/validation" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Input Validation' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Validation
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                            <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            Development Tools
-                        </h5>
-                        <ul class="space-y-1">
-                            <li>
-                                <a href="/docs/testing" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Testing' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Testing
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/live-reload" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Live Reload' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Live Reload
-                                </a>
-                            </li>
-                            <li>
-                                <a href="/docs/debugging" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Debugging' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Debugging
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                            <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                            </svg>
-                            Language Reference
-                        </h5>
-                        <ul class="space-y-1">
-                            <li>
-                                <a href="/docs/soli-language" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'language_reference' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
-                                    Soli Language
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
                 </div>
             </nav>
 
@@ -518,6 +348,206 @@
                 </div>
             </div>
         </aside>
+
+        <div class="flex h-full">
+            <!-- Desktop Sidebar -->
+            <aside class="hidden lg:flex lg:flex-col w-72 border-r border-white/5 bg-gray-950/50 h-screen sticky top-0">
+                <!-- Header -->
+                <div class="flex items-center gap-3 px-6 h-16 border-b border-white/5 flex-shrink-0">
+                    <a href="/" class="flex items-center gap-3 group">
+                        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 group-hover:shadow-indigo-500/40 transition-shadow">S</div>
+                        <span class="font-bold text-lg text-white tracking-tight">Soli MVC</span>
+                    </a>
+                </div>
+
+                <!-- Navigation -->
+                <nav class="flex-1 overflow-y-auto py-6 px-4">
+                    <div class="space-y-8">
+                        <div>
+                            <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                Getting Started
+                            </h5>
+                            <ul class="space-y-1">
+                                <li>
+                                    <a href="/docs/introduction" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'getting_started' && title == 'Introduction' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Introduction
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/installation" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'getting_started' && title == 'Installation' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Installation
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                </svg>
+                                Core Concepts
+                            </h5>
+                            <ul class="space-y-1">
+                                <li>
+                                    <a href="/docs/routing" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Routing' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Routing
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/controllers" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Controllers' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Controllers
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/middleware" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Middleware' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Middleware
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/views" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Views' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Views
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/websockets" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'WebSockets' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        WebSockets
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/i18n" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Internationalization' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Internationalization
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/request-params" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'core_concepts' && title == 'Request Parameters' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Request Parameters
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                                </svg>
+                                Database
+                            </h5>
+                            <ul class="space-y-1">
+                                <li>
+                                    <a href="/docs/database" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Database Configuration' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Configuration
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/models" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Models & ORM' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Models & ORM
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/migrations" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'database' && title == 'Migrations' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Migrations
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                                Security
+                            </h5>
+                            <ul class="space-y-1">
+                                <li>
+                                    <a href="/docs/authentication" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Authentication with JWT' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Authentication
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/sessions" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Session Management' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Sessions
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/validation" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'security' && title == 'Input Validation' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Validation
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                Development Tools
+                            </h5>
+                            <ul class="space-y-1">
+                                <li>
+                                    <a href="/docs/testing" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Testing' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Testing
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/live-reload" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Live Reload' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Live Reload
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/debugging" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Debugging' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Debugging
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/scaffold" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'development_tools' && title == 'Scaffold Generator' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Scaffold Generator
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                                </svg>
+                                Language Reference
+                            </h5>
+                            <ul class="space-y-1">
+                                <li>
+                                    <a href="/docs/soli-language" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'language_reference' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Soli Language
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/docs/builtins" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= if section == 'language_reference' && title == 'Built-in Functions' then 'active bg-indigo-500/10 text-indigo-400 font-medium' else 'text-gray-400 hover:bg-white/5 hover:text-white' end %>">
+                                        Built-in Functions
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </nav>
+
+                <!-- Footer Links -->
+                <div class="px-6 py-4 border-t border-white/5 flex-shrink-0">
+                    <div class="flex items-center justify-between">
+                        <a href="https://github.com/solisoft/soli_lang" target="_blank" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" /></svg>
+                            GitHub
+                        </a>
+                        <span class="text-xs text-gray-600">v0.1.0</span>
+                    </div>
+                </div>
+            </aside>
 
         <!-- Main Content -->
         <main class="flex-1 min-w-0 lg:h-screen lg:overflow-y-auto">

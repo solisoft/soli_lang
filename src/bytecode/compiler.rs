@@ -184,6 +184,8 @@ impl Compiler {
             "duration_hours",
             "duration_days",
             "duration_weeks",
+            // Async functions
+            "await",
         ];
 
         for (i, name) in natives.iter().enumerate() {

@@ -8,6 +8,17 @@ use std::rc::Rc;
 use crate::interpreter::value::Value;
 use crate::template::parser::{CompareOp, Expr, TemplateNode};
 
+/// Resolve a value if it's a Future, otherwise return as-is.
+/// This enables auto-resolution of async HTTP responses in templates.
+#[inline]
+fn resolve_if_future(value: Value) -> Result<Value, String> {
+    if value.is_future() {
+        value.resolve()
+    } else {
+        Ok(value)
+    }
+}
+
 /// Render a template AST with the given data context.
 ///
 /// # Arguments
@@ -252,7 +263,8 @@ fn get_hash_value(value: &Value, key: &str) -> Result<Value, String> {
             for (k, v) in hash.iter() {
                 if let Value::String(k_str) = k {
                     if k_str == key {
-                        return Ok(v.clone());
+                        // Auto-resolve Futures when retrieving values from template data
+                        return resolve_if_future(v.clone());
                     }
                 }
             }

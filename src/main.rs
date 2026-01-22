@@ -26,6 +26,12 @@ enum Command {
     Repl,
     /// Create a new MVC application
     New { name: String },
+    /// Generate scaffold (model, controller, views)
+    Generate {
+        scaffold_name: String,
+        fields: Vec<String>,
+        folder: String,
+    },
     /// Serve an MVC application
     Serve {
         folder: String,
@@ -71,16 +77,19 @@ fn print_usage() {
     eprintln!();
     eprintln!("Usage: soli [options] [script.soli]");
     eprintln!("       soli new <app_name>");
+    eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--mode MODE]");
     eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
     eprintln!("       soli db:migrate <up|down|status> [folder]");
     eprintln!("       soli db:migrate generate <name> [folder]");
     eprintln!();
     eprintln!("Commands:");
-    eprintln!("  new <app_name>  Create a new Soli MVC application");
-    eprintln!("  serve <folder>  Start MVC server from a project folder");
-    eprintln!("  test [path]     Run tests (default: tests/ directory)");
-    eprintln!("  db:migrate      Database migration commands");
+    eprintln!("  new <app_name>       Create a new Soli MVC application");
+    eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
+    eprintln!("                       Fields: name:string email:email text:description");
+    eprintln!("  serve <folder>       Start MVC server from a project folder");
+    eprintln!("  test [path]          Run tests (default: tests/ directory)");
+    eprintln!("  db:migrate           Database migration commands");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --tree-walk     Use tree-walking interpreter (default)");
@@ -105,6 +114,8 @@ fn print_usage() {
     eprintln!("  soli --bytecode script.soli   Run with bytecode VM");
     eprintln!("  soli --disassemble fib.soli   Show bytecode and run");
     eprintln!("  soli new my_app               Create a new MVC application");
+    eprintln!("  soli generate scaffold users  Generate users model, controller, views");
+    eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
     eprintln!("  soli serve my_app             Start production server (no hot reload)");
     eprintln!("  soli serve my_app -d          Start as daemon (background process)");
     eprintln!("  soli serve my_app --dev       Start development server (with hot reload)");
@@ -145,6 +156,67 @@ fn parse_args() -> Options {
                 let name = args[i].clone();
                 options.command = Command::New { name };
                 return options;
+            }
+            "generate" => {
+                // Parse generate command
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("generate command requires a subcommand (scaffold)");
+                    print_usage();
+                    process::exit(64);
+                }
+
+                let subcommand = args[i].clone();
+                match subcommand.as_str() {
+                    "scaffold" => {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("generate scaffold requires a resource name");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        let scaffold_name = args[i].clone();
+
+                        // Collect field arguments (name:type format)
+                        let mut fields = Vec::new();
+                        i += 1;
+                        while i < args.len() && !args[i].starts_with('-') {
+                            let arg = &args[i];
+                            if arg.contains(':') {
+                                fields.push(arg.clone());
+                            } else if arg == "." || arg == "/" {
+                                // It's a folder path, not a field
+                                break;
+                            } else if !arg.is_empty() {
+                                // Assume it's a folder if it doesn't contain ':'
+                                break;
+                            }
+                            i += 1;
+                        }
+
+                        // Check for optional folder argument
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+
+                        options.command = Command::Generate {
+                            scaffold_name,
+                            fields,
+                            folder,
+                        };
+                        return options;
+                    }
+                    _ => {
+                        eprintln!(
+                            "Unknown generate subcommand: {} (try: scaffold)",
+                            subcommand
+                        );
+                        print_usage();
+                        process::exit(64);
+                    }
+                }
             }
             "db:migrate" => {
                 // Parse db:migrate command
@@ -402,6 +474,11 @@ fn main() {
         Command::Repl => run_repl(options.mode),
         Command::Run { file } => run_file(file, &options),
         Command::New { name } => run_new(name),
+        Command::Generate {
+            scaffold_name,
+            fields,
+            folder,
+        } => run_generate(scaffold_name, fields, folder),
         Command::DbMigrate { action, folder } => run_db_migrate(action, folder),
         Command::Serve {
             folder,
@@ -515,6 +592,18 @@ fn run_new(name: &str) {
     }
 }
 
+fn run_generate(scaffold_name: &str, fields: &[String], folder: &str) {
+    match solilang::scaffold::create_scaffold_with_fields(folder, scaffold_name, fields) {
+        Ok(()) => {
+            solilang::scaffold::print_scaffold_success_message(scaffold_name);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
     use solilang::migration::{DbConfig, MigrationRunner};
 
@@ -581,10 +670,7 @@ fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
             match solilang::migration::generate_migration(app_path, name) {
                 Ok(path) => {
                     println!();
-                    println!(
-                        "  \x1b[32mCreated migration:\x1b[0m {}",
-                        path.display()
-                    );
+                    println!("  \x1b[32mCreated migration:\x1b[0m {}", path.display());
                     println!();
                 }
                 Err(e) => {
