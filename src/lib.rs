@@ -17,6 +17,7 @@ pub mod interpreter;
 pub mod lexer;
 pub mod module;
 pub mod parser;
+pub mod scaffold;
 pub mod serve;
 pub mod span;
 pub mod template;

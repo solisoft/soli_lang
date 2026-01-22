@@ -24,6 +24,8 @@ enum Command {
     Run { file: String },
     /// Start the REPL
     Repl,
+    /// Create a new MVC application
+    New { name: String },
     /// Serve an MVC application
     Serve {
         folder: String,
@@ -55,10 +57,12 @@ fn print_usage() {
     eprintln!("Soli v0.1.0 - Solilang Interpreter");
     eprintln!();
     eprintln!("Usage: soli [options] [script.soli]");
+    eprintln!("       soli new <app_name>");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--mode MODE]");
     eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
     eprintln!();
     eprintln!("Commands:");
+    eprintln!("  new <app_name>  Create a new Soli MVC application");
     eprintln!("  serve <folder>  Start MVC server from a project folder");
     eprintln!("  test [path]     Run tests (default: tests/ directory)");
     eprintln!();
@@ -84,6 +88,7 @@ fn print_usage() {
     eprintln!("  soli script.soli              Run a script file");
     eprintln!("  soli --bytecode script.soli   Run with bytecode VM");
     eprintln!("  soli --disassemble fib.soli   Show bytecode and run");
+    eprintln!("  soli new my_app               Create a new MVC application");
     eprintln!("  soli serve my_app             Start production server (no hot reload)");
     eprintln!("  soli serve my_app -d          Start as daemon (background process)");
     eprintln!("  soli serve my_app --dev       Start development server (with hot reload)");
@@ -109,6 +114,18 @@ fn parse_args() -> Options {
     while i < args.len() {
         let arg = &args[i];
         match arg.as_str() {
+            "new" => {
+                // Parse new command
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("new command requires an app name");
+                    print_usage();
+                    process::exit(64);
+                }
+                let name = args[i].clone();
+                options.command = Command::New { name };
+                return options;
+            }
             "serve" => {
                 // Parse serve command
                 i += 1;
@@ -318,6 +335,7 @@ fn main() {
     match &options.command {
         Command::Repl => run_repl(options.mode),
         Command::Run { file } => run_file(file, &options),
+        Command::New { name } => run_new(name),
         Command::Serve {
             folder,
             port,
@@ -415,6 +433,18 @@ fn run_serve(
     {
         eprintln!("Error: {}", e);
         process::exit(70);
+    }
+}
+
+fn run_new(name: &str) {
+    match solilang::scaffold::create_app(name) {
+        Ok(()) => {
+            solilang::scaffold::print_success_message(name);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
     }
 }
 
