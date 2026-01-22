@@ -2904,8 +2904,8 @@ fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
             }
         }
         Err(_) => {
-            // Try as expression - wrap in return statement
-            let wrapped_code = format!("return {}", code);
+            // Try as expression - wrap in return statement with semicolon
+            let wrapped_code = format!("return {};", code);
             let tokens = crate::lexer::Scanner::new(&wrapped_code).scan_tokens();
             let parse_result = tokens.map_err(|e| format!("{:?}", e))
                 .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));

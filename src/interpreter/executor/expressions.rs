@@ -367,6 +367,7 @@ impl Interpreter {
                         closure: Rc::new(RefCell::new(bound_env)),
                         is_method: true,
                         span: method.span,
+                        source_path: method.source_path.clone(),
                     };
                     return Ok(Value::Function(Rc::new(bound_method)));
                 }
@@ -669,6 +670,10 @@ impl Interpreter {
             closure: self.environment.clone(),
             is_method: false,
             span: Some(span),
+            source_path: self
+                .current_source_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
         };
         Ok(Value::Function(Rc::new(func)))
     }

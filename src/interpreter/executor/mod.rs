@@ -26,7 +26,7 @@ pub(crate) type RuntimeResult<T> = Result<T, RuntimeError>;
 #[derive(Debug, Clone)]
 pub struct StackFrame {
     pub function_name: String,
-    pub file_path: Option<PathBuf>,
+    pub file_path: Option<String>,
     pub line: usize,
     pub column: usize,
 }
@@ -91,7 +91,10 @@ impl Interpreter {
     pub(crate) fn push_frame(&mut self, function_name: &str, span: Span) {
         self.call_stack.push(StackFrame {
             function_name: function_name.to_string(),
-            file_path: self.current_source_path.clone(),
+            file_path: self
+                .current_source_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
             line: span.line,
             column: span.column,
         });
@@ -111,7 +114,7 @@ impl Interpreter {
                 let file = frame
                     .file_path
                     .as_ref()
-                    .map(|p| p.to_string_lossy().to_string())
+                    .cloned()
                     .unwrap_or_else(|| "unknown".to_string());
                 format!("{} at {}:{}", frame.function_name, file, frame.line)
             })
@@ -182,7 +185,7 @@ impl Interpreter {
                         let file = frame
                             .file_path
                             .as_ref()
-                            .map(|p| p.to_string_lossy().to_string())
+                            .cloned()
                             .unwrap_or_else(|| "unknown".to_string());
                         format!("{} at {}:{}", frame.function_name, file, frame.line)
                     })

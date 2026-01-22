@@ -80,7 +80,11 @@ impl Interpreter {
             }
 
             StmtKind::Function(decl) => {
-                let func = Function::from_decl(decl, self.environment.clone());
+                let source_path = self
+                    .current_source_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string());
+                let func = Function::from_decl(decl, self.environment.clone(), source_path);
                 self.environment
                     .borrow_mut()
                     .define(decl.name.clone(), Value::Function(Rc::new(func)));
@@ -269,8 +273,13 @@ impl Interpreter {
         let mut methods = HashMap::new();
         let mut static_methods = HashMap::new();
 
+        let source_path = self
+            .current_source_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+
         for method_decl in &decl.methods {
-            let func = Function::from_method(method_decl, method_env.clone());
+            let func = Function::from_method(method_decl, method_env.clone(), source_path.clone());
             if method_decl.is_static {
                 static_methods.insert(method_decl.name.clone(), Rc::new(func));
             } else {
@@ -287,6 +296,10 @@ impl Interpreter {
                 closure: method_env.clone(),
                 is_method: true,
                 span: Some(ctor.span),
+                source_path: self
+                    .current_source_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string()),
             })
         });
 

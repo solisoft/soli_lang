@@ -268,10 +268,15 @@ pub struct Function {
     pub closure: Rc<RefCell<Environment>>,
     pub is_method: bool,
     pub span: Option<Span>,
+    pub source_path: Option<String>,
 }
 
 impl Function {
-    pub fn from_decl(decl: &FunctionDecl, closure: Rc<RefCell<Environment>>) -> Self {
+    pub fn from_decl(
+        decl: &FunctionDecl,
+        closure: Rc<RefCell<Environment>>,
+        source_path: Option<String>,
+    ) -> Self {
         Self {
             name: decl.name.clone(),
             params: decl.params.clone(),
@@ -279,10 +284,15 @@ impl Function {
             closure,
             is_method: false,
             span: Some(decl.span),
+            source_path,
         }
     }
 
-    pub fn from_method(decl: &MethodDecl, closure: Rc<RefCell<Environment>>) -> Self {
+    pub fn from_method(
+        decl: &MethodDecl,
+        closure: Rc<RefCell<Environment>>,
+        source_path: Option<String>,
+    ) -> Self {
         Self {
             name: decl.name.clone(),
             params: decl.params.clone(),
@@ -290,6 +300,7 @@ impl Function {
             closure,
             is_method: true,
             span: Some(decl.span),
+            source_path,
         }
     }
 
