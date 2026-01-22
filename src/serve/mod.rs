@@ -2078,10 +2078,14 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
     // Use CONTROLLERS registry to look up handler by full name (controller#action)
     let handler_result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
 
+    // Push stack frame for the handler
+    interpreter.push_frame(handler_name, crate::span::Span::new(0, 0, 1, 1));
+
     match handler_result {
         Ok(handler_value) => {
             match interpreter.call_value(handler_value, vec![request_hash], Span::default()) {
                 Ok(result) => {
+                    interpreter.pop_frame();
                     let (status, headers, body) = extract_response(&result);
                     let headers: Vec<_> = headers.into_iter().collect();
                     ResponseData {
@@ -2091,6 +2095,7 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
                     }
                 }
                 Err(e) => {
+                    interpreter.pop_frame();
                     if dev_mode {
                         let stack_trace = interpreter.get_stack_trace();
                         let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
@@ -2110,6 +2115,7 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
             }
         }
         Err(e) => {
+            interpreter.pop_frame();
             if dev_mode {
                 let stack_trace = interpreter.get_stack_trace();
                 let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
@@ -2236,15 +2242,21 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
 fn call_class_method(
     interpreter: &mut Interpreter,
     class: &Rc<crate::interpreter::value::Class>,
-    _instance: &Value,
+    instance: &Value,
     method_name: &str,
     request_hash: &Value,
 ) -> Result<Value, String> {
     // Look up the method in the class
     if let Some(method) = class.methods.get(method_name) {
-        // Call the method with the request hash as argument
-        interpreter.call_value(Value::Function(method.clone()), vec![request_hash.clone()], Span::default())
-            .map_err(|e| format!("Error calling method '{}': {}", method_name, e))
+        // Push stack frame for the method call
+        let method_span = method.span.unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1));
+        interpreter.push_frame(&format!("{}#{}", class.name, method_name), method_span);
+
+        let result = interpreter.call_value(Value::Function(method.clone()), vec![request_hash.clone()], method_span);
+
+        interpreter.pop_frame();
+
+        result.map_err(|e| format!("Error calling method '{}': {}", method_name, e))
     } else {
         Err(format!("Method '{}' not found in class '{}'", method_name, class.name))
     }
@@ -2891,10 +2903,40 @@ fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
                 },
             }
         }
-        Err(parse_errors) => {
-            ReplResult {
-                result: "null".to_string(),
-                error: Some(format!("Parse error: {}", parse_errors)),
+        Err(_) => {
+            // Try as expression - wrap in return statement
+            let wrapped_code = format!("return {}", code);
+            let tokens = crate::lexer::Scanner::new(&wrapped_code).scan_tokens();
+            let parse_result = tokens.map_err(|e| format!("{:?}", e))
+                .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
+
+            match parse_result {
+                Ok(program) => {
+                    match interpreter.interpret(&program) {
+                        Ok(_) => {
+                            // Get the return value from environment
+                            let return_val = interpreter.environment.borrow().get("_return_");
+                            let result_str = match return_val {
+                                Some(v) => format!("{:?}", v),
+                                None => "null".to_string(),
+                            };
+                            ReplResult {
+                                result: result_str,
+                                error: None,
+                            }
+                        }
+                        Err(e) => ReplResult {
+                            result: "null".to_string(),
+                            error: Some(format!("Execution error: {}", e)),
+                        },
+                    }
+                }
+                Err(parse_errors) => {
+                    ReplResult {
+                        result: "null".to_string(),
+                        error: Some(format!("Parse error: {}", parse_errors)),
+                    }
+                }
             }
         }
     }
@@ -3386,6 +3428,12 @@ pub fn render_dev_error_page(
             const code = input.value.trim();
             if (!code) return;
 
+            // Add to history
+            if (code && history[history.length - 1] !== code) {{
+                history.push(code);
+            }}
+            historyIndex = history.length;
+
             const output = document.getElementById('repl-output');
             output.innerHTML += '<div class="flex items-center gap-2 text-gray-400 mt-2"><div class="loading-spinner"></div><span>Executing...</span></div>';
             output.scrollTop = output.scrollHeight;
@@ -3394,31 +3442,75 @@ pub fn render_dev_error_page(
                 const response = await fetch('/__dev/repl', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ code: code }})
+                    body: JSON.stringify({{ code: code, request_data: currentRequestData }})
                 }});
                 const result = await response.json();
                 if (result.error) {{
                     output.innerHTML += '<div class="text-red-400 mt-2">❌ ' + escapeHtml(result.error) + '</div>';
+                    lastResult = null;
                 }} else {{
                     output.innerHTML += '<div class="text-gray-300 mt-2"><span class="text-indigo-400">❯</span> <span class="text-gray-500">// ' + escapeHtml(code) + '</span></div>';
                     if (result.result && result.result !== "ok") {{
                         output.innerHTML += '<div class="text-green-400 mt-1">' + escapeHtml(result.result) + '</div>';
+                        lastResult = result.result;
+                    }} else {{
+                        lastResult = null;
                     }}
                 }}
             }} catch (e) {{
                 output.innerHTML += '<div class="text-red-400 mt-2">❌ Error: ' + escapeHtml(e.message) + '</div>';
+                lastResult = null;
             }}
             output.scrollTop = output.scrollHeight;
             input.value = '';
         }}
 
+        // History and result variables
+        let history = [];
+        let historyIndex = -1;
+        let lastResult = null;
+        let currentRequestData = '';
+
+        function navigateHistory(direction) {{
+            const input = document.getElementById('repl-input');
+            if (history.length === 0) return;
+
+            if (direction === 'up') {{
+                if (historyIndex > 0) {{
+                    historyIndex--;
+                    input.value = history[historyIndex];
+                }}
+            }} else if (direction === 'down') {{
+                if (historyIndex < history.length - 1) {{
+                    historyIndex++;
+                    input.value = history[historyIndex];
+                }} else {{
+                    historyIndex = history.length;
+                    input.value = '';
+                }}
+            }}
+            // Move cursor to end
+            const length = input.value.length;
+            setTimeout(() => {{
+                input.setSelectionRange(length, length);
+            }}, 0);
+        }}
+
         function quickInspect(expr) {{
-            document.getElementById('repl-input').value = expr;
+            // Replace @ with lastResult
+            let expanded = expr;
+            if (lastResult !== null) {{
+                expanded = expr.replace(/@/g, '(' + lastResult + ')');
+            }}
+            document.getElementById('repl-input').value = expanded;
             executeRepl();
         }}
 
         function clearRepl() {{
             document.getElementById('repl-output').innerHTML = '<div class="text-gray-500 italic">// REPL cleared.</div>';
+            history = [];
+            historyIndex = -1;
+            lastResult = null;
         }}
 
         function escapeHtml(text) {{
@@ -3426,6 +3518,29 @@ pub fn render_dev_error_page(
             div.textContent = text;
             return div.innerHTML;
         }}
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {{
+            // Ctrl+` to focus REPL
+            if (e.ctrlKey && e.key === '`') {{
+                e.preventDefault();
+                document.getElementById('repl-input').focus();
+            }}
+            // Escape to clear selection
+            if (e.key === 'Escape') {{
+                document.querySelectorAll('.stack-frame').forEach(el => el.classList.remove('active'));
+            }}
+            // Arrow keys for history navigation
+            if (e.target.id === 'repl-input') {{
+                if (e.key === 'ArrowUp') {{
+                    e.preventDefault();
+                    navigateHistory('up');
+                }} else if (e.key === 'ArrowDown') {{
+                    e.preventDefault();
+                    navigateHistory('down');
+                }}
+            }}
+        }});
     </script>
 </body>
 </html>"#,
