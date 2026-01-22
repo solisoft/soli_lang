@@ -15,6 +15,7 @@ get("/docs/introduction", "docs#introduction");
 get("/docs/installation", "docs#installation");
 get("/docs/routing", "docs#routing");
 get("/docs/controllers", "docs#controllers");
+get("/docs/database", "docs#database");
 get("/docs/models", "docs#models");
 get("/docs/migrations", "docs#migrations");
 get("/docs/views", "docs#views");

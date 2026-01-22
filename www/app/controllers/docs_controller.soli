@@ -53,6 +53,14 @@ fn views(req: Any) -> Any {
     });
 }
 
+fn database(req: Any) -> Any {
+    return render("docs/database", {
+        "title": "Database Configuration",
+        "section": "database",
+        "layout": "layouts/docs"
+    });
+}
+
 fn models(req: Any) -> Any {
     return render("docs/models", {
         "title": "Models & ORM",

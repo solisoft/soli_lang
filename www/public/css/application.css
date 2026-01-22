@@ -2827,6 +2827,10 @@ video {
   color: rgb(168 85 247 / var(--tw-text-opacity, 1));
 }
 
+.text-red-200\/80 {
+  color: rgb(254 202 202 / 0.8);
+}
+
 .text-red-300 {
   --tw-text-opacity: 1;
   color: rgb(252 165 165 / var(--tw-text-opacity, 1));
