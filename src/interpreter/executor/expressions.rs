@@ -366,6 +366,7 @@ impl Interpreter {
                         body: method.body.clone(),
                         closure: Rc::new(RefCell::new(bound_env)),
                         is_method: true,
+                        span: method.span,
                     };
                     return Ok(Value::Function(Rc::new(bound_method)));
                 }
@@ -659,7 +660,7 @@ impl Interpreter {
         &mut self,
         params: &[Parameter],
         body: &[Stmt],
-        _span: Span,
+        span: Span,
     ) -> RuntimeResult<Value> {
         let func = Function {
             name: "<lambda>".to_string(),
@@ -667,6 +668,7 @@ impl Interpreter {
             body: body.to_vec(),
             closure: self.environment.clone(),
             is_method: false,
+            span: Some(span),
         };
         Ok(Value::Function(Rc::new(func)))
     }

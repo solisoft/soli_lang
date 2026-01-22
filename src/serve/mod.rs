@@ -2092,7 +2092,8 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
                 }
                 Err(e) => {
                     if dev_mode {
-                        let error_html = render_error_page(&e.to_string(), interpreter, request_data);
+                        let stack_trace = interpreter.get_stack_trace();
+                        let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
                         ResponseData {
                             status: 500,
                             headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2110,7 +2111,8 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
         }
         Err(e) => {
             if dev_mode {
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data);
+                let stack_trace = interpreter.get_stack_trace();
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
                 ResponseData {
                     status: 500,
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2169,7 +2171,8 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         Ok(inst) => inst,
         Err(e) => {
             return Some(if dev_mode {
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data);
+                let stack_trace = interpreter.get_stack_trace();
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
                 ResponseData {
                     status: 500,
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2204,7 +2207,8 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         }
         Err(e) => {
             if dev_mode {
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data);
+                let stack_trace = interpreter.get_stack_trace();
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace);
                 ResponseData {
                     status: 500,
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2612,7 +2616,8 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                 }
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
-                        let error_html = render_error_page(&err.to_string(), interpreter, data);
+                        let stack_trace = interpreter.get_stack_trace();
+                        let error_html = render_error_page(&err.to_string(), interpreter, data, &stack_trace);
                         return finalize_response(ResponseData {
                             status: 500,
                             headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2628,7 +2633,8 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             },
             Err(e) => {
                 if dev_mode {
-                    let error_html = render_error_page(&e.to_string(), interpreter, data);
+                    let stack_trace = interpreter.get_stack_trace();
+                    let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace);
                     return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2674,7 +2680,8 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                 }
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
-                        let error_html = render_error_page(&err.to_string(), interpreter, data);
+                        let stack_trace = interpreter.get_stack_trace();
+                        let error_html = render_error_page(&err.to_string(), interpreter, data, &stack_trace);
                         return finalize_response(ResponseData {
                             status: 500,
                             headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2690,7 +2697,8 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             },
             Err(e) => {
                 if dev_mode {
-                    let error_html = render_error_page(&e.to_string(), interpreter, data);
+                    let stack_trace = interpreter.get_stack_trace();
+                    let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace);
                     return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2716,8 +2724,8 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
     let body_str = String::from_utf8_lossy(&body);
     
     // Parse JSON body
-    let code = match serde_json::from_str::<serde_json::Value>(&body_str) {
-        Ok(json) => json.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+    let json: serde_json::Value = match serde_json::from_str(&body_str) {
+        Ok(json) => json,
         Err(_) => {
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
@@ -2727,8 +2735,11 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
         }
     };
 
+    let code = json.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string();
+    let request_data_json = json.get("request_data").and_then(|d| d.as_str()).unwrap_or("").to_string();
+
     // Execute the code using the interpreter
-    let result = execute_repl_code(&code);
+    let result = execute_repl_code(&code, &request_data_json);
     
     let response_json = serde_json::json!({
         "result": result.result,
@@ -2826,7 +2837,7 @@ struct ReplResult {
     error: Option<String>,
 }
 
-fn execute_repl_code(code: &str) -> ReplResult {
+fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
     if code.trim().is_empty() {
         return ReplResult {
             result: "null".to_string(),
@@ -2834,48 +2845,136 @@ fn execute_repl_code(code: &str) -> ReplResult {
         };
     }
 
-    // Create a new interpreter for the REPL
     let mut interpreter = crate::interpreter::Interpreter::new();
-    
-    // Parse and execute the code
+
+    // Parse request data and set up environment variables
+    if !request_data_json.is_empty() {
+        if let Ok(data) = serde_json::from_str::<serde_json::Value>(request_data_json) {
+            let req_val = convert_json_to_value(data.clone());
+            interpreter.environment.borrow_mut().define("req".to_string(), req_val);
+
+            if let Some(v) = data.get("params").cloned() {
+                interpreter.environment.borrow_mut().define("params".to_string(), convert_json_to_value(v));
+            }
+            if let Some(v) = data.get("query").cloned() {
+                interpreter.environment.borrow_mut().define("query".to_string(), convert_json_to_value(v));
+            }
+            if let Some(v) = data.get("body").cloned() {
+                interpreter.environment.borrow_mut().define("body".to_string(), convert_json_to_value(v));
+            }
+            if let Some(v) = data.get("headers").cloned() {
+                interpreter.environment.borrow_mut().define("headers".to_string(), convert_json_to_value(v));
+            }
+            if let Some(v) = data.get("session").cloned() {
+                interpreter.environment.borrow_mut().define("session".to_string(), convert_json_to_value(v));
+            }
+        }
+    }
+
+    // Try parsing as a complete program first
     let tokens = crate::lexer::Scanner::new(code).scan_tokens();
-    let parse_result = tokens.map_err(|e| format!("Lexer error: {:?}", e))
-        .and_then(|tokens| {
-            crate::parser::Parser::new(tokens)
-                .parse()
-                .map_err(|e| format!("Parser error: {:?}", e))
-        });
-    
+    let parse_result = tokens.map_err(|e| format!("{:?}", e))
+        .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
+
     match parse_result {
         Ok(program) => {
-            // Execute with a fresh environment
             match interpreter.interpret(&program) {
                 Ok(_) => {
                     ReplResult {
-                        result: "null".to_string(), // REPL doesn't return values
+                        result: "null".to_string(),
                         error: None,
                     }
                 }
                 Err(e) => ReplResult {
                     result: "null".to_string(),
-                    error: Some(format!("Execution error: {:?}", e)),
+                    error: Some(format!("Execution error: {}", e)),
                 },
             }
         }
-        Err(parse_errors) => {
-            ReplResult {
-                result: "null".to_string(),
-                error: Some(format!("Parse error: {:?}", parse_errors)),
+        Err(_) => {
+            // Try wrapping in print() for expressions
+            let wrapped_code = format!("print({})", code);
+            let tokens = crate::lexer::Scanner::new(&wrapped_code).scan_tokens();
+            let parse_result = tokens.map_err(|e| format!("{:?}", e))
+                .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
+
+            match parse_result {
+                Ok(program) => {
+                    match interpreter.interpret(&program) {
+                        Ok(_) => {
+                            ReplResult {
+                                result: "printed".to_string(),
+                                error: None,
+                            }
+                        }
+                        Err(e) => ReplResult {
+                            result: "null".to_string(),
+                            error: Some(format!("Execution error: {}", e)),
+                        },
+                    }
+                }
+                Err(parse_errors) => {
+                    ReplResult {
+                        result: "null".to_string(),
+                        error: Some(format!("Parse error: {}", parse_errors)),
+                    }
+                }
             }
         }
     }
 }
 
+fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::Value {
+    match json {
+        serde_json::Value::Null => crate::interpreter::value::Value::Null,
+        serde_json::Value::Bool(b) => crate::interpreter::value::Value::Bool(b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                crate::interpreter::value::Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                crate::interpreter::value::Value::Float(f)
+            } else {
+                crate::interpreter::value::Value::Null
+            }
+        }
+        serde_json::Value::String(s) => crate::interpreter::value::Value::String(s),
+        serde_json::Value::Array(arr) => {
+            let values: Vec<_> = arr.into_iter()
+                .map(convert_json_to_value)
+                .collect();
+            crate::interpreter::value::Value::Array(std::rc::Rc::new(std::cell::RefCell::new(values)))
+        }
+        serde_json::Value::Object(obj) => {
+            let values: Vec<_> = obj.into_iter()
+                .map(|(k, v)| (crate::interpreter::value::Value::String(k), convert_json_to_value(v)))
+                .collect();
+            crate::interpreter::value::Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(values)))
+        }
+    }
+}
+
 /// Helper function to render error page with full details.
-fn render_error_page(error: &str, interpreter: &Interpreter, request_data: &RequestData) -> String {
+fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String]) -> String {
     let error_type = "RuntimeError";
-    let location = "unknown:0";
-    let stack_trace: Vec<String> = vec![format!("Error: {}", error)];
+    let mut location = "unknown:0".to_string();
+    let mut full_stack_trace: Vec<String> = Vec::new();
+
+    // Try to parse span info from error message
+    let span_info = extract_span_from_error(error_msg);
+    let error_file = span_info.file.clone().unwrap_or_else(|| "unknown".to_string());
+    let error_line = span_info.line;
+
+    location = format!("{}:{}", error_file, error_line);
+
+    // Build stack trace - first the error, then the call stack
+    full_stack_trace.push(format!("Error: {}", error_msg));
+    full_stack_trace.extend(stack_trace.iter().cloned());
+    if full_stack_trace.len() == 1 {
+        full_stack_trace.push(format!("{}:{} (error location)", error_file, error_line));
+    }
+
+    // Get source code around the error line
+    let source_preview = get_source_preview(&error_file, error_line);
 
     let mut request_hash_map = HashMap::new();
     request_hash_map.insert("method".to_string(), Value::String(request_data.method.clone()));
@@ -2885,14 +2984,81 @@ fn render_error_page(error: &str, interpreter: &Interpreter, request_data: &Requ
     request_hash_map.insert("body".to_string(), Value::String(request_data.body.clone()));
     request_hash_map.insert("session".to_string(), Value::String("N/A".to_string()));
 
+    // Serialize request data for REPL (manual serialization)
+    let request_data_json = format!(r#"{{"method":"{}","path":"{}","params":{},"headers":{},"body":"{}","session":"N/A"}}"#,
+        request_data.method,
+        request_data.path,
+        format!("{:?}", request_data.query),
+        format!("{:?}", request_data.headers),
+        request_data.body
+    );
+
     render_dev_error_page(
-        error,
+        error_msg,
         error_type,
-        location,
-        &stack_trace,
+        &location,
+        &full_stack_trace,
         &request_hash_map,
         interpreter,
     )
+}
+
+struct SpanInfo {
+    file: Option<String>,
+    line: usize,
+    column: usize,
+}
+
+fn extract_span_from_error(error_msg: &str) -> SpanInfo {
+    // Try to find patterns like "at file:line" or "file:line"
+    let re = regex::Regex::new(r"([a-zA-Z_][a-zA-Z0-9_\-.]*\.soli):(\d+)").unwrap();
+    if let Some(caps) = re.captures(error_msg) {
+        let file = caps.get(1).map(|m| m.as_str().to_string());
+        let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+        return SpanInfo { file, line, column: 1 };
+    }
+
+    // Try to find "line X" or "line: X" patterns
+    let re2 = regex::Regex::new(r"(?:at\s+)?line\s*[=:]\s*(\d+)").unwrap();
+    if let Some(caps) = re2.captures(error_msg) {
+        let line = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+        return SpanInfo { file: None, line, column: 1 };
+    }
+
+    SpanInfo { file: None, line: 1, column: 1 }
+}
+
+fn get_source_preview(file_path: &str, error_line: usize) -> Vec<String> {
+    if file_path.is_empty() || file_path == "unknown" {
+        return Vec::new();
+    }
+
+    let path = std::path::Path::new(file_path);
+    if !path.exists() {
+        return Vec::new();
+    }
+
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let start = if error_line > 3 { error_line - 3 } else { 1 };
+    let end = error_line + 3;
+
+    content
+        .lines()
+        .enumerate()
+        .filter(|(i, _)| {
+            let line_num = i + 1;
+            line_num >= start && line_num <= end
+        })
+        .map(|(i, line)| {
+            let line_num = i + 1;
+            let marker = if line_num == error_line { ">>>" } else { "   " };
+            format!("{} {:4} | {}", marker, line_num, line)
+        })
+        .collect()
 }
 
 /// Render the development error page with request details and REPL.

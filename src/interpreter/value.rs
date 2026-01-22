@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt};
 use crate::interpreter::environment::Environment;
+use crate::span::Span;
 
 /// A runtime value in Solilang.
 #[derive(Debug, Clone)]
@@ -266,6 +267,7 @@ pub struct Function {
     pub body: Vec<Stmt>,
     pub closure: Rc<RefCell<Environment>>,
     pub is_method: bool,
+    pub span: Option<Span>,
 }
 
 impl Function {
@@ -276,6 +278,7 @@ impl Function {
             body: decl.body.clone(),
             closure,
             is_method: false,
+            span: Some(decl.span),
         }
     }
 
@@ -286,6 +289,7 @@ impl Function {
             body: decl.body.clone(),
             closure,
             is_method: true,
+            span: Some(decl.span),
         }
     }
 

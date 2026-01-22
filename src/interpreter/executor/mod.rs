@@ -22,6 +22,15 @@ use crate::span::Span;
 
 pub(crate) type RuntimeResult<T> = Result<T, RuntimeError>;
 
+/// Represents a single frame in the call stack.
+#[derive(Debug, Clone)]
+pub struct StackFrame {
+    pub function_name: String,
+    pub file_path: Option<PathBuf>,
+    pub line: usize,
+    pub column: usize,
+}
+
 /// Internal result type that can carry return values and exceptions.
 pub(crate) enum ControlFlow {
     Normal,
@@ -34,6 +43,7 @@ pub struct Interpreter {
     pub(crate) environment: Rc<RefCell<Environment>>,
     pub(crate) coverage_tracker: Option<Rc<RefCell<CoverageTracker>>>,
     pub(crate) current_source_path: Option<PathBuf>,
+    pub(crate) call_stack: Vec<StackFrame>,
 }
 
 impl Interpreter {
@@ -45,6 +55,7 @@ impl Interpreter {
             environment: globals,
             coverage_tracker: None,
             current_source_path: None,
+            call_stack: Vec::new(),
         }
     }
 
@@ -56,6 +67,7 @@ impl Interpreter {
             environment: globals,
             coverage_tracker: Some(tracker),
             current_source_path: None,
+            call_stack: Vec::new(),
         }
     }
 
@@ -73,6 +85,37 @@ impl Interpreter {
                 tracker.borrow_mut().record_line_hit(path, line);
             }
         }
+    }
+
+    /// Push a frame onto the call stack.
+    pub(crate) fn push_frame(&mut self, function_name: &str, span: Span) {
+        self.call_stack.push(StackFrame {
+            function_name: function_name.to_string(),
+            file_path: self.current_source_path.clone(),
+            line: span.line,
+            column: span.column,
+        });
+    }
+
+    /// Pop a frame from the call stack.
+    pub(crate) fn pop_frame(&mut self) {
+        self.call_stack.pop();
+    }
+
+    /// Get the current call stack as formatted strings.
+    pub fn get_stack_trace(&self) -> Vec<String> {
+        self.call_stack
+            .iter()
+            .rev()
+            .map(|frame| {
+                let file = frame
+                    .file_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                format!("{} at {}:{}", frame.function_name, file, frame.line)
+            })
+            .collect()
     }
 
     /// Interpret a complete program.
@@ -111,6 +154,10 @@ impl Interpreter {
         func: &Function,
         arguments: Vec<Value>,
     ) -> RuntimeResult<Value> {
+        // Push stack frame
+        let span = func.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
+        self.push_frame(&func.name, span);
+
         let call_env = Environment::with_enclosing(func.closure.clone());
         let mut call_env = call_env;
 
@@ -118,14 +165,20 @@ impl Interpreter {
             call_env.define(param.name.clone(), value);
         }
 
-        match self.execute_block(&func.body, call_env)? {
-            ControlFlow::Normal => Ok(Value::Null),
-            ControlFlow::Return(return_value) => Ok(return_value),
-            ControlFlow::Throw(e) => Err(RuntimeError::General {
+        let result = match self.execute_block(&func.body, call_env) {
+            Ok(ControlFlow::Normal) => Ok(Value::Null),
+            Ok(ControlFlow::Return(return_value)) => Ok(return_value),
+            Ok(ControlFlow::Throw(e)) => Err(RuntimeError::General {
                 message: format!("Unhandled exception: {}", e),
                 span: Span::default(),
             }),
-        }
+            Err(e) => Err(e),
+        };
+
+        // Pop stack frame
+        self.pop_frame();
+
+        result
     }
 
     /// Run the HTTP server on the given port.

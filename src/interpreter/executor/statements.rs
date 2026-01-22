@@ -286,6 +286,7 @@ impl Interpreter {
                 body: ctor.body.clone(),
                 closure: method_env.clone(),
                 is_method: true,
+                span: Some(ctor.span),
             })
         });
 
