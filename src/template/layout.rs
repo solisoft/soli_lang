@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::interpreter::value::Value;
-use crate::template::parser::{parse_template, CompareOp, Expr, TemplateNode};
+use crate::template::parser::{parse_template, BinaryOp, CompareOp, Expr, TemplateNode};
 
 /// Resolve a value if it's a Future, otherwise return as-is.
 /// This enables auto-resolution of async HTTP responses in templates.
@@ -169,6 +169,12 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
             let base_value = evaluate_expr(base, data)?;
             let key_value = evaluate_expr(key, data)?;
             index_value(&base_value, &key_value)
+        }
+
+        Expr::Binary(left, op, right) => {
+            let left_val = evaluate_expr(left, data)?;
+            let right_val = evaluate_expr(right, data)?;
+            evaluate_binary_op(&left_val, *op, &right_val)
         }
 
         Expr::Compare(left, op, right) => {
@@ -359,6 +365,100 @@ fn compare_values(a: &Value, b: &Value) -> Result<i32, String> {
             a.type_name(),
             b.type_name()
         )),
+    }
+}
+
+/// Evaluate a binary operation
+#[inline]
+fn evaluate_binary_op(left: &Value, op: BinaryOp, right: &Value) -> Result<Value, String> {
+    match op {
+        BinaryOp::Add => match (left, right) {
+            // String concatenation
+            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+            (Value::String(a), b) => Ok(Value::String(format!("{}{}", a, value_to_string(b)))),
+            (a, Value::String(b)) => Ok(Value::String(format!("{}{}", value_to_string(a), b))),
+            // Numeric addition
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
+            _ => Err(format!(
+                "Cannot add {} and {}",
+                left.type_name(),
+                right.type_name()
+            )),
+        },
+        BinaryOp::Subtract => match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - *b as f64)),
+            _ => Err(format!(
+                "Cannot subtract {} from {}",
+                right.type_name(),
+                left.type_name()
+            )),
+        },
+        BinaryOp::Multiply => match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
+            _ => Err(format!(
+                "Cannot multiply {} and {}",
+                left.type_name(),
+                right.type_name()
+            )),
+        },
+        BinaryOp::Divide => match (left, right) {
+            (Value::Int(a), Value::Int(b)) => {
+                if *b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Int(a / b))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => {
+                if *b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a / b))
+                }
+            }
+            (Value::Int(a), Value::Float(b)) => {
+                if *b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(*a as f64 / b))
+                }
+            }
+            (Value::Float(a), Value::Int(b)) => {
+                if *b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a / *b as f64))
+                }
+            }
+            _ => Err(format!(
+                "Cannot divide {} by {}",
+                left.type_name(),
+                right.type_name()
+            )),
+        },
+        BinaryOp::Modulo => match (left, right) {
+            (Value::Int(a), Value::Int(b)) => {
+                if *b == 0 {
+                    Err("Modulo by zero".to_string())
+                } else {
+                    Ok(Value::Int(a % b))
+                }
+            }
+            _ => Err(format!(
+                "Cannot perform modulo on {} and {}",
+                left.type_name(),
+                right.type_name()
+            )),
+        },
     }
 }
 

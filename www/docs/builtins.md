@@ -1193,9 +1193,9 @@ Same as `dotenv()` - loads environment variables from a .env file.
 
 ## DateTime Functions
 
-Soli uses Unix timestamps (integers) for datetime operations.
+Soli uses Unix timestamps (integers) for datetime operations. All datetime functions use the `__datetime_` prefix in Soli code.
 
-### datetime_now_local()
+### __datetime_now_local()
 
 Gets the current local time as a Unix timestamp.
 
@@ -1206,13 +1206,18 @@ Gets the current local time as a Unix timestamp.
 let now = __datetime_now_local()
 ```
 
-### datetime_now_utc()
+### __datetime_now_utc()
 
 Gets the current UTC time as a Unix timestamp.
 
 **Returns:** Int - Unix timestamp
 
-### datetime_from_unix(timestamp)
+**Example:**
+```soli
+let now = __datetime_now_utc()
+```
+
+### __datetime_from_unix(timestamp)
 
 Creates a datetime from a Unix timestamp.
 
@@ -1221,7 +1226,7 @@ Creates a datetime from a Unix timestamp.
 
 **Returns:** Int - The same timestamp (for consistency)
 
-### datetime_to_unix(timestamp)
+### __datetime_to_unix(timestamp)
 
 Converts a datetime to a Unix timestamp.
 
@@ -1230,12 +1235,18 @@ Converts a datetime to a Unix timestamp.
 
 **Returns:** Int - Unix timestamp
 
-### datetime_parse(string)
+### __datetime_parse(string)
 
 Parses a datetime string to a Unix timestamp.
 
 **Parameters:**
 - `string` (String) - Date string in ISO 8601 or RFC formats
+
+Supported formats:
+- RFC 3339: `"2024-01-15T10:30:00Z"`
+- RFC 2822: `"Mon, 15 Jan 2024 10:30:00 +0000"`
+- ISO datetime: `"2024-01-15T10:30:00"` or `"2024-01-15 10:30:00"`
+- ISO date only: `"2024-01-15"`
 
 **Returns:** Int|null - Unix timestamp or null if parsing fails
 
@@ -1245,23 +1256,35 @@ let ts = __datetime_parse("2024-01-15T10:30:00Z")
 let ts2 = __datetime_parse("2024-01-15")
 ```
 
-### datetime_format(timestamp, format)
+### __datetime_format(timestamp, format)
 
-Formats a timestamp as a string.
+Formats a timestamp as a string using strftime format specifiers.
 
 **Parameters:**
 - `timestamp` (Int) - Unix timestamp
 - `format` (String) - Format string (strftime format)
 
+Common format specifiers:
+- `%Y` - 4-digit year (2024)
+- `%m` - 2-digit month (01-12)
+- `%d` - 2-digit day (01-31)
+- `%H` - 24-hour hour (00-23)
+- `%M` - Minute (00-59)
+- `%S` - Second (00-59)
+- `%B` - Full month name (January)
+- `%A` - Full weekday name (Monday)
+
 **Returns:** String
 
 **Example:**
 ```soli
+let ts = __datetime_now_utc()
 __datetime_format(ts, "%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
 __datetime_format(ts, "%B %d, %Y")           // "January 15, 2024"
+__datetime_format(ts, "%A")                  // "Monday"
 ```
 
-### datetime_components(timestamp)
+### __datetime_components(timestamp)
 
 Gets datetime components as a hash.
 
@@ -1274,24 +1297,84 @@ Gets datetime components as a hash.
 ```soli
 let parts = __datetime_components(ts)
 println(parts["year"])     // 2024
+println(parts["month"])    // 1
+println(parts["day"])      // 15
 println(parts["weekday"])  // "monday"
 ```
 
-### datetime_add(timestamp, seconds)
+### __datetime_add(timestamp, seconds)
 
 Adds seconds to a timestamp.
 
 **Parameters:**
 - `timestamp` (Int) - Unix timestamp
-- `seconds` (Int) - Seconds to add
+- `seconds` (Int) - Seconds to add (can be negative)
 
 **Returns:** Int - New timestamp
 
-### datetime_sub(timestamp, seconds)
+**Example:**
+```soli
+let ts = __datetime_now_utc()
+let in_one_hour = __datetime_add(ts, 3600)
+let yesterday = __datetime_add(ts, -86400)
+```
+
+### __datetime_add_days(timestamp)
+
+Adds one day to a timestamp.
+
+**Parameters:**
+- `timestamp` (Int) - Unix timestamp
+
+**Returns:** Int - New timestamp
+
+### __datetime_add_hours(timestamp)
+
+Adds one hour to a timestamp.
+
+**Parameters:**
+- `timestamp` (Int) - Unix timestamp
+
+**Returns:** Int - New timestamp
+
+### __datetime_add_weeks(timestamp)
+
+Adds one week to a timestamp.
+
+**Parameters:**
+- `timestamp` (Int) - Unix timestamp
+
+**Returns:** Int - New timestamp
+
+### __datetime_add_months(timestamp)
+
+Adds one month to a timestamp.
+
+**Parameters:**
+- `timestamp` (Int) - Unix timestamp
+
+**Returns:** Int - New timestamp
+
+### __datetime_add_years(timestamp)
+
+Adds one year to a timestamp.
+
+**Parameters:**
+- `timestamp` (Int) - Unix timestamp
+
+**Returns:** Int - New timestamp
+
+### __datetime_sub(timestamp, seconds)
 
 Subtracts seconds from a timestamp.
 
-### datetime_diff(timestamp1, timestamp2)
+**Parameters:**
+- `timestamp` (Int) - Unix timestamp
+- `seconds` (Int) - Seconds to subtract
+
+**Returns:** Int - New timestamp
+
+### __datetime_diff(timestamp1, timestamp2)
 
 Calculates the difference between two timestamps in seconds.
 
@@ -1301,21 +1384,46 @@ Calculates the difference between two timestamps in seconds.
 
 **Returns:** Int - Difference (timestamp2 - timestamp1)
 
-### datetime_is_before(timestamp1, timestamp2)
+**Example:**
+```soli
+let start = __datetime_parse("2024-01-01")
+let end = __datetime_parse("2024-01-15")
+let diff = __datetime_diff(start, end)  // 1209600 seconds (14 days)
+```
+
+### __datetime_is_before(timestamp1, timestamp2)
 
 Checks if timestamp1 is before timestamp2.
 
+**Parameters:**
+- `timestamp1` (Int) - First timestamp
+- `timestamp2` (Int) - Second timestamp
+
 **Returns:** Bool
 
-### datetime_is_after(timestamp1, timestamp2)
+### __datetime_is_after(timestamp1, timestamp2)
 
 Checks if timestamp1 is after timestamp2.
 
+**Parameters:**
+- `timestamp1` (Int) - First timestamp
+- `timestamp2` (Int) - Second timestamp
+
 **Returns:** Bool
 
-### datetime_to_iso(timestamp)
+### __datetime_is_same(timestamp1, timestamp2)
 
-Converts a timestamp to ISO 8601 format.
+Checks if two timestamps are equal.
+
+**Parameters:**
+- `timestamp1` (Int) - First timestamp
+- `timestamp2` (Int) - Second timestamp
+
+**Returns:** Bool
+
+### __datetime_to_iso(timestamp)
+
+Converts a timestamp to ISO 8601 (RFC 3339) format.
 
 **Parameters:**
 - `timestamp` (Int) - Unix timestamp
@@ -1324,17 +1432,18 @@ Converts a timestamp to ISO 8601 format.
 
 **Example:**
 ```soli
+let ts = __datetime_now_utc()
 __datetime_to_iso(ts)  // "2024-01-15T10:30:00+00:00"
 ```
 
-### datetime_weekday(timestamp)
+### __datetime_weekday(timestamp)
 
 Gets the weekday name for a timestamp.
 
 **Parameters:**
 - `timestamp` (Int) - Unix timestamp
 
-**Returns:** String - Weekday name (e.g., "monday")
+**Returns:** String - Lowercase weekday name (e.g., "monday", "tuesday")
 
 ---
 

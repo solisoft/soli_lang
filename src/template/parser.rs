@@ -27,6 +27,8 @@ pub enum Expr {
     Field(Box<Expr>, String),
     /// Index access: expr[key]
     Index(Box<Expr>, Box<Expr>),
+    /// Binary operation: expr op expr (for +, -, *, /)
+    Binary(Box<Expr>, BinaryOp, Box<Expr>),
     /// Comparison: expr op expr
     Compare(Box<Expr>, CompareOp, Box<Expr>),
     /// Logical AND: expr && expr
@@ -39,6 +41,16 @@ pub enum Expr {
     Method(Box<Expr>, String),
     /// Function call: name(arg1, arg2, ...)
     Call(String, Vec<Expr>),
+}
+
+/// Binary operators for arithmetic and string operations
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BinaryOp {
+    Add,      // +
+    Subtract, // -
+    Multiply, // *
+    Divide,   // /
+    Modulo,   // %
 }
 
 /// Comparison operators
@@ -570,11 +582,26 @@ pub fn compile_expr(expr: &str) -> Expr {
         (">", CompareOp::Gt),
         ("<", CompareOp::Lt),
     ] {
-        if let Some(pos) = expr.find(op_str) {
+        if let Some(pos) = find_binary_op(expr, op_str) {
             let left = compile_expr(&expr[..pos]);
             let right = compile_expr(&expr[pos + op_str.len()..]);
             return Expr::Compare(Box::new(left), op, Box::new(right));
         }
+    }
+
+    // Check for additive operators (+ -)
+    // Scan right-to-left for left associativity
+    if let Some((pos, op)) = find_additive_op(expr) {
+        let left = compile_expr(&expr[..pos]);
+        let right = compile_expr(&expr[pos + 1..]);
+        return Expr::Binary(Box::new(left), op, Box::new(right));
+    }
+
+    // Check for multiplicative operators (* / %)
+    if let Some((pos, op)) = find_multiplicative_op(expr) {
+        let left = compile_expr(&expr[..pos]);
+        let right = compile_expr(&expr[pos + 1..]);
+        return Expr::Binary(Box::new(left), op, Box::new(right));
     }
 
     // Check for negation
@@ -640,6 +667,129 @@ fn find_logical_op(expr: &str, op: &str) -> Option<usize> {
         }
     }
     None
+}
+
+/// Find a binary operator position, respecting bracket/quote nesting
+fn find_binary_op(expr: &str, op: &str) -> Option<usize> {
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut string_char = ' ';
+    let bytes = expr.as_bytes();
+    let op_bytes = op.as_bytes();
+
+    for i in 0..expr.len() {
+        let c = bytes[i] as char;
+
+        if in_string {
+            if c == string_char && (i == 0 || bytes[i - 1] != b'\\') {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match c {
+            '"' | '\'' => {
+                in_string = true;
+                string_char = c;
+            }
+            '[' | '(' => depth += 1,
+            ']' | ')' => depth -= 1,
+            _ => {
+                if depth == 0 && i + op.len() <= expr.len() {
+                    if &bytes[i..i + op.len()] == op_bytes {
+                        return Some(i);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find additive operator (+ or -), scanning right-to-left for left associativity
+/// Returns position and operator type
+fn find_additive_op(expr: &str) -> Option<(usize, BinaryOp)> {
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut string_char = ' ';
+    let bytes = expr.as_bytes();
+    let mut last_found: Option<(usize, BinaryOp)> = None;
+
+    for i in 0..expr.len() {
+        let c = bytes[i] as char;
+
+        if in_string {
+            if c == string_char && (i == 0 || bytes[i - 1] != b'\\') {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match c {
+            '"' | '\'' => {
+                in_string = true;
+                string_char = c;
+            }
+            '[' | '(' => depth += 1,
+            ']' | ')' => depth -= 1,
+            '+' if depth == 0 && i > 0 => {
+                // Make sure it's not part of a number like 1e+10
+                let prev = bytes[i - 1] as char;
+                if prev != 'e' && prev != 'E' {
+                    last_found = Some((i, BinaryOp::Add));
+                }
+            }
+            '-' if depth == 0 && i > 0 => {
+                // Make sure it's not a unary minus or part of a number
+                let prev = bytes[i - 1] as char;
+                if prev != 'e' && prev != 'E' && prev != '(' && prev != '[' && prev != ',' {
+                    last_found = Some((i, BinaryOp::Subtract));
+                }
+            }
+            _ => {}
+        }
+    }
+    last_found
+}
+
+/// Find multiplicative operator (* / %), scanning right-to-left for left associativity
+fn find_multiplicative_op(expr: &str) -> Option<(usize, BinaryOp)> {
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut string_char = ' ';
+    let bytes = expr.as_bytes();
+    let mut last_found: Option<(usize, BinaryOp)> = None;
+
+    for i in 0..expr.len() {
+        let c = bytes[i] as char;
+
+        if in_string {
+            if c == string_char && (i == 0 || bytes[i - 1] != b'\\') {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match c {
+            '"' | '\'' => {
+                in_string = true;
+                string_char = c;
+            }
+            '[' | '(' => depth += 1,
+            ']' | ')' => depth -= 1,
+            '*' if depth == 0 => {
+                last_found = Some((i, BinaryOp::Multiply));
+            }
+            '/' if depth == 0 => {
+                last_found = Some((i, BinaryOp::Divide));
+            }
+            '%' if depth == 0 => {
+                last_found = Some((i, BinaryOp::Modulo));
+            }
+            _ => {}
+        }
+    }
+    last_found
 }
 
 /// Compile variable access like `user`, `user["name"]`, or `user.name`
