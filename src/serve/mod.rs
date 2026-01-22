@@ -2749,10 +2749,10 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
     };
 
     let code = json.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string();
-    let request_data_json = json.get("request_data").and_then(|d| d.as_str()).unwrap_or("").to_string();
+    let request_data = json.get("request_data").cloned();
 
     // Execute the code using the interpreter
-    let result = execute_repl_code(&code, &request_data_json);
+    let result = execute_repl_code(&code, request_data);
     
     let response_json = serde_json::json!({
         "result": result.result,
@@ -2850,7 +2850,7 @@ struct ReplResult {
     error: Option<String>,
 }
 
-fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
+fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>) -> ReplResult {
     if code.trim().is_empty() {
         return ReplResult {
             result: "null".to_string(),
@@ -2860,31 +2860,61 @@ fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
 
     let mut interpreter = crate::interpreter::Interpreter::new();
 
-    // Parse request data and set up environment variables
-    if !request_data_json.is_empty() {
-        if let Ok(data) = serde_json::from_str::<serde_json::Value>(request_data_json) {
-            let req_val = convert_json_to_value(data.clone());
-            interpreter.environment.borrow_mut().define("req".to_string(), req_val);
+    // Set up environment variables from request data
+    if let Some(data) = request_data {
+        let req_val = convert_json_to_value(data.clone());
+        interpreter.environment.borrow_mut().define("req".to_string(), req_val);
 
-            if let Some(v) = data.get("params").cloned() {
-                interpreter.environment.borrow_mut().define("params".to_string(), convert_json_to_value(v));
+        if let Some(v) = data.get("params").cloned() {
+            interpreter.environment.borrow_mut().define("params".to_string(), convert_json_to_value(v));
+        }
+        if let Some(v) = data.get("query").cloned() {
+            interpreter.environment.borrow_mut().define("query".to_string(), convert_json_to_value(v));
+        }
+        if let Some(v) = data.get("body").cloned() {
+            interpreter.environment.borrow_mut().define("body".to_string(), convert_json_to_value(v));
+        }
+        if let Some(v) = data.get("headers").cloned() {
+            interpreter.environment.borrow_mut().define("headers".to_string(), convert_json_to_value(v));
+        }
+        if let Some(v) = data.get("session").cloned() {
+            interpreter.environment.borrow_mut().define("session".to_string(), convert_json_to_value(v));
+        }
+    }
+
+    // Strip trailing semicolon for expression evaluation
+    let code_trimmed = code.trim().trim_end_matches(';').trim();
+
+    // First, try to evaluate as an expression (to capture and return the value)
+    let wrapped_code = format!("let __repl_result__ = ({});", code_trimmed);
+    let tokens = crate::lexer::Scanner::new(&wrapped_code).scan_tokens();
+    let parse_result = tokens.map_err(|e| format!("{:?}", e))
+        .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
+
+    if let Ok(program) = parse_result {
+        match interpreter.interpret(&program) {
+            Ok(_) => {
+                // Get the result from environment
+                let result_val = interpreter.environment.borrow().get("__repl_result__");
+                let result_str = match result_val {
+                    Some(v) => format!("{}", v),
+                    None => "null".to_string(),
+                };
+                return ReplResult {
+                    result: result_str,
+                    error: None,
+                };
             }
-            if let Some(v) = data.get("query").cloned() {
-                interpreter.environment.borrow_mut().define("query".to_string(), convert_json_to_value(v));
-            }
-            if let Some(v) = data.get("body").cloned() {
-                interpreter.environment.borrow_mut().define("body".to_string(), convert_json_to_value(v));
-            }
-            if let Some(v) = data.get("headers").cloned() {
-                interpreter.environment.borrow_mut().define("headers".to_string(), convert_json_to_value(v));
-            }
-            if let Some(v) = data.get("session").cloned() {
-                interpreter.environment.borrow_mut().define("session".to_string(), convert_json_to_value(v));
+            Err(e) => {
+                return ReplResult {
+                    result: "null".to_string(),
+                    error: Some(format!("Execution error: {}", e)),
+                };
             }
         }
     }
 
-    // Try parsing as a complete program first
+    // If expression evaluation failed, try parsing as a complete program (statements)
     let tokens = crate::lexer::Scanner::new(code).scan_tokens();
     let parse_result = tokens.map_err(|e| format!("{:?}", e))
         .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
@@ -2904,40 +2934,10 @@ fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
                 },
             }
         }
-        Err(_) => {
-            // Try as expression - wrap in a block that returns the value
-            let wrapped_code = format!("let _repl_result = {}; _repl_result", code);
-            let tokens = crate::lexer::Scanner::new(&wrapped_code).scan_tokens();
-            let parse_result = tokens.map_err(|e| format!("{:?}", e))
-                .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
-
-            match parse_result {
-                Ok(program) => {
-                    match interpreter.interpret(&program) {
-                        Ok(_) => {
-                            // Get the result from environment
-                            let result_val = interpreter.environment.borrow().get("_repl_result");
-                            let result_str = match result_val {
-                                Some(v) => format!("{:?}", v),
-                                None => "null".to_string(),
-                            };
-                            ReplResult {
-                                result: result_str,
-                                error: None,
-                            }
-                        }
-                        Err(e) => ReplResult {
-                            result: "null".to_string(),
-                            error: Some(format!("Execution error: {}", e)),
-                        },
-                    }
-                }
-                Err(parse_errors) => {
-                    ReplResult {
-                        result: "null".to_string(),
-                        error: Some(format!("Parse error: {}", parse_errors)),
-                    }
-                }
+        Err(parse_errors) => {
+            ReplResult {
+                result: "null".to_string(),
+                error: Some(format!("Parse error: {}", parse_errors)),
             }
         }
     }
@@ -3133,24 +3133,37 @@ pub fn render_dev_error_page(
     let error_location = escape_html(location);
 
     // Format stack trace
+    // Stack trace format: "{function_name} at {file}:{line}"
     let mut stack_frames = Vec::new();
     for (i, frame) in stack_trace.iter().enumerate() {
-        let parts: Vec<&str> = frame.split('\n').collect();
-        let func = parts.get(0).unwrap_or(&"unknown").trim_start_matches("at ");
-        let loc = parts.get(1).unwrap_or(&"");
-        
-        // Parse file:line from location
-        let mut file = loc.to_string();
-        let mut line = 0;
-        if let Some(parens_start) = loc.find('(') {
-            let before_parens = &loc[..parens_start];
-            if let Some(colon_pos) = before_parens.find(':') {
-                file = before_parens[..colon_pos].to_string();
-                if let Ok(l) = before_parens[colon_pos + 1..].parse::<usize>() {
+        let mut func = "unknown".to_string();
+        let mut file = "unknown".to_string();
+        let mut line: usize = 0;
+
+        // Parse format: "function_name at file:line"
+        if let Some(at_pos) = frame.find(" at ") {
+            func = frame[..at_pos].to_string();
+            let location = &frame[at_pos + 4..]; // Skip " at "
+
+            // Find the last colon to separate file from line number
+            if let Some(last_colon) = location.rfind(':') {
+                file = location[..last_colon].to_string();
+                if let Ok(l) = location[last_colon + 1..].parse::<usize>() {
                     line = l;
                 }
+            } else {
+                file = location.to_string();
             }
+        } else {
+            // Fallback: treat entire frame as function name
+            func = frame.clone();
         }
+
+        let location_display = if file != "unknown" {
+            format!("{}:{}", file, line)
+        } else {
+            "unknown location".to_string()
+        };
 
         stack_frames.push(format!(
             r#"<div class="stack-frame px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors" onclick="showSource('{}', {}, this)">
@@ -3162,7 +3175,7 @@ pub fn render_dev_error_page(
                     </div>
                 </div>
             </div>"#,
-            escape_html(&file), line, i, escape_html(func), escape_html(&loc.trim())
+            escape_html(&file), line, i, escape_html(&func), escape_html(&location_display)
         ));
     }
 
