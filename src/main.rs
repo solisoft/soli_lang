@@ -33,6 +33,14 @@ enum Command {
         workers: usize,
         daemonize: bool,
     },
+    /// Run tests
+    Test {
+        path: Option<String>,
+        jobs: usize,
+        coverage: bool,
+        coverage_min: Option<f64>,
+        no_coverage: bool,
+    },
 }
 
 /// CLI options parsed from arguments.
@@ -47,12 +55,12 @@ fn print_usage() {
     eprintln!("Soli v0.1.0 - Solilang Interpreter");
     eprintln!();
     eprintln!("Usage: soli [options] [script.soli]");
-    eprintln!(
-        "       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--mode MODE]"
-    );
+    eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--mode MODE]");
+    eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  serve <folder>  Start MVC server from a project folder");
+    eprintln!("  test [path]     Run tests (default: tests/ directory)");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --tree-walk     Use tree-walking interpreter (default)");
@@ -65,6 +73,10 @@ fn print_usage() {
     eprintln!("  --port PORT     Port for serve command (default: 3000)");
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
     eprintln!("  --mode MODE     Execution mode for serve: tree-walk, bytecode (default), jit");
+    eprintln!("  --jobs N        Number of parallel test workers (default: CPU cores)");
+    eprintln!("  --coverage      Generate coverage report");
+    eprintln!("  --coverage-min N  Fail if coverage is below N% (default: 80)");
+    eprintln!("  --no-coverage   Skip coverage collection");
     eprintln!("  --help, -h      Show this help message");
     eprintln!();
     eprintln!("Examples:");
@@ -78,6 +90,10 @@ fn print_usage() {
     eprintln!("  soli serve my_app --port 8080 Start on custom port");
     eprintln!("  soli serve my_app --workers 16 Start server with 16 workers");
     eprintln!("  soli serve my_app --mode bytecode  Use bytecode VM for MVC server");
+    eprintln!("  soli test                     Run all tests in tests/");
+    eprintln!("  soli test spec.soli           Run specific test file");
+    eprintln!("  soli test --coverage          Run tests with coverage");
+    eprintln!("  soli test --jobs=4            Run tests with 4 workers");
 }
 
 fn parse_args() -> Options {
@@ -105,7 +121,7 @@ fn parse_args() -> Options {
 
                 // Check for options
                 let mut port = 3000u16;
-                let mut dev_mode = false;  // Production by default
+                let mut dev_mode = false; // Production by default
                 let mut daemonize = false;
                 let mut serve_mode = ExecutionMode::Bytecode;
                 // Default to number of CPU cores for optimal parallelism
@@ -137,9 +153,9 @@ fn parse_args() -> Options {
                             process::exit(64);
                         });
                     } else if args[i] == "-d" {
-                        daemonize = true;  // Enable daemon mode
+                        daemonize = true; // Enable daemon mode
                     } else if args[i] == "--dev" {
-                        dev_mode = true;  // Enable development mode
+                        dev_mode = true; // Enable development mode
                     } else if args[i] == "--mode" {
                         i += 1;
                         if i >= args.len() {
@@ -202,6 +218,76 @@ fn parse_args() -> Options {
                 }
             }
             "--no-type-check" => options.no_type_check = true,
+            "test" => {
+                // Parse test command
+                i += 1;
+                let mut path: Option<String> = None;
+                let mut jobs = std::thread::available_parallelism()
+                    .map(|p| p.get())
+                    .unwrap_or(4);
+                let mut coverage = true;
+                let mut coverage_min: Option<f64> = Some(80.0);
+                let mut no_coverage = false;
+
+                while i < args.len() {
+                    if args[i].starts_with('-') {
+                        match args[i].as_str() {
+                            "--jobs" => {
+                                i += 1;
+                                if i >= args.len() {
+                                    eprintln!("--jobs requires a number");
+                                    print_usage();
+                                    process::exit(64);
+                                }
+                                jobs = args[i].parse().unwrap_or_else(|_| {
+                                    eprintln!("Invalid jobs number: {}", args[i]);
+                                    process::exit(64);
+                                });
+                            }
+                            "--coverage" => {
+                                coverage = true;
+                            }
+                            "--no-coverage" => {
+                                no_coverage = true;
+                                coverage = false;
+                            }
+                            "--coverage-min" => {
+                                i += 1;
+                                if i >= args.len() {
+                                    eprintln!("--coverage-min requires a percentage");
+                                    print_usage();
+                                    process::exit(64);
+                                }
+                                coverage_min = Some(args[i].parse().unwrap_or_else(|_| {
+                                    eprintln!("Invalid coverage percentage: {}", args[i]);
+                                    process::exit(64);
+                                }));
+                            }
+                            _ => {
+                                eprintln!("Unknown option for test: {}", args[i]);
+                                print_usage();
+                                process::exit(64);
+                            }
+                        }
+                    } else if path.is_none() {
+                        path = Some(args[i].clone());
+                    } else {
+                        eprintln!("Only one test path can be specified");
+                        print_usage();
+                        process::exit(64);
+                    }
+                    i += 1;
+                }
+
+                options.command = Command::Test {
+                    path,
+                    jobs,
+                    coverage: !no_coverage && coverage,
+                    coverage_min: if no_coverage { None } else { coverage_min },
+                    no_coverage,
+                };
+                return options;
+            }
             "--help" | "-h" => {
                 print_usage();
                 process::exit(0);
@@ -240,10 +326,30 @@ fn main() {
             workers,
             daemonize,
         } => run_serve(folder, *port, *dev_mode, *mode, *workers, *daemonize),
+        Command::Test {
+            path,
+            jobs,
+            coverage,
+            coverage_min,
+            no_coverage,
+        } => run_test(
+            path.as_deref(),
+            *jobs,
+            *coverage,
+            *coverage_min,
+            *no_coverage,
+        ),
     }
 }
 
-fn run_serve(folder: &str, port: u16, dev_mode: bool, mode: ExecutionMode, workers: usize, daemonize: bool) {
+fn run_serve(
+    folder: &str,
+    port: u16,
+    dev_mode: bool,
+    mode: ExecutionMode,
+    workers: usize,
+    daemonize: bool,
+) {
     let path = Path::new(folder);
 
     if !path.exists() {
@@ -345,9 +451,9 @@ fn kill_previous_process(pid_file: &Path) {
         let mut cmdline = String::new();
         if cmdline_file.read_to_string(&mut cmdline).is_ok() {
             // cmdline contains null-separated arguments, check if it's a soli process
-            let is_soli = cmdline.split('\0').any(|arg| {
-                arg.ends_with("/soli") || arg == "soli"
-            });
+            let is_soli = cmdline
+                .split('\0')
+                .any(|arg| arg.ends_with("/soli") || arg == "soli");
 
             if is_soli {
                 println!("Killing previous soli process (PID: {})", pid);
@@ -551,4 +657,141 @@ impl ReplState {
 
         Ok(())
     }
+}
+
+fn run_test(
+    path: Option<&str>,
+    jobs: usize,
+    coverage: bool,
+    coverage_min: Option<f64>,
+    _no_coverage: bool,
+) {
+    use solilang::coverage::{CoverageConfig, CoverageReporter, CoverageTracker, OutputFormat};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let test_path = match path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join("tests"),
+    };
+
+    if !test_path.exists() {
+        eprintln!("Error: Test path '{}' does not exist", test_path.display());
+        process::exit(1);
+    }
+
+    let test_files: Vec<std::path::PathBuf> = if test_path.is_file() {
+        vec![test_path]
+    } else {
+        collect_test_files(&test_path)
+    };
+
+    if test_files.is_empty() {
+        println!("No test files found.");
+        return;
+    }
+
+    println!("Found {} test file(s)", test_files.len());
+
+    let mut tracker: Option<Rc<RefCell<CoverageTracker>>> = None;
+    if coverage {
+        let mut config = CoverageConfig::new();
+        config.formats = vec![OutputFormat::Console];
+        if let Some(min) = coverage_min {
+            config.threshold = Some(min);
+        }
+        tracker = Some(Rc::new(RefCell::new(CoverageTracker::new(config))));
+    }
+
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut pending = 0;
+
+    for test_file in &test_files {
+        match std::fs::read_to_string(test_file) {
+            Ok(source) => {
+                println!("\nRunning: {}", test_file.display());
+
+                let test_name = test_file
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                if let Some(ref tr) = tracker {
+                    tr.borrow_mut().start_test(&test_name);
+                }
+
+                let mut interpreter = solilang::interpreter::Interpreter::new();
+                if let Some(ref tr) = tracker {
+                    interpreter.set_coverage_tracker(tr.clone());
+                    interpreter.set_source_path(test_file.clone());
+                }
+
+                match solilang::run_with_path(
+                    &source,
+                    Some(test_file),
+                    solilang::ExecutionMode::TreeWalk,
+                    false,
+                    false,
+                ) {
+                    Ok(_) => {
+                        passed += 1;
+                        println!("  ✓ Passed");
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        println!("  ✗ Failed: {}", e);
+                    }
+                }
+
+                if let Some(ref mut tr) = tracker {
+                    tr.borrow_mut().end_test();
+                }
+            }
+            Err(e) => {
+                eprintln!("Error reading {}: {}", test_file.display(), e);
+                failed += 1;
+            }
+        }
+    }
+
+    println!();
+    println!("Test Results:");
+    println!("  Passed:  {}", passed);
+    println!("  Failed:  {}", failed);
+    println!("  Pending: {}", pending);
+    println!("  Total:   {}", passed + failed + pending);
+
+    if let Some(ref tr) = tracker {
+        let coverage_data = tr.borrow().get_aggregated_coverage();
+        let reporter = CoverageReporter::new(CoverageConfig::new());
+        reporter.generate_reports(&coverage_data);
+    }
+
+    if failed > 0 {
+        process::exit(1);
+    }
+}
+
+fn collect_test_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext == "soli" {
+                        files.push(path);
+                    }
+                }
+            } else if path.is_dir() {
+                files.extend(collect_test_files(&path));
+            }
+        }
+    }
+
+    files
 }

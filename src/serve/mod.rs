@@ -1062,7 +1062,7 @@ fn run_hyper_server_worker_pool(
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut interpreter = Interpreter::new();
 
-                worker_loop(i, work_rx, models_dir, middleware_dir, ws_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle, routes_file);
+                worker_loop(i, work_rx, models_dir, middleware_dir, ws_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle, routes_file, dev_mode);
             }));
 
             if result.is_err() {
@@ -1104,6 +1104,7 @@ fn worker_loop(
     hot_reload_versions: Arc<HotReloadVersions>,
     runtime_handle: tokio::runtime::Handle,
     routes_file: PathBuf,
+    dev_mode: bool,
 ) {
     // Initialize routes in this worker thread
     set_worker_routes(routes);
@@ -1207,7 +1208,7 @@ fn worker_loop(
         for _ in 0..BATCH_SIZE {
             match work_rx.try_recv() {
                 Ok(data) => {
-                    let resp_data = handle_request(interpreter, &data);
+                    let resp_data = handle_request(interpreter, &data, dev_mode);
                     let _ = data.response_tx.send(resp_data);
                 }
                 Err(channel::TryRecvError::Empty) => {
@@ -1221,7 +1222,7 @@ fn worker_loop(
 
         // Block waiting for more requests (proper blocking, not busy-wait)
         if let Ok(data) = work_rx.recv_timeout(check_interval) {
-            let resp_data = handle_request(interpreter, &data);
+            let resp_data = handle_request(interpreter, &data, dev_mode);
             let _ = data.response_tx.send(resp_data);
         }
     }
@@ -2065,10 +2066,10 @@ fn handle_websocket_event(interpreter: &mut Interpreter, data: &WebSocketEventDa
 }
 
 /// Call the route handler with the request hash.
-fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash: Value) -> ResponseData {
+fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash: Value, dev_mode: bool, request_data: &RequestData) -> ResponseData {
     // Check if this is an OOP controller action (contains #)
     if handler_name.contains('#') {
-        if let Some(response) = call_oop_controller_action(interpreter, handler_name, &request_hash) {
+        if let Some(response) = call_oop_controller_action(interpreter, handler_name, &request_hash, dev_mode, request_data) {
             return response;
         }
         // If not an OOP controller or error, fall through to function-based handling
@@ -2089,24 +2090,46 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
                         body,
                     }
                 }
-                Err(e) => ResponseData {
-                    status: 500,
-                    headers: vec![],
-                    body: format!("Internal Server Error: {}", e),
-                },
+                Err(e) => {
+                    if dev_mode {
+                        let error_html = render_error_page(&e.to_string(), interpreter, request_data);
+                        ResponseData {
+                            status: 500,
+                            headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                            body: error_html,
+                        }
+                    } else {
+                        ResponseData {
+                            status: 500,
+                            headers: vec![],
+                            body: format!("Internal Server Error: {}", e),
+                        }
+                    }
+                }
             }
         }
-        Err(e) => ResponseData {
-            status: 500,
-            headers: vec![],
-            body: format!("Handler not found: {}", e),
-        },
+        Err(e) => {
+            if dev_mode {
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data);
+                ResponseData {
+                    status: 500,
+                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    body: error_html,
+                }
+            } else {
+                ResponseData {
+                    status: 500,
+                    headers: vec![],
+                    body: format!("Handler not found: {}", e),
+                }
+            }
+        }
     }
 }
 
 /// Call an OOP controller action (controller#action).
 /// Returns Some(ResponseData) if handled, None if not an OOP controller.
-fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str, request_hash: &Value) -> Option<ResponseData> {
+fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str, request_hash: &Value, dev_mode: bool, request_data: &RequestData) -> Option<ResponseData> {
     let (controller_key, action_name) = handler_name.split_once('#')?;
 
     // Check if this is an OOP controller (has a class definition)
@@ -2145,10 +2168,19 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
     let controller_instance = match create_controller_instance(&class_name, interpreter) {
         Ok(inst) => inst,
         Err(e) => {
-            return Some(ResponseData {
-                status: 500,
-                headers: vec![],
-                body: format!("Controller instantiation error: {}", e),
+            return Some(if dev_mode {
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data);
+                ResponseData {
+                    status: 500,
+                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    body: error_html,
+                }
+            } else {
+                ResponseData {
+                    status: 500,
+                    headers: vec![],
+                    body: format!("Controller instantiation error: {}", e),
+                }
             });
         }
     };
@@ -2170,11 +2202,22 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
                 body,
             }
         }
-        Err(e) => ResponseData {
-            status: 500,
-            headers: vec![],
-            body: format!("Action error: {}", e),
-        },
+        Err(e) => {
+            if dev_mode {
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data);
+                ResponseData {
+                    status: 500,
+                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    body: error_html,
+                }
+            } else {
+                ResponseData {
+                    status: 500,
+                    headers: vec![],
+                    body: format!("Action error: {}", e),
+                }
+            }
+        }
     };
 
     // Execute after_action hooks (if controller info exists)
@@ -2466,7 +2509,7 @@ fn parse_request_body(
 }
 
 /// Handle a single request (called on interpreter thread)
-fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> ResponseData {
+fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: bool) -> ResponseData {
     let method = &data.method;
     let path = &data.path;
 
@@ -2545,7 +2588,7 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
 
     // Fast path: no middleware at all (avoid cloning middleware list if empty)
     if scoped_middleware.is_empty() && !has_middleware() {
-        return finalize_response(call_handler(interpreter, &handler_name, request_hash));
+        return finalize_response(call_handler(interpreter, &handler_name, request_hash, dev_mode, data));
     }
 
     // Only clone middleware list if we need it
@@ -2568,6 +2611,14 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
                     });
                 }
                 MiddlewareResult::Error(err) => {
+                    if dev_mode {
+                        let error_html = render_error_page(&err.to_string(), interpreter, data);
+                        return finalize_response(ResponseData {
+                            status: 500,
+                            headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                            body: error_html,
+                        });
+                    }
                     return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![],
@@ -2576,6 +2627,14 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
                 }
             },
             Err(e) => {
+                if dev_mode {
+                    let error_html = render_error_page(&e.to_string(), interpreter, data);
+                    return finalize_response(ResponseData {
+                        status: 500,
+                        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                        body: error_html,
+                    });
+                }
                 return finalize_response(ResponseData {
                     status: 500,
                     headers: vec![],
@@ -2614,6 +2673,14 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
                     });
                 }
                 MiddlewareResult::Error(err) => {
+                    if dev_mode {
+                        let error_html = render_error_page(&err.to_string(), interpreter, data);
+                        return finalize_response(ResponseData {
+                            status: 500,
+                            headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                            body: error_html,
+                        });
+                    }
                     return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![],
@@ -2622,6 +2689,14 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
                 }
             },
             Err(e) => {
+                if dev_mode {
+                    let error_html = render_error_page(&e.to_string(), interpreter, data);
+                    return finalize_response(ResponseData {
+                        status: 500,
+                        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                        body: error_html,
+                    });
+                }
                 return finalize_response(ResponseData {
                     status: 500,
                     headers: vec![],
@@ -2632,7 +2707,7 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData) -> Response
     }
 
     // Call the route handler
-    finalize_response(call_handler(interpreter, &handler_name, request_hash))
+    finalize_response(call_handler(interpreter, &handler_name, request_hash, dev_mode, data))
 }
 
 /// Handle REPL execution for dev mode.
@@ -2794,6 +2869,30 @@ fn execute_repl_code(code: &str) -> ReplResult {
             }
         }
     }
+}
+
+/// Helper function to render error page with full details.
+fn render_error_page(error: &str, interpreter: &Interpreter, request_data: &RequestData) -> String {
+    let error_type = "RuntimeError";
+    let location = "unknown:0";
+    let stack_trace: Vec<String> = vec![format!("Error: {}", error)];
+
+    let mut request_hash_map = HashMap::new();
+    request_hash_map.insert("method".to_string(), Value::String(request_data.method.clone()));
+    request_hash_map.insert("path".to_string(), Value::String(request_data.path.clone()));
+    request_hash_map.insert("params".to_string(), Value::String(format!("{:?}", request_data.query)));
+    request_hash_map.insert("headers".to_string(), Value::String(format!("{:?}", request_data.headers)));
+    request_hash_map.insert("body".to_string(), Value::String(request_data.body.clone()));
+    request_hash_map.insert("session".to_string(), Value::String("N/A".to_string()));
+
+    render_dev_error_page(
+        error,
+        error_type,
+        location,
+        &stack_trace,
+        &request_hash_map,
+        interpreter,
+    )
 }
 
 /// Render the development error page with request details and REPL.
