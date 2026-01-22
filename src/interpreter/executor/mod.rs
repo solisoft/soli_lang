@@ -88,13 +88,16 @@ impl Interpreter {
     }
 
     /// Push a frame onto the call stack.
-    pub(crate) fn push_frame(&mut self, function_name: &str, span: Span) {
+    /// If `source_path` is provided, it takes precedence over `current_source_path`.
+    pub(crate) fn push_frame(&mut self, function_name: &str, span: Span, source_path: Option<String>) {
+        let file_path = source_path.or_else(|| {
+            self.current_source_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string())
+        });
         self.call_stack.push(StackFrame {
             function_name: function_name.to_string(),
-            file_path: self
-                .current_source_path
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string()),
+            file_path,
             line: span.line,
             column: span.column,
         });
@@ -157,9 +160,9 @@ impl Interpreter {
         func: &Function,
         arguments: Vec<Value>,
     ) -> RuntimeResult<Value> {
-        // Push stack frame
+        // Push stack frame with the function's source path (where it was defined)
         let span = func.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
-        self.push_frame(&func.name, span);
+        self.push_frame(&func.name, span, func.source_path.clone());
 
         let call_env = Environment::with_enclosing(func.closure.clone());
         let mut call_env = call_env;

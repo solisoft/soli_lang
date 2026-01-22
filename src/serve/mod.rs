@@ -2079,8 +2079,8 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
     // Use CONTROLLERS registry to look up handler by full name (controller#action)
     let handler_result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
 
-    // Push stack frame for the handler
-    interpreter.push_frame(handler_name, crate::span::Span::new(0, 0, 1, 1));
+    // Push stack frame for the handler (source path will be set from the function when called)
+    interpreter.push_frame(handler_name, crate::span::Span::new(0, 0, 1, 1), None);
 
     match handler_result {
         Ok(handler_value) => {
@@ -2249,9 +2249,9 @@ fn call_class_method(
 ) -> Result<Value, String> {
     // Look up the method in the class
     if let Some(method) = class.methods.get(method_name) {
-        // Push stack frame for the method call
+        // Push stack frame for the method call with the method's source path
         let method_span = method.span.unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1));
-        interpreter.push_frame(&format!("{}#{}", class.name, method_name), method_span);
+        interpreter.push_frame(&format!("{}#{}", class.name, method_name), method_span, method.source_path.clone());
 
         let result = interpreter.call_value(Value::Function(method.clone()), vec![request_hash.clone()], method_span);
 
