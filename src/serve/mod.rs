@@ -3051,11 +3051,15 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
     request_hash_map.insert("session".to_string(), Value::String("N/A".to_string()));
 
     // Serialize request data for REPL (manual serialization)
-    let request_data_json = format!(r#"{{"method":"{}","path":"{}","params":{},"headers":{},"body":"{}","session":"N/A"}}"#,
+    // Include both "params" and "query" as aliases for the query string parameters
+    let query_json = format!("{:?}", request_data.query);
+    let headers_json = format!("{:?}", request_data.headers);
+    let request_data_json = format!(r#"{{"method":"{}","path":"{}","params":{},"query":{},"headers":{},"body":"{}","session":"N/A"}}"#,
         request_data.method,
         request_data.path,
-        format!("{:?}", request_data.query),
-        format!("{:?}", request_data.headers),
+        query_json,
+        query_json,
+        headers_json,
         request_data.body
     );
 
