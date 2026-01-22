@@ -3731,6 +3731,14 @@ pub fn render_dev_error_page(
                 }}
             }}
         }});
+
+        // Auto-select the first stack frame on page load
+        document.addEventListener('DOMContentLoaded', function() {{
+            const firstFrame = document.querySelector('.stack-frame');
+            if (firstFrame) {{
+                firstFrame.click();
+            }}
+        }});
     </script>
 </body>
 </html>"#,
