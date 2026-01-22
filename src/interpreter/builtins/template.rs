@@ -273,6 +273,132 @@ fn inject_template_helpers(data: &Value) -> Value {
                 new_hash.push((substring_key, substring_func));
             }
 
+            // Add html_escape() function if not present
+            let html_escape_key = Value::String("html_escape".to_string());
+            let has_html_escape = hash.borrow().iter().any(|(k, _)| k.hash_eq(&html_escape_key));
+
+            if !has_html_escape {
+                let html_escape_func =
+                    Value::NativeFunction(NativeFunction::new("html_escape", Some(1), |args| {
+                        let s = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => format!("{}", other),
+                        };
+                        let escaped = s
+                            .replace('&', "&amp;")
+                            .replace('<', "&lt;")
+                            .replace('>', "&gt;")
+                            .replace('"', "&quot;")
+                            .replace('\'', "&#39;");
+                        Ok(Value::String(escaped))
+                    }));
+
+                new_hash.push((html_escape_key, html_escape_func));
+            }
+
+            // Add html_unescape() function if not present
+            let html_unescape_key = Value::String("html_unescape".to_string());
+            let has_html_unescape = hash.borrow().iter().any(|(k, _)| k.hash_eq(&html_unescape_key));
+
+            if !has_html_unescape {
+                let html_unescape_func =
+                    Value::NativeFunction(NativeFunction::new("html_unescape", Some(1), |args| {
+                        let s = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "html_unescape() expects string, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let mut result = s;
+                        let replacements = [
+                            ("&amp;", "&"),
+                            ("&lt;", "<"),
+                            ("&gt;", ">"),
+                            ("&quot;", "\""),
+                            ("&#39;", "'"),
+                            ("&apos;", "'"),
+                            ("&nbsp;", " "),
+                        ];
+                        for (from, to) in replacements {
+                            result = result.replace(from, to);
+                        }
+                        Ok(Value::String(result))
+                    }));
+
+                new_hash.push((html_unescape_key, html_unescape_func));
+            }
+
+            // Add sanitize_html() function if not present
+            let sanitize_html_key = Value::String("sanitize_html".to_string());
+            let has_sanitize_html = hash.borrow().iter().any(|(k, _)| k.hash_eq(&sanitize_html_key));
+
+            if !has_sanitize_html {
+                let sanitize_html_func =
+                    Value::NativeFunction(NativeFunction::new("sanitize_html", Some(1), |args| {
+                        let s = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "sanitize_html() expects string, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let mut result = String::new();
+                        let mut in_tag = false;
+                        let mut tag_buffer = String::new();
+
+                        for c in s.chars() {
+                            if c == '<' {
+                                in_tag = true;
+                                tag_buffer.clear();
+                                tag_buffer.push(c);
+                            } else if c == '>' {
+                                if in_tag {
+                                    tag_buffer.push(c);
+                                    let tag = tag_buffer.trim().to_lowercase();
+                                    let is_closing = tag.starts_with("</");
+                                    let is_self_closing = tag.ends_with("/>");
+                                    let tag_name = if is_closing {
+                                        tag.trim_start_matches('<').trim_start_matches('/').trim_end_matches('>').split_whitespace().next().unwrap_or("")
+                                    } else {
+                                        tag.trim_start_matches('<').trim_end_matches('/').trim_end_matches('>').split_whitespace().next().unwrap_or("")
+                                    };
+                                    let allowed_tags = ["p", "br", "b", "i", "u", "em", "strong", "a", "ul", "ol", "li", "blockquote", "code", "pre", "h1", "h2", "h3", "h4", "h5", "h6", "span", "div", "img"];
+                                    let is_allowed = allowed_tags.contains(&tag_name);
+                                    let is_dangerous_attr = tag.contains("javascript:") || tag.contains("onload=") || tag.contains("onerror=") || tag.contains("onclick=");
+                                    if is_allowed && !is_dangerous_attr {
+                                        let cleaned_tag = if is_closing {
+                                            format!("</{}>", tag_name)
+                                        } else if is_self_closing {
+                                            format!("<{}/>", tag_name)
+                                        } else {
+                                            format!("<{}>", tag_name)
+                                        };
+                                        result.push_str(&cleaned_tag);
+                                    }
+                                    in_tag = false;
+                                } else {
+                                    result.push(c);
+                                }
+                            } else if in_tag {
+                                tag_buffer.push(c);
+                            } else {
+                                result.push(c);
+                            }
+                        }
+                        if in_tag {
+                            result.push_str(&tag_buffer);
+                        }
+                        Ok(Value::String(result))
+                    }));
+
+                new_hash.push((sanitize_html_key, sanitize_html_func));
+            }
+
             Value::Hash(Rc::new(RefCell::new(new_hash)))
         }
         _ => data.clone(),
