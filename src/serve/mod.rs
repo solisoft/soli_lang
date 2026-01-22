@@ -2881,7 +2881,7 @@ fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
             match interpreter.interpret(&program) {
                 Ok(_) => {
                     ReplResult {
-                        result: "null".to_string(),
+                        result: "ok".to_string(),
                         error: None,
                     }
                 }
@@ -2891,34 +2891,10 @@ fn execute_repl_code(code: &str, request_data_json: &str) -> ReplResult {
                 },
             }
         }
-        Err(_) => {
-            // Try wrapping in print() for expressions
-            let wrapped_code = format!("print({})", code);
-            let tokens = crate::lexer::Scanner::new(&wrapped_code).scan_tokens();
-            let parse_result = tokens.map_err(|e| format!("{:?}", e))
-                .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
-
-            match parse_result {
-                Ok(program) => {
-                    match interpreter.interpret(&program) {
-                        Ok(_) => {
-                            ReplResult {
-                                result: "printed".to_string(),
-                                error: None,
-                            }
-                        }
-                        Err(e) => ReplResult {
-                            result: "null".to_string(),
-                            error: Some(format!("Execution error: {}", e)),
-                        },
-                    }
-                }
-                Err(parse_errors) => {
-                    ReplResult {
-                        result: "null".to_string(),
-                        error: Some(format!("Parse error: {}", parse_errors)),
-                    }
-                }
+        Err(parse_errors) => {
+            ReplResult {
+                result: "null".to_string(),
+                error: Some(format!("Parse error: {}", parse_errors)),
             }
         }
     }
@@ -2954,20 +2930,34 @@ fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::
 }
 
 /// Helper function to render error page with full details.
-fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String]) -> String {
+fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String]) -> String {
     let error_type = "RuntimeError";
     let mut location = "unknown:0".to_string();
     let mut full_stack_trace: Vec<String> = Vec::new();
 
+    // Extract error message and stack trace from the combined error
+    let (actual_error, embedded_stack): (String, Vec<String>) = if let Some(stack_start) = error_msg.find("Stack trace:\n") {
+        let error_part = error_msg[..stack_start].trim().to_string();
+        let stack_part = error_msg[stack_start + "Stack trace:\n".len()..]
+            .lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        (error_part, stack_part)
+    } else {
+        (error_msg.to_string(), Vec::new())
+    };
+
     // Try to parse span info from error message
-    let span_info = extract_span_from_error(error_msg);
+    let span_info = extract_span_from_error(&actual_error);
     let error_file = span_info.file.clone().unwrap_or_else(|| "unknown".to_string());
     let error_line = span_info.line;
 
     location = format!("{}:{}", error_file, error_line);
 
-    // Build stack trace - first the error, then the call stack
-    full_stack_trace.push(format!("Error: {}", error_msg));
+    // Build stack trace - first the error, then the embedded stack trace, then the passed stack trace
+    full_stack_trace.push(format!("Error: {}", actual_error));
+    full_stack_trace.extend(embedded_stack);
     full_stack_trace.extend(stack_trace.iter().cloned());
     if full_stack_trace.len() == 1 {
         full_stack_trace.push(format!("{}:{} (error location)", error_file, error_line));
@@ -2994,13 +2984,39 @@ fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &
     );
 
     render_dev_error_page(
-        error_msg,
+        &actual_error,
         error_type,
         &location,
         &full_stack_trace,
-        &request_hash_map,
-        interpreter,
+        &request_data_json,
     )
+}
+
+fn extract_json_field(json: &str, field: &str) -> Option<String> {
+    let pattern = format!(r#""{}":"#, field);
+    if let Some(start) = json.find(&pattern) {
+        let after_start = start + pattern.len();
+        // Find the end of the value (comma or closing brace)
+        let mut end = after_start;
+        let mut depth = 0;
+        let chars: Vec<char> = json[after_start..].chars().collect();
+        for (i, c) in chars.iter().enumerate() {
+            if *c == '{' || *c == '[' {
+                depth += 1;
+            } else if *c == '}' || *c == ']' {
+                depth -= 1;
+                if depth == 0 {
+                    end = after_start + i + 1;
+                    break;
+                }
+            } else if *c == ',' && depth == 0 {
+                end = after_start + i;
+                break;
+            }
+        }
+        return Some(json[after_start..end].to_string());
+    }
+    None
 }
 
 struct SpanInfo {
@@ -3067,8 +3083,7 @@ pub fn render_dev_error_page(
     error_type: &str,
     location: &str,
     stack_trace: &[String],
-    request_data: &HashMap<String, Value>,
-    interpreter: &Interpreter,
+    request_data_json: &str,
 ) -> String {
     let error_message = escape_html(error);
     let error_type = escape_html(error_type);
@@ -3108,14 +3123,14 @@ pub fn render_dev_error_page(
         ));
     }
 
-    // Format request data
-    let request_params = format!("{:?}", request_data.get("params").unwrap_or(&Value::Null));
-    let request_query = format!("{:?}", request_data.get("query").unwrap_or(&Value::Null));
-    let request_body = format!("{:?}", request_data.get("body").unwrap_or(&Value::Null));
-    let request_headers = format!("{:?}", request_data.get("headers").unwrap_or(&Value::Null));
-    let request_session = format!("{:?}", request_data.get("session").unwrap_or(&Value::Null));
-    let request_method = request_data.get("method").map(|v| format!("{:?}", v)).unwrap_or_else(|| "UNKNOWN".to_string());
-    let request_path = request_data.get("path").map(|v| format!("{:?}", v)).unwrap_or_else(|| "/".to_string());
+    // Parse request data from JSON
+    let request_params = extract_json_field(request_data_json, "params").unwrap_or("null".to_string());
+    let request_query = extract_json_field(request_data_json, "query").unwrap_or("null".to_string());
+    let request_body = extract_json_field(request_data_json, "body").unwrap_or("null".to_string());
+    let request_headers = extract_json_field(request_data_json, "headers").unwrap_or("null".to_string());
+    let request_session = extract_json_field(request_data_json, "session").unwrap_or("null".to_string());
+    let request_method = extract_json_field(request_data_json, "method").unwrap_or("UNKNOWN".to_string());
+    let request_path = extract_json_field(request_data_json, "path").unwrap_or("/".to_string());
     let request_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     format!(r#"<!DOCTYPE html>
@@ -3386,7 +3401,9 @@ pub fn render_dev_error_page(
                     output.innerHTML += '<div class="text-red-400 mt-2">❌ ' + escapeHtml(result.error) + '</div>';
                 }} else {{
                     output.innerHTML += '<div class="text-gray-300 mt-2"><span class="text-indigo-400">❯</span> <span class="text-gray-500">// ' + escapeHtml(code) + '</span></div>';
-                    output.innerHTML += '<div class="text-green-400 mt-1">' + escapeHtml(result.result) + '</div>';
+                    if (result.result && result.result !== "ok") {{
+                        output.innerHTML += '<div class="text-green-400 mt-1">' + escapeHtml(result.result) + '</div>';
+                    }}
                 }}
             }} catch (e) {{
                 output.innerHTML += '<div class="text-red-400 mt-2">❌ Error: ' + escapeHtml(e.message) + '</div>';

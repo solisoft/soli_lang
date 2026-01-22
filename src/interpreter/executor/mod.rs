@@ -172,7 +172,30 @@ impl Interpreter {
                 message: format!("Unhandled exception: {}", e),
                 span: Span::default(),
             }),
-            Err(e) => Err(e),
+            Err(e) => {
+                // Capture stack trace before popping frame
+                let stack_trace = self
+                    .call_stack
+                    .iter()
+                    .rev()
+                    .map(|frame| {
+                        let file = frame
+                            .file_path
+                            .as_ref()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        format!("{} at {}:{}", frame.function_name, file, frame.line)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                // Create a new error with stack trace
+                let error_with_stack = format!("{}\nStack trace:\n{}", e, stack_trace);
+                Err(RuntimeError::General {
+                    message: error_with_stack,
+                    span: e.span(),
+                })
+            }
         };
 
         // Pop stack frame
