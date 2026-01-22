@@ -28,15 +28,6 @@
         </div>
     </div>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5">
-            <span class="text-xs text-gray-400 font-mono">app/models/blog_post.soli</span>
-        </div>
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class BlogPost extends Model { }</code></pre>
-        </div>
-    </div>
-
     <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
         <p class="text-indigo-200/80 text-sm">
             That's it! No need to manually specify collection names or field definitions.
@@ -53,12 +44,13 @@
             </h3>
             <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
                 <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let user = User.create({
+<pre><code class="language-soli text-sm">let result = User.create({
     "email": "alice@example.com",
     "name": "Alice",
     "age": 30
 });
-// Inserts into "users" collection</code></pre>
+// Returns: { "valid": true, "record": { "id": "...", ... } }
+// Or: { "valid": false, "errors": [...] }</code></pre>
                 </div>
             </div>
         </div>
@@ -76,9 +68,14 @@ let user = User.find("user123");
 // Find all
 let users = User.all();
 
-// Find with where clause
-let adults = User.where("age", ">=", 18);
-let active = User.where("status", "==", "active");</code></pre>
+// Find with SDBQL filter
+let adults = User.where("doc.age >= @age", { "age": 18 });
+
+// Complex conditions
+let results = User.where("doc.age >= @min AND doc.role == @role", {
+    "min": 21,
+    "role": "admin"
+});</code></pre>
                 </div>
             </div>
         </div>
@@ -123,6 +120,27 @@ let active = User.where("status", "==", "active");</code></pre>
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Query Builder Chaining</h2>
+    <p class="text-gray-400 mb-6">Chain methods to build complex queries:</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let results = User
+    .where("doc.age >= @age", { "age": 18 })
+    .where("doc.active == @active", { "active": true })
+    .order("created_at", "desc")
+    .limit(10)
+    .offset(20)
+    .all();
+
+// Get first result only
+let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
+
+// Count with conditions
+let count = User.where("doc.role == @role", { "role": "admin" }).count();</code></pre>
+        </div>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Static Methods Reference</h2>
     <div class="overflow-x-auto mb-12">
         <table class="w-full text-sm">
@@ -142,8 +160,8 @@ let active = User.where("status", "==", "active");</code></pre>
                     <td class="py-3 px-4 text-gray-400">Get document by ID</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(field, op, value)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Query with filter</td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(filter, bind_vars)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Query with SDBQL filter</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.all()</code></td>
@@ -165,42 +183,183 @@ let active = User.where("status", "==", "active");</code></pre>
         </table>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Where Operators</h2>
-    <p class="text-gray-400 mb-4">The <code>where</code> method supports these comparison operators:</p>
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-            <code class="text-indigo-300">"=="</code>
-            <p class="text-xs text-gray-400 mt-1">Equal</p>
-        </div>
-        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-            <code class="text-indigo-300">"!="</code>
-            <p class="text-xs text-gray-400 mt-1">Not equal</p>
-        </div>
-        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-            <code class="text-indigo-300">">"</code>
-            <p class="text-xs text-gray-400 mt-1">Greater than</p>
-        </div>
-        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-            <code class="text-indigo-300">">="</code>
-            <p class="text-xs text-gray-400 mt-1">Greater or equal</p>
-        </div>
-        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-            <code class="text-indigo-300">"<"</code>
-            <p class="text-xs text-gray-400 mt-1">Less than</p>
-        </div>
-        <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-            <code class="text-indigo-300">"<="</code>
-            <p class="text-xs text-gray-400 mt-1">Less or equal</p>
+    <h2 class="text-2xl font-bold text-white mb-6">QueryBuilder Methods</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.where(filter, bind_vars)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Add filter condition (ANDed)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.order(field, direction)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set sort order ("asc"/"desc")</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.limit(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Limit results to n documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.offset(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Skip first n documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.all()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return all results</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.first()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return first result</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.count()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return count</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Validations</h2>
+    <p class="text-gray-400 mb-6">Define validation rules in your model class:</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User extends Model {
+    validates("email", { "presence": true, "uniqueness": true })
+    validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
+    validates("age", { "numericality": true, "min": 0, "max": 150 })
+    validates("website", { "format": "^https?://" })
+}</code></pre>
         </div>
     </div>
 
+    <h3 class="text-lg font-semibold text-white mb-4">Validation Options</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Option</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">presence: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Field must be present and not empty</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">uniqueness: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Value must be unique in collection</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">min_length: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must be at least n characters</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">max_length: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must be at most n characters</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">format: "regex"</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must match regex pattern</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">numericality: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Value must be a number</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">min: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">Number must be >= n</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">max: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">Number must be <= n</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">custom: "method"</code></td>
+                    <td class="py-3 px-4 text-gray-400">Call custom validation method</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Validation Results</h3>
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Find users older than 30
-let users = User.where("age", ">", 30);
+<pre><code class="language-soli text-sm">let result = User.create({ "email": "" });
 
-// Find posts by author
-let posts = BlogPost.where("author_id", "==", "user123");</code></pre>
+if result["valid"] {
+    let user = result["record"];
+    print("Created user: " + user["id"]);
+} else {
+    for error in result["errors"] {
+        print(error["field"] + ": " + error["message"]);
+    }
+}</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Callbacks</h2>
+    <p class="text-gray-400 mb-6">Define lifecycle callbacks to run code at specific points:</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User extends Model {
+    before_save("normalize_email")
+    after_create("send_welcome_email")
+    before_update("log_changes")
+    after_delete("cleanup_related")
+
+    fn normalize_email() -> Any {
+        this.email = this.email.downcase();
+    }
+
+    fn send_welcome_email() -> Any {
+        // Send email logic
+    }
+}</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Available Callbacks</h3>
+    <div class="grid grid-cols-2 gap-4 mb-12">
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_save</code>
+            <p class="text-xs text-gray-400 mt-1">Before create or update</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_save</code>
+            <p class="text-xs text-gray-400 mt-1">After create or update</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_create</code>
+            <p class="text-xs text-gray-400 mt-1">Before inserting new record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_create</code>
+            <p class="text-xs text-gray-400 mt-1">After inserting new record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_update</code>
+            <p class="text-xs text-gray-400 mt-1">Before updating record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_update</code>
+            <p class="text-xs text-gray-400 mt-1">After updating record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_delete</code>
+            <p class="text-xs text-gray-400 mt-1">Before deleting record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_delete</code>
+            <p class="text-xs text-gray-400 mt-1">After deleting record</p>
         </div>
     </div>
 
@@ -217,7 +376,7 @@ let posts = BlogPost.where("author_id", "==", "user123");</code></pre>
 
 class User extends Model {
     fn posts() -> Any {
-        return Post.where("author_id", "==", this.id);
+        return Post.where("doc.author_id == @id", { "id": this.id });
     }
 }
 
@@ -226,7 +385,7 @@ let post = Post.find("post123");
 let author = post.author();
 
 let user = User.find("user123");
-let user_posts = user.posts();</code></pre>
+let user_posts = user.posts().order("created_at", "desc").all();</code></pre>
         </div>
     </div>
 
@@ -253,25 +412,73 @@ if user.is_admin() {
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Query Generation (SDBQL)</h2>
+    <p class="text-gray-400 mb-6">Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:</p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Generated SDBQL</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.all()</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.where("doc.age >= @age", {"age": 18})</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER doc.age >= @age RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.order("name", "asc")</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... SORT doc.name ASC RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.limit(10).offset(20)</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... LIMIT 20, 10 RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.count()</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users COLLECT WITH COUNT INTO count RETURN count</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">SDBQL Syntax</h4>
+        <ul class="text-blue-200/80 text-sm space-y-2">
+            <li><code>FOR doc IN collection</code> instead of <code>SELECT * FROM</code></li>
+            <li><code>FILTER expression</code> instead of <code>WHERE</code></li>
+            <li><code>SORT doc.field ASC/DESC</code> instead of <code>ORDER BY</code></li>
+            <li><code>@variable</code> syntax for bind parameters</li>
+        </ul>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// app/models/user.soli
 class User extends Model {
+    validates("email", { "presence": true, "uniqueness": true })
+    validates("name", { "presence": true, "min_length": 2 })
+
+    before_save("normalize_email")
+
+    fn normalize_email() -> Any {
+        this.email = this.email.downcase();
+    }
+
     fn posts() -> Any {
-        return Post.where("user_id", "==", this.id);
+        return Post.where("doc.user_id == @id", { "id": this.id });
     }
 
     fn is_adult() -> Bool {
         return this.age >= 18;
-    }
-}
-
-// app/models/blog_post.soli
-class BlogPost extends Model {
-    fn author() -> Any {
-        return User.find(this.user_id);
     }
 }
 
@@ -284,51 +491,23 @@ class UsersController extends Controller {
 
     fn show(id: String) -> Any {
         let user = User.find(id);
-        let posts = user.posts();
-        return this.render("users/show", {
-            "user": user,
-            "posts": posts
-        });
+        let posts = user.posts().order("created_at", "desc").limit(5).all();
+        return this.render("users/show", { "user": user, "posts": posts });
     }
 
     fn create() -> Any {
-        let user = User.create({
+        let result = User.create({
             "name": this.params["name"],
-            "email": this.params["email"],
-            "age": this.params["age"]
+            "email": this.params["email"]
         });
-        return this.redirect("/users/" + user.id);
+
+        if result["valid"] {
+            return this.redirect("/users/" + result["record"]["id"]);
+        } else {
+            return this.render("users/new", { "errors": result["errors"] });
+        }
     }
 }</code></pre>
-        </div>
-    </div>
-
-    <h2 class="text-2xl font-bold text-white mb-6">Testing Models</h2>
-    <p class="text-gray-400 mb-6">See the <a href="/docs/testing" class="text-indigo-400 hover:text-indigo-300">Testing Guide</a> for comprehensive information on testing models.</p>
-
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">describe("User model", fn() {
-    test("creates user with valid data", fn() {
-        let user = User.create({
-            "email": "test@example.com",
-            "name": "Test User"
-        });
-        expect(user.email).to_equal("test@example.com");
-    });
-
-    test("finds user by ID", fn() {
-        let user = User.create({ "name": "Alice" });
-        let found = User.find(user.id);
-        expect(found.name).to_equal("Alice");
-    });
-
-    test("counts users", fn() {
-        User.create({ "name": "Alice" });
-        User.create({ "name": "Bob" });
-        expect(User.count()).to_equal(2);
-    });
-});</code></pre>
         </div>
     </div>
 
@@ -342,6 +521,8 @@ class UsersController extends Controller {
         <ul class="text-indigo-200/80 text-sm space-y-2">
             <li><strong>Keep models simple</strong> - Just extend <code>Model</code>, no configuration needed</li>
             <li><strong>Use meaningful class names</strong> - They become collection names automatically</li>
+            <li><strong>Add validations</strong> - Validate data before it reaches the database</li>
+            <li><strong>Use callbacks wisely</strong> - Keep them focused and avoid heavy operations</li>
             <li><strong>Add custom methods</strong> - Encapsulate business logic in model methods</li>
             <li><strong>Use relationships</strong> - Create methods that return related models</li>
         </ul>

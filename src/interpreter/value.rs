@@ -8,6 +8,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
 use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt};
+use crate::interpreter::builtins::model::QueryBuilder;
 use crate::interpreter::environment::Environment;
 use crate::span::Span;
 
@@ -42,6 +43,8 @@ pub enum Value {
     Method(ValueMethod),
     /// Breakpoint marker - triggers debug mode when encountered
     Breakpoint,
+    /// Query builder for chainable database queries
+    QueryBuilder(Rc<RefCell<QueryBuilder>>),
 }
 
 /// The type of HTTP future result
@@ -105,6 +108,7 @@ impl Value {
             Value::Future(_) => "Future",
             Value::Method(_) => "Method",
             Value::Breakpoint => "Breakpoint",
+            Value::QueryBuilder(_) => "QueryBuilder",
         }
     }
 
@@ -259,6 +263,14 @@ impl fmt::Display for Value {
                 method.method_name
             ),
             Value::Breakpoint => write!(f, "<breakpoint>"),
+            Value::QueryBuilder(qb) => {
+                let qb = qb.borrow();
+                if qb.filter.is_some() {
+                    write!(f, "<QueryBuilder for {} with filter>", qb.class_name)
+                } else {
+                    write!(f, "<QueryBuilder for {}>", qb.class_name)
+                }
+            }
         }
     }
 }
@@ -420,6 +432,28 @@ impl Class {
         }
         if let Some(ref superclass) = self.superclass {
             return superclass.find_native_method(name);
+        }
+        None
+    }
+
+    /// Find a static method in this class or its superclass chain.
+    pub fn find_static_method(&self, name: &str) -> Option<Rc<Function>> {
+        if let Some(method) = self.static_methods.get(name) {
+            return Some(method.clone());
+        }
+        if let Some(ref superclass) = self.superclass {
+            return superclass.find_static_method(name);
+        }
+        None
+    }
+
+    /// Find a native static method in this class or its superclass chain.
+    pub fn find_native_static_method(&self, name: &str) -> Option<Rc<NativeFunction>> {
+        if let Some(method) = self.native_static_methods.get(name) {
+            return Some(method.clone());
+        }
+        if let Some(ref superclass) = self.superclass {
+            return superclass.find_native_static_method(name);
         }
         None
     }

@@ -27,12 +27,13 @@ That's it! No need to manually specify collection names or field definitions.
 ### Creating Records
 
 ```soli
-let user = User.create({
+let result = User.create({
     "email": "alice@example.com",
     "name": "Alice",
     "age": 30
 });
-// Inserts into "users" collection
+// Returns: { "valid": true, "record": { "id": "...", "email": "...", ... } }
+// Or on validation failure: { "valid": false, "errors": [...] }
 ```
 
 ### Finding Records
@@ -44,9 +45,15 @@ let user = User.find("user123");
 // Find all
 let users = User.all();
 
-// Find with where clause
-let adults = User.where("age", ">=", 18);
-let active = User.where("status", "==", "active");
+// Find with where clause (SDBQL filter syntax)
+let adults = User.where("doc.age >= @age", { "age": 18 });
+let active = User.where("doc.status == @status", { "status": "active" });
+
+// Complex conditions
+let results = User.where("doc.age >= @min_age AND doc.role == @role", {
+    "min_age": 21,
+    "role": "admin"
+});
 ```
 
 ### Updating Records
@@ -70,36 +77,127 @@ User.delete("user123");
 let total = User.count();
 ```
 
+## Query Builder Chaining
+
+Chain methods to build complex queries:
+
+```soli
+let results = User
+    .where("doc.age >= @age", { "age": 18 })
+    .where("doc.active == @active", { "active": true })
+    .order("created_at", "desc")
+    .limit(10)
+    .offset(20)
+    .all();
+
+// Get first result only
+let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
+
+// Count with conditions
+let count = User.where("doc.role == @role", { "role": "admin" }).count();
+```
+
 ## Static Methods Reference
 
 | Method | Description |
 |--------|-------------|
 | `Model.create(data)` | Insert a new document |
 | `Model.find(id)` | Get document by ID |
-| `Model.where(field, op, value)` | Query with filter |
+| `Model.where(filter, bind_vars)` | Query with SDBQL filter |
 | `Model.all()` | Get all documents |
 | `Model.update(id, data)` | Update a document |
 | `Model.delete(id)` | Delete a document |
 | `Model.count()` | Count all documents |
 
-## Where Operators
+## QueryBuilder Methods
 
-The `where` method supports these comparison operators:
+| Method | Description |
+|--------|-------------|
+| `.where(filter, bind_vars)` | Add filter condition (ANDed with existing) |
+| `.order(field, direction)` | Set sort order ("asc" or "desc") |
+| `.limit(n)` | Limit results to n documents |
+| `.offset(n)` | Skip first n documents |
+| `.all()` | Execute query, return all results |
+| `.first()` | Execute query, return first result |
+| `.count()` | Execute query, return count |
 
-- `"=="` - Equal
-- `"!="` - Not equal
-- `">"` - Greater than
-- `">="` - Greater than or equal
-- `"<"` - Less than
-- `"<="` - Less than or equal
+## Validations
+
+Define validation rules in your model class:
 
 ```soli
-// Find users older than 30
-let users = User.where("age", ">", 30);
-
-// Find posts by author
-let posts = BlogPost.where("author_id", "==", "user123");
+class User extends Model {
+    validates("email", { "presence": true, "uniqueness": true })
+    validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
+    validates("age", { "numericality": true, "min": 0, "max": 150 })
+    validates("website", { "format": "^https?://" })
+}
 ```
+
+### Validation Options
+
+| Option | Description |
+|--------|-------------|
+| `presence: true` | Field must be present and not empty |
+| `uniqueness: true` | Field value must be unique in collection |
+| `min_length: n` | String must be at least n characters |
+| `max_length: n` | String must be at most n characters |
+| `format: "regex"` | String must match regex pattern |
+| `numericality: true` | Value must be a number |
+| `min: n` | Number must be >= n |
+| `max: n` | Number must be <= n |
+| `custom: "method_name"` | Call custom validation method |
+
+### Validation Results
+
+`Model.create()` returns a validation result hash:
+
+```soli
+let result = User.create({ "email": "" });
+
+if result["valid"] {
+    let user = result["record"];
+    print("Created user: " + user["id"]);
+} else {
+    for error in result["errors"] {
+        print(error["field"] + ": " + error["message"]);
+    }
+}
+```
+
+## Callbacks
+
+Define lifecycle callbacks to run code at specific points:
+
+```soli
+class User extends Model {
+    before_save("normalize_email")
+    after_create("send_welcome_email")
+    before_update("log_changes")
+    after_delete("cleanup_related")
+
+    fn normalize_email() -> Any {
+        this.email = this.email.downcase();
+    }
+
+    fn send_welcome_email() -> Any {
+        // Send email logic
+    }
+}
+```
+
+### Available Callbacks
+
+| Callback | When it runs |
+|----------|--------------|
+| `before_save` | Before create or update |
+| `after_save` | After create or update |
+| `before_create` | Before inserting new record |
+| `after_create` | After inserting new record |
+| `before_update` | Before updating existing record |
+| `after_update` | After updating existing record |
+| `before_delete` | Before deleting record |
+| `after_delete` | After deleting record |
 
 ## Relationships
 
@@ -114,7 +212,7 @@ class Post extends Model {
 
 class User extends Model {
     fn posts() -> Any {
-        return Post.where("author_id", "==", this.id);
+        return Post.where("doc.author_id == @id", { "id": this.id });
     }
 }
 
@@ -148,13 +246,40 @@ if user.is_admin() {
 }
 ```
 
+## Query Generation (SDBQL)
+
+Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:
+
+| Method | Generated SDBQL |
+|--------|-----------------|
+| `User.all()` | `FOR doc IN users RETURN doc` |
+| `User.where("doc.age >= @age", {"age": 18})` | `FOR doc IN users FILTER doc.age >= @age RETURN doc` |
+| `.order("name", "asc")` | `... SORT doc.name ASC RETURN doc` |
+| `.limit(10).offset(20)` | `... LIMIT 20, 10 RETURN doc` |
+| `User.count()` | `FOR doc IN users COLLECT WITH COUNT INTO count RETURN count` |
+
+SDBQL uses:
+- `FOR doc IN collection` instead of `SELECT * FROM`
+- `FILTER expression` instead of `WHERE`
+- `SORT doc.field ASC/DESC` instead of `ORDER BY`
+- `@variable` syntax for bind parameters
+
 ## Complete Example
 
 ```soli
 // app/models/user.soli
 class User extends Model {
+    validates("email", { "presence": true, "uniqueness": true })
+    validates("name", { "presence": true, "min_length": 2 })
+
+    before_save("normalize_email")
+
+    fn normalize_email() -> Any {
+        this.email = this.email.downcase();
+    }
+
     fn posts() -> Any {
-        return Post.where("user_id", "==", this.id);
+        return Post.where("doc.user_id == @id", { "id": this.id });
     }
 
     fn is_adult() -> Bool {
@@ -162,8 +287,10 @@ class User extends Model {
     }
 }
 
-// app/models/post.soli
+// app/models/blog_post.soli
 class BlogPost extends Model {
+    validates("title", { "presence": true, "min_length": 3 })
+
     fn author() -> Any {
         return User.find(this.user_id);
     }
@@ -178,7 +305,7 @@ class UsersController extends Controller {
 
     fn show(id: String) -> Any {
         let user = User.find(id);
-        let posts = user.posts();
+        let posts = user.posts().order("created_at", "desc").limit(5).all();
         return this.render("users/show", {
             "user": user,
             "posts": posts
@@ -186,12 +313,17 @@ class UsersController extends Controller {
     }
 
     fn create() -> Any {
-        let user = User.create({
+        let result = User.create({
             "name": this.params["name"],
             "email": this.params["email"],
             "age": this.params["age"]
         });
-        return this.redirect("/users/" + user.id);
+
+        if result["valid"] {
+            return this.redirect("/users/" + result["record"]["id"]);
+        } else {
+            return this.render("users/new", { "errors": result["errors"] });
+        }
     }
 }
 ```
@@ -203,23 +335,25 @@ See the [Testing Guide](/docs/testing) for comprehensive information on testing 
 ```soli
 describe("User model", fn() {
     test("creates user with valid data", fn() {
-        let user = User.create({
+        let result = User.create({
             "email": "test@example.com",
             "name": "Test User"
         });
-        expect(user.email).to_equal("test@example.com");
+        expect(result["valid"]).to_equal(true);
+        expect(result["record"]["email"]).to_equal("test@example.com");
     });
 
-    test("finds user by ID", fn() {
-        let user = User.create({ "name": "Alice" });
-        let found = User.find(user.id);
-        expect(found.name).to_equal("Alice");
+    test("fails validation for invalid data", fn() {
+        let result = User.create({ "email": "" });
+        expect(result["valid"]).to_equal(false);
     });
 
-    test("counts users", fn() {
-        User.create({ "name": "Alice" });
-        User.create({ "name": "Bob" });
-        expect(User.count()).to_equal(2);
+    test("finds users with where clause", fn() {
+        User.create({ "name": "Alice", "age": 25 });
+        User.create({ "name": "Bob", "age": 17 });
+
+        let adults = User.where("doc.age >= @age", { "age": 18 }).all();
+        expect(len(adults)).to_equal(1);
     });
 });
 ```
@@ -228,8 +362,10 @@ describe("User model", fn() {
 
 1. **Keep models simple** - Just extend `Model`, no configuration needed
 2. **Use meaningful class names** - They become collection names automatically
-3. **Add custom methods** - Encapsulate business logic in model methods
-4. **Use relationships** - Create methods that return related models
+3. **Add validations** - Validate data before it reaches the database
+4. **Use callbacks wisely** - Keep them focused and avoid heavy operations
+5. **Add custom methods** - Encapsulate business logic in model methods
+6. **Use relationships** - Create methods that return related models
 
 ## Database Migrations
 

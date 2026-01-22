@@ -1213,6 +1213,14 @@ fn worker_loop(
 
         // Block waiting for more requests (proper blocking, not busy-wait)
         if let Ok(data) = work_rx.recv_timeout(check_interval) {
+            // Check hot reload again before handling this request
+            // (version may have changed while we were blocked)
+            let current_views = hot_reload_versions.views.load(Ordering::Acquire);
+            if current_views != last_views_version {
+                last_views_version = current_views;
+                clear_template_cache();
+            }
+
             let resp_data = handle_request(interpreter, &data, dev_mode);
             let _ = data.response_tx.send(resp_data);
         }

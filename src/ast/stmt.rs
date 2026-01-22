@@ -135,6 +135,9 @@ pub struct ClassDecl {
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,
     pub constructor: Option<ConstructorDecl>,
+    /// Class-level statements (e.g., validates(...), before_save(...))
+    /// These are executed once when the class is defined.
+    pub class_statements: Vec<Stmt>,
     pub span: Span,
 }
 

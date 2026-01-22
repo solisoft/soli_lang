@@ -5,6 +5,9 @@ use std::rc::Rc;
 
 use crate::ast::*;
 use crate::error::RuntimeError;
+use crate::interpreter::builtins::model::{
+    execute_query_builder, execute_query_builder_count, execute_query_builder_first,
+};
 use crate::interpreter::builtins::server::is_server_listen_marker;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Function, Instance, NativeFunction, Value, ValueMethod};
@@ -378,12 +381,25 @@ impl Interpreter {
                 })
             }
             Value::Class(class) => {
-                // Static method access
-                if let Some(method) = class.static_methods.get(name) {
-                    return Ok(Value::Function(method.clone()));
+                // Static method access - search up superclass chain
+                if let Some(method) = class.find_static_method(name) {
+                    return Ok(Value::Function(method));
                 }
-                if let Some(native_method) = class.native_static_methods.get(name) {
-                    return Ok(Value::NativeFunction(native_method.as_ref().clone()));
+                if let Some(native_method) = class.find_native_static_method(name) {
+                    // Wrap the native static method to prepend the class as first argument
+                    let class_clone = class.clone();
+                    let native_method_clone = native_method.clone();
+                    let method_name = name.to_string();
+                    return Ok(Value::NativeFunction(NativeFunction::new(
+                        &format!("{}.{}", class.name, method_name),
+                        None, // Variadic - we'll check arity in the actual function
+                        move |args| {
+                            // Prepend the class as first argument
+                            let mut new_args = vec![Value::Class(class_clone.clone())];
+                            new_args.extend(args);
+                            (native_method_clone.func)(new_args)
+                        },
+                    )));
                 }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: class.name.clone(),
@@ -414,6 +430,22 @@ impl Interpreter {
                     })),
                     _ => Err(RuntimeError::NoSuchProperty {
                         value_type: "Hash".to_string(),
+                        property: name.to_string(),
+                        span,
+                    }),
+                }
+            }
+            Value::QueryBuilder(_) => {
+                // Handle QueryBuilder methods for chaining
+                match name {
+                    "where" | "order" | "limit" | "offset" | "all" | "first" | "count" => {
+                        Ok(Value::Method(ValueMethod {
+                            receiver: Box::new(obj_val),
+                            method_name: name.to_string(),
+                        }))
+                    }
+                    _ => Err(RuntimeError::NoSuchProperty {
+                        value_type: "QueryBuilder".to_string(),
                         property: name.to_string(),
                         span,
                     }),
@@ -810,7 +842,7 @@ impl Interpreter {
             }
 
             Value::Method(method) => {
-                // Handle array/hash methods: map, filter, each
+                // Handle array/hash/QueryBuilder methods
                 match *method.receiver {
                     Value::Array(arr) => {
                         let items = arr.borrow().clone();
@@ -819,6 +851,9 @@ impl Interpreter {
                     Value::Hash(hash) => {
                         let entries = hash.borrow().clone();
                         self.call_hash_method(&entries, &method.method_name, arguments, span)
+                    }
+                    Value::QueryBuilder(qb) => {
+                        self.call_query_builder_method(qb, &method.method_name, arguments, span)
                     }
                     _ => Err(RuntimeError::type_error(
                         format!("{} does not support methods", method.receiver.type_name()),
@@ -1173,6 +1208,132 @@ impl Interpreter {
             }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Hash".to_string(),
+                property: method_name.to_string(),
+                span,
+            }),
+        }
+    }
+
+    /// Handle QueryBuilder methods for chaining: where, order, limit, offset, all, first, count
+    fn call_query_builder_method(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        method_name: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        match method_name {
+            "where" => {
+                // .where(filter, bind_vars) - add another filter condition (ANDed with existing)
+                if arguments.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let filter = match &arguments[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::type_error("where() expects string filter expression", span)),
+                };
+                let bind_vars = match &arguments[1] {
+                    Value::Hash(hash) => {
+                        let mut map = std::collections::HashMap::new();
+                        for (k, v) in hash.borrow().iter() {
+                            if let Value::String(key) = k {
+                                map.insert(key.clone(), crate::interpreter::builtins::model::value_to_json(v)
+                                    .map_err(|e| RuntimeError::General { message: e, span })?);
+                            }
+                        }
+                        map
+                    }
+                    _ => return Err(RuntimeError::type_error("where() expects hash for bind variables", span)),
+                };
+
+                // Clone the QueryBuilder and add/merge the filter
+                let mut new_qb = qb.borrow().clone();
+                if let Some(existing_filter) = &new_qb.filter {
+                    // AND the new filter with existing
+                    new_qb.filter = Some(format!("({}) AND ({})", existing_filter, filter));
+                } else {
+                    new_qb.filter = Some(filter);
+                }
+                // Merge bind vars
+                new_qb.bind_vars.extend(bind_vars);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+            }
+            "order" => {
+                // .order(field, direction) - set ordering
+                if arguments.len() < 1 || arguments.len() > 2 {
+                    return Err(RuntimeError::type_error(
+                        "order() expects 1 or 2 arguments: field and optional direction",
+                        span,
+                    ));
+                }
+                let field = match &arguments[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::type_error("order() expects string field", span)),
+                };
+                let direction = if arguments.len() == 2 {
+                    match &arguments[1] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err(RuntimeError::type_error("order() expects string direction", span)),
+                    }
+                } else {
+                    "asc".to_string()
+                };
+
+                let mut new_qb = qb.borrow().clone();
+                new_qb.set_order(field, direction);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+            }
+            "limit" => {
+                // .limit(n) - set limit
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let limit = match &arguments[0] {
+                    Value::Int(n) if *n >= 0 => *n as usize,
+                    _ => return Err(RuntimeError::type_error("limit() expects positive integer", span)),
+                };
+
+                let mut new_qb = qb.borrow().clone();
+                new_qb.set_limit(limit);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+            }
+            "offset" => {
+                // .offset(n) - set offset
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let offset = match &arguments[0] {
+                    Value::Int(n) if *n >= 0 => *n as usize,
+                    _ => return Err(RuntimeError::type_error("offset() expects positive integer", span)),
+                };
+
+                let mut new_qb = qb.borrow().clone();
+                new_qb.set_offset(offset);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+            }
+            "all" => {
+                // .all() - execute query and return all results
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(execute_query_builder(&qb.borrow()))
+            }
+            "first" => {
+                // .first() - execute query and return first result
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(execute_query_builder_first(&qb.borrow()))
+            }
+            "count" => {
+                // .count() - execute count query
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(execute_query_builder_count(&qb.borrow()))
+            }
+            _ => Err(RuntimeError::NoSuchProperty {
+                value_type: "QueryBuilder".to_string(),
                 property: method_name.to_string(),
                 span,
             }),

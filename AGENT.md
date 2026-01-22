@@ -194,13 +194,13 @@ get("/", fn() {
 });
 
 get("/users", fn() {
-    let users = db.query("SELECT * FROM users");
+    let users = db.query("FOR doc IN users RETURN doc");
     return render("users/index", {"users": users});
 });
 
 post("/users", fn() {
     let name = request.body["name"];
-    db.execute("INSERT INTO users (name) VALUES (?)", [name]);
+    db.query("INSERT { name: @name } INTO users", { "name": name });
     redirect("/users");
 });
 ```
@@ -229,11 +229,52 @@ post("/users", fn() {
 
 - `.soli` - Soli source files
 
+## Model ORM
+
+Models provide an OOP interface to the database. Collection names are auto-derived from class names.
+
+```soli
+class User extends Model {
+    validates("email", { "presence": true, "uniqueness": true })
+    validates("name", { "min_length": 2 })
+
+    before_save("normalize_email")
+
+    fn normalize_email() -> Any {
+        this.email = this.email.downcase();
+    }
+}
+
+// CRUD Operations
+let result = User.create({ "name": "Alice", "email": "alice@example.com" });
+let user = User.find("user_id");
+let users = User.all();
+User.update("user_id", { "name": "Alice Smith" });
+User.delete("user_id");
+let count = User.count();
+
+// Query Builder with SDBQL filters
+let adults = User.where("doc.age >= @age", { "age": 18 }).all();
+let results = User
+    .where("doc.age >= @age AND doc.active == @active", { "age": 18, "active": true })
+    .order("created_at", "desc")
+    .limit(10)
+    .offset(20)
+    .all();
+
+// Relationships
+class Post extends Model {
+    fn author() -> Any {
+        return User.find(this.author_id);
+    }
+}
+```
+
 ## Example: Simple Web Handler
 ```soli
 // Fetch users and render template
 fn get_users() -> Any {
-    let users = db.query("SELECT * FROM users LIMIT 10");
+    let users = User.where("doc.active == @active", { "active": true }).limit(10).all();
     return render("users/list", {"users": users});
 }
 

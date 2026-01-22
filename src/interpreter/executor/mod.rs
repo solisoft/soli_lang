@@ -171,6 +171,7 @@ impl Interpreter {
             Value::Future(_) => "\"<future>\"".to_string(),
             Value::Method(_) => "\"<method>\"".to_string(),
             Value::Breakpoint => "\"<breakpoint>\"".to_string(),
+            Value::QueryBuilder(_) => "\"<query builder>\"".to_string(),
         }
     }
 

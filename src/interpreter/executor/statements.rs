@@ -269,6 +269,11 @@ impl Interpreter {
             None
         };
 
+        // Check if this class extends Model (directly or indirectly)
+        let extends_model = superclass.as_ref().map_or(false, |sc| {
+            sc.name == "Model" || sc.superclass.as_ref().map_or(false, |ssc| ssc.name == "Model")
+        });
+
         // Create environment for methods (with potential super binding)
         let method_env = if superclass.is_some() {
             let env = Environment::with_enclosing(self.environment.clone());
@@ -311,19 +316,56 @@ impl Interpreter {
             })
         });
 
+        // If extending Model, inherit Model's native static methods
+        let native_static_methods = if extends_model {
+            if let Some(ref sc) = superclass {
+                sc.native_static_methods.clone()
+            } else {
+                HashMap::new()
+            }
+        } else {
+            HashMap::new()
+        };
+
         let class = Class {
             name: decl.name.clone(),
             superclass,
             methods,
             static_methods,
-            native_static_methods: HashMap::new(),
+            native_static_methods,
             native_methods: HashMap::new(),
             constructor,
         };
 
+        let class_rc = Rc::new(class);
         self.environment
             .borrow_mut()
-            .define(decl.name.clone(), Value::Class(Rc::new(class)));
+            .define(decl.name.clone(), Value::Class(class_rc.clone()));
+
+        // Execute class-level statements (validates, callbacks, etc.) for Model subclasses
+        if extends_model && !decl.class_statements.is_empty() {
+            // Execute each class statement with the class as implicit receiver
+            for stmt in &decl.class_statements {
+                // For expression statements that are function calls,
+                // we need to pass the class as the first argument
+                if let crate::ast::StmtKind::Expression(expr) = &stmt.kind {
+                    if let crate::ast::ExprKind::Call { callee, arguments } = &expr.kind {
+                        // Get the callee value (should be a native function from Model)
+                        let callee_val = self.evaluate(callee)?;
+
+                        // Build arguments with class as first argument
+                        let mut args = vec![Value::Class(class_rc.clone())];
+                        for arg in arguments {
+                            args.push(self.evaluate(arg)?);
+                        }
+
+                        // Call the function with the class
+                        self.call_value(callee_val, args, stmt.span)?;
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }

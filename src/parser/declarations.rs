@@ -196,6 +196,7 @@ impl Parser {
         let mut fields = Vec::new();
         let mut methods = Vec::new();
         let mut constructor = None;
+        let mut class_statements = Vec::new();
 
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             let (visibility, is_static) = self.parse_modifiers();
@@ -210,6 +211,9 @@ impl Parser {
                 constructor = Some(self.parse_constructor()?);
             } else if self.check(&TokenKind::Fn) {
                 methods.push(self.parse_method(visibility, is_static)?);
+            } else if self.is_class_level_statement() {
+                // Parse class-level statements like validates(...), before_save(...)
+                class_statements.push(self.parse_class_level_statement()?);
             } else {
                 fields.push(self.parse_field(visibility, is_static)?);
             }
@@ -226,10 +230,47 @@ impl Parser {
                 fields,
                 methods,
                 constructor,
+                class_statements,
                 span,
             }),
             span,
         ))
+    }
+
+    /// Check if the current token starts a class-level statement (e.g., validates(...))
+    fn is_class_level_statement(&self) -> bool {
+        // Check for identifier followed by left paren
+        if let TokenKind::Identifier(name) = &self.peek().kind {
+            // List of recognized class-level function names
+            let class_level_names = [
+                "validates",
+                "before_save",
+                "after_save",
+                "before_create",
+                "after_create",
+                "before_update",
+                "after_update",
+                "before_delete",
+                "after_delete",
+            ];
+            if class_level_names.contains(&name.as_str()) {
+                // Look ahead for left paren
+                if let Some(next) = self.tokens.get(self.current + 1) {
+                    return matches!(next.kind, TokenKind::LeftParen);
+                }
+            }
+        }
+        false
+    }
+
+    /// Parse a class-level statement like validates(...) or before_save(...)
+    fn parse_class_level_statement(&mut self) -> ParseResult<Stmt> {
+        let start_span = self.current_span();
+        // Parse as an expression (function call)
+        let expr = self.expression()?;
+        self.match_token(&TokenKind::Semicolon); // Optional semicolon
+        let span = start_span.merge(&self.previous_span());
+        Ok(Stmt::new(StmtKind::Expression(expr), span))
     }
 
     fn parse_modifiers(&mut self) -> (Visibility, bool) {

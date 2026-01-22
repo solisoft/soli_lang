@@ -11,7 +11,7 @@
 //!
 //! let user = User.create({ "name": "Alice" });
 //! let found = User.find(user.id);
-//! let adults = User.where("age", ">=", 18);
+//! let adults = User.where("doc.age >= @age", { "age": 18 });
 //! let all = User.all();
 //! User.update(user.id, { "name": "Bob" });
 //! User.delete(user.id);
@@ -19,4 +19,7 @@
 
 pub mod model;
 
-pub use model::register_model_builtins;
+pub use model::{
+    execute_query_builder, execute_query_builder_count, execute_query_builder_first,
+    register_model_builtins, value_to_json, QueryBuilder,
+};
