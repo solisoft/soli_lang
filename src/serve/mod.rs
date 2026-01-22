@@ -3167,11 +3167,6 @@ pub fn render_dev_error_page(
     }
 
     // Parse request data from JSON
-    let request_params = extract_json_field(request_data_json, "params").unwrap_or("null".to_string());
-    let request_query = extract_json_field(request_data_json, "query").unwrap_or("null".to_string());
-    let request_body = extract_json_field(request_data_json, "body").unwrap_or("null".to_string());
-    let request_headers = extract_json_field(request_data_json, "headers").unwrap_or("null".to_string());
-    let request_session = extract_json_field(request_data_json, "session").unwrap_or("null".to_string());
     let request_method = extract_json_field(request_data_json, "method").unwrap_or("UNKNOWN".to_string());
     let request_path = extract_json_field(request_data_json, "path").unwrap_or("/".to_string());
     let request_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -3328,27 +3323,27 @@ pub fn render_dev_error_page(
                 </div>
                 <div id="tab-params" class="section-content active">
                     <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
-                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_params}</code></pre>
+                        <pre id="json-params" class="p-4 overflow-x-auto text-sm code-editor"></pre>
                     </div>
                 </div>
                 <div id="tab-query" class="section-content">
                     <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
-                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_query}</code></pre>
+                        <pre id="json-query" class="p-4 overflow-x-auto text-sm code-editor"></pre>
                     </div>
                 </div>
                 <div id="tab-body" class="section-content">
                     <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
-                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_body}</code></pre>
+                        <pre id="json-body" class="p-4 overflow-x-auto text-sm code-editor"></pre>
                     </div>
                 </div>
                 <div id="tab-headers" class="section-content">
                     <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
-                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_headers}</code></pre>
+                        <pre id="json-headers" class="p-4 overflow-x-auto text-sm code-editor"></pre>
                     </div>
                 </div>
                 <div id="tab-session" class="section-content">
                     <div class="rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
-                        <pre class="p-4 overflow-x-auto text-sm code-editor"><code class="language-soli text-green-400">{request_session}</code></pre>
+                        <pre id="json-session" class="p-4 overflow-x-auto text-sm code-editor"></pre>
                     </div>
                 </div>
                 <div class="mt-6">
@@ -3525,6 +3520,82 @@ pub fn render_dev_error_page(
             return div.innerHTML;
         }}
 
+        function formatJson(obj, indent = 0) {{
+            const spaces = '  '.repeat(indent);
+            const nextSpaces = '  '.repeat(indent + 1);
+
+            if (obj === null) {{
+                return '<span class="text-orange-400">null</span>';
+            }}
+            if (obj === undefined) {{
+                return '<span class="text-gray-500">undefined</span>';
+            }}
+            if (typeof obj === 'boolean') {{
+                return '<span class="text-orange-400">' + obj + '</span>';
+            }}
+            if (typeof obj === 'number') {{
+                return '<span class="text-purple-400">' + obj + '</span>';
+            }}
+            if (typeof obj === 'string') {{
+                return '<span class="text-green-400">"' + escapeHtml(obj) + '"</span>';
+            }}
+            if (Array.isArray(obj)) {{
+                if (obj.length === 0) {{
+                    return '<span class="text-gray-400">[]</span>';
+                }}
+                let result = '<span class="text-gray-400">[</span>\n';
+                obj.forEach((item, i) => {{
+                    result += nextSpaces + formatJson(item, indent + 1);
+                    if (i < obj.length - 1) result += '<span class="text-gray-400">,</span>';
+                    result += '\n';
+                }});
+                result += spaces + '<span class="text-gray-400">]</span>';
+                return result;
+            }}
+            if (typeof obj === 'object') {{
+                const keys = Object.keys(obj);
+                if (keys.length === 0) {{
+                    return '<span class="text-gray-400">{{}}</span>';
+                }}
+                let result = '<span class="text-gray-400">{{</span>\n';
+                keys.forEach((key, i) => {{
+                    result += nextSpaces + '<span class="text-indigo-300">"' + escapeHtml(key) + '"</span><span class="text-gray-400">:</span> ';
+                    result += formatJson(obj[key], indent + 1);
+                    if (i < keys.length - 1) result += '<span class="text-gray-400">,</span>';
+                    result += '\n';
+                }});
+                result += spaces + '<span class="text-gray-400">}}</span>';
+                return result;
+            }}
+            return '<span class="text-gray-400">' + escapeHtml(String(obj)) + '</span>';
+        }}
+
+        function initJsonDisplays() {{
+            const displays = {{
+                'json-params': currentRequestData.params,
+                'json-query': currentRequestData.query,
+                'json-body': currentRequestData.body,
+                'json-headers': currentRequestData.headers,
+                'json-session': currentRequestData.session
+            }};
+
+            for (const [id, data] of Object.entries(displays)) {{
+                const el = document.getElementById(id);
+                if (el) {{
+                    if (data === null || data === undefined) {{
+                        el.innerHTML = '<span class="text-gray-500 italic">No data</span>';
+                    }} else if (typeof data === 'object' && Object.keys(data).length === 0) {{
+                        el.innerHTML = '<span class="text-gray-500 italic">Empty</span>';
+                    }} else {{
+                        el.innerHTML = formatJson(data);
+                    }}
+                }}
+            }}
+        }}
+
+        // Initialize JSON displays on page load
+        initJsonDisplays();
+
         // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {{
             // Ctrl+` to focus REPL
@@ -3555,11 +3626,6 @@ pub fn render_dev_error_page(
         error_location = error_location,
         stack_frames = stack_frames.join("\n"),
         request_data_json = request_data_json,
-        request_params = escape_html(&request_params),
-        request_query = escape_html(&request_query),
-        request_body = escape_html(&request_body),
-        request_headers = escape_html(&request_headers),
-        request_session = escape_html(&request_session),
         request_method = escape_html(&request_method),
         request_path = escape_html(&request_path),
         request_time = request_time,
