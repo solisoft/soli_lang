@@ -2179,7 +2179,7 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         Err(e) => {
             return Some(if dev_mode {
                 let stack_trace = interpreter.get_stack_trace();
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, None);
+                let error_html = render_error_page(&e, interpreter, request_data, &stack_trace, None);
                 ResponseData {
                     status: 500,
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2215,9 +2215,10 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         Err(e) => {
             if dev_mode {
                 let stack_trace = interpreter.get_stack_trace();
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, None);
+                let breakpoint_env = e.breakpoint_env_json();
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, breakpoint_env);
                 ResponseData {
-                    status: 500,
+                    status: if e.is_breakpoint() { 200 } else { 500 },
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
                     body: error_html,
                 }
@@ -2246,7 +2247,7 @@ fn call_class_method(
     _instance: &Value,
     method_name: &str,
     request_hash: &Value,
-) -> Result<Value, String> {
+) -> Result<Value, RuntimeError> {
     // Look up the method in the class
     if let Some(method) = class.methods.get(method_name) {
         // Push stack frame for the method call with the method's source path
@@ -2257,9 +2258,12 @@ fn call_class_method(
 
         interpreter.pop_frame();
 
-        result.map_err(|e| format!("Error calling method '{}': {}", method_name, e))
+        result
     } else {
-        Err(format!("Method '{}' not found in class '{}'", method_name, class.name))
+        Err(RuntimeError::General {
+            message: format!("Method '{}' not found in class '{}'", method_name, class.name),
+            span: Span::default(),
+        })
     }
 }
 
@@ -3001,10 +3005,8 @@ fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &
 
     // Capture environment: use breakpoint env if provided, otherwise capture from interpreter
     let captured_env = if let Some(env) = breakpoint_env_json {
-        eprintln!("[DEBUG RENDER_ERROR] Using breakpoint env_json, length: {}", env.len());
         env.to_string()
     } else {
-        eprintln!("[DEBUG RENDER_ERROR] No breakpoint env, calling serialize_environment_for_debug()");
         interpreter.serialize_environment_for_debug()
     };
     let env_json_for_render: Option<&str> = Some(&captured_env);

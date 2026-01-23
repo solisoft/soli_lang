@@ -95,11 +95,6 @@ impl Interpreter {
         let vars = self.environment.borrow().get_all_variables();
         let mut json_parts = Vec::new();
 
-        eprintln!("[DEBUG] serialize_environment_for_debug - found {} variables", vars.len());
-        for (name, value) in &vars {
-            eprintln!("[DEBUG]   var: {} = {:?}", name, value.type_name());
-        }
-
         for (name, value) in vars {
             // Skip functions and classes - they're not useful in the debug view
             match &value {
@@ -109,13 +104,9 @@ impl Interpreter {
 
             // Resolve futures before serialization to get their actual values
             let resolved_value = if value.is_future() {
-                eprintln!("[DEBUG]   resolving future for: {}", name);
                 match value.resolve() {
                     Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("[DEBUG]   future resolution error for {}: {}", name, e);
-                        Value::String(format!("<future error: {}>", e))
-                    }
+                    Err(e) => Value::String(format!("<future error: {}>", e)),
                 }
             } else {
                 value
@@ -128,8 +119,6 @@ impl Interpreter {
         // Check for view context (data passed to render())
         // Only add view context variables if they don't already exist in the environment
         if let Some(view_data) = crate::interpreter::builtins::template::get_view_debug_context() {
-            eprintln!("[DEBUG] Found view context for debugging");
-
             // Collect existing variable names to avoid duplicates
             let existing_names: std::collections::HashSet<String> = json_parts.iter()
                 .filter_map(|part| {
@@ -172,9 +161,7 @@ impl Interpreter {
             }
         }
 
-        let result = format!("{{{}}}", json_parts.join(", "));
-        eprintln!("[DEBUG] serialize_environment_for_debug result: {}", result);
-        result
+        format!("{{{}}}", json_parts.join(", "))
     }
 
     /// Convert a Value to a JSON string representation.
