@@ -637,16 +637,14 @@ fn find_logical_op(expr: &str, op: &str) -> Option<usize> {
     let mut depth = 0;
     let mut in_string = false;
     let mut string_char = ' ';
-    let bytes = expr.as_bytes();
-    let op_bytes = op.as_bytes();
+    let mut prev_char = ' ';
 
-    for i in 0..expr.len() {
-        let c = bytes[i] as char;
-
+    for (i, c) in expr.char_indices() {
         if in_string {
-            if c == string_char && (i == 0 || bytes[i - 1] != b'\\') {
+            if c == string_char && prev_char != '\\' {
                 in_string = false;
             }
+            prev_char = c;
             continue;
         }
 
@@ -658,13 +656,12 @@ fn find_logical_op(expr: &str, op: &str) -> Option<usize> {
             '[' | '(' => depth += 1,
             ']' | ')' => depth -= 1,
             _ => {
-                if depth == 0 && i + op.len() <= expr.len() {
-                    if &bytes[i..i + op.len()] == op_bytes {
-                        return Some(i);
-                    }
+                if depth == 0 && expr[i..].starts_with(op) {
+                    return Some(i);
                 }
             }
         }
+        prev_char = c;
     }
     None
 }
@@ -674,16 +671,14 @@ fn find_binary_op(expr: &str, op: &str) -> Option<usize> {
     let mut depth = 0;
     let mut in_string = false;
     let mut string_char = ' ';
-    let bytes = expr.as_bytes();
-    let op_bytes = op.as_bytes();
+    let mut prev_char = ' ';
 
-    for i in 0..expr.len() {
-        let c = bytes[i] as char;
-
+    for (i, c) in expr.char_indices() {
         if in_string {
-            if c == string_char && (i == 0 || bytes[i - 1] != b'\\') {
+            if c == string_char && prev_char != '\\' {
                 in_string = false;
             }
+            prev_char = c;
             continue;
         }
 
@@ -695,13 +690,12 @@ fn find_binary_op(expr: &str, op: &str) -> Option<usize> {
             '[' | '(' => depth += 1,
             ']' | ')' => depth -= 1,
             _ => {
-                if depth == 0 && i + op.len() <= expr.len() {
-                    if &bytes[i..i + op.len()] == op_bytes {
-                        return Some(i);
-                    }
+                if depth == 0 && expr[i..].starts_with(op) {
+                    return Some(i);
                 }
             }
         }
+        prev_char = c;
     }
     None
 }
@@ -712,16 +706,15 @@ fn find_additive_op(expr: &str) -> Option<(usize, BinaryOp)> {
     let mut depth = 0;
     let mut in_string = false;
     let mut string_char = ' ';
-    let bytes = expr.as_bytes();
+    let mut prev_char = ' ';
     let mut last_found: Option<(usize, BinaryOp)> = None;
 
-    for i in 0..expr.len() {
-        let c = bytes[i] as char;
-
+    for (i, c) in expr.char_indices() {
         if in_string {
-            if c == string_char && (i == 0 || bytes[i - 1] != b'\\') {
+            if c == string_char && prev_char != '\\' {
                 in_string = false;
             }
+            prev_char = c;
             continue;
         }
 
@@ -734,20 +727,19 @@ fn find_additive_op(expr: &str) -> Option<(usize, BinaryOp)> {
             ']' | ')' => depth -= 1,
             '+' if depth == 0 && i > 0 => {
                 // Make sure it's not part of a number like 1e+10
-                let prev = bytes[i - 1] as char;
-                if prev != 'e' && prev != 'E' {
+                if prev_char != 'e' && prev_char != 'E' {
                     last_found = Some((i, BinaryOp::Add));
                 }
             }
             '-' if depth == 0 && i > 0 => {
                 // Make sure it's not a unary minus or part of a number
-                let prev = bytes[i - 1] as char;
-                if prev != 'e' && prev != 'E' && prev != '(' && prev != '[' && prev != ',' {
+                if prev_char != 'e' && prev_char != 'E' && prev_char != '(' && prev_char != '[' && prev_char != ',' {
                     last_found = Some((i, BinaryOp::Subtract));
                 }
             }
             _ => {}
         }
+        prev_char = c;
     }
     last_found
 }
@@ -757,16 +749,15 @@ fn find_multiplicative_op(expr: &str) -> Option<(usize, BinaryOp)> {
     let mut depth = 0;
     let mut in_string = false;
     let mut string_char = ' ';
-    let bytes = expr.as_bytes();
+    let mut prev_char = ' ';
     let mut last_found: Option<(usize, BinaryOp)> = None;
 
-    for i in 0..expr.len() {
-        let c = bytes[i] as char;
-
+    for (i, c) in expr.char_indices() {
         if in_string {
-            if c == string_char && (i == 0 || bytes[i - 1] != b'\\') {
+            if c == string_char && prev_char != '\\' {
                 in_string = false;
             }
+            prev_char = c;
             continue;
         }
 
@@ -788,6 +779,7 @@ fn find_multiplicative_op(expr: &str) -> Option<(usize, BinaryOp)> {
             }
             _ => {}
         }
+        prev_char = c;
     }
     last_found
 }

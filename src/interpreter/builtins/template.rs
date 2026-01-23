@@ -9,6 +9,7 @@ use std::sync::Mutex;
 
 use crate::interpreter::builtins::datetime::helpers as datetime_helpers;
 use crate::interpreter::builtins::html;
+use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 use crate::template::{html_response, TemplateCache};
@@ -477,6 +478,62 @@ fn inject_template_helpers(data: &Value) -> Value {
                         Ok(Value::String(datetime_helpers::time_ago(timestamp)))
                     }));
                 new_hash.push((time_ago_key, time_ago_func));
+            }
+
+            // Add locale() function if not present
+            let locale_key = Value::String("locale".to_string());
+            let has_locale = hash.borrow().iter().any(|(k, _)| k.hash_eq(&locale_key));
+
+            if !has_locale {
+                let locale_func =
+                    Value::NativeFunction(NativeFunction::new("locale", Some(0), |_args| {
+                        Ok(Value::String(i18n_helpers::get_locale()))
+                    }));
+                new_hash.push((locale_key, locale_func));
+            }
+
+            // Add set_locale() function if not present
+            let set_locale_key = Value::String("set_locale".to_string());
+            let has_set_locale = hash.borrow().iter().any(|(k, _)| k.hash_eq(&set_locale_key));
+
+            if !has_set_locale {
+                let set_locale_func =
+                    Value::NativeFunction(NativeFunction::new("set_locale", Some(1), |args| {
+                        let locale = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "set_locale() expects string, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        i18n_helpers::set_locale(&locale);
+                        Ok(Value::String(locale))
+                    }));
+                new_hash.push((set_locale_key, set_locale_func));
+            }
+
+            // Add t() function (translate alias) if not present
+            let t_key = Value::String("t".to_string());
+            let has_t = hash.borrow().iter().any(|(k, _)| k.hash_eq(&t_key));
+
+            if !has_t {
+                let t_func =
+                    Value::NativeFunction(NativeFunction::new("t", Some(1), |args| {
+                        let key = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "t() expects string key, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        // Return the key itself as fallback (translations loaded elsewhere)
+                        Ok(Value::String(key))
+                    }));
+                new_hash.push((t_key, t_func));
             }
 
             Value::Hash(Rc::new(RefCell::new(new_hash)))

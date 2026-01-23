@@ -3767,16 +3767,28 @@ impl VM {
             "i18n_set_locale" => {
                 if arg_count != 1 {
                     return Err(RuntimeError::new(
-                        "I18n.set_locale expects 1 argument",
+                        format!("I18n.set_locale expects 1 argument, got {}", arg_count),
                         Span::default(),
                     ));
                 }
-                let arg = self.pop()?;
-                let locale = match arg {
-                    VMValue::String(s) => s.as_str().to_string(),
-                    _ => {
+                // Collect arguments like other i18n methods
+                let mut args = Vec::new();
+                for _ in 0..arg_count {
+                    args.push(self.pop()?);
+                }
+                args.reverse();
+
+                let locale = match args.get(0) {
+                    Some(VMValue::String(s)) => s.as_str().to_string(),
+                    Some(other) => {
                         return Err(RuntimeError::new(
-                            "I18n.set_locale expects a string",
+                            format!("I18n.set_locale expects a string, got {}", other.type_name()),
+                            Span::default(),
+                        ))
+                    }
+                    None => {
+                        return Err(RuntimeError::new(
+                            "I18n.set_locale expects a string argument",
                             Span::default(),
                         ))
                     }

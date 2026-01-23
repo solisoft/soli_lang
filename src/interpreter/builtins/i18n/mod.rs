@@ -6,24 +6,20 @@
 //! - pluralization
 //! - number, currency, and date formatting
 
-use std::cell::RefCell;
+pub mod helpers;
+
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
-// Thread-local storage for the current locale
-thread_local! {
-    static CURRENT_LOCALE: RefCell<String> = RefCell::new("en".to_string());
-}
-
 fn get_locale() -> String {
-    CURRENT_LOCALE.with(|l| l.borrow().clone())
+    helpers::get_locale()
 }
 
 fn set_locale(locale: String) {
-    CURRENT_LOCALE.with(|l| *l.borrow_mut() = locale);
+    helpers::set_locale(&locale);
 }
 
 /// Register the I18n class in the given environment.
