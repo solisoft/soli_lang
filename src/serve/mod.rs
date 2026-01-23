@@ -3333,10 +3333,11 @@ pub fn render_dev_error_page(
         let contains_source_ext = |s: &str| s.contains(".soli") || s.contains(".html.erb") || s.contains(".erb");
 
         // Determine display name based on frame type
-        let display_name = if is_view_frame {
+        let (display_name, icon_html) = if is_view_frame {
             // For view frames, extract just the view name from the file path
             let view_name = file.rsplit('/').next().unwrap_or(&file);
-            format!("View: {}", view_name)
+            // Add a document icon for views
+            (view_name.to_string(), r#"<svg class="inline-block w-4 h-4 mr-1.5 -mt-0.5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>"#)
         } else {
             // Try to extract function name - look for pattern before " at "
             let func = if let Some(at_pos) = frame.find(" at ") {
@@ -3357,7 +3358,7 @@ pub fn render_dev_error_page(
             };
 
             // Clean up function name - if it looks like a file path, extract the name
-            if func.contains('#') || func.contains("::") {
+            let display = if func.contains('#') || func.contains("::") {
                 func.clone()
             } else if func.contains('/') || contains_source_ext(&func) {
                 extract_controller_name(&func)
@@ -3365,14 +3366,15 @@ pub fn render_dev_error_page(
                 extract_controller_name(&file)
             } else {
                 func.clone()
-            }
+            };
+            (display, "")
         };
 
         let location_display = format!("{}:{}", file, line);
 
         // Use different colors for views vs controllers
         let (name_color, location_color, border_color) = if is_view_frame {
-            ("text-purple-300", "text-purple-400/70", "border-l-2 border-purple-500")
+            ("text-teal-300", "text-teal-400/70", "border-l-2 border-teal-400")
         } else {
             ("text-white", "text-gray-400", "")
         };
@@ -3382,12 +3384,12 @@ pub fn render_dev_error_page(
                 <div class="flex items-start gap-3">
                     <span class="text-gray-500 text-xs mt-0.5">{}</span>
                     <div class="flex-1 min-w-0">
-                        <div class="font-medium {} truncate">{}</div>
+                        <div class="font-medium {} truncate">{}{}</div>
                         <div class="{} text-sm truncate">{}</div>
                     </div>
                 </div>
             </div>"#,
-            border_color, escape_html(&file), line, frame_index, name_color, escape_html(&display_name), location_color, escape_html(&location_display)
+            border_color, escape_html(&file), line, frame_index, name_color, icon_html, escape_html(&display_name), location_color, escape_html(&location_display)
         ));
         frame_index += 1;
     }
