@@ -577,6 +577,39 @@ fn evaluate_binary_op(left: &Value, op: BinaryOp, right: &Value) -> Result<Value
     }
 }
 
+/// Call a user-defined function (from helpers) using an interpreter.
+fn call_user_function(func: &crate::interpreter::value::Function, args: Vec<Value>) -> Result<Value, String> {
+    // Create a new interpreter with builtins
+    let mut interpreter = Interpreter::new();
+
+    // Copy variables from the function's closure into the interpreter's environment
+    // This allows helpers to call other helpers
+    let closure_vars = func.closure.borrow().get_all_variables();
+    for (name, value) in closure_vars {
+        interpreter.environment.borrow_mut().define(name, value);
+    }
+
+    // Bind arguments to parameters
+    for (i, param) in func.params.iter().enumerate() {
+        let arg_value = args.get(i).cloned().unwrap_or(Value::Null);
+        interpreter.environment.borrow_mut().define(param.name.clone(), arg_value);
+    }
+
+    // Execute statements and capture return value
+    for stmt in &func.body {
+        match interpreter.execute(stmt) {
+            Ok(crate::interpreter::executor::ControlFlow::Return(value)) => {
+                return Ok(value);
+            }
+            Ok(_) => continue,
+            Err(e) => return Err(format!("Error in helper function '{}': {}", func.name, e)),
+        }
+    }
+
+    // No explicit return - return null
+    Ok(Value::Null)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
