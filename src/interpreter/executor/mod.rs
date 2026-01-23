@@ -90,6 +90,7 @@ impl Interpreter {
     /// Serialize the current environment for debugging.
     /// Returns a JSON string with all variables (excluding functions/classes for simplicity).
     /// Also includes view context data if a template error occurred.
+    /// Futures are resolved before serialization to capture their actual values.
     pub fn serialize_environment_for_debug(&self) -> String {
         let vars = self.environment.borrow().get_all_variables();
         let mut json_parts = Vec::new();
@@ -106,7 +107,21 @@ impl Interpreter {
                 _ => {}
             }
 
-            let json_value = self.value_to_json(&value);
+            // Resolve futures before serialization to get their actual values
+            let resolved_value = if value.is_future() {
+                eprintln!("[DEBUG]   resolving future for: {}", name);
+                match value.resolve() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("[DEBUG]   future resolution error for {}: {}", name, e);
+                        Value::String(format!("<future error: {}>", e))
+                    }
+                }
+            } else {
+                value
+            };
+
+            let json_value = self.value_to_json(&resolved_value);
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }
 
