@@ -2,6 +2,56 @@
 //!
 //! Provides shared implementations for HTML escaping, unescaping, sanitization, and stripping.
 
+use crate::interpreter::environment::Environment;
+use crate::interpreter::value::{NativeFunction, Value};
+
+/// Register all HTML built-in functions.
+pub fn register_html_builtins(env: &mut Environment) {
+    // html_escape(string) - Escape HTML special characters
+    env.define(
+        "html_escape".to_string(),
+        Value::NativeFunction(NativeFunction::new("html_escape", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => Ok(Value::String(html_escape(s))),
+                other => Err(format!("html_escape expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
+    // html_unescape(string) - Unescape HTML entities
+    env.define(
+        "html_unescape".to_string(),
+        Value::NativeFunction(NativeFunction::new("html_unescape", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => Ok(Value::String(html_unescape(s))),
+                other => Err(format!("html_unescape expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
+    // sanitize_html(string) - Remove dangerous HTML tags and attributes
+    env.define(
+        "sanitize_html".to_string(),
+        Value::NativeFunction(NativeFunction::new("sanitize_html", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => Ok(Value::String(sanitize_html(s))),
+                other => Err(format!("sanitize_html expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+
+    // strip_html(string) -> string - removes all HTML tags
+    env.define(
+        "strip_html".to_string(),
+        Value::NativeFunction(NativeFunction::new("strip_html", Some(1), |args| {
+            match &args[0] {
+                Value::String(s) => Ok(Value::String(strip_html(s))),
+                other => Err(format!("strip_html expects string, got {}", other.type_name())),
+            }
+        })),
+    );
+}
+
 /// Escape HTML special characters.
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
