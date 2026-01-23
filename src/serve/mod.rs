@@ -3047,14 +3047,17 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
     // The error format can be either:
     // 1. "error at line:col in path/file.html.erb" (from interpreter)
     // 2. "error in path/file.html.erb at line:col" (alternative format)
-    // 3. "error in path/file.html.erb" (no line info, use line 1)
+    // 3. "error at path/file.html.erb:line" (new template renderer format)
+    // 4. "error in path/file.html.erb" (no line info, use line 1)
 
     // Try format 1: "at line:col in file.html.erb"
     let view_pattern1 = regex::Regex::new(r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").ok();
     // Try format 2: "in file.html.erb at line:col"
     let view_pattern2 = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)) at (\d+):(\d+)").ok();
-    // Try format 3: "in file.html.erb" (no line number)
-    let view_pattern3 = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))(?:\s|$)").ok();
+    // Try format 3: "at file.html.erb:line" (new template renderer format)
+    let view_pattern3 = regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)):(\d+)").ok();
+    // Try format 4: "in file.html.erb" (no line number)
+    let view_pattern4 = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))(?:\s|$)").ok();
 
     let mut view_added = false;
 
@@ -3084,9 +3087,23 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
         }
     }
 
-    // Try pattern 3 if no line info found
+    // Try pattern 3 if pattern 2 didn't match (new template renderer format)
     if !view_added {
         if let Some(re) = view_pattern3 {
+            if let Some(caps) = re.captures(&actual_error) {
+                let view_file = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                let view_line = caps.get(2).map(|m| m.as_str()).unwrap_or("1");
+                if !view_file.is_empty() {
+                    full_stack_trace.push(format!("[view] at {}:{}", view_file, view_line));
+                    view_added = true;
+                }
+            }
+        }
+    }
+
+    // Try pattern 4 if no line info found
+    if !view_added {
+        if let Some(re) = view_pattern4 {
             if let Some(caps) = re.captures(&actual_error) {
                 let view_file = caps.get(1).map(|m| m.as_str()).unwrap_or("");
                 if !view_file.is_empty() {
@@ -3176,6 +3193,15 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string());
 
+    // Try format "at file.html.erb:line" first (new template renderer format)
+    // This prioritizes view file errors over controller errors
+    let at_file_line_re = regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)):(\d+)").unwrap();
+    if let Some(caps) = at_file_line_re.captures(error_msg) {
+        let file = caps.get(1).map(|m| m.as_str().to_string());
+        let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+        return SpanInfo { file, line, column: 1 };
+    }
+
     // Try to find span format "at line:column" (e.g., "at 11:23")
     // This is the standard Span display format from error messages
     let span_re = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
@@ -3186,7 +3212,7 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     }
 
     // Try to find patterns like "file.soli:line" or "file.html.erb:line"
-    let file_line_re = regex::Regex::new(r"([a-zA-Z_][a-zA-Z0-9_\-./@]*(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
+    let file_line_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
     if let Some(caps) = file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);

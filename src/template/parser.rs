@@ -70,32 +70,34 @@ pub enum TemplateNode {
     /// Raw HTML/text content
     Literal(String),
     /// Output expression: `<%= expr %>` (escaped) or `<%== expr %>` (raw)
-    Output { expr: Expr, escaped: bool },
+    Output { expr: Expr, escaped: bool, line: usize },
     /// If conditional block
     If {
         condition: Expr,
         body: Vec<TemplateNode>,
         else_body: Option<Vec<TemplateNode>>,
+        line: usize,
     },
     /// For loop block
     For {
         var: String,
         iterable: Expr,
         body: Vec<TemplateNode>,
+        line: usize,
     },
     /// Layout content insertion point
     Yield,
     /// Render a partial template
-    Partial { name: String, context: Option<Expr> },
+    Partial { name: String, context: Option<Expr>, line: usize },
 }
 
 /// Token types during lexing
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
-    Literal(String),
-    OutputEscaped(String), // <%= ... %>
-    OutputRaw(String),     // <%- ... %>
-    Code(String),          // <% ... %>
+    Literal(String, usize),        // content, line
+    OutputEscaped(String, usize),  // <%= ... %>, line
+    OutputRaw(String, usize),      // <%- ... %>, line
+    Code(String, usize),           // <% ... %>, line
 }
 
 /// Parse an ERB-style template into an AST.
@@ -109,15 +111,18 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut chars = source.chars().peekable();
     let mut current_literal = String::new();
+    let mut current_line: usize = 1;
+    let mut literal_start_line: usize = 1;
 
     while let Some(c) = chars.next() {
         if c == '<' && chars.peek() == Some(&'%') {
             // Start of a tag
             chars.next(); // consume '%'
+            let tag_line = current_line;
 
             // Save any accumulated literal
             if !current_literal.is_empty() {
-                tokens.push(Token::Literal(std::mem::take(&mut current_literal)));
+                tokens.push(Token::Literal(std::mem::take(&mut current_literal), literal_start_line));
             }
 
             // Check for output tag types: <%= (escaped) or <%- (raw)
@@ -136,28 +141,41 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                         chars.next(); // consume '>'
                         break;
                     }
+                    Some('\n') => {
+                        current_line += 1;
+                        tag_content.push('\n');
+                    }
                     Some(ch) => tag_content.push(ch),
-                    None => return Err("Unclosed template tag".to_string()),
+                    None => return Err(format!("Unclosed template tag at line {}", tag_line)),
                 }
             }
 
             let tag_content = tag_content.trim().to_string();
 
             if is_raw {
-                tokens.push(Token::OutputRaw(tag_content));
+                tokens.push(Token::OutputRaw(tag_content, tag_line));
             } else if is_output {
-                tokens.push(Token::OutputEscaped(tag_content));
+                tokens.push(Token::OutputEscaped(tag_content, tag_line));
             } else {
-                tokens.push(Token::Code(tag_content));
+                tokens.push(Token::Code(tag_content, tag_line));
             }
+
+            // Reset literal start line for next literal
+            literal_start_line = current_line;
         } else {
+            if current_literal.is_empty() {
+                literal_start_line = current_line;
+            }
+            if c == '\n' {
+                current_line += 1;
+            }
             current_literal.push(c);
         }
     }
 
     // Don't forget trailing literal
     if !current_literal.is_empty() {
-        tokens.push(Token::Literal(current_literal));
+        tokens.push(Token::Literal(current_literal, literal_start_line));
     }
 
     Ok(tokens)
@@ -170,53 +188,55 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
 
     while i < tokens.len() {
         match &tokens[i] {
-            Token::Literal(s) => {
+            Token::Literal(s, _line) => {
                 nodes.push(TemplateNode::Literal(s.clone()));
                 i += 1;
             }
-            Token::OutputEscaped(expr) => {
+            Token::OutputEscaped(expr, line) => {
                 if expr == "yield" {
                     nodes.push(TemplateNode::Yield);
                 } else if expr.starts_with("render ") || expr.starts_with("render(") {
                     // Parse partial render
-                    let partial = parse_partial_call(expr)?;
+                    let partial = parse_partial_call(expr, *line)?;
                     nodes.push(partial);
                 } else {
                     nodes.push(TemplateNode::Output {
                         expr: compile_expr(expr),
                         escaped: true,
+                        line: *line,
                     });
                 }
                 i += 1;
             }
-            Token::OutputRaw(expr) => {
+            Token::OutputRaw(expr, line) => {
                 if expr == "yield" {
                     nodes.push(TemplateNode::Yield);
                 } else {
                     nodes.push(TemplateNode::Output {
                         expr: compile_expr(expr),
                         escaped: false,
+                        line: *line,
                     });
                 }
                 i += 1;
             }
-            Token::Code(code) => {
+            Token::Code(code, line) => {
                 let code = code.trim();
 
                 if code.starts_with("if ") {
                     // Parse if block
                     let condition = compile_expr(code[3..].trim());
-                    let (if_node, consumed) = parse_if_block(&tokens[i..], condition)?;
+                    let (if_node, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     nodes.push(if_node);
                     i += consumed;
                 } else if code.starts_with("for ") {
                     // Parse for loop
-                    let (for_node, consumed) = parse_for_block(&tokens[i..])?;
+                    let (for_node, consumed) = parse_for_block(&tokens[i..], *line)?;
                     nodes.push(for_node);
                     i += consumed;
                 } else if code == "end" || code.starts_with("else") || code.starts_with("elsif ") {
                     // These should be handled by their parent block parsers
-                    return Err(format!("Unexpected '{}' outside of block", code));
+                    return Err(format!("Unexpected '{}' outside of block at line {}", code, line));
                 } else {
                     // Other code - treat as expression to evaluate (side effect)
                     // We ignore it for now since templates shouldn't have side effects
@@ -231,7 +251,7 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
 
 /// Parse an if block starting at the given position.
 /// Returns the IfNode and the number of tokens consumed.
-fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, usize), String> {
+fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(TemplateNode, usize), String> {
     let mut body = Vec::new();
     let mut else_body = None;
     let mut i = 1; // Skip the initial `if` token
@@ -239,7 +259,7 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
 
     while i < tokens.len() {
         match &tokens[i] {
-            Token::Code(code) => {
+            Token::Code(code, line) => {
                 let code = code.trim();
 
                 if code == "end" {
@@ -248,6 +268,7 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
                             condition,
                             body,
                             else_body,
+                            line: if_line,
                         },
                         i + 1,
                     ));
@@ -258,7 +279,7 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
                 } else if code.starts_with("elsif ") {
                     // Handle elsif as nested if in else
                     let elsif_condition = compile_expr(code[6..].trim());
-                    let (elsif_node, consumed) = parse_if_block(&tokens[i..], elsif_condition)?;
+                    let (elsif_node, consumed) = parse_if_block(&tokens[i..], elsif_condition, *line)?;
                     else_body = Some(vec![elsif_node]);
                     // The elsif consumed tokens up to 'end', so we're done
                     return Ok((
@@ -266,13 +287,14 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
                             condition,
                             body,
                             else_body,
+                            line: if_line,
                         },
                         i + consumed,
                     ));
                 } else if code.starts_with("if ") {
                     // Nested if
                     let nested_condition = compile_expr(code[3..].trim());
-                    let (nested_if, consumed) = parse_if_block(&tokens[i..], nested_condition)?;
+                    let (nested_if, consumed) = parse_if_block(&tokens[i..], nested_condition, *line)?;
                     if in_else {
                         else_body.as_mut().unwrap().push(nested_if);
                     } else {
@@ -281,7 +303,7 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
                     i += consumed;
                 } else if code.starts_with("for ") {
                     // Nested for
-                    let (nested_for, consumed) = parse_for_block(&tokens[i..])?;
+                    let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
                     if in_else {
                         else_body.as_mut().unwrap().push(nested_for);
                     } else {
@@ -293,7 +315,7 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
                     i += 1;
                 }
             }
-            Token::Literal(s) => {
+            Token::Literal(s, _line) => {
                 let node = TemplateNode::Literal(s.clone());
                 if in_else {
                     else_body.as_mut().unwrap().push(node);
@@ -302,15 +324,16 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
                 }
                 i += 1;
             }
-            Token::OutputEscaped(expr) => {
+            Token::OutputEscaped(expr, line) => {
                 let node = if expr == "yield" {
                     TemplateNode::Yield
                 } else if expr.starts_with("render ") || expr.starts_with("render(") {
-                    parse_partial_call(expr)?
+                    parse_partial_call(expr, *line)?
                 } else {
                     TemplateNode::Output {
                         expr: compile_expr(expr),
                         escaped: true,
+                        line: *line,
                     }
                 };
                 if in_else {
@@ -320,13 +343,14 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
                 }
                 i += 1;
             }
-            Token::OutputRaw(expr) => {
+            Token::OutputRaw(expr, line) => {
                 let node = if expr == "yield" {
                     TemplateNode::Yield
                 } else {
                     TemplateNode::Output {
                         expr: compile_expr(expr),
                         escaped: false,
+                        line: *line,
                     }
                 };
                 if in_else {
@@ -339,22 +363,22 @@ fn parse_if_block(tokens: &[Token], condition: Expr) -> Result<(TemplateNode, us
         }
     }
 
-    Err("Unclosed if block - missing 'end'".to_string())
+    Err(format!("Unclosed if block at line {} - missing 'end'", if_line))
 }
 
 /// Parse a for block starting at the given position.
 /// Returns the ForNode and the number of tokens consumed.
-fn parse_for_block(tokens: &[Token]) -> Result<(TemplateNode, usize), String> {
+fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, usize), String> {
     // First token should be the `for` code
     let (var, iterable) = match &tokens[0] {
-        Token::Code(code) => {
+        Token::Code(code, _line) => {
             let code = code.trim();
             if !code.starts_with("for ") {
-                return Err("Expected 'for' statement".to_string());
+                return Err(format!("Expected 'for' statement at line {}", for_line));
             }
             parse_for_statement(&code[4..])?
         }
-        _ => return Err("Expected 'for' statement".to_string()),
+        _ => return Err(format!("Expected 'for' statement at line {}", for_line)),
     };
 
     let mut body = Vec::new();
@@ -362,7 +386,7 @@ fn parse_for_block(tokens: &[Token]) -> Result<(TemplateNode, usize), String> {
 
     while i < tokens.len() {
         match &tokens[i] {
-            Token::Code(code) => {
+            Token::Code(code, line) => {
                 let code = code.trim();
 
                 if code == "end" {
@@ -371,18 +395,19 @@ fn parse_for_block(tokens: &[Token]) -> Result<(TemplateNode, usize), String> {
                             var,
                             iterable,
                             body,
+                            line: for_line,
                         },
                         i + 1,
                     ));
                 } else if code.starts_with("if ") {
                     // Nested if
                     let condition = compile_expr(code[3..].trim());
-                    let (nested_if, consumed) = parse_if_block(&tokens[i..], condition)?;
+                    let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
                     i += consumed;
                 } else if code.starts_with("for ") {
                     // Nested for
-                    let (nested_for, consumed) = parse_for_block(&tokens[i..])?;
+                    let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
                     body.push(nested_for);
                     i += consumed;
                 } else {
@@ -390,31 +415,33 @@ fn parse_for_block(tokens: &[Token]) -> Result<(TemplateNode, usize), String> {
                     i += 1;
                 }
             }
-            Token::Literal(s) => {
+            Token::Literal(s, _line) => {
                 body.push(TemplateNode::Literal(s.clone()));
                 i += 1;
             }
-            Token::OutputEscaped(expr) => {
+            Token::OutputEscaped(expr, line) => {
                 let node = if expr == "yield" {
                     TemplateNode::Yield
                 } else if expr.starts_with("render ") || expr.starts_with("render(") {
-                    parse_partial_call(expr)?
+                    parse_partial_call(expr, *line)?
                 } else {
                     TemplateNode::Output {
                         expr: compile_expr(expr),
                         escaped: true,
+                        line: *line,
                     }
                 };
                 body.push(node);
                 i += 1;
             }
-            Token::OutputRaw(expr) => {
+            Token::OutputRaw(expr, line) => {
                 let node = if expr == "yield" {
                     TemplateNode::Yield
                 } else {
                     TemplateNode::Output {
                         expr: compile_expr(expr),
                         escaped: false,
+                        line: *line,
                     }
                 };
                 body.push(node);
@@ -423,7 +450,7 @@ fn parse_for_block(tokens: &[Token]) -> Result<(TemplateNode, usize), String> {
         }
     }
 
-    Err("Unclosed for block - missing 'end'".to_string())
+    Err(format!("Unclosed for block at line {} - missing 'end'", for_line))
 }
 
 /// Parse a for statement like "item in items" or "(item in items)"
@@ -482,7 +509,7 @@ fn parse_for_statement(s: &str) -> Result<(String, Expr), String> {
 }
 
 /// Parse a partial render call like "render 'users/_card'" or "render('users/_card', user)"
-fn parse_partial_call(expr: &str) -> Result<TemplateNode, String> {
+fn parse_partial_call(expr: &str, line: usize) -> Result<TemplateNode, String> {
     let expr = expr.trim();
 
     // Handle both "render 'name'" and "render('name', context)" forms
@@ -497,7 +524,7 @@ fn parse_partial_call(expr: &str) -> Result<TemplateNode, String> {
         // Space form: render 'name' or render 'name', context
         expr[7..].trim()
     } else {
-        return Err(format!("Invalid render call: {}", expr));
+        return Err(format!("Invalid render call at line {}: {}", line, expr));
     };
 
     // Split by comma to get name and optional context
@@ -515,7 +542,7 @@ fn parse_partial_call(expr: &str) -> Result<TemplateNode, String> {
         None
     };
 
-    Ok(TemplateNode::Partial { name, context })
+    Ok(TemplateNode::Partial { name, context, line })
 }
 
 /// Compile an expression string into a pre-compiled Expr AST.
@@ -1013,9 +1040,9 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::Literal("Hello ".to_string()),
-                Token::OutputEscaped("name".to_string()),
-                Token::Literal("!".to_string()),
+                Token::Literal("Hello ".to_string(), 1),
+                Token::OutputEscaped("name".to_string(), 1),
+                Token::Literal("!".to_string(), 1),
             ]
         );
     }
@@ -1023,7 +1050,7 @@ mod tests {
     #[test]
     fn test_tokenize_raw_output() {
         let tokens = tokenize("<%- raw_html %>").unwrap();
-        assert_eq!(tokens, vec![Token::OutputRaw("raw_html".to_string())]);
+        assert_eq!(tokens, vec![Token::OutputRaw("raw_html".to_string(), 1)]);
     }
 
     #[test]
@@ -1032,9 +1059,9 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::Code("if true".to_string()),
-                Token::Literal("yes".to_string()),
-                Token::Code("end".to_string()),
+                Token::Code("if true".to_string(), 1),
+                Token::Literal("yes".to_string(), 1),
+                Token::Code("end".to_string(), 1),
             ]
         );
     }
@@ -1056,6 +1083,7 @@ mod tests {
             vec![TemplateNode::Output {
                 expr: Expr::Var("name".to_string()),
                 escaped: true,
+                line: 1,
             }]
         );
     }
@@ -1069,6 +1097,7 @@ mod tests {
                 condition: Expr::Var("show".to_string()),
                 body: vec![TemplateNode::Literal("visible".to_string())],
                 else_body: None,
+                line: 1,
             }]
         );
     }
@@ -1082,6 +1111,7 @@ mod tests {
                 condition: Expr::Var("show".to_string()),
                 body: vec![TemplateNode::Literal("yes".to_string())],
                 else_body: Some(vec![TemplateNode::Literal("no".to_string())]),
+                line: 1,
             }]
         );
     }
@@ -1097,7 +1127,9 @@ mod tests {
                 body: vec![TemplateNode::Output {
                     expr: Expr::Var("item".to_string()),
                     escaped: true,
+                    line: 1,
                 }],
+                line: 1,
             }]
         );
     }
@@ -1116,6 +1148,7 @@ mod tests {
             vec![TemplateNode::Partial {
                 name: "users/_card".to_string(),
                 context: None,
+                line: 1,
             }]
         );
     }
@@ -1131,6 +1164,7 @@ mod tests {
                     vec![Expr::StringLit("css/application.css".to_string())],
                 ),
                 escaped: true,
+                line: 1,
             }]
         );
     }

@@ -55,12 +55,21 @@ pub fn render_nodes_with_path(
     let mut output = String::new();
 
     for node in nodes {
+        // Track line number for error reporting
+        let node_line = match node {
+            TemplateNode::Output { line, .. } => Some(*line),
+            TemplateNode::If { line, .. } => Some(*line),
+            TemplateNode::For { line, .. } => Some(*line),
+            TemplateNode::Partial { line, .. } => Some(*line),
+            _ => None,
+        };
+
         let result: Result<(), String> = (|| {
             match node {
                 TemplateNode::Literal(s) => {
                     output.push_str(s);
                 }
-                TemplateNode::Output { expr, escaped } => {
+                TemplateNode::Output { expr, escaped, line: _ } => {
                     let value = evaluate_expr(expr, data)?;
                     let s = value_to_string(&value);
                     if *escaped {
@@ -73,6 +82,7 @@ pub fn render_nodes_with_path(
                     condition,
                     body,
                     else_body,
+                    line: _,
                 } => {
                     let cond_value = evaluate_expr(condition, data)?;
                     if is_truthy(&cond_value) {
@@ -85,6 +95,7 @@ pub fn render_nodes_with_path(
                     var,
                     iterable,
                     body,
+                    line: _,
                 } => {
                     let iterable_value = evaluate_expr(iterable, data)?;
                     match &iterable_value {
@@ -117,7 +128,7 @@ pub fn render_nodes_with_path(
                     // If we encounter it during normal rendering, it's an error
                     return Err("yield encountered outside of layout context".to_string());
                 }
-                TemplateNode::Partial { name, context } => {
+                TemplateNode::Partial { name, context, line: _ } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
                             evaluate_expr(ctx_expr, data)?
@@ -133,11 +144,14 @@ pub fn render_nodes_with_path(
             Ok(())
         })();
 
-        // If there was an error, add template path context
+        // If there was an error, add template path and line context
         if let Err(e) = result {
             if let Some(path) = template_path {
                 // Check if error already has path info
                 if !e.contains(".html.erb") && !e.contains(".erb") {
+                    if let Some(line) = node_line {
+                        return Err(format!("{} at {}:{}", e, path, line));
+                    }
                     return Err(format!("{} in {}", e, path));
                 }
             }
@@ -583,6 +597,7 @@ mod tests {
         let nodes = vec![TemplateNode::Output {
             expr: Expr::Var("name".to_string()),
             escaped: true,
+            line: 1,
         }];
         let data = make_hash(vec![("name", Value::String("<script>".to_string()))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
@@ -594,6 +609,7 @@ mod tests {
         let nodes = vec![TemplateNode::Output {
             expr: Expr::Var("html".to_string()),
             escaped: false,
+            line: 1,
         }];
         let data = make_hash(vec![("html", Value::String("<b>bold</b>".to_string()))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
@@ -606,6 +622,7 @@ mod tests {
             condition: Expr::Var("show".to_string()),
             body: vec![TemplateNode::Literal("visible".to_string())],
             else_body: None,
+            line: 1,
         }];
         let data = make_hash(vec![("show", Value::Bool(true))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
@@ -618,6 +635,7 @@ mod tests {
             condition: Expr::Var("show".to_string()),
             body: vec![TemplateNode::Literal("visible".to_string())],
             else_body: Some(vec![TemplateNode::Literal("hidden".to_string())]),
+            line: 1,
         }];
         let data = make_hash(vec![("show", Value::Bool(false))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
@@ -632,7 +650,9 @@ mod tests {
             body: vec![TemplateNode::Output {
                 expr: Expr::Var("item".to_string()),
                 escaped: true,
+                line: 1,
             }],
+            line: 1,
         }];
         let items = Value::Array(Rc::new(RefCell::new(vec![
             Value::String("a".to_string()),
@@ -649,6 +669,7 @@ mod tests {
         let nodes = vec![TemplateNode::Output {
             expr: compile_expr("user[\"name\"]"),
             escaped: true,
+            line: 1,
         }];
         let user = make_hash(vec![("name", Value::String("Alice".to_string()))]);
         let data = make_hash(vec![("user", user)]);

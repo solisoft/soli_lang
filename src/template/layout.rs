@@ -76,12 +76,21 @@ pub fn render_layout_nodes_with_path(
     let mut output = String::new();
 
     for node in nodes {
+        // Track line number for error reporting
+        let node_line = match node {
+            TemplateNode::Output { line, .. } => Some(*line),
+            TemplateNode::If { line, .. } => Some(*line),
+            TemplateNode::For { line, .. } => Some(*line),
+            TemplateNode::Partial { line, .. } => Some(*line),
+            _ => None,
+        };
+
         let result: Result<(), String> = (|| {
             match node {
                 TemplateNode::Literal(s) => {
                     output.push_str(s);
                 }
-                TemplateNode::Output { expr, escaped } => {
+                TemplateNode::Output { expr, escaped, line: _ } => {
                     let value = evaluate_expr(expr, data)?;
                     let s = value_to_string(&value);
                     if *escaped {
@@ -94,6 +103,7 @@ pub fn render_layout_nodes_with_path(
                     condition,
                     body,
                     else_body,
+                    line: _,
                 } => {
                     let cond_value = evaluate_expr(condition, data)?;
                     if is_truthy(&cond_value) {
@@ -112,6 +122,7 @@ pub fn render_layout_nodes_with_path(
                     var,
                     iterable,
                     body,
+                    line: _,
                 } => {
                     // Get the iterable value
                     let iterable_value = evaluate_expr(iterable, data)?;
@@ -154,7 +165,7 @@ pub fn render_layout_nodes_with_path(
                     // This is where we insert the rendered content
                     output.push_str(content);
                 }
-                TemplateNode::Partial { name, context } => {
+                TemplateNode::Partial { name, context, line: _ } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
                             evaluate_expr(ctx_expr, data)?
@@ -170,10 +181,13 @@ pub fn render_layout_nodes_with_path(
             Ok(())
         })();
 
-        // Add layout path context to errors
+        // Add layout path and line context to errors
         if let Err(e) = result {
             if let Some(path) = layout_path {
                 if !e.contains(".html.erb") && !e.contains(".erb") {
+                    if let Some(line) = node_line {
+                        return Err(format!("{} at {}:{}", e, path, line));
+                    }
                     return Err(format!("{} in {}", e, path));
                 }
             }
