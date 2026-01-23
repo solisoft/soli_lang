@@ -2213,13 +2213,6 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
             }
         }
         Err(e) => {
-            eprintln!("[DEBUG] call_oop_controller_action got error: {:?}", e);
-            eprintln!("[DEBUG] is_breakpoint: {}", e.is_breakpoint());
-            if let Some(env) = e.breakpoint_env_json() {
-                eprintln!("[DEBUG] breakpoint_env_json length: {}", env.len());
-            } else {
-                eprintln!("[DEBUG] breakpoint_env_json is None");
-            }
             if dev_mode {
                 let stack_trace = interpreter.get_stack_trace();
                 let breakpoint_env = e.breakpoint_env_json();
@@ -3885,6 +3878,8 @@ pub fn render_dev_error_page(
             if (frames.length > 0) {{
                 frames[frames.length - 1].click();
             }}
+            // Focus REPL input
+            document.getElementById('repl-input').focus();
         }});
     </script>
 </body>
