@@ -254,32 +254,66 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             // Parse the new HTML
             var parser = new DOMParser();
             var newDoc = parser.parseFromString(html, 'text/html');
-
-            // Update stylesheets - force reload all with cache busting
-            var oldStyles = document.querySelectorAll('link[rel="stylesheet"]');
             var timestamp = Date.now();
+
+            // Update stylesheets - replace old with new, using cache busting
+            var oldStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"]'));
+            var newStyles = Array.from(newDoc.querySelectorAll('link[rel="stylesheet"]'));
+
+            // Build map of new stylesheet hrefs (without query params)
+            var newStyleHrefs = new Set();
+            newStyles.forEach(function(s) {
+                var href = s.getAttribute('href');
+                if (href) newStyleHrefs.add(href.split('?')[0]);
+            });
+
+            // Remove old stylesheets not in new doc, update existing ones
             oldStyles.forEach(function(oldStyle) {
                 var href = oldStyle.getAttribute('href');
-                if (href) {
-                    var baseHref = href.split('?')[0];
-                    var newLink = document.createElement('link');
-                    newLink.rel = 'stylesheet';
-                    newLink.href = baseHref + '?_lr=' + timestamp;
-                    newLink.onload = function() {
-                        if (oldStyle.parentNode) oldStyle.parentNode.removeChild(oldStyle);
-                    };
-                    oldStyle.parentNode.insertBefore(newLink, oldStyle.nextSibling);
+                if (!href) return;
+                var baseHref = href.split('?')[0];
+
+                if (newStyleHrefs.has(baseHref)) {
+                    // Update existing stylesheet with cache busting
+                    oldStyle.href = baseHref + '?_lr=' + timestamp;
+                } else {
+                    // Remove stylesheet not in new doc
+                    oldStyle.remove();
                 }
             });
 
-            // Update inline styles
-            var newInlineStyles = newDoc.querySelectorAll('style');
-            var oldInlineStyles = document.querySelectorAll('style');
+            // Add new stylesheets that don't exist yet
+            var existingHrefs = new Set();
+            document.querySelectorAll('link[rel="stylesheet"]').forEach(function(s) {
+                var href = s.getAttribute('href');
+                if (href) existingHrefs.add(href.split('?')[0]);
+            });
+            newStyles.forEach(function(newStyle) {
+                var href = newStyle.getAttribute('href');
+                if (href && !existingHrefs.has(href.split('?')[0])) {
+                    var link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = href.split('?')[0] + '?_lr=' + timestamp;
+                    document.head.appendChild(link);
+                }
+            });
+
+            // Update inline styles - replace entirely instead of appending
+            var oldInlineStyles = Array.from(document.querySelectorAll('style'));
+            var newInlineStyles = Array.from(newDoc.querySelectorAll('style'));
+
+            // Remove all non-livereload inline styles
             oldInlineStyles.forEach(function(s) {
                 if (!s.textContent.includes('__livereload')) s.remove();
             });
+
+            // Add new inline styles with marker to track them
             newInlineStyles.forEach(function(s) {
-                document.head.appendChild(s.cloneNode(true));
+                if (!s.textContent.includes('__livereload')) {
+                    var clone = s.cloneNode(true);
+                    clone.setAttribute('data-lr-style', 'true');
+                    document.head.appendChild(clone);
+                }
             });
 
             // Morph body content - only update what changed
@@ -288,40 +322,25 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
                 morphChildren(document.body, newBody);
             }
 
-            // Re-execute all scripts in body (both inline and external)
-            var scripts = document.body.querySelectorAll('script');
-            var scriptsToLoad = [];
-            scripts.forEach(function(oldScript) {
+            // Handle scripts - only re-execute scripts that are in the new document
+            // Use a simpler approach: just update inline scripts in place
+            var newBodyScripts = newDoc.body.querySelectorAll('script');
+            var oldBodyScripts = document.body.querySelectorAll('script');
+
+            // For inline scripts, the morphChildren already handled the DOM
+            // We need to re-execute them by replacing with new script elements
+            oldBodyScripts.forEach(function(oldScript) {
                 if (oldScript.textContent.includes('__livereload')) return;
+                if (oldScript.src) return; // Skip external scripts - they'll be handled separately
 
+                // Re-execute inline script by replacing it
                 var newScript = document.createElement('script');
-
-                // Copy attributes
                 Array.from(oldScript.attributes).forEach(function(attr) {
                     newScript.setAttribute(attr.name, attr.value);
                 });
-
-                if (oldScript.src) {
-                    // External script - add cache busting and load sequentially
-                    var baseSrc = oldScript.src.split('?')[0];
-                    newScript.src = baseSrc + '?_lr=' + Date.now();
-                    scriptsToLoad.push(newScript);
-                } else {
-                    // Inline script - execute immediately
-                    newScript.textContent = oldScript.textContent;
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
-                }
+                newScript.textContent = oldScript.textContent;
+                oldScript.parentNode.replaceChild(newScript, oldScript);
             });
-
-            // Load external scripts sequentially
-            function loadNextScript(index) {
-                if (index >= scriptsToLoad.length) return;
-                var script = scriptsToLoad[index];
-                script.onload = function() { loadNextScript(index + 1); };
-                script.onerror = function() { loadNextScript(index + 1); };
-                document.body.appendChild(script);
-            }
-            loadNextScript(0);
 
             // Update title if changed
             if (newDoc.title) {
