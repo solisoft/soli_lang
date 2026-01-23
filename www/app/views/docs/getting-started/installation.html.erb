@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Installation</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Get SoliLang MVC up and running on your machine in minutes.
+            Get Soli MVC up and running on your machine in minutes.
             Follow these steps to bootstrap your new project.
         </p>
     </div>
@@ -22,11 +22,11 @@
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h3 class="font-semibold text-white mb-2">Node.js</h3>
-            <p class="text-sm text-gray-400">v16 or higher</p>
+            <p class="text-sm text-gray-400">v16 or higher (for Tailwind CSS)</p>
             <code class="text-xs text-indigo-300 mt-2 block">node --version</code>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">npm or yarn</h3>
+            <h3 class="font-semibold text-white mb-2">npm</h3>
             <p class="text-sm text-gray-400">Package manager</p>
             <code class="text-xs text-indigo-300 mt-2 block">npm --version</code>
         </div>
@@ -34,7 +34,7 @@
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
         <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">2</div>
-        Install CLI
+        Install Soli CLI
     </h2>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
@@ -43,13 +43,10 @@
         </div>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Clone the repository
-git clone https://github.com/solilang/solilang.git
-cd solilang
+git clone https://github.com/solisoft/soli_lang.git
+cd soli_lang
 
-# Build the project
-cargo build --release
-
-# Install the soli CLI globally
+# Build and install the soli CLI
 cargo install --path .
 
 # Verify installation
@@ -59,28 +56,7 @@ soli --version</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
         <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">3</div>
-        Create Project
-    </h2>
-
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Terminal</span>
-        </div>
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Clone the MVC example (or create your own)
-cd examples/mvc_app
-
-# Install frontend dependencies
-npm install
-
-# Build CSS (TailwindCSS)
-npm run build:css</code></pre>
-        </div>
-    </div>
-
-    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">4</div>
-        Run Server
+        Create Your Project
     </h2>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
@@ -88,16 +64,40 @@ npm run build:css</code></pre>
             <span class="text-xs text-gray-400 font-mono">Terminal</span>
         </div>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Start the dev server with hot reload
-npm run dev
+<pre><code class="language-bash text-sm"># Create a new Soli app
+soli new my_app</code></pre>
+        </div>
+    </div>
 
-# Or use the shell script directly
-./dev.sh</code></pre>
+    <p class="text-gray-400 mb-8">
+        This command creates a new project with everything you need:
+    </p>
+
+    <ul class="list-disc list-inside text-gray-400 mb-12 space-y-2">
+        <li>MVC directory structure (<code class="text-indigo-300">app/controllers</code>, <code class="text-indigo-300">app/views</code>, <code class="text-indigo-300">app/models</code>)</li>
+        <li>Tailwind CSS configuration and dependencies</li>
+        <li>Home controller and welcome page</li>
+        <li>Application layout with responsive design</li>
+        <li>Helper functions for views</li>
+    </ul>
+
+    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">4</div>
+        Start Development Server
+    </h2>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Terminal</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">cd my_app
+soli serve . --dev</code></pre>
         </div>
     </div>
 
     <p class="mb-8 text-gray-400">
-        The server will start at <a href="http://localhost:3000" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:3000</a>.
+        Your app is now running at <a href="http://localhost:3000" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:3000</a>
     </p>
 
     <div class="my-8 p-4 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
@@ -110,8 +110,8 @@ npm run dev
             <div>
                 <h4 class="text-green-400 font-medium">Hot Reload Enabled</h4>
                 <p class="text-sm text-green-200/80 mt-1">
-                    Edit any file (controllers, middleware, views) and refresh your browser to see changes instantly.
-                    No restart needed!
+                    The <code class="bg-green-500/20 px-1 rounded">--dev</code> flag enables hot reload. Edit any controller, middleware, or view file
+                    and refresh your browser to see changes instantly. No restart needed!
                 </p>
             </div>
         </div>
@@ -126,43 +126,44 @@ npm run dev
 <pre><code class="language-text text-sm">my_app/
 ├── app/
 │   ├── controllers/          # Request handlers
-│   │   └── *.soli
-│   ├── middleware/           # Middleware functions
-│   │   ├── auth.soli
-│   │   ├── cors.soli
-│   │   └── logging.soli
-│   ├── models/               # Data models (optional)
+│   │   └── home_controller.soli
+│   ├── helpers/              # View helpers
+│   │   └── application_helper.soli
+│   ├── models/               # Data models
 │   └── views/                # Templates
 │       ├── home/
 │       │   └── index.html.erb
-│       ├── users/
 │       └── layouts/
 │           └── application.html.erb
 ├── config/
 │   └── routes.soli           # Route definitions
+├── db/
+│   └── migrations/           # Database migrations
 ├── public/                   # Static files
 │   ├── css/
+│   │   ├── app.css           # Source (Tailwind directives)
+│   │   └── output.css        # Compiled CSS
+│   ├── js/
 │   └── images/
-├── package.json              # Node.js config
-└── tailwind.config.js        # TailwindCSS config</code></pre>
+├── tests/                    # Test files
+├── .env                      # Environment variables
+├── package.json              # Node.js dependencies
+└── tailwind.config.js        # Tailwind configuration</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Building for Production</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Production Deployment</h2>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
             <span class="text-xs text-gray-400 font-mono">Terminal</span>
         </div>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Build CSS
-npm run build:css
+<pre><code class="language-bash text-sm"># Start production server
+soli serve . --port 3000
 
-# Build Soli application
-cargo build --release
-
-# The compiled binary will be in target/release/soli
-./target/release/soli serve .</code></pre>
+# Or run as a daemon (background process)
+soli serve . -d</code></pre>
         </div>
     </div>
 
@@ -176,11 +177,22 @@ cargo build --release
             <div>
                 <h4 class="text-yellow-400 font-medium">Troubleshooting</h4>
                 <ul class="text-sm text-yellow-200/80 mt-1 space-y-1 list-disc list-inside">
-                    <li>If CSS doesn't load, run <code>npm run build:css</code></li>
                     <li>If changes don't appear, check the terminal for errors</li>
                     <li>Make sure port 3000 isn't in use by another process</li>
                 </ul>
             </div>
         </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/getting-started/introduction" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Introduction &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn about MVC architecture and Soli's philosophy.</p>
+        </a>
+        <a href="/docs/core-concepts/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Routing &rarr;</h3>
+            <p class="text-sm text-gray-400">Define URLs and connect them to controllers.</p>
+        </a>
     </div>
 </div>

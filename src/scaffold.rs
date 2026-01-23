@@ -196,24 +196,8 @@ fn create_layout(app_path: &Path) -> Result<(), String> {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %> - Soli App</title>
 
-    <!-- Tailwind CSS via CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Custom styles -->
-    <link rel="stylesheet" href="<%= public_path("css/app.css") %>">
-
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    },
-                }
-            }
-        }
-    </script>
+    <!-- Tailwind CSS (compiled) -->
+    <link rel="stylesheet" href="<%= public_path("css/output.css") %>">
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -357,12 +341,14 @@ fn create_index_view(app_path: &Path) -> Result<(), String> {
 }
 
 fn create_css_file(app_path: &Path) -> Result<(), String> {
-    let content = r#"/* Custom application styles */
-/* Tailwind CSS is loaded via CDN in the layout */
+    let content = r#"/* Tailwind CSS directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Add your custom styles here */
+/* Custom application styles */
 
-/* Example: Custom animations */
+/* Custom animations */
 @keyframes float {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-10px); }
@@ -372,7 +358,7 @@ fn create_css_file(app_path: &Path) -> Result<(), String> {
     animation: float 3s ease-in-out infinite;
 }
 
-/* Example: Custom scrollbar */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -641,6 +627,47 @@ fn slugify(text) {
     )
 }
 
+fn create_tailwind_config(app_path: &Path) -> Result<(), String> {
+    let content = r#"/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./app/views/**/*.{html,erb}",
+    "./public/js/**/*.js",
+  ],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+    },
+  },
+  plugins: [],
+}
+"#;
+    write_file(&app_path.join("tailwind.config.js"), content)
+}
+
+fn create_package_json(app_path: &Path, name: &str) -> Result<(), String> {
+    let content = format!(
+        r#"{{
+  "name": "{}",
+  "version": "1.0.0",
+  "description": "A Soli MVC application",
+  "scripts": {{
+    "build:css": "npx tailwindcss -i ./public/css/app.css -o ./public/css/output.css",
+    "watch:css": "npx tailwindcss -i ./public/css/app.css -o ./public/css/output.css --watch"
+  }},
+  "devDependencies": {{
+    "tailwindcss": "^3.4.0"
+  }}
+}}
+"#,
+        name
+    );
+    write_file(&app_path.join("package.json"), &content)
+}
+
 fn create_readme(app_path: &Path, name: &str) -> Result<(), String> {
     let content = format!(
         r#"# {}
@@ -689,9 +716,13 @@ soli serve . -d
 │   └── migrations/      # Database migrations
 ├── public/              # Static assets
 │   ├── css/
+│   │   ├── app.css      # Source CSS with Tailwind directives
+│   │   └── output.css   # Compiled CSS (generated)
 │   ├── js/
 │   └── images/
-└── tests/               # Test files
+├── tests/               # Test files
+├── package.json         # npm dependencies
+└── tailwind.config.js   # Tailwind configuration
 ```
 
 ## Database Migrations
@@ -772,7 +803,43 @@ pub fn create_app(name: &str) -> Result<(), String> {
     create_env_file(app_path)?;
     create_gitignore(app_path)?;
     create_application_helper(app_path)?;
+    create_tailwind_config(app_path)?;
+    create_package_json(app_path, name)?;
     create_readme(app_path, name)?;
+
+    // Run npm install if npm is available
+    let npm_available = if let Ok(status) = std::process::Command::new("npm")
+        .args(["install"])
+        .current_dir(app_path)
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+    {
+        if !status.success() {
+            eprintln!("  \x1b[33mWarning:\x1b[0m npm install failed. Run it manually later.");
+            false
+        } else {
+            true
+        }
+    } else {
+        eprintln!("  \x1b[33mNote:\x1b[0m npm not found. Run 'npm install' in the project directory to install Tailwind CSS.");
+        false
+    };
+
+    // Build initial CSS if npm install succeeded
+    if npm_available {
+        if let Ok(status) = std::process::Command::new("npm")
+            .args(["run", "build:css"])
+            .current_dir(app_path)
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()
+        {
+            if !status.success() {
+                eprintln!("  \x1b[33mWarning:\x1b[0m CSS build failed. Run 'npm run build:css' manually.");
+            }
+        }
+    }
 
     Ok(())
 }
