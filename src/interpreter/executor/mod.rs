@@ -89,6 +89,7 @@ impl Interpreter {
 
     /// Serialize the current environment for debugging.
     /// Returns a JSON string with all variables (excluding functions/classes for simplicity).
+    /// Also includes view context data if a template error occurred.
     pub fn serialize_environment_for_debug(&self) -> String {
         let vars = self.environment.borrow().get_all_variables();
         let mut json_parts = Vec::new();
@@ -107,6 +108,29 @@ impl Interpreter {
 
             let json_value = self.value_to_json(&value);
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
+        }
+
+        // Check for view context (data passed to render())
+        if let Some(view_data) = crate::interpreter::builtins::template::get_view_debug_context() {
+            eprintln!("[DEBUG] Found view context for debugging");
+            // Add view data as a special "_view_data" variable
+            let view_json = self.value_to_json(&view_data);
+            json_parts.push(format!(r#""_view_data": {}"#, view_json));
+
+            // Also extract individual keys from the view data hash for easy access
+            if let Value::Hash(hash) = &view_data {
+                for (key, value) in hash.borrow().iter() {
+                    if let Value::String(key_str) = key {
+                        // Skip functions and classes
+                        match value {
+                            Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => continue,
+                            _ => {}
+                        }
+                        let value_json = self.value_to_json(value);
+                        json_parts.push(format!(r#""{}": {}"#, key_str, value_json));
+                    }
+                }
+            }
         }
 
         let result = format!("{{{}}}", json_parts.join(", "));

@@ -2995,8 +2995,17 @@ fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::
 
 /// Helper function to render error page with full details.
 /// If `breakpoint_env_json` is provided, it will be used to populate REPL variables.
-fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String], breakpoint_env_json: Option<&str>) -> String {
+/// Otherwise, variables are captured from the current interpreter environment.
+fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String], breakpoint_env_json: Option<&str>) -> String {
     let error_type = if breakpoint_env_json.is_some() { "Breakpoint" } else { "RuntimeError" };
+
+    // Capture environment: use breakpoint env if provided, otherwise capture from interpreter
+    let captured_env = if let Some(env) = breakpoint_env_json {
+        env.to_string()
+    } else {
+        interpreter.serialize_environment_for_debug()
+    };
+    let env_json_for_render: Option<&str> = Some(&captured_env);
     let location;
     let mut full_stack_trace: Vec<String> = Vec::new();
 
@@ -3147,7 +3156,7 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
         &location,
         &full_stack_trace,
         &request_data_json,
-        breakpoint_env_json,
+        env_json_for_render,
     )
 }
 

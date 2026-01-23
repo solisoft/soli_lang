@@ -19,6 +19,24 @@ thread_local! {
     static TEMPLATE_CACHE: RefCell<Option<Rc<TemplateCache>>> = const { RefCell::new(None) };
 }
 
+// Thread-local view context for debugging (stores the data passed to render())
+thread_local! {
+    static VIEW_DEBUG_CONTEXT: RefCell<Option<Value>> = const { RefCell::new(None) };
+}
+
+/// Get the current view context for debugging (if any).
+/// This is set when render() is called and cleared after rendering completes.
+pub fn get_view_debug_context() -> Option<Value> {
+    VIEW_DEBUG_CONTEXT.with(|ctx| ctx.borrow().clone())
+}
+
+/// Set the view context for debugging.
+fn set_view_debug_context(data: Option<Value>) {
+    VIEW_DEBUG_CONTEXT.with(|ctx| {
+        *ctx.borrow_mut() = data;
+    });
+}
+
 // Global views directory for initialization
 static VIEWS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
@@ -713,9 +731,22 @@ pub fn register_template_builtins(env: &mut Environment) {
                 None => None,
             };
 
-            let rendered = cache.render(&template_name, &data_with_helpers, layout_arg)?;
+            // Set view context for debugging (in case of error)
+            set_view_debug_context(Some(data.clone()));
 
-            Ok(html_response(rendered, status))
+            let result = cache.render(&template_name, &data_with_helpers, layout_arg);
+
+            match result {
+                Ok(rendered) => {
+                    // Clear context on success
+                    set_view_debug_context(None);
+                    Ok(html_response(rendered, status))
+                }
+                Err(e) => {
+                    // Keep context set for debugging
+                    Err(e)
+                }
+            }
         })),
     );
 
