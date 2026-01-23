@@ -506,7 +506,7 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
 }
 
 /// Convert a serde_json::Value to a Soli Value.
-fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
+pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
     match json {
         serde_json::Value::Null => Ok(Value::Null),
         serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
@@ -531,5 +531,43 @@ fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
                 .collect();
             Ok(Value::Hash(Rc::new(RefCell::new(pairs?))))
         }
+    }
+}
+
+/// Convert a Soli Value to serde_json::Value.
+pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
+    match value {
+        Value::Int(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
+        Value::Float(f) => Ok(serde_json::Value::Number(
+            serde_json::Number::from_f64(*f).ok_or_else(|| "Invalid float".to_string())?,
+        )),
+        Value::String(s) => Ok(serde_json::Value::String(s.clone())),
+        Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+        Value::Null => Ok(serde_json::Value::Null),
+        Value::Array(arr) => {
+            let borrow = arr.borrow();
+            let vec: Result<Vec<serde_json::Value>, String> =
+                borrow.iter().map(value_to_json).collect();
+            vec.map(serde_json::Value::Array)
+        }
+        Value::Hash(hash) => {
+            let borrow = hash.borrow();
+            let mut map = serde_json::Map::new();
+            for (k, v) in borrow.iter() {
+                if let Value::String(key) = k {
+                    map.insert(key.clone(), value_to_json(v)?);
+                }
+            }
+            Ok(serde_json::Value::Object(map))
+        }
+        Value::Instance(inst) => {
+            let borrow = inst.borrow();
+            let mut map = serde_json::Map::new();
+            for (k, v) in borrow.fields.iter() {
+                map.insert(k.clone(), value_to_json(v)?);
+            }
+            Ok(serde_json::Value::Object(map))
+        }
+        _ => Err(format!("Cannot convert {} to JSON", value.type_name())),
     }
 }

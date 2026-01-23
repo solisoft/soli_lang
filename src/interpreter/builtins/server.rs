@@ -330,34 +330,8 @@ pub fn parse_form_urlencoded_body(body: &str) -> Option<Value> {
     Some(Value::Hash(Rc::new(RefCell::new(pairs))))
 }
 
-/// Convert a serde_json::Value to a Soli Value.
-fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
-    match json {
-        serde_json::Value::Null => Ok(Value::Null),
-        serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(Value::Int(i))
-            } else if let Some(f) = n.as_f64() {
-                Ok(Value::Float(f))
-            } else {
-                Err("Invalid JSON number".to_string())
-            }
-        }
-        serde_json::Value::String(s) => Ok(Value::String(s.clone())),
-        serde_json::Value::Array(arr) => {
-            let items: Result<Vec<Value>, String> = arr.iter().map(json_to_value).collect();
-            Ok(Value::Array(Rc::new(RefCell::new(items?))))
-        }
-        serde_json::Value::Object(obj) => {
-            let pairs: Result<Vec<(Value, Value)>, String> = obj
-                .iter()
-                .map(|(k, v)| Ok((Value::String(k.clone()), json_to_value(v)?)))
-                .collect();
-            Ok(Value::Hash(Rc::new(RefCell::new(pairs?))))
-        }
-    }
-}
+// Use centralized json_to_value from value module
+use crate::interpreter::value::json_to_value;
 
 /// Build a request hash from HTTP request data.
 /// Uses thread-local cached keys to avoid repeated String allocations.

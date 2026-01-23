@@ -4,7 +4,6 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
@@ -196,61 +195,12 @@ pub fn create_session_cookie(session_id: &str) -> String {
 
 /// Convert a Soli Value to JSON for storage.
 fn value_to_json(value: &Value) -> Result<JsonValue, String> {
-    match value {
-        Value::Null => Ok(JsonValue::Null),
-        Value::Bool(b) => Ok(JsonValue::Bool(*b)),
-        Value::Int(n) => Ok(JsonValue::Number((*n).into())),
-        Value::Float(n) => serde_json::Number::from_f64(*n)
-            .map(JsonValue::Number)
-            .ok_or_else(|| "Cannot convert float to JSON".to_string()),
-        Value::String(s) => Ok(JsonValue::String(s.clone())),
-        Value::Array(arr) => {
-            let items: Result<Vec<JsonValue>, String> =
-                arr.borrow().iter().map(value_to_json).collect();
-            Ok(JsonValue::Array(items?))
-        }
-        Value::Hash(hash) => {
-            let mut map = serde_json::Map::new();
-            for (k, v) in hash.borrow().iter() {
-                let key = match k {
-                    Value::String(s) => s.clone(),
-                    _ => format!("{}", k),
-                };
-                map.insert(key, value_to_json(v)?);
-            }
-            Ok(JsonValue::Object(map))
-        }
-        other => Err(format!("Cannot store {} in session", other.type_name())),
-    }
+    crate::interpreter::value::value_to_json(value)
 }
 
 /// Convert a JSON value back to a Soli Value.
 fn json_to_value(json: &JsonValue) -> Value {
-    match json {
-        JsonValue::Null => Value::Null,
-        JsonValue::Bool(b) => Value::Bool(*b),
-        JsonValue::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int(i)
-            } else if let Some(f) = n.as_f64() {
-                Value::Float(f)
-            } else {
-                Value::Null
-            }
-        }
-        JsonValue::String(s) => Value::String(s.clone()),
-        JsonValue::Array(arr) => {
-            let items: Vec<Value> = arr.iter().map(json_to_value).collect();
-            Value::Array(Rc::new(RefCell::new(items)))
-        }
-        JsonValue::Object(obj) => {
-            let pairs: Vec<(Value, Value)> = obj
-                .iter()
-                .map(|(k, v)| (Value::String(k.clone()), json_to_value(v)))
-                .collect();
-            Value::Hash(Rc::new(RefCell::new(pairs)))
-        }
-    }
+    crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)
 }
 
 /// Register session builtins in the given environment.

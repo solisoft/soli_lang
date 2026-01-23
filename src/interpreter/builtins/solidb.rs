@@ -1083,31 +1083,5 @@ fn register_solidb_class(env: &mut Environment) {
     }
 }
 
-fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
-    match value {
-        Value::Null => Ok(serde_json::Value::Null),
-        Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
-        Value::Int(n) => Ok(serde_json::Value::Number((*n).into())),
-        Value::Float(n) => serde_json::Number::from_f64(*n)
-            .map(serde_json::Value::Number)
-            .ok_or_else(|| "Cannot convert float to JSON".to_string()),
-        Value::String(s) => Ok(serde_json::Value::String(s.clone())),
-        Value::Array(arr) => {
-            let items: Result<Vec<serde_json::Value>, String> =
-                arr.borrow().iter().map(value_to_json).collect();
-            Ok(serde_json::Value::Array(items?))
-        }
-        Value::Hash(hash) => {
-            let mut map = serde_json::Map::new();
-            for (k, v) in hash.borrow().iter() {
-                let key = match k {
-                    Value::String(s) => s.clone(),
-                    _ => format!("{}", k),
-                };
-                map.insert(key, value_to_json(v)?);
-            }
-            Ok(serde_json::Value::Object(map))
-        }
-        other => Err(format!("Cannot convert {} to JSON", other.type_name())),
-    }
-}
+// Use centralized value_to_json from value module
+use crate::interpreter::value::value_to_json;

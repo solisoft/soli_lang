@@ -2869,17 +2869,12 @@ fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakp
         };
     }
 
-    eprintln!("[DEBUG REPL] code: {}", code);
-    eprintln!("[DEBUG REPL] breakpoint_env: {:?}", breakpoint_env);
-
     let mut interpreter = crate::interpreter::Interpreter::new();
 
     // Set up breakpoint environment variables first (these are the captured variables)
     if let Some(env_obj) = breakpoint_env {
         if let serde_json::Value::Object(map) = env_obj {
-            eprintln!("[DEBUG REPL] Setting up {} variables from breakpoint_env", map.len());
             for (name, value) in map {
-                eprintln!("[DEBUG REPL]   defining: {} = {:?}", name, value);
                 // Skip internal variables
                 if !name.starts_with("__") {
                     interpreter.environment.borrow_mut().define(name, convert_json_to_value(value));
@@ -2971,33 +2966,9 @@ fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakp
     }
 }
 
+/// Helper to convert JSON to Value, returning Null on error.
 fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::Value {
-    match json {
-        serde_json::Value::Null => crate::interpreter::value::Value::Null,
-        serde_json::Value::Bool(b) => crate::interpreter::value::Value::Bool(b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                crate::interpreter::value::Value::Int(i)
-            } else if let Some(f) = n.as_f64() {
-                crate::interpreter::value::Value::Float(f)
-            } else {
-                crate::interpreter::value::Value::Null
-            }
-        }
-        serde_json::Value::String(s) => crate::interpreter::value::Value::String(s),
-        serde_json::Value::Array(arr) => {
-            let values: Vec<_> = arr.into_iter()
-                .map(convert_json_to_value)
-                .collect();
-            crate::interpreter::value::Value::Array(std::rc::Rc::new(std::cell::RefCell::new(values)))
-        }
-        serde_json::Value::Object(obj) => {
-            let values: Vec<_> = obj.into_iter()
-                .map(|(k, v)| (crate::interpreter::value::Value::String(k), convert_json_to_value(v)))
-                .collect();
-            crate::interpreter::value::Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(values)))
-        }
-    }
+    crate::interpreter::value::json_to_value(&json).unwrap_or(crate::interpreter::value::Value::Null)
 }
 
 /// Helper function to render error page with full details.

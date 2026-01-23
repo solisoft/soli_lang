@@ -307,6 +307,29 @@ impl Interpreter {
 
         match &right.kind {
             ExprKind::Call { callee, arguments } => {
+                // Check for array methods: map, filter, each
+                // These need special handling because they take a function argument
+                if let ExprKind::Variable(name) = &callee.kind {
+                    if matches!(name.as_str(), "map" | "filter" | "each") {
+                        // Resolve the array from left_val
+                        let resolved = left_val.resolve().map_err(|e| RuntimeError::type_error(e, span))?;
+                        if let Value::Array(arr) = resolved {
+                            let items: Vec<Value> = arr.borrow().clone();
+                            // Evaluate the function argument
+                            let mut args = Vec::new();
+                            for arg in arguments {
+                                args.push(self.evaluate(arg)?);
+                            }
+                            return self.call_array_method(&items, name, args, span);
+                        } else {
+                            return Err(RuntimeError::type_error(
+                                format!("{}() expects array, got {}", name, resolved.type_name()),
+                                span,
+                            ));
+                        }
+                    }
+                }
+
                 // Prepend left_val to arguments
                 let mut new_args = vec![left_val];
                 for arg in arguments {

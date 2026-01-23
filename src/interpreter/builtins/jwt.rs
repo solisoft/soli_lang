@@ -31,64 +31,8 @@ struct Claims {
     data: HashMap<String, JsonValue>,
 }
 
-/// Convert a Soli Value to serde_json::Value.
-fn value_to_json(value: &Value) -> Result<JsonValue, String> {
-    match value {
-        Value::Null => Ok(JsonValue::Null),
-        Value::Bool(b) => Ok(JsonValue::Bool(*b)),
-        Value::Int(n) => Ok(JsonValue::Number((*n).into())),
-        Value::Float(n) => serde_json::Number::from_f64(*n)
-            .map(JsonValue::Number)
-            .ok_or_else(|| "Cannot convert float to JSON (NaN or Infinity)".to_string()),
-        Value::String(s) => Ok(JsonValue::String(s.clone())),
-        Value::Array(arr) => {
-            let items: Result<Vec<JsonValue>, String> =
-                arr.borrow().iter().map(value_to_json).collect();
-            Ok(JsonValue::Array(items?))
-        }
-        Value::Hash(hash) => {
-            let mut map = serde_json::Map::new();
-            for (k, v) in hash.borrow().iter() {
-                let key = match k {
-                    Value::String(s) => s.clone(),
-                    _ => format!("{}", k),
-                };
-                map.insert(key, value_to_json(v)?);
-            }
-            Ok(JsonValue::Object(map))
-        }
-        other => Err(format!("Cannot convert {} to JSON", other.type_name())),
-    }
-}
-
-/// Convert a serde_json::Value to Soli Value.
-fn json_to_value(json: &JsonValue) -> Result<Value, String> {
-    match json {
-        JsonValue::Null => Ok(Value::Null),
-        JsonValue::Bool(b) => Ok(Value::Bool(*b)),
-        JsonValue::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(Value::Int(i))
-            } else if let Some(f) = n.as_f64() {
-                Ok(Value::Float(f))
-            } else {
-                Err("Invalid JSON number".to_string())
-            }
-        }
-        JsonValue::String(s) => Ok(Value::String(s.clone())),
-        JsonValue::Array(arr) => {
-            let items: Result<Vec<Value>, String> = arr.iter().map(json_to_value).collect();
-            Ok(Value::Array(Rc::new(RefCell::new(items?))))
-        }
-        JsonValue::Object(obj) => {
-            let pairs: Result<Vec<(Value, Value)>, String> = obj
-                .iter()
-                .map(|(k, v)| Ok((Value::String(k.clone()), json_to_value(v)?)))
-                .collect();
-            Ok(Value::Hash(Rc::new(RefCell::new(pairs?))))
-        }
-    }
-}
+// Use centralized conversion functions from value module
+use crate::interpreter::value::{json_to_value, value_to_json};
 
 /// Get current Unix timestamp.
 fn current_timestamp() -> u64 {

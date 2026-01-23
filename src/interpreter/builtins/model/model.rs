@@ -495,34 +495,8 @@ where
     })))
 }
 
-pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
-    match value {
-        Value::Int(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
-        Value::Float(f) => Ok(serde_json::Value::Number(
-            serde_json::Number::from_f64(*f).ok_or_else(|| "Invalid float".to_string())?,
-        )),
-        Value::String(s) => Ok(serde_json::Value::String(s.clone())),
-        Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
-        Value::Null => Ok(serde_json::Value::Null),
-        Value::Array(arr) => {
-            let borrow = arr.borrow();
-            let vec: Result<Vec<serde_json::Value>, String> =
-                borrow.iter().map(|v| value_to_json(v)).collect();
-            vec.map(serde_json::Value::Array)
-        }
-        Value::Hash(hash) => {
-            let borrow = hash.borrow();
-            let mut map = serde_json::Map::new();
-            for (k, v) in borrow.iter() {
-                if let Value::String(key) = k {
-                    map.insert(key.clone(), value_to_json(v)?);
-                }
-            }
-            Ok(serde_json::Value::Object(map))
-        }
-        _ => Err(format!("Cannot convert {} to JSON", value.type_name())),
-    }
-}
+// Re-export value_to_json from value module for backward compatibility
+pub use crate::interpreter::value::value_to_json;
 
 /// Extract collection name from the first argument (the Class).
 fn get_collection_from_class(args: &[Value]) -> Result<String, String> {

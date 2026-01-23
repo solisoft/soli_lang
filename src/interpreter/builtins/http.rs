@@ -472,38 +472,8 @@ pub fn register_http_builtins(env: &mut Environment) {
 
 /// Convert a Soli Value to a JSON string.
 fn value_to_json(value: &Value) -> Result<String, String> {
-    let json = value_to_serde_json(value)?;
+    let json = crate::interpreter::value::value_to_json(value)?;
     serde_json::to_string(&json).map_err(|e| format!("JSON serialization error: {}", e))
-}
-
-/// Convert a Soli Value to serde_json::Value.
-fn value_to_serde_json(value: &Value) -> Result<serde_json::Value, String> {
-    match value {
-        Value::Null => Ok(serde_json::Value::Null),
-        Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
-        Value::Int(n) => Ok(serde_json::Value::Number((*n).into())),
-        Value::Float(n) => serde_json::Number::from_f64(*n)
-            .map(serde_json::Value::Number)
-            .ok_or_else(|| "Cannot convert float to JSON (NaN or Infinity)".to_string()),
-        Value::String(s) => Ok(serde_json::Value::String(s.clone())),
-        Value::Array(arr) => {
-            let items: Result<Vec<serde_json::Value>, String> =
-                arr.borrow().iter().map(value_to_serde_json).collect();
-            Ok(serde_json::Value::Array(items?))
-        }
-        Value::Hash(hash) => {
-            let mut map = serde_json::Map::new();
-            for (k, v) in hash.borrow().iter() {
-                let key = match k {
-                    Value::String(s) => s.clone(),
-                    _ => format!("{}", k),
-                };
-                map.insert(key, value_to_serde_json(v)?);
-            }
-            Ok(serde_json::Value::Object(map))
-        }
-        other => Err(format!("Cannot convert {} to JSON", other.type_name())),
-    }
 }
 
 /// Extract status code from a response hash or integer.
@@ -533,34 +503,8 @@ fn extract_status(value: &Value) -> Result<i64, String> {
     }
 }
 
-/// Convert a serde_json::Value to a Soli Value.
-fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
-    match json {
-        serde_json::Value::Null => Ok(Value::Null),
-        serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(Value::Int(i))
-            } else if let Some(f) = n.as_f64() {
-                Ok(Value::Float(f))
-            } else {
-                Err("Invalid JSON number".to_string())
-            }
-        }
-        serde_json::Value::String(s) => Ok(Value::String(s.clone())),
-        serde_json::Value::Array(arr) => {
-            let items: Result<Vec<Value>, String> = arr.iter().map(json_to_value).collect();
-            Ok(Value::Array(Rc::new(RefCell::new(items?))))
-        }
-        serde_json::Value::Object(obj) => {
-            let pairs: Result<Vec<(Value, Value)>, String> = obj
-                .iter()
-                .map(|(k, v)| Ok((Value::String(k.clone()), json_to_value(v)?)))
-                .collect();
-            Ok(Value::Hash(Rc::new(RefCell::new(pairs?))))
-        }
-    }
-}
+// Use centralized json_to_value from value module
+use crate::interpreter::value::json_to_value;
 
 // ========== Parallel HTTP Execution ==========
 

@@ -1101,27 +1101,70 @@ print(person);   // {name: Alice, age: 31, country: France}
 
 #### Hash Methods
 
+Hash methods support two function signatures for iteration:
+
+```soli
+// Two parameters: key and value (recommended)
+h.map(fn(key, value) [key, value * 2])
+
+// One parameter: [key, value] pair array
+h.map(fn(pair) [pair[0], pair[1] * 2])
+```
+
 ```soli
 let scores = {"Alice": 90, "Bob": 85, "Charlie": 95, "Diana": 88};
 
 // map - transform entries
-let curved = scores.map(fn(pair) {
-    let name = pair[0];
-    let score = pair[1];
-    return [name, score + 5];
-});
+// Returns a new hash. The function MUST return [key, value] (exactly 2 elements).
+// Returning fewer or more elements skips that entry.
+let curved = scores.map(fn(k, v) [k, v + 5]);
 print(curved);  // {Alice: 95, Bob: 90, Charlie: 100, Diana: 93}
 
+// Transform only values (keep key unchanged)
+let doubled = scores.map(fn(k, v) [k, v * 2]);
+
+// Transform keys (prefix with "user_")
+let prefixed = scores.map(fn(k, v) ["user_" + k, v]);
+
 // filter - keep entries matching condition
-let high_scores = scores.filter(fn(pair) {
-    return pair[1] >= 90;
-});
+// Function receives (key, value) or [key, value] pair
+// Returns boolean or truthy/falsy value
+let high_scores = scores.filter(fn(k, v) v >= 90);
 print(high_scores);  // {Alice: 90, Charlie: 95}
 
 // each - iterate with side effects
-scores.each(fn(pair) {
-    print(pair[0] + ": " + str(pair[1]));
-});
+// Function receives (key, value) or [key, value] pair
+// Returns original hash for chaining (return value is discarded)
+scores.each(fn(k, v) print(k + ": " + str(v)));
+```
+
+**Important: map return value**
+
+Hash `.map()` expects your function to return exactly `[key, value]` with 2 elements:
+
+```soli
+let h = {"a": 1, "b": 2};
+
+// ✓ Returns [key, value] - works correctly
+h.map(fn(k, v) [k, v * 10]);  // {a: 10, b: 20}
+
+// ✗ Returns [value] only - entry is skipped (not 2 elements!)
+h.map(fn(k, v) [v * 10]);      // {} (empty!)
+
+// ✗ Returns single value - entry is skipped
+h.map(fn(k, v) v * 10);         // {} (empty!)
+```
+
+**Getting transformed values as an array**
+
+If you only need transformed values (not a new hash):
+
+```soli
+let h = {"a": 1, "b": 2};
+
+// Get values first, then map to array
+let doubled = h.values() |> map(fn(v) v * 10);
+print(doubled);  // [10, 20]
 ```
 
 #### Hash Functions
@@ -1184,8 +1227,8 @@ print("Total: $" + str(total));  // Total: $7.25
 
 // Filter and transform
 let expensive = prices
-    .filter(fn(pair) pair[1] > 1.00)
-    .map(fn(pair) [pair[0], pair[1] * 1.1]);  // 10% tax
+    .filter(fn(k, v) v > 1.00)
+    .map(fn(k, v) [k, v * 1.1]);  // 10% tax
 
 print(expensive);  // {apple: 1.65, orange: 2.2, grape: 3.3}
 ```
