@@ -145,14 +145,6 @@ pub fn register_builtins(env: &mut Environment) {
         })),
     );
 
-    // await(future) - Explicitly wait for a Future to resolve
-    env.define(
-        "await".to_string(),
-        Value::NativeFunction(NativeFunction::new("await", Some(1), |args| {
-            args.into_iter().next().unwrap().resolve()
-        })),
-    );
-
     // int(value) - Convert to int
     env.define(
         "int".to_string(),

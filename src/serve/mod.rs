@@ -59,6 +59,24 @@ use crate::interpreter::builtins::server::{
     parse_form_urlencoded_body, parse_json_body, parse_query_string,
     register_route_with_handler, routes_to_worker_routes, set_worker_routes, ParsedBody, WorkerRoute,
 };
+
+// Thread-local storage for tokio runtime handle (used by HTTP builtins for async operations)
+thread_local! {
+    /// Tokio runtime handle for the current worker thread.
+    /// Set during worker initialization, used by HTTP builtins to execute async requests.
+    pub static TOKIO_HANDLE: RefCell<Option<tokio::runtime::Handle>> = const { RefCell::new(None) };
+}
+
+/// Get the tokio runtime handle for the current thread.
+/// Returns None if called outside of a server worker context.
+pub fn get_tokio_handle() -> Option<tokio::runtime::Handle> {
+    TOKIO_HANDLE.with(|h| h.borrow().clone())
+}
+
+/// Set the tokio runtime handle for the current worker thread.
+fn set_tokio_handle(handle: tokio::runtime::Handle) {
+    TOKIO_HANDLE.with(|h| *h.borrow_mut() = Some(handle));
+}
 use crate::interpreter::builtins::session::{
     create_session_cookie, ensure_session, extract_session_id_from_cookie, set_current_session_id,
 };
@@ -1049,6 +1067,9 @@ fn run_hyper_server_worker_pool(
 
         let builder = thread::Builder::new().name(format!("worker-{}", i));
         let handler = builder.spawn(move || {
+            // Set tokio runtime handle for this worker thread (used by HTTP builtins)
+            set_tokio_handle(runtime_handle.clone());
+
             // Panic catch wrapper
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut interpreter = Interpreter::new();
