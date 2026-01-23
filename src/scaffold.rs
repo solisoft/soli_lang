@@ -3,9 +3,112 @@
 //! Provides functionality for `soli new app_name` command.
 
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+/// TUI helper for displaying progress
+struct ProgressDisplay {
+    current_step: usize,
+    total_steps: usize,
+}
+
+impl ProgressDisplay {
+    fn new(total_steps: usize) -> Self {
+        Self {
+            current_step: 0,
+            total_steps,
+        }
+    }
+
+    fn header(name: &str) {
+        println!();
+        println!(
+            "  \x1b[1m\x1b[38;5;141m◆\x1b[0m  \x1b[1mCreating new Soli application:\x1b[0m \x1b[36m{}\x1b[0m",
+            name
+        );
+        println!();
+    }
+
+    fn step(&mut self, description: &str) {
+        self.current_step += 1;
+        print!(
+            "  \x1b[2m[{}/{}]\x1b[0m {} ",
+            self.current_step, self.total_steps, description
+        );
+        io::stdout().flush().unwrap();
+    }
+
+    fn done() {
+        println!("\x1b[32m✓\x1b[0m");
+    }
+
+    fn skip(reason: &str) {
+        println!("\x1b[33m⊘\x1b[0m \x1b[2m{}\x1b[0m", reason);
+    }
+
+    #[allow(dead_code)]
+    fn fail(reason: &str) {
+        println!("\x1b[31m✗\x1b[0m \x1b[2m{}\x1b[0m", reason);
+    }
+
+    fn info(message: &str) {
+        println!("  \x1b[2m│\x1b[0m  {}", message);
+    }
+}
+
+/// Spinner for long-running operations
+struct Spinner {
+    running: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl Spinner {
+    fn start(message: &str) -> Self {
+        let running = Arc::new(AtomicBool::new(true));
+        let running_clone = running.clone();
+        let message = message.to_string();
+
+        let handle = thread::spawn(move || {
+            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let mut i = 0;
+            while running_clone.load(Ordering::Relaxed) {
+                print!(
+                    "\r  \x1b[36m{}\x1b[0m {} ",
+                    frames[i % frames.len()],
+                    message
+                );
+                io::stdout().flush().unwrap();
+                thread::sleep(Duration::from_millis(80));
+                i += 1;
+            }
+        });
+
+        Self {
+            running,
+            handle: Some(handle),
+        }
+    }
+
+    fn stop_with_success(self, message: &str) {
+        self.running.store(false, Ordering::Relaxed);
+        if let Some(handle) = self.handle {
+            let _ = handle.join();
+        }
+        println!("\r  \x1b[32m✓\x1b[0m {}                    ", message);
+    }
+
+    fn stop_with_warning(self, message: &str) {
+        self.running.store(false, Ordering::Relaxed);
+        if let Some(handle) = self.handle {
+            let _ = handle.join();
+        }
+        println!("\r  \x1b[33m⊘\x1b[0m {}                    ", message);
+    }
+}
 
 /// A field definition parsed from scaffold arguments
 #[derive(Debug, Clone)]
@@ -115,6 +218,7 @@ fn create_directories(app_path: &Path) -> Result<(), String> {
         "app",
         "app/controllers",
         "app/helpers",
+        "app/middleware",
         "app/models",
         "app/views",
         "app/views/home",
@@ -487,6 +591,101 @@ fn pluralize_simple(count: Int, word: String) -> String {
     )
 }
 
+fn create_sample_middleware(app_path: &Path) -> Result<(), String> {
+    // Create CORS middleware (global)
+    let cors_content = r#"// ============================================================================
+// CORS Middleware (Global)
+// ============================================================================
+//
+// This middleware adds CORS headers to all responses.
+// It runs for ALL requests automatically.
+//
+// Configuration:
+// - `// order: N` - Execution order (lower runs first)
+// - `// global_only: true` - Runs for all requests, cannot be scoped
+//
+// ============================================================================
+
+// order: 5
+// global_only: true
+
+fn add_cors_headers(req: Any) -> Any {
+    // Add CORS headers to the request context
+    // These will be included in the response
+    return {
+        "continue": true,
+        "request": req
+    };
+}
+"#;
+    write_file(
+        &app_path.join("app/middleware/cors.soli"),
+        cors_content,
+    )?;
+
+    // Create auth middleware (scope-only)
+    let auth_content = r#"// ============================================================================
+// Authentication Middleware (Scope-Only)
+// ============================================================================
+//
+// This middleware checks for authentication.
+// It only runs when explicitly scoped to routes.
+//
+// Usage in routes.soli:
+//   middleware("authenticate", -> {
+//       get("/admin", "admin#index");
+//       get("/admin/settings", "admin#settings");
+//   });
+//
+// Configuration:
+// - `// order: N` - Execution order (lower runs first)
+// - `// scope_only: true` - Only runs when explicitly scoped
+//
+// ============================================================================
+
+// order: 20
+// scope_only: true
+
+fn authenticate(req: Any) -> Any {
+    let headers = req["headers"];
+
+    // Example: Check for API key in header
+    let api_key = "";
+    if has_key(headers, "X-Api-Key") {
+        api_key = headers["X-Api-Key"];
+    } else if has_key(headers, "x-api-key") {
+        api_key = headers["x-api-key"];
+    }
+
+    // TODO: Replace with your authentication logic
+    // For example, verify JWT token, check session, etc.
+    if api_key == "" {
+        return {
+            "continue": false,
+            "response": {
+                "status": 401,
+                "headers": {"Content-Type": "application/json"},
+                "body": json_stringify({
+                    "error": "Unauthorized",
+                    "message": "Authentication required"
+                })
+            }
+        };
+    }
+
+    // Authentication passed, continue to handler
+    return {
+        "continue": true,
+        "request": req
+    };
+}
+"#;
+    write_file(
+        &app_path.join("app/middleware/auth.soli"),
+        auth_content,
+    )
+}
+
 fn create_tailwind_config(app_path: &Path) -> Result<(), String> {
     let content = r#"/** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -630,16 +829,22 @@ MIT
 pub fn print_success_message(name: &str) {
     println!();
     println!(
-        "  \x1b[32m\x1b[1mSuccess!\x1b[0m Created \x1b[1m{}\x1b[0m",
+        "  \x1b[32m\x1b[1m✓ Success!\x1b[0m Created \x1b[1m{}\x1b[0m",
         name
     );
     println!();
-    println!("  \x1b[2mGet started:\x1b[0m");
-    println!();
-    println!("    \x1b[36mcd {}\x1b[0m", name);
-    println!("    \x1b[36msoli serve . --dev\x1b[0m");
-    println!();
-    println!("  \x1b[2mThen open\x1b[0m \x1b[4mhttp://localhost:3000\x1b[0m");
+    println!("  \x1b[2m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[1mGet started:\x1b[0m                          \x1b[2m│\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m                                         \x1b[2m│\x1b[0m");
+    println!(
+        "  \x1b[2m│\x1b[0m    \x1b[36mcd {}\x1b[0m{}  \x1b[2m│\x1b[0m",
+        name,
+        " ".repeat(32 - name.len().min(32))
+    );
+    println!("  \x1b[2m│\x1b[0m    \x1b[36msoli serve . --dev\x1b[0m                  \x1b[2m│\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m                                         \x1b[2m│\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  Then open \x1b[4mhttp://localhost:3000\x1b[0m       \x1b[2m│\x1b[0m");
+    println!("  \x1b[2m└─────────────────────────────────────────┘\x1b[0m");
     println!();
 }
 
@@ -651,57 +856,136 @@ pub fn create_app(name: &str) -> Result<(), String> {
         return Err(format!("Directory '{}' already exists", name));
     }
 
-    // Create directory structure
-    create_directories(app_path)?;
+    // Display header
+    ProgressDisplay::header(name);
 
-    // Create files
+    let mut progress = ProgressDisplay::new(6);
+
+    // Step 1: Create directory structure
+    progress.step("Creating directory structure...");
+    create_directories(app_path)?;
+    ProgressDisplay::done();
+
+    // Step 2: Generate configuration files
+    progress.step("Generating configuration files...");
     create_routes_file(app_path)?;
+    create_env_file(app_path)?;
+    create_gitignore(app_path)?;
+    create_tailwind_config(app_path)?;
+    create_package_json(app_path, name)?;
+    ProgressDisplay::done();
+
+    // Step 3: Create MVC components
+    progress.step("Creating MVC components...");
     create_home_controller(app_path)?;
     create_layout(app_path)?;
     create_index_view(app_path)?;
-    create_css_file(app_path)?;
-    create_env_file(app_path)?;
-    create_gitignore(app_path)?;
     create_application_helper(app_path)?;
-    create_tailwind_config(app_path)?;
-    create_package_json(app_path, name)?;
+    create_sample_middleware(app_path)?;
+    ProgressDisplay::done();
+
+    // Step 4: Create assets
+    progress.step("Setting up assets...");
+    create_css_file(app_path)?;
     create_readme(app_path, name)?;
+    ProgressDisplay::done();
 
-    // Run npm install if npm is available
-    let npm_available = if let Ok(status) = std::process::Command::new("npm")
-        .args(["install"])
-        .current_dir(app_path)
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .status()
-    {
-        if !status.success() {
-            eprintln!("  \x1b[33mWarning:\x1b[0m npm install failed. Run it manually later.");
-            false
-        } else {
-            true
-        }
-    } else {
-        eprintln!("  \x1b[33mNote:\x1b[0m npm not found. Run 'npm install' in the project directory to install Tailwind CSS.");
-        false
-    };
+    // Step 5: Install dependencies (npm)
+    progress.step("Installing dependencies...");
+    io::stdout().flush().unwrap();
+    println!(); // Move to next line for spinner
 
-    // Build initial CSS if npm install succeeded
+    let npm_available = install_npm_dependencies(app_path);
+
+    // Step 6: Build CSS
     if npm_available {
-        if let Ok(status) = std::process::Command::new("npm")
-            .args(["run", "build:css"])
-            .current_dir(app_path)
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()
-        {
-            if !status.success() {
-                eprintln!("  \x1b[33mWarning:\x1b[0m CSS build failed. Run 'npm run build:css' manually.");
-            }
-        }
+        progress.step("Building Tailwind CSS...");
+        io::stdout().flush().unwrap();
+        println!(); // Move to next line for spinner
+        build_tailwind_css(app_path);
+    } else {
+        progress.step("Building Tailwind CSS...");
+        ProgressDisplay::skip("npm not available");
     }
 
+    // Print created files summary
+    println!();
+    println!("  \x1b[2m─────────────────────────────────────────\x1b[0m");
+    println!();
+    ProgressDisplay::info("\x1b[1mProject structure:\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[36m{}/\x1b[0m", name);
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m app/");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m controllers/    \x1b[2m# Request handlers\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m helpers/        \x1b[2m# View helpers\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m middleware/     \x1b[2m# Request filters\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m models/         \x1b[2m# Data models\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m views/          \x1b[2m# Templates\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m config/");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m routes.soli     \x1b[2m# URL routing\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m db/migrations/      \x1b[2m# Database migrations\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m public/             \x1b[2m# Static assets\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m└──\x1b[0m tests/              \x1b[2m# Test files\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m");
+
     Ok(())
+}
+
+/// Install npm dependencies with spinner
+fn install_npm_dependencies(app_path: &Path) -> bool {
+    // Check if npm is available
+    if std::process::Command::new("npm")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        let spinner = Spinner::start("Installing npm packages...");
+        spinner.stop_with_warning("npm not found - run 'npm install' manually");
+        return false;
+    }
+
+    let spinner = Spinner::start("Installing npm packages...");
+
+    let result = std::process::Command::new("npm")
+        .args(["install"])
+        .current_dir(app_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    match result {
+        Ok(status) if status.success() => {
+            spinner.stop_with_success("Dependencies installed");
+            true
+        }
+        _ => {
+            spinner.stop_with_warning("npm install failed - run manually");
+            false
+        }
+    }
+}
+
+/// Build Tailwind CSS with spinner
+fn build_tailwind_css(app_path: &Path) {
+    let spinner = Spinner::start("Compiling Tailwind CSS...");
+
+    let result = std::process::Command::new("npm")
+        .args(["run", "build:css"])
+        .current_dir(app_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    match result {
+        Ok(status) if status.success() => {
+            spinner.stop_with_success("Tailwind CSS compiled");
+        }
+        _ => {
+            spinner.stop_with_warning("CSS build failed - run 'npm run build:css' manually");
+        }
+    }
 }
 
 fn ensure_directory_structure(app_path: &Path) -> Result<(), String> {

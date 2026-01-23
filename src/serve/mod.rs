@@ -35,7 +35,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use crossbeam::channel;
@@ -2620,8 +2620,14 @@ fn parse_request_body(
 
 /// Handle a single request (called on interpreter thread)
 fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: bool) -> ResponseData {
+    let start_time = Instant::now();
     let method = &data.method;
     let path = &data.path;
+
+    // Check if request logging is enabled (default: true, disable with SOLI_REQUEST_LOG=false or SOLI_REQUEST_LOG=0)
+    let log_requests = std::env::var("SOLI_REQUEST_LOG")
+        .map(|v| v != "false" && v != "0")
+        .unwrap_or(true);
 
     // Set up session for this request
     let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
@@ -2636,6 +2642,11 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
         None => {
             // Clear session context before returning
             set_current_session_id(None);
+            // Log timing for 404 responses (skip health checks)
+            if log_requests && path != "/health" {
+                let elapsed = start_time.elapsed();
+                println!("[LOG] {} {} - 404 ({:.3}ms)", method, path, elapsed.as_secs_f64() * 1000.0);
+            }
             return ResponseData {
                 status: 404,
                 headers: if is_new_session {
@@ -2685,11 +2696,16 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
         )
     };
 
-    // Helper to finalize response with session cookie
+    // Helper to finalize response with session cookie and timing
     let finalize_response = |mut resp: ResponseData| -> ResponseData {
         // Add session cookie if it's a new session
         if is_new_session {
             resp.headers.push(("Set-Cookie".to_string(), create_session_cookie(&session_id)));
+        }
+        // Log timing (skip health checks to avoid benchmark noise)
+        if log_requests && path != "/health" {
+            let elapsed = start_time.elapsed();
+            println!("[LOG] {} {} - {} ({:.3}ms)", method, path, resp.status, elapsed.as_secs_f64() * 1000.0);
         }
         // Clear session context
         set_current_session_id(None);

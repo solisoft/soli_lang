@@ -2,6 +2,10 @@
 // Solilang MVC Routes Configuration
 // ============================================================================
 
+// Note: Middleware in app/middleware/ is loaded automatically.
+// - global_only middleware runs for ALL requests
+// - scope_only middleware must be explicitly scoped using: middleware("name", -> { ... })
+
 // Root path
 get("/", "home#index");
 
