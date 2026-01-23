@@ -3001,8 +3001,10 @@ fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &
 
     // Capture environment: use breakpoint env if provided, otherwise capture from interpreter
     let captured_env = if let Some(env) = breakpoint_env_json {
+        eprintln!("[DEBUG RENDER_ERROR] Using breakpoint env_json, length: {}", env.len());
         env.to_string()
     } else {
+        eprintln!("[DEBUG RENDER_ERROR] No breakpoint env, calling serialize_environment_for_debug()");
         interpreter.serialize_environment_for_debug()
     };
     let env_json_for_render: Option<&str> = Some(&captured_env);

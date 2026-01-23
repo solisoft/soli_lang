@@ -126,16 +126,40 @@ impl Interpreter {
         }
 
         // Check for view context (data passed to render())
+        // Only add view context variables if they don't already exist in the environment
         if let Some(view_data) = crate::interpreter::builtins::template::get_view_debug_context() {
             eprintln!("[DEBUG] Found view context for debugging");
-            // Add view data as a special "_view_data" variable
-            let view_json = self.value_to_json(&view_data);
-            json_parts.push(format!(r#""_view_data": {}"#, view_json));
+
+            // Collect existing variable names to avoid duplicates
+            let existing_names: std::collections::HashSet<String> = json_parts.iter()
+                .filter_map(|part| {
+                    // Extract key name from "\"key\": value" format
+                    if part.starts_with('"') {
+                        part.split(':').next().and_then(|k| {
+                            let k = k.trim().trim_matches('"');
+                            if !k.is_empty() { Some(k.to_string()) } else { None }
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Add view data as a special "_view_data" variable (always add this)
+            if !existing_names.contains("_view_data") {
+                let view_json = self.value_to_json(&view_data);
+                json_parts.push(format!(r#""_view_data": {}"#, view_json));
+            }
 
             // Also extract individual keys from the view data hash for easy access
+            // But ONLY if they don't already exist in the environment
             if let Value::Hash(hash) = &view_data {
                 for (key, value) in hash.borrow().iter() {
                     if let Value::String(key_str) = key {
+                        // Skip if this key already exists in the environment
+                        if existing_names.contains(key_str) {
+                            continue;
+                        }
                         // Skip functions and classes
                         match value {
                             Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => continue,
@@ -202,7 +226,11 @@ impl Interpreter {
                     .iter()
                     .map(|(k, v)| format!(r#""{}": {}"#, k, self.value_to_json(v)))
                     .collect();
-                format!(r#"{{"__class__": "{}", {}}}"#, inst.class.name, fields.join(", "))
+                if fields.is_empty() {
+                    format!(r#"{{"__class__": "{}"}}"#, inst.class.name)
+                } else {
+                    format!(r#"{{"__class__": "{}", {}}}"#, inst.class.name, fields.join(", "))
+                }
             }
             Value::Function(_) => "\"<function>\"".to_string(),
             Value::NativeFunction(_) => "\"<native function>\"".to_string(),
