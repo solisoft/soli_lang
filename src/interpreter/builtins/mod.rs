@@ -655,6 +655,19 @@ pub fn register_builtins(env: &mut Environment) {
         })),
     );
 
+    // replace(string, from, to) - Replace all occurrences of 'from' with 'to'
+    env.define(
+        "replace".to_string(),
+        Value::NativeFunction(NativeFunction::new("replace", Some(3), |args| {
+            match (&args[0], &args[1], &args[2]) {
+                (Value::String(s), Value::String(from), Value::String(to)) => {
+                    Ok(Value::String(s.replace(from.as_str(), to.as_str())))
+                }
+                _ => Err("replace requires (string, string, string)".to_string()),
+            }
+        })),
+    );
+
     // html_escape(string) - Escape HTML special characters
     env.define(
         "html_escape".to_string(),
