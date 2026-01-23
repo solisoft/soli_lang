@@ -107,6 +107,42 @@ fn get_template_cache() -> Result<Rc<TemplateCache>, String> {
     })
 }
 
+/// Recursively resolve all Future values in a Value.
+/// This ensures that async operations (like HTTP requests) are completed
+/// before the data is used in templates.
+fn resolve_futures_in_value(value: Value) -> Value {
+    match value {
+        Value::Future(_) => {
+            // Resolve the future, blocking until complete
+            match value.resolve() {
+                Ok(resolved) => resolve_futures_in_value(resolved),
+                Err(e) => Value::String(format!("<future error: {}>", e)),
+            }
+        }
+        Value::Hash(hash) => {
+            let resolved_pairs: Vec<(Value, Value)> = hash
+                .borrow()
+                .iter()
+                .map(|(k, v)| {
+                    let resolved_v = resolve_futures_in_value(v.clone());
+                    (k.clone(), resolved_v)
+                })
+                .collect();
+            Value::Hash(Rc::new(RefCell::new(resolved_pairs)))
+        }
+        Value::Array(arr) => {
+            let resolved_items: Vec<Value> = arr
+                .borrow()
+                .iter()
+                .map(|v| resolve_futures_in_value(v.clone()))
+                .collect();
+            Value::Array(Rc::new(RefCell::new(resolved_items)))
+        }
+        // Other value types don't contain futures
+        other => other,
+    }
+}
+
 /// Compute MD5 hash of file contents.
 fn compute_file_md5(path: &PathBuf) -> Result<String, String> {
     let data = std::fs::read(path).map_err(|e| format!("Failed to read file for MD5: {}", e))?;
@@ -640,6 +676,10 @@ pub fn register_template_builtins(env: &mut Environment) {
                 ));
             }
 
+            // Resolve any futures in the data before rendering
+            // This ensures async operations (HTTP requests, etc.) complete before template use
+            let data = resolve_futures_in_value(data);
+
             // Get options (layout, status, etc.)
             let options = if args.len() > 2 {
                 match &args[2] {
@@ -777,6 +817,9 @@ pub fn register_template_builtins(env: &mut Environment) {
             } else {
                 Value::Hash(Rc::new(RefCell::new(vec![])))
             };
+
+            // Resolve any futures in the data before rendering
+            let data = resolve_futures_in_value(data);
 
             // Get template cache and render
             let cache = get_template_cache()?;
