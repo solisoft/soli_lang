@@ -715,9 +715,21 @@ fn kill_previous_process(pid_file: &Path) {
         let mut cmdline = String::new();
         if cmdline_file.read_to_string(&mut cmdline).is_ok() {
             // cmdline contains null-separated arguments, check if it's a soli process
-            let is_soli = cmdline
-                .split('\0')
-                .any(|arg| arg.ends_with("/soli") || arg == "soli");
+            // Use Path to extract the filename for more robust detection
+            let is_soli = cmdline.split('\0').any(|arg| {
+                if arg.is_empty() {
+                    return false;
+                }
+                // Check exact match first
+                if arg == "soli" {
+                    return true;
+                }
+                // Extract filename from path and check
+                std::path::Path::new(arg)
+                    .file_name()
+                    .map(|name| name == "soli")
+                    .unwrap_or(false)
+            });
 
             if is_soli {
                 println!("Killing previous soli process (PID: {})", pid);

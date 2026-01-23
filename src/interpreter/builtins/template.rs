@@ -37,6 +37,9 @@ struct CachedFileHash {
     modified: SystemTime,
 }
 
+/// Maximum size for the file hash cache to prevent unbounded memory growth.
+const FILE_HASH_CACHE_MAX_SIZE: usize = 1000;
+
 thread_local! {
     static FILE_HASH_CACHE: RefCell<HashMap<PathBuf, CachedFileHash>> = RefCell::new(HashMap::new());
 }
@@ -56,6 +59,9 @@ pub fn clear_file_hash_cache() {
 }
 
 // Thread-local view helpers registry (functions from app/helpers/*.soli)
+/// Maximum size for view helpers cache.
+const VIEW_HELPERS_MAX_SIZE: usize = 500;
+
 thread_local! {
     static VIEW_HELPERS: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
 }
@@ -63,7 +69,12 @@ thread_local! {
 /// Register a view helper function (only accessible in templates, not controllers).
 pub fn register_view_helper(name: String, value: Value) {
     VIEW_HELPERS.with(|helpers| {
-        helpers.borrow_mut().insert(name, value);
+        let mut helpers = helpers.borrow_mut();
+        // Evict cache if it exceeds the maximum size to prevent unbounded memory growth
+        if helpers.len() >= VIEW_HELPERS_MAX_SIZE {
+            helpers.clear();
+        }
+        helpers.insert(name, value);
     });
 }
 
@@ -282,6 +293,11 @@ fn compute_file_md5_cached(path: &PathBuf) -> Result<String, String> {
         let modified = std::fs::metadata(path)
             .and_then(|m| m.modified())
             .unwrap_or(SystemTime::UNIX_EPOCH);
+
+        // Evict cache if it exceeds the maximum size to prevent unbounded memory growth
+        if cache.len() >= FILE_HASH_CACHE_MAX_SIZE {
+            cache.clear();
+        }
 
         cache.insert(path.clone(), CachedFileHash { hash: hash.clone(), modified });
         Ok(hash)

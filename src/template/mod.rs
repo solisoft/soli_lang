@@ -29,6 +29,12 @@ struct CachedTemplate {
     modified: SystemTime,
 }
 
+/// Maximum size for path cache to prevent unbounded memory growth.
+const PATH_CACHE_MAX_SIZE: usize = 1000;
+
+/// Maximum size for template cache to prevent unbounded memory growth.
+const TEMPLATE_CACHE_MAX_SIZE: usize = 500;
+
 /// Template cache that stores parsed templates and tracks file changes.
 pub struct TemplateCache {
     /// Base directory for views (e.g., app/views)
@@ -168,10 +174,14 @@ impl TemplateCache {
         // Cache miss - do file system lookup
         let resolved = self.do_resolve_template_path(name)?;
 
-        // Cache the result
-        self.path_cache
-            .borrow_mut()
-            .insert(name.to_string(), resolved.clone());
+        // Cache the result (with eviction if cache is too large)
+        {
+            let mut path_cache = self.path_cache.borrow_mut();
+            if path_cache.len() >= PATH_CACHE_MAX_SIZE {
+                path_cache.clear();
+            }
+            path_cache.insert(name.to_string(), resolved.clone());
+        }
 
         Ok(resolved)
     }
@@ -225,9 +235,12 @@ impl TemplateCache {
 
         let nodes = Rc::new(parse_template(&source)?);
 
-        // Update cache
+        // Update cache (with eviction if cache is too large)
         {
             let mut cache = self.cache.borrow_mut();
+            if cache.len() >= TEMPLATE_CACHE_MAX_SIZE {
+                cache.clear();
+            }
             cache.insert(
                 path_str,
                 CachedTemplate {

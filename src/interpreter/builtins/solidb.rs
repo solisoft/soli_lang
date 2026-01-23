@@ -308,6 +308,7 @@ fn register_solidb_class(env: &mut Environment) {
         ("explain", 1),
         ("ping", 0),
         ("connected", 0),
+        ("close", 0), // Cleanup: remove state from global HashMap
         // Collection management
         ("create_collection", 1),
         ("drop_collection", 1),
@@ -763,6 +764,12 @@ fn register_solidb_class(env: &mut Environment) {
                             }))
                         }
                         "connected" => Ok(Value::Bool(state_connected)),
+                        "close" => {
+                            // Remove state from global HashMap to free memory
+                            let mut states = SOLIDB_STATES.lock().map_err(|e| e.to_string())?;
+                            states.remove(&instance_id);
+                            Ok(Value::Bool(true))
+                        }
                         "create_collection" => {
                             let name = match &args[1] {
                                 Value::String(s) => s.clone(),

@@ -60,6 +60,9 @@ impl InMemorySessionStore {
 
     /// Get or create a session by ID.
     fn get_or_create(&self, session_id: &str) -> String {
+        // Lazy cleanup: remove expired sessions on each access
+        self.cleanup();
+
         let mut sessions = self.sessions.write().unwrap();
 
         if let Some(session) = sessions.get_mut(session_id) {
@@ -132,8 +135,8 @@ impl InMemorySessionStore {
         new_id
     }
 
-    /// Clean up expired sessions (should be called periodically).
-    #[allow(dead_code)]
+    /// Clean up expired sessions.
+    /// Called lazily on each get_or_create() to avoid background threads.
     fn cleanup(&self) {
         let mut sessions = self.sessions.write().unwrap();
         sessions.retain(|_, session| !session.is_expired(self.max_age));
