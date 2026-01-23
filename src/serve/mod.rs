@@ -3044,16 +3044,54 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
     full_stack_trace.extend(stack_trace.iter().cloned());
 
     // If the error is from a view file, add a stack frame for it AFTER controllers
-    // Look for pattern "in path/file.html.erb at line:col"
-    let view_pattern = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)) at (\d+):(\d+)").ok();
-    if let Some(re) = view_pattern {
+    // The error format can be either:
+    // 1. "error at line:col in path/file.html.erb" (from interpreter)
+    // 2. "error in path/file.html.erb at line:col" (alternative format)
+    // 3. "error in path/file.html.erb" (no line info, use line 1)
+
+    // Try format 1: "at line:col in file.html.erb"
+    let view_pattern1 = regex::Regex::new(r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").ok();
+    // Try format 2: "in file.html.erb at line:col"
+    let view_pattern2 = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)) at (\d+):(\d+)").ok();
+    // Try format 3: "in file.html.erb" (no line number)
+    let view_pattern3 = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))(?:\s|$)").ok();
+
+    let mut view_added = false;
+
+    // Try pattern 1 first
+    if let Some(re) = view_pattern1 {
         if let Some(caps) = re.captures(&actual_error) {
-            let view_file = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let view_line = caps.get(2).map(|m| m.as_str()).unwrap_or("1");
+            let view_line = caps.get(1).map(|m| m.as_str()).unwrap_or("1");
+            let view_file = caps.get(3).map(|m| m.as_str()).unwrap_or("");
             if !view_file.is_empty() {
-                // Add as a proper stack frame that the display code can parse
-                // Use [view] marker for special styling
                 full_stack_trace.push(format!("[view] at {}:{}", view_file, view_line));
+                view_added = true;
+            }
+        }
+    }
+
+    // Try pattern 2 if pattern 1 didn't match
+    if !view_added {
+        if let Some(re) = view_pattern2 {
+            if let Some(caps) = re.captures(&actual_error) {
+                let view_file = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                let view_line = caps.get(2).map(|m| m.as_str()).unwrap_or("1");
+                if !view_file.is_empty() {
+                    full_stack_trace.push(format!("[view] at {}:{}", view_file, view_line));
+                    view_added = true;
+                }
+            }
+        }
+    }
+
+    // Try pattern 3 if no line info found
+    if !view_added {
+        if let Some(re) = view_pattern3 {
+            if let Some(caps) = re.captures(&actual_error) {
+                let view_file = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                if !view_file.is_empty() {
+                    full_stack_trace.push(format!("[view] at {}:1", view_file));
+                }
             }
         }
     }
