@@ -3549,6 +3549,16 @@ pub fn render_dev_error_page(
             }}
         }}
 
+        function escapeHtml(text) {{
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }}
+
         function displaySource(data, highlightLine) {{
             let html = '';
             const start = Math.max(1, data.line - 5);
@@ -3558,7 +3568,8 @@ pub fn render_dev_error_page(
                 const lineNum = String(i).padStart(4, ' ');
                 const lineClass = isErrorLine ? 'bg-red-500/20 text-red-300' : 'text-gray-400';
                 const bgClass = isErrorLine ? 'bg-red-500/10' : '';
-                html += '<tr class="' + bgClass + '"><td class="text-gray-600 select-none pr-2">' + lineNum + '</td><td class="' + lineClass + '">' + (data.lines[i] || '') + '</td></tr>';
+                const escapedLine = escapeHtml(data.lines[i] || '');
+                html += '<tr class="' + bgClass + '"><td class="text-gray-600 select-none pr-2">' + lineNum + '</td><td class="' + lineClass + '"><pre style="margin:0;white-space:pre-wrap;">' + escapedLine + '</pre></td></tr>';
             }}
             document.getElementById('source-code').innerHTML = '<table class="w-full">' + html + '</table>';
         }}
