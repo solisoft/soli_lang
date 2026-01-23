@@ -344,6 +344,7 @@ impl Parser {
             TokenKind::LessEqual => self.binary_expr(left, BinaryOp::LessEqual, precedence),
             TokenKind::Greater => self.binary_expr(left, BinaryOp::Greater, precedence),
             TokenKind::GreaterEqual => self.binary_expr(left, BinaryOp::GreaterEqual, precedence),
+            TokenKind::Range => self.binary_expr(left, BinaryOp::Range, precedence),
 
             // Ternary operator: cond ? then_expr : else_expr
             TokenKind::Question => {

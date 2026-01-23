@@ -205,6 +205,7 @@ pub enum BinaryOp {
     LessEqual,
     Greater,
     GreaterEqual,
+    Range,
 }
 
 impl std::fmt::Display for BinaryOp {
@@ -221,6 +222,7 @@ impl std::fmt::Display for BinaryOp {
             BinaryOp::LessEqual => write!(f, "<="),
             BinaryOp::Greater => write!(f, ">"),
             BinaryOp::GreaterEqual => write!(f, ">="),
+            BinaryOp::Range => write!(f, ".."),
         }
     }
 }

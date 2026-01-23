@@ -1,5 +1,8 @@
 //! Binary and unary operator evaluation.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::ast::*;
 use crate::error::RuntimeError;
 use crate::interpreter::value::Value;
@@ -38,6 +41,24 @@ impl Interpreter {
             BinaryOp::GreaterEqual => {
                 self.compare_values(&left_val, &right_val, span, |a, b| a >= b)
             }
+            BinaryOp::Range => self.eval_range(&left_val, &right_val, span),
+        }
+    }
+
+    fn eval_range(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
+        match (left, right) {
+            (Value::Int(start), Value::Int(end)) => {
+                let arr: Vec<Value> = (*start..*end).map(Value::Int).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(arr))))
+            }
+            _ => Err(RuntimeError::type_error(
+                format!(
+                    "range (..) expects two integers, got {} and {}",
+                    left.type_name(),
+                    right.type_name()
+                ),
+                span,
+            )),
         }
     }
 

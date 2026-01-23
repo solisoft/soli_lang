@@ -2435,6 +2435,27 @@ impl VM {
                 OpCode::Greater => self.comparison_op(|a, b| a > b)?,
                 OpCode::GreaterEqual => self.comparison_op(|a, b| a >= b)?,
 
+                OpCode::Range => {
+                    let end = self.pop()?;
+                    let start = self.pop()?;
+                    match (&start, &end) {
+                        (VMValue::Int(s), VMValue::Int(e)) => {
+                            let arr: Vec<VMValue> = (*s..*e).map(VMValue::Int).collect();
+                            self.push(VMValue::Array(Rc::new(RefCell::new(arr))));
+                        }
+                        _ => {
+                            return Err(RuntimeError::new(
+                                format!(
+                                    "range (..) expects two integers, got {} and {}",
+                                    start.type_name(),
+                                    end.type_name()
+                                ),
+                                Span::default(),
+                            ));
+                        }
+                    }
+                }
+
                 OpCode::Not => {
                     let value = self.pop()?;
                     self.push(VMValue::Bool(!value.is_truthy()));

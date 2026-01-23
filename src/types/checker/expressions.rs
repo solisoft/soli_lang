@@ -290,6 +290,22 @@ impl TypeChecker {
                     })
                 }
             }
+            BinaryOp::Range => {
+                if (matches!(left_type, Type::Int) && matches!(right_type, Type::Int))
+                    || matches!(left_type, Type::Any | Type::Unknown)
+                    || matches!(right_type, Type::Any | Type::Unknown)
+                {
+                    Ok(Type::Array(Box::new(Type::Int)))
+                } else {
+                    Err(TypeError::General {
+                        message: format!(
+                            "range (..) expects two integers, got {} and {}",
+                            left_type, right_type
+                        ),
+                        span: expr.span,
+                    })
+                }
+            }
         }
     }
 

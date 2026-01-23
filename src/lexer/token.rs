@@ -95,6 +95,7 @@ pub enum TokenKind {
     Arrow,    // ->
     FatArrow, // =>
     Spread,   // ...
+    Range,    // ..
 
     // Special
     Eof,
@@ -233,6 +234,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Arrow => write!(f, "->"),
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Spread => write!(f, "..."),
+            TokenKind::Range => write!(f, ".."),
             TokenKind::Eof => write!(f, "EOF"),
         }
     }

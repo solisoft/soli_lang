@@ -71,10 +71,14 @@ impl<'a> Scanner<'a> {
             ']' => Ok(self.make_token(TokenKind::RightBracket)),
             ',' => Ok(self.make_token(TokenKind::Comma)),
             '.' => {
-                if self.match_char('.') && self.match_char('.') {
-                    Ok(self.make_token(TokenKind::Spread))
+                if self.match_char('.') {
+                    if self.match_char('.') {
+                        Ok(self.make_token(TokenKind::Spread)) // ...
+                    } else {
+                        Ok(self.make_token(TokenKind::Range)) // ..
+                    }
                 } else {
-                    Ok(self.make_token(TokenKind::Dot))
+                    Ok(self.make_token(TokenKind::Dot)) // .
                 }
             }
             ':' => Ok(self.make_token(TokenKind::Colon)),

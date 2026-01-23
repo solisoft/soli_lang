@@ -83,6 +83,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize, output: &mut String
         | OpCode::LessEqual
         | OpCode::Greater
         | OpCode::GreaterEqual
+        | OpCode::Range
         | OpCode::Not
         | OpCode::Return
         | OpCode::CloseUpvalue

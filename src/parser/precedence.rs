@@ -50,6 +50,7 @@ pub fn get_precedence(kind: &TokenKind) -> Precedence {
         TokenKind::Less | TokenKind::LessEqual | TokenKind::Greater | TokenKind::GreaterEqual => {
             Precedence::Comparison
         }
+        TokenKind::Range => Precedence::Comparison, // .. has same precedence as comparison
         TokenKind::Pipeline => Precedence::Pipeline,
         TokenKind::Plus | TokenKind::Minus => Precedence::Term,
         TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Precedence::Factor,

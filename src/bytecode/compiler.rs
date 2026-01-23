@@ -520,6 +520,7 @@ impl Compiler {
                     BinaryOp::LessEqual => self.emit_op(OpCode::LessEqual, line),
                     BinaryOp::Greater => self.emit_op(OpCode::Greater, line),
                     BinaryOp::GreaterEqual => self.emit_op(OpCode::GreaterEqual, line),
+                    BinaryOp::Range => self.emit_op(OpCode::Range, line),
                 }
             }
 
