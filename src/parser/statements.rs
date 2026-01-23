@@ -30,9 +30,12 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::If)?;
 
-        self.expect(&TokenKind::LeftParen)?;
+        // Parentheses are optional around the condition
+        let has_paren = self.match_token(&TokenKind::LeftParen);
         let condition = self.expression()?;
-        self.expect(&TokenKind::RightParen)?;
+        if has_paren {
+            self.expect(&TokenKind::RightParen)?;
+        }
 
         let then_branch = Box::new(self.statement()?);
 
@@ -58,9 +61,12 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::While)?;
 
-        self.expect(&TokenKind::LeftParen)?;
+        // Parentheses are optional around the condition
+        let has_paren = self.match_token(&TokenKind::LeftParen);
         let condition = self.expression()?;
-        self.expect(&TokenKind::RightParen)?;
+        if has_paren {
+            self.expect(&TokenKind::RightParen)?;
+        }
 
         let body = Box::new(self.statement()?);
         let span = start_span.merge(&self.previous_span());
@@ -72,11 +78,14 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::For)?;
 
-        self.expect(&TokenKind::LeftParen)?;
+        // Parentheses are optional around the for clause
+        let has_paren = self.match_token(&TokenKind::LeftParen);
         let variable = self.expect_identifier()?;
         self.expect(&TokenKind::In)?;
         let iterable = self.expression()?;
-        self.expect(&TokenKind::RightParen)?;
+        if has_paren {
+            self.expect(&TokenKind::RightParen)?;
+        }
 
         let body = Box::new(self.statement()?);
         let span = start_span.merge(&self.previous_span());
@@ -182,12 +191,14 @@ impl Parser {
         let start_span = self.current_span();
         let expr = self.expression()?;
 
-        // Check for postfix if: expr if (cond)
+        // Check for postfix if: expr if cond (parentheses optional)
         if self.check(&TokenKind::If) {
             self.advance(); // consume if
-            self.expect(&TokenKind::LeftParen)?;
+            let has_paren = self.match_token(&TokenKind::LeftParen);
             let cond = self.expression()?;
-            self.expect(&TokenKind::RightParen)?;
+            if has_paren {
+                self.expect(&TokenKind::RightParen)?;
+            }
 
             // Consume optional semicolon for postfix if
             if self.check(&TokenKind::Semicolon) {
@@ -206,12 +217,14 @@ impl Parser {
             ));
         }
 
-        // Check for postfix unless: expr unless (cond)
+        // Check for postfix unless: expr unless cond (parentheses optional)
         if self.check(&TokenKind::Unless) {
             self.advance(); // consume unless
-            self.expect(&TokenKind::LeftParen)?;
+            let has_paren = self.match_token(&TokenKind::LeftParen);
             let cond = self.expression()?;
-            self.expect(&TokenKind::RightParen)?;
+            if has_paren {
+                self.expect(&TokenKind::RightParen)?;
+            }
 
             // Consume optional semicolon for postfix unless
             if self.check(&TokenKind::Semicolon) {

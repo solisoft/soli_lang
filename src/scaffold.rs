@@ -441,7 +441,7 @@ fn create_application_helper(app_path: &Path) -> Result<(), String> {
 
 // Truncate text to a maximum length with ellipsis
 fn truncate_text(text: String, length: Int, suffix: String) -> String {
-    if (len(text) <= length) {
+    if len(text) <= length {
         return text;
     }
     return substring(text, 0, length - len(suffix)) + suffix;
@@ -449,7 +449,7 @@ fn truncate_text(text: String, length: Int, suffix: String) -> String {
 
 // Capitalize first letter of a string
 fn capitalize(text: String) -> String {
-    if (len(text) == 0) {
+    if len(text) == 0 {
         return text;
     }
     return upcase(substring(text, 0, 1)) + substring(text, 1, len(text));
@@ -467,7 +467,7 @@ fn link_to_class(text: String, url: String, css_class: String) -> String {
 
 // Pluralize a word based on count
 fn pluralize(count: Int, singular: String, plural: String) -> String {
-    if (count == 1) {
+    if count == 1 {
         return str(count) + " " + singular;
     }
     return str(count) + " " + plural;
@@ -475,7 +475,7 @@ fn pluralize(count: Int, singular: String, plural: String) -> String {
 
 // Simple pluralize (adds 's')
 fn pluralize_simple(count: Int, word: String) -> String {
-    if (count == 1) {
+    if count == 1 {
         return str(count) + " " + word;
     }
     return str(count) + " " + word + "s";
