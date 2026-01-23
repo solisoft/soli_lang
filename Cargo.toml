@@ -41,7 +41,6 @@ crossbeam = "0.8"
 
 # Cryptography
 argon2 = { version = "0.5", features = ["std", "rand"] }
-md5 = "0.7"
 curve25519-dalek = "4"
 rand_core = "0.6"
 

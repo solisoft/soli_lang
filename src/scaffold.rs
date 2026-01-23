@@ -114,6 +114,7 @@ fn create_directories(app_path: &Path) -> Result<(), String> {
         "",
         "app",
         "app/controllers",
+        "app/helpers",
         "app/models",
         "app/views",
         "app/views/home",
@@ -449,6 +450,197 @@ coverage/
     write_file(&app_path.join(".gitignore"), content)
 }
 
+fn create_application_helper(app_path: &Path) -> Result<(), String> {
+    let content = r#"// Application-wide view helpers
+
+// Truncate text to a maximum length with ellipsis
+fn truncate(text, length, suffix = "...") {
+    if len(text) <= length {
+        return text
+    }
+    return substring(text, 0, length) + suffix
+}
+
+// Format a number with thousands separators (locale-aware)
+// e.g., 1234567 -> "1,234,567" (en) or "1 234 567" (fr) or "1.234.567" (de)
+fn number_with_delimiter(number, delimiter = null) {
+    if delimiter == null {
+        let loc = locale()
+        if loc == "fr" || loc == "ru" {
+            delimiter = " "
+        } else if loc == "de" || loc == "it" || loc == "es" || loc == "pt" {
+            delimiter = "."
+        } else {
+            delimiter = ","
+        }
+    }
+    let str_num = str(int(number))
+    let result = ""
+    let count = 0
+    for i in range(len(str_num) - 1, -1) {
+        if count > 0 && count % 3 == 0 {
+            result = delimiter + result
+        }
+        result = str_num[i] + result
+        count = count + 1
+    }
+    return result
+}
+
+// Format as currency (locale-aware)
+// e.g., 1000 -> "$1,000" (en) or "1 000 €" (fr) or "1.000 €" (de)
+fn currency(amount, symbol = null) {
+    let loc = locale()
+    let delimiter = null
+    let symbol_after = false
+
+    if symbol == null {
+        if loc == "fr" || loc == "de" || loc == "es" || loc == "it" || loc == "pt" {
+            symbol = "€"
+            symbol_after = true
+        } else if loc == "ja" {
+            symbol = "¥"
+        } else if loc == "zh" {
+            symbol = "¥"
+        } else if loc == "ru" {
+            symbol = "₽"
+            symbol_after = true
+        } else {
+            symbol = "$"
+        }
+    }
+
+    let formatted = number_with_delimiter(int(amount), delimiter)
+
+    if symbol_after {
+        return formatted + " " + symbol
+    }
+    return symbol + formatted
+}
+
+// Pluralize a word based on count
+fn pluralize(count, singular, plural = null) {
+    if plural == null {
+        plural = singular + "s"
+    }
+    if count == 1 {
+        return str(count) + " " + singular
+    }
+    return str(count) + " " + plural
+}
+
+// Capitalize first letter of a string
+fn capitalize(text) {
+    if len(text) == 0 {
+        return text
+    }
+    return upcase(substring(text, 0, 1)) + substring(text, 1, len(text))
+}
+
+// Generate an HTML link
+fn link_to(text, url, css_class = "") {
+    if css_class != "" {
+        return "<a href=\"" + html_escape(url) + "\" class=\"" + html_escape(css_class) + "\">" + html_escape(text) + "</a>"
+    }
+    return "<a href=\"" + html_escape(url) + "\">" + html_escape(text) + "</a>"
+}
+
+// Convert text to URL-friendly slug
+// e.g., "Hello World!" -> "hello-world", "Café" -> "cafe"
+fn slugify(text) {
+    // Transliterate accented characters
+    let t = text
+    t = replace(t, "À", "A")
+    t = replace(t, "Á", "A")
+    t = replace(t, "Â", "A")
+    t = replace(t, "Ã", "A")
+    t = replace(t, "Ä", "A")
+    t = replace(t, "Å", "A")
+    t = replace(t, "à", "a")
+    t = replace(t, "á", "a")
+    t = replace(t, "â", "a")
+    t = replace(t, "ã", "a")
+    t = replace(t, "ä", "a")
+    t = replace(t, "å", "a")
+    t = replace(t, "È", "E")
+    t = replace(t, "É", "E")
+    t = replace(t, "Ê", "E")
+    t = replace(t, "Ë", "E")
+    t = replace(t, "è", "e")
+    t = replace(t, "é", "e")
+    t = replace(t, "ê", "e")
+    t = replace(t, "ë", "e")
+    t = replace(t, "Ì", "I")
+    t = replace(t, "Í", "I")
+    t = replace(t, "Î", "I")
+    t = replace(t, "Ï", "I")
+    t = replace(t, "ì", "i")
+    t = replace(t, "í", "i")
+    t = replace(t, "î", "i")
+    t = replace(t, "ï", "i")
+    t = replace(t, "Ò", "O")
+    t = replace(t, "Ó", "O")
+    t = replace(t, "Ô", "O")
+    t = replace(t, "Õ", "O")
+    t = replace(t, "Ö", "O")
+    t = replace(t, "ò", "o")
+    t = replace(t, "ó", "o")
+    t = replace(t, "ô", "o")
+    t = replace(t, "õ", "o")
+    t = replace(t, "ö", "o")
+    t = replace(t, "Ù", "U")
+    t = replace(t, "Ú", "U")
+    t = replace(t, "Û", "U")
+    t = replace(t, "Ü", "U")
+    t = replace(t, "ù", "u")
+    t = replace(t, "ú", "u")
+    t = replace(t, "û", "u")
+    t = replace(t, "ü", "u")
+    t = replace(t, "Ñ", "N")
+    t = replace(t, "ñ", "n")
+    t = replace(t, "Ç", "C")
+    t = replace(t, "ç", "c")
+    t = replace(t, "Ý", "Y")
+    t = replace(t, "ý", "y")
+    t = replace(t, "ÿ", "y")
+    t = replace(t, "Œ", "OE")
+    t = replace(t, "œ", "oe")
+    t = replace(t, "Æ", "AE")
+    t = replace(t, "æ", "ae")
+    t = replace(t, "ß", "ss")
+
+    let result = ""
+    let last_was_dash = true  // Prevent leading dash
+
+    for i in range(0, len(t)) {
+        let char = substring(t, i, i + 1)
+        let lower = downcase(char)
+
+        // Check if alphanumeric (a-z, 0-9)
+        if (lower >= "a" && lower <= "z") || (lower >= "0" && lower <= "9") {
+            result = result + lower
+            last_was_dash = false
+        } else if !last_was_dash {
+            // Replace non-alphanumeric with dash (but not consecutive)
+            result = result + "-"
+            last_was_dash = true
+        }
+    }
+
+    // Remove trailing dash
+    if len(result) > 0 && substring(result, len(result) - 1, len(result)) == "-" {
+        result = substring(result, 0, len(result) - 1)
+    }
+
+    return result
+}
+"#;
+    write_file(
+        &app_path.join("app/helpers/application_helper.soli"),
+        content,
+    )
+}
+
 fn create_readme(app_path: &Path, name: &str) -> Result<(), String> {
     let content = format!(
         r#"# {}
@@ -579,6 +771,7 @@ pub fn create_app(name: &str) -> Result<(), String> {
     create_css_file(app_path)?;
     create_env_file(app_path)?;
     create_gitignore(app_path)?;
+    create_application_helper(app_path)?;
     create_readme(app_path, name)?;
 
     Ok(())

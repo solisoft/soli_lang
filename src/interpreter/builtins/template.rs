@@ -30,32 +30,31 @@ thread_local! {
     static VIEW_DEBUG_CONTEXT: RefCell<Option<Value>> = const { RefCell::new(None) };
 }
 
-// Thread-local file hash cache for public_path() performance
+// Thread-local file mtime cache for public_path() performance
 #[derive(Clone)]
-struct CachedFileHash {
-    hash: String,
-    modified: SystemTime,
+struct CachedFileMtime {
+    mtime_secs: u64, // Seconds since UNIX_EPOCH
 }
 
-/// Maximum size for the file hash cache to prevent unbounded memory growth.
-const FILE_HASH_CACHE_MAX_SIZE: usize = 1000;
+/// Maximum size for the file mtime cache to prevent unbounded memory growth.
+const FILE_MTIME_CACHE_MAX_SIZE: usize = 1000;
 
 thread_local! {
-    static FILE_HASH_CACHE: RefCell<HashMap<PathBuf, CachedFileHash>> = RefCell::new(HashMap::new());
+    static FILE_MTIME_CACHE: RefCell<HashMap<PathBuf, CachedFileMtime>> = RefCell::new(HashMap::new());
 }
 
 static DEV_MODE: AtomicBool = AtomicBool::new(false);
 
-/// Set dev mode for file hash caching behavior.
-/// In production (dev_mode=false), hashes are cached permanently.
-/// In dev mode (dev_mode=true), file modification times are checked.
+/// Set dev mode for file mtime caching behavior.
+/// In production (dev_mode=false), mtimes are cached permanently.
+/// In dev mode (dev_mode=true), mtimes are always refreshed.
 pub fn set_dev_mode(enabled: bool) {
     DEV_MODE.store(enabled, Ordering::Relaxed);
 }
 
-/// Clear the file hash cache (for hot reload).
-pub fn clear_file_hash_cache() {
-    FILE_HASH_CACHE.with(|cache| cache.borrow_mut().clear());
+/// Clear the file mtime cache (for hot reload).
+pub fn clear_file_mtime_cache() {
+    FILE_MTIME_CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
 // Thread-local view helpers registry (functions from app/helpers/*.soli)
@@ -263,44 +262,38 @@ fn resolve_futures_in_value(value: Value) -> Value {
     }
 }
 
-/// Compute MD5 hash of file contents with caching.
-/// In production mode: O(1) lookup from cache after first computation.
-/// In dev mode: checks file modification time before returning cached value.
-fn compute_file_md5_cached(path: &PathBuf) -> Result<String, String> {
-    FILE_HASH_CACHE.with(|cache| {
+/// Get file modification time with caching.
+/// In production mode: O(1) lookup from cache after first stat.
+/// In dev mode: always refreshes mtime from filesystem.
+fn get_file_mtime_cached(path: &PathBuf) -> Result<String, String> {
+    FILE_MTIME_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         let dev_mode = DEV_MODE.load(Ordering::Relaxed);
 
-        if let Some(cached) = cache.get(path) {
-            if !dev_mode {
-                // PRODUCTION: O(1) lookup, no file system check
-                return Ok(cached.hash.clone());
-            }
-            // DEV: Check modification time
-            if let Ok(metadata) = std::fs::metadata(path) {
-                if let Ok(modified) = metadata.modified() {
-                    if modified == cached.modified {
-                        return Ok(cached.hash.clone());
-                    }
-                }
+        // Get current mtime
+        let metadata = std::fs::metadata(path)
+            .map_err(|e| format!("Failed to stat file: {}", e))?;
+        let modified = metadata
+            .modified()
+            .map_err(|e| format!("Failed to get mtime: {}", e))?;
+        let mtime_secs = modified
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // In production, return cached value if available
+        if !dev_mode {
+            if let Some(cached) = cache.get(path) {
+                return Ok(cached.mtime_secs.to_string());
             }
         }
 
-        // Cache miss: compute and store
-        let data = std::fs::read(path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
-        let hash = format!("{:x}", md5::compute(&data));
-        let modified = std::fs::metadata(path)
-            .and_then(|m| m.modified())
-            .unwrap_or(SystemTime::UNIX_EPOCH);
-
-        // Evict cache if it exceeds the maximum size to prevent unbounded memory growth
-        if cache.len() >= FILE_HASH_CACHE_MAX_SIZE {
+        // Store and return
+        if cache.len() >= FILE_MTIME_CACHE_MAX_SIZE {
             cache.clear();
         }
-
-        cache.insert(path.clone(), CachedFileHash { hash: hash.clone(), modified });
-        Ok(hash)
+        cache.insert(path.clone(), CachedFileMtime { mtime_secs });
+        Ok(mtime_secs.to_string())
     })
 }
 
@@ -395,18 +388,18 @@ fn inject_template_helpers(data: &Value) -> Value {
                         // Build full file path
                         let full_path = public_dir.join(&path);
 
-                        // Compute MD5 hash if file exists, otherwise return path without hash
-                        match compute_file_md5_cached(&full_path) {
-                            Ok(hash) => {
+                        // Get mtime if file exists, otherwise return path without version
+                        match get_file_mtime_cached(&full_path) {
+                            Ok(mtime) => {
                                 // Return path with query parameter
                                 if path.contains('?') {
-                                    Ok(Value::String(format!("/{}&v={}", path, hash)))
+                                    Ok(Value::String(format!("/{}&v={}", path, mtime)))
                                 } else {
-                                    Ok(Value::String(format!("/{}?v={}", path, hash)))
+                                    Ok(Value::String(format!("/{}?v={}", path, mtime)))
                                 }
                             }
                             Err(_) => {
-                                // File doesn't exist, return path without hash
+                                // File doesn't exist, return path without version
                                 Ok(Value::String(format!("/{}", path)))
                             }
                         }
@@ -695,7 +688,9 @@ fn inject_template_helpers(data: &Value) -> Value {
                                 ))
                             }
                         };
-                        Ok(Value::String(datetime_helpers::time_ago(timestamp)))
+                        // Use current locale for localized output
+                        let locale = i18n_helpers::get_locale();
+                        Ok(Value::String(datetime_helpers::time_ago_localized(timestamp, &locale)))
                     }));
                 new_hash.push((time_ago_key, time_ago_func));
             }

@@ -372,6 +372,167 @@
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Application Helpers</h2>
+    <p class="text-gray-400 mb-6">When you create a new app with <code>soli new</code>, a starter helper file is generated at <code>app/helpers/application_helper.soli</code>. These helpers are automatically available in all templates.</p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Text Helpers</h3>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Text helpers</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- Truncate text with ellipsis --&gt;
+&lt;%= truncate(post["content"], 100) %&gt;
+&lt;!-- "This is a very long article that..." --&gt;
+
+&lt;%= truncate(title, 50, " [more]") %&gt;
+&lt;!-- "This is a long title that gets cut [more]" --&gt;
+
+&lt;!-- Capitalize first letter --&gt;
+&lt;%= capitalize("hello world") %&gt;
+&lt;!-- "Hello world" --&gt;
+
+&lt;%= capitalize(user["status"]) %&gt;
+&lt;!-- "Active" (if status was "active") --&gt;
+
+&lt;!-- Pluralize based on count --&gt;
+&lt;%= pluralize(1, "item") %&gt;
+&lt;!-- "1 item" --&gt;
+
+&lt;%= pluralize(5, "item") %&gt;
+&lt;!-- "5 items" --&gt;
+
+&lt;%= pluralize(count, "person", "people") %&gt;
+&lt;!-- "1 person" or "3 people" --&gt;</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Number & Currency Helpers (I18n)</h3>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Number helpers (locale-aware)</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- Format numbers with thousands separator (auto-detects from locale) --&gt;
+&lt;%= number_with_delimiter(1234567) %&gt;
+&lt;!-- en: "1,234,567" | fr: "1 234 567" | de: "1.234.567" --&gt;
+
+&lt;!-- Override delimiter manually --&gt;
+&lt;%= number_with_delimiter(1234567, "'") %&gt;
+&lt;!-- "1'234'567" --&gt;
+
+&lt;!-- Format as currency (locale-aware: symbol, delimiter, position) --&gt;
+&lt;%= currency(1000) %&gt;
+&lt;!-- en: "$1,000" | fr: "1 000 €" | de: "1.000 €" | ja: "¥1,000" --&gt;
+
+&lt;%= currency(order["total"]) %&gt;
+
+&lt;!-- Override symbol manually --&gt;
+&lt;%= currency(1234, "£") %&gt;
+&lt;!-- "£1,234" --&gt;</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-8">
+        <div class="flex items-start gap-4">
+            <div class="text-blue-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-blue-400 mb-1">Locale-Aware Formatting</h4>
+                <p class="text-blue-200/80 text-sm">
+                    <code>number_with_delimiter()</code> and <code>currency()</code> automatically use the current I18n locale.
+                    Use <code>set_locale("fr")</code> in your controller to change formatting.
+                    Supported: en, fr, de, es, it, pt, ja, zh, ru.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Link Helper</h3>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Link helper</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- Generate safe HTML links (XSS protected) --&gt;
+&lt;%= link_to("Home", "/") %&gt;
+&lt;!-- &lt;a href="/"&gt;Home&lt;/a&gt; --&gt;
+
+&lt;%= link_to("View Profile", "/users/" + user["id"]) %&gt;
+&lt;!-- &lt;a href="/users/123"&gt;View Profile&lt;/a&gt; --&gt;
+
+&lt;%= link_to("Edit", "/posts/" + post["id"] + "/edit", "btn btn-primary") %&gt;
+&lt;!-- &lt;a href="/posts/456/edit" class="btn btn-primary"&gt;Edit&lt;/a&gt; --&gt;</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">URL Slug Helper</h3>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Slugify helper</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- Convert text to URL-friendly slug --&gt;
+&lt;%= slugify("Hello World!") %&gt;
+&lt;!-- "hello-world" --&gt;
+
+&lt;%= slugify("My Blog Post Title") %&gt;
+&lt;!-- "my-blog-post-title" --&gt;
+
+&lt;%= slugify("Café & Restaurant") %&gt;
+&lt;!-- "cafe-restaurant" --&gt;
+
+&lt;!-- Use in URLs --&gt;
+&lt;a href="/posts/&lt;%= slugify(post["title"]) %&gt;"&gt;
+    &lt;%= post["title"] %&gt;
+&lt;/a&gt;</code></pre>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Function</th>
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">truncate(text, length, suffix?)</td>
+                    <td class="py-3 px-4">Truncate text to length with suffix (default: "...")</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">capitalize(text)</td>
+                    <td class="py-3 px-4">Capitalize first letter of string</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">pluralize(count, singular, plural?)</td>
+                    <td class="py-3 px-4">Pluralize word based on count (default plural: singular + "s")</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">number_with_delimiter(num, delim?)</td>
+                    <td class="py-3 px-4">Format number with thousands separator (locale-aware)</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">currency(amount, symbol?)</td>
+                    <td class="py-3 px-4">Format as currency (locale-aware: symbol, delimiter, position)</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">link_to(text, url, class?)</td>
+                    <td class="py-3 px-4">Generate HTML link with XSS protection</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">slugify(text)</td>
+                    <td class="py-3 px-4">Convert text to URL-friendly slug</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
     <h3 class="text-xl font-semibold text-white mb-4">Complete Example</h3>
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
@@ -392,7 +553,17 @@
     &lt;% end %&gt;
 
     &lt;div class="content"&gt;
-        &lt;%= post["content"] %&gt;
+        &lt;%= truncate(post["content"], 500) %&gt;
+    &lt;/div&gt;
+
+    &lt;div class="stats"&gt;
+        &lt;span&gt;&lt;%= number_with_delimiter(post["views"]) %&gt; views&lt;/span&gt;
+        &lt;span&gt;&lt;%= pluralize(post["comment_count"], "comment") %&gt;&lt;/span&gt;
+    &lt;/div&gt;
+
+    &lt;div class="actions"&gt;
+        &lt;%= link_to("Edit", "/posts/" + post["id"] + "/edit", "btn btn-secondary") %&gt;
+        &lt;%= link_to("Back to Posts", "/posts", "btn btn-link") %&gt;
     &lt;/div&gt;
 
     &lt;footer&gt;

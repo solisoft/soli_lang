@@ -1240,8 +1240,8 @@ fn worker_loop(
         // Static files changed - trigger browser refresh via SSE
         if current_static_files != last_static_files_version {
             last_static_files_version = current_static_files;
-            // Clear file hash cache so public_path() recomputes MD5s
-            crate::interpreter::builtins::template::clear_file_hash_cache();
+            // Clear file mtime cache so public_path() refreshes versions
+            crate::interpreter::builtins::template::clear_file_mtime_cache();
             // Notify browser for live reload (browsers will re-fetch CSS/JS)
             if let Some(ref tx) = _reload_tx {
                 let _ = tx.send(());

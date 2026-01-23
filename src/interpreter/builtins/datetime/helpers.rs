@@ -110,72 +110,235 @@ pub fn datetime_diff(t1: i64, t2: i64) -> i64 {
 /// # Returns
 /// Human-readable string like "5 minutes ago", "2 hours ago", "3 days ago"
 pub fn time_ago(timestamp: i64) -> String {
+    time_ago_localized(timestamp, "en")
+}
+
+/// Convert a timestamp to a localized human-readable "time ago" string.
+///
+/// # Arguments
+/// * `timestamp` - Unix timestamp to compare against current time
+/// * `locale` - Locale code (e.g., "en", "fr", "de", "es", "it", "pt", "ja", "zh")
+///
+/// # Returns
+/// Localized human-readable string like "il y a 5 minutes", "vor 2 Stunden"
+pub fn time_ago_localized(timestamp: i64, locale: &str) -> String {
     let now = Utc::now().timestamp();
     let diff = now - timestamp;
 
     if diff < 0 {
-        return "in the future".to_string();
+        return get_time_ago_text(locale, "future", 0);
     }
 
     if diff < 60 {
         let secs = diff;
         return if secs == 1 {
-            "1 second ago".to_string()
+            get_time_ago_text(locale, "second", 1)
         } else {
-            format!("{} seconds ago", secs)
+            get_time_ago_text(locale, "seconds", secs)
         };
     }
 
     if diff < 3600 {
         let mins = diff / 60;
         return if mins == 1 {
-            "1 minute ago".to_string()
+            get_time_ago_text(locale, "minute", 1)
         } else {
-            format!("{} minutes ago", mins)
+            get_time_ago_text(locale, "minutes", mins)
         };
     }
 
     if diff < 86400 {
         let hours = diff / 3600;
         return if hours == 1 {
-            "1 hour ago".to_string()
+            get_time_ago_text(locale, "hour", 1)
         } else {
-            format!("{} hours ago", hours)
+            get_time_ago_text(locale, "hours", hours)
         };
     }
 
     if diff < 604800 {
         let days = diff / 86400;
         return if days == 1 {
-            "1 day ago".to_string()
+            get_time_ago_text(locale, "day", 1)
         } else {
-            format!("{} days ago", days)
+            get_time_ago_text(locale, "days", days)
         };
     }
 
     if diff < 2592000 {
         let weeks = diff / 604800;
         return if weeks == 1 {
-            "1 week ago".to_string()
+            get_time_ago_text(locale, "week", 1)
         } else {
-            format!("{} weeks ago", weeks)
+            get_time_ago_text(locale, "weeks", weeks)
         };
     }
 
     if diff < 31536000 {
         let months = diff / 2592000;
         return if months == 1 {
-            "1 month ago".to_string()
+            get_time_ago_text(locale, "month", 1)
         } else {
-            format!("{} months ago", months)
+            get_time_ago_text(locale, "months", months)
         };
     }
 
     let years = diff / 31536000;
     if years == 1 {
-        "1 year ago".to_string()
+        get_time_ago_text(locale, "year", 1)
     } else {
-        format!("{} years ago", years)
+        get_time_ago_text(locale, "years", years)
+    }
+}
+
+/// Get localized "time ago" text for a given unit and count.
+fn get_time_ago_text(locale: &str, unit: &str, count: i64) -> String {
+    match locale {
+        "fr" => match unit {
+            "future" => "dans le futur".to_string(),
+            "second" => "il y a 1 seconde".to_string(),
+            "seconds" => format!("il y a {} secondes", count),
+            "minute" => "il y a 1 minute".to_string(),
+            "minutes" => format!("il y a {} minutes", count),
+            "hour" => "il y a 1 heure".to_string(),
+            "hours" => format!("il y a {} heures", count),
+            "day" => "il y a 1 jour".to_string(),
+            "days" => format!("il y a {} jours", count),
+            "week" => "il y a 1 semaine".to_string(),
+            "weeks" => format!("il y a {} semaines", count),
+            "month" => "il y a 1 mois".to_string(),
+            "months" => format!("il y a {} mois", count),
+            "year" => "il y a 1 an".to_string(),
+            "years" => format!("il y a {} ans", count),
+            _ => format!("{} {}", count, unit),
+        },
+        "de" => match unit {
+            "future" => "in der Zukunft".to_string(),
+            "second" => "vor 1 Sekunde".to_string(),
+            "seconds" => format!("vor {} Sekunden", count),
+            "minute" => "vor 1 Minute".to_string(),
+            "minutes" => format!("vor {} Minuten", count),
+            "hour" => "vor 1 Stunde".to_string(),
+            "hours" => format!("vor {} Stunden", count),
+            "day" => "vor 1 Tag".to_string(),
+            "days" => format!("vor {} Tagen", count),
+            "week" => "vor 1 Woche".to_string(),
+            "weeks" => format!("vor {} Wochen", count),
+            "month" => "vor 1 Monat".to_string(),
+            "months" => format!("vor {} Monaten", count),
+            "year" => "vor 1 Jahr".to_string(),
+            "years" => format!("vor {} Jahren", count),
+            _ => format!("{} {}", count, unit),
+        },
+        "es" => match unit {
+            "future" => "en el futuro".to_string(),
+            "second" => "hace 1 segundo".to_string(),
+            "seconds" => format!("hace {} segundos", count),
+            "minute" => "hace 1 minuto".to_string(),
+            "minutes" => format!("hace {} minutos", count),
+            "hour" => "hace 1 hora".to_string(),
+            "hours" => format!("hace {} horas", count),
+            "day" => "hace 1 día".to_string(),
+            "days" => format!("hace {} días", count),
+            "week" => "hace 1 semana".to_string(),
+            "weeks" => format!("hace {} semanas", count),
+            "month" => "hace 1 mes".to_string(),
+            "months" => format!("hace {} meses", count),
+            "year" => "hace 1 año".to_string(),
+            "years" => format!("hace {} años", count),
+            _ => format!("{} {}", count, unit),
+        },
+        "it" => match unit {
+            "future" => "nel futuro".to_string(),
+            "second" => "1 secondo fa".to_string(),
+            "seconds" => format!("{} secondi fa", count),
+            "minute" => "1 minuto fa".to_string(),
+            "minutes" => format!("{} minuti fa", count),
+            "hour" => "1 ora fa".to_string(),
+            "hours" => format!("{} ore fa", count),
+            "day" => "1 giorno fa".to_string(),
+            "days" => format!("{} giorni fa", count),
+            "week" => "1 settimana fa".to_string(),
+            "weeks" => format!("{} settimane fa", count),
+            "month" => "1 mese fa".to_string(),
+            "months" => format!("{} mesi fa", count),
+            "year" => "1 anno fa".to_string(),
+            "years" => format!("{} anni fa", count),
+            _ => format!("{} {}", count, unit),
+        },
+        "pt" => match unit {
+            "future" => "no futuro".to_string(),
+            "second" => "há 1 segundo".to_string(),
+            "seconds" => format!("há {} segundos", count),
+            "minute" => "há 1 minuto".to_string(),
+            "minutes" => format!("há {} minutos", count),
+            "hour" => "há 1 hora".to_string(),
+            "hours" => format!("há {} horas", count),
+            "day" => "há 1 dia".to_string(),
+            "days" => format!("há {} dias", count),
+            "week" => "há 1 semana".to_string(),
+            "weeks" => format!("há {} semanas", count),
+            "month" => "há 1 mês".to_string(),
+            "months" => format!("há {} meses", count),
+            "year" => "há 1 ano".to_string(),
+            "years" => format!("há {} anos", count),
+            _ => format!("{} {}", count, unit),
+        },
+        "ja" => match unit {
+            "future" => "未来".to_string(),
+            "second" => "1秒前".to_string(),
+            "seconds" => format!("{}秒前", count),
+            "minute" => "1分前".to_string(),
+            "minutes" => format!("{}分前", count),
+            "hour" => "1時間前".to_string(),
+            "hours" => format!("{}時間前", count),
+            "day" => "1日前".to_string(),
+            "days" => format!("{}日前", count),
+            "week" => "1週間前".to_string(),
+            "weeks" => format!("{}週間前", count),
+            "month" => "1ヶ月前".to_string(),
+            "months" => format!("{}ヶ月前", count),
+            "year" => "1年前".to_string(),
+            "years" => format!("{}年前", count),
+            _ => format!("{} {}", count, unit),
+        },
+        "zh" => match unit {
+            "future" => "未来".to_string(),
+            "second" => "1秒前".to_string(),
+            "seconds" => format!("{}秒前", count),
+            "minute" => "1分钟前".to_string(),
+            "minutes" => format!("{}分钟前", count),
+            "hour" => "1小时前".to_string(),
+            "hours" => format!("{}小时前", count),
+            "day" => "1天前".to_string(),
+            "days" => format!("{}天前", count),
+            "week" => "1周前".to_string(),
+            "weeks" => format!("{}周前", count),
+            "month" => "1个月前".to_string(),
+            "months" => format!("{}个月前", count),
+            "year" => "1年前".to_string(),
+            "years" => format!("{}年前", count),
+            _ => format!("{} {}", count, unit),
+        },
+        // English (default)
+        _ => match unit {
+            "future" => "in the future".to_string(),
+            "second" => "1 second ago".to_string(),
+            "seconds" => format!("{} seconds ago", count),
+            "minute" => "1 minute ago".to_string(),
+            "minutes" => format!("{} minutes ago", count),
+            "hour" => "1 hour ago".to_string(),
+            "hours" => format!("{} hours ago", count),
+            "day" => "1 day ago".to_string(),
+            "days" => format!("{} days ago", count),
+            "week" => "1 week ago".to_string(),
+            "weeks" => format!("{} weeks ago", count),
+            "month" => "1 month ago".to_string(),
+            "months" => format!("{} months ago", count),
+            "year" => "1 year ago".to_string(),
+            "years" => format!("{} years ago", count),
+            _ => format!("{} {}", count, unit),
+        },
     }
 }
 
