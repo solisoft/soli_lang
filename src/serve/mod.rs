@@ -3038,6 +3038,21 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
 
     // Build stack trace - first the error, then the embedded stack trace, then the passed stack trace
     full_stack_trace.push(format!("Error: {}", actual_error));
+
+    // If the error is from a view file, add a stack frame for it
+    // Look for pattern "in path/file.html.erb at line:col"
+    let view_pattern = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)) at (\d+):(\d+)").ok();
+    if let Some(re) = view_pattern {
+        if let Some(caps) = re.captures(&actual_error) {
+            let view_file = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let view_line = caps.get(2).map(|m| m.as_str()).unwrap_or("1");
+            if !view_file.is_empty() {
+                // Add as a proper stack frame that the display code can parse
+                full_stack_trace.push(format!("(view) at {}:{}", view_file, view_line));
+            }
+        }
+    }
+
     full_stack_trace.extend(embedded_stack);
     full_stack_trace.extend(stack_trace.iter().cloned());
     if full_stack_trace.len() == 1 {
@@ -3114,7 +3129,8 @@ struct SpanInfo {
 
 fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     // Try to find file path pattern - supports .soli, .html.erb, and .erb files
-    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_-]+(?:\.html\.erb|\.erb|\.soli))").unwrap();
+    // Include @ for paths like /home/user@domain.com/...
+    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.soli))").unwrap();
     let file = file_re.captures(error_msg)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string());
@@ -3129,7 +3145,7 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     }
 
     // Try to find patterns like "file.soli:line" or "file.html.erb:line"
-    let file_line_re = regex::Regex::new(r"([a-zA-Z_][a-zA-Z0-9_\-./]*(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
+    let file_line_re = regex::Regex::new(r"([a-zA-Z_][a-zA-Z0-9_\-./@]*(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
     if let Some(caps) = file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
@@ -3148,8 +3164,8 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
 
 /// Extract file path from a stack frame string like "func_name at ./path/file.soli:10"
 fn extract_file_from_frame(frame: &str) -> Option<String> {
-    // Support .soli, .html.erb, and .erb files
-    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_-]+(?:\.html\.erb|\.erb|\.soli))").ok()?;
+    // Support .soli, .html.erb, and .erb files (include @ for paths like /home/user@domain.com/...)
+    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.soli))").ok()?;
     file_re.captures(frame)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string())
@@ -3209,12 +3225,12 @@ pub fn render_dev_error_page(
     let mut stack_frames = Vec::new();
     let mut frame_index = 0;
 
-    // Regex to find file paths with line numbers - supports .soli, .html.erb, .erb
-    let file_regex = regex::Regex::new(r"([./a-zA-Z0-9_-]+(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
+    // Regex to find file paths with line numbers - supports .soli, .html.erb, .erb (include @ for paths)
+    let file_regex = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
     // Regex to find span info after "at" (line:column)
     let span_regex = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
     // Regex to find view files in error messages (e.g., "error in /path/to/file.html.erb")
-    let view_file_regex = regex::Regex::new(r"in ([./a-zA-Z0-9_-]+(?:\.html\.erb|\.erb))").unwrap();
+    let view_file_regex = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").unwrap();
 
     for frame in stack_trace.iter() {
         // Skip "Error: ..." entries - they're not actual stack frames

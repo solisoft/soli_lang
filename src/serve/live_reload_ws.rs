@@ -323,7 +323,30 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
         });
     }
 
+    function closeExisting() {
+        // Close any existing WebSocket connection
+        if (ws) {
+            try {
+                ws.onclose = null; // Prevent reconnect loop
+                ws.onerror = null;
+                ws.close();
+            } catch(e) {}
+            ws = null;
+        }
+        // Close any existing EventSource connection
+        if (es) {
+            try {
+                es.onerror = null;
+                es.close();
+            } catch(e) {}
+            es = null;
+        }
+    }
+
     function connect() {
+        // Close existing connections first to prevent accumulation
+        closeExisting();
+
         // Try WebSocket first
         var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         var wsUrl = protocol + '//' + window.location.host + '/__livereload_ws';
@@ -355,19 +378,23 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
 
         ws.onerror = function(error) {
             console.log('[livereload] WebSocket error, falling back to SSE');
-            try { ws.close(); } catch(e) {}
+            closeExisting();
             connectSSE();
         };
 
         ws.onclose = function() {
             if (window.__livereload.connected) {
                 window.__livereload.connected = false;
+                ws = null; // Clear reference
                 reconnect();
             }
         };
     }
 
     function connectSSE() {
+        // Close existing connections first
+        closeExisting();
+
         // Fallback to Server-Sent Events
         es = new EventSource('/__livereload');
 
@@ -377,6 +404,7 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
 
         es.onerror = function() {
             es.close();
+            es = null;
             reconnect();
         };
     }
