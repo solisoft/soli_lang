@@ -3036,10 +3036,14 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
 
     location = format!("{}:{}", error_file, error_line);
 
-    // Build stack trace - first the error, then the embedded stack trace, then the passed stack trace
+    // Build stack trace - first the error, then controller stack trace, then view
     full_stack_trace.push(format!("Error: {}", actual_error));
 
-    // If the error is from a view file, add a stack frame for it
+    // Add embedded stack trace (from interpreter) and passed stack trace (controllers)
+    full_stack_trace.extend(embedded_stack);
+    full_stack_trace.extend(stack_trace.iter().cloned());
+
+    // If the error is from a view file, add a stack frame for it AFTER controllers
     // Look for pattern "in path/file.html.erb at line:col"
     let view_pattern = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)) at (\d+):(\d+)").ok();
     if let Some(re) = view_pattern {
@@ -3048,13 +3052,12 @@ fn render_error_page(error_msg: &str, _interpreter: &Interpreter, request_data: 
             let view_line = caps.get(2).map(|m| m.as_str()).unwrap_or("1");
             if !view_file.is_empty() {
                 // Add as a proper stack frame that the display code can parse
-                full_stack_trace.push(format!("(view) at {}:{}", view_file, view_line));
+                // Use [view] marker for special styling
+                full_stack_trace.push(format!("[view] at {}:{}", view_file, view_line));
             }
         }
     }
 
-    full_stack_trace.extend(embedded_stack);
-    full_stack_trace.extend(stack_trace.iter().cloned());
     if full_stack_trace.len() == 1 {
         full_stack_trace.push(format!("{}:{} (error location)", error_file, error_line));
     }
@@ -3238,6 +3241,9 @@ pub fn render_dev_error_page(
             continue;
         }
 
+        // Check if this is a view frame (marked with [view])
+        let is_view_frame = frame.starts_with("[view]");
+
         let mut file = "unknown".to_string();
         let mut line: usize = 0;
 
@@ -3262,48 +3268,62 @@ pub fn render_dev_error_page(
         // Helper to check if string contains a source file extension
         let contains_source_ext = |s: &str| s.contains(".soli") || s.contains(".html.erb") || s.contains(".erb");
 
-        // Try to extract function name - look for pattern before " at "
-        let func = if let Some(at_pos) = frame.find(" at ") {
-            let before_at = &frame[..at_pos];
-            // If what's before "at" doesn't contain a source file, it's the function name
-            if !contains_source_ext(before_at) {
-                before_at.to_string()
-            } else {
-                // Extract from file name
+        // Determine display name based on frame type
+        let display_name = if is_view_frame {
+            // For view frames, extract just the view name from the file path
+            let view_name = file.rsplit('/').next().unwrap_or(&file);
+            format!("View: {}", view_name)
+        } else {
+            // Try to extract function name - look for pattern before " at "
+            let func = if let Some(at_pos) = frame.find(" at ") {
+                let before_at = &frame[..at_pos];
+                // If what's before "at" doesn't contain a source file, it's the function name
+                if !contains_source_ext(before_at) {
+                    before_at.to_string()
+                } else {
+                    // Extract from file name
+                    extract_controller_name(&file)
+                }
+            } else if file != "unknown" {
+                // No " at " - extract function name from file
                 extract_controller_name(&file)
-            }
-        } else if file != "unknown" {
-            // No " at " - extract function name from file
-            extract_controller_name(&file)
-        } else {
-            // Fallback: treat entire frame as function name
-            frame.clone()
-        };
+            } else {
+                // Fallback: treat entire frame as function name
+                frame.clone()
+            };
 
-        // Clean up function name - if it looks like a file path, extract the name
-        let display_name = if func.contains('#') || func.contains("::") {
-            func.clone()
-        } else if func.contains('/') || contains_source_ext(&func) {
-            extract_controller_name(&func)
-        } else if func == "unknown" && file != "unknown" {
-            extract_controller_name(&file)
-        } else {
-            func.clone()
+            // Clean up function name - if it looks like a file path, extract the name
+            if func.contains('#') || func.contains("::") {
+                func.clone()
+            } else if func.contains('/') || contains_source_ext(&func) {
+                extract_controller_name(&func)
+            } else if func == "unknown" && file != "unknown" {
+                extract_controller_name(&file)
+            } else {
+                func.clone()
+            }
         };
 
         let location_display = format!("{}:{}", file, line);
 
+        // Use different colors for views vs controllers
+        let (name_color, location_color, border_color) = if is_view_frame {
+            ("text-purple-300", "text-purple-400/70", "border-l-2 border-purple-500")
+        } else {
+            ("text-white", "text-gray-400", "")
+        };
+
         stack_frames.push(format!(
-            r#"<div class="stack-frame px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors" onclick="showSource('{}', {}, this)">
+            r#"<div class="stack-frame px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors {}" onclick="showSource('{}', {}, this)">
                 <div class="flex items-start gap-3">
                     <span class="text-gray-500 text-xs mt-0.5">{}</span>
                     <div class="flex-1 min-w-0">
-                        <div class="font-medium text-white truncate">{}</div>
-                        <div class="text-gray-400 text-sm truncate">{}</div>
+                        <div class="font-medium {} truncate">{}</div>
+                        <div class="{} text-sm truncate">{}</div>
                     </div>
                 </div>
             </div>"#,
-            escape_html(&file), line, frame_index, escape_html(&display_name), escape_html(&location_display)
+            border_color, escape_html(&file), line, frame_index, name_color, escape_html(&display_name), location_color, escape_html(&location_display)
         ));
         frame_index += 1;
     }
