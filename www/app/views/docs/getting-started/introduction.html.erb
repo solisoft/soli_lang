@@ -134,7 +134,7 @@ get("/users/:id", "users#show");</code></pre>
                     <span class="text-xs text-gray-400 font-mono">app/controllers/home_controller.soli</span>
                 </div>
                 <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn index(req) {
+<pre><code class="language-soli text-sm">fn index(req: Any) -> Any {
     let message = "Welcome to Soli!";
 
     return render("home/index", {

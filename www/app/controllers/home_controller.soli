@@ -2,12 +2,12 @@
 
 class HomeController extends Controller {
     // GET /up
-    fn up(req: Any) -> Any {
+    fn up(req) {
         return render_text("UP");
     }
 
     // GET /
-    fn index(req: Any) -> Any {
+    fn index(req) {
         return render("home/index", {
             "title": "Welcome",
             "message": "The Modern MVC Framework for Soli"

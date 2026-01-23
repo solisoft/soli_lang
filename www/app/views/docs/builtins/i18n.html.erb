@@ -1,0 +1,242 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">I18n</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">I18n Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Internationalization with translations, pluralization, and locale-aware formatting.
+        </p>
+    </div>
+
+    <!-- Locale Management -->
+    <section id="section-locale" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                </svg>
+            </span>
+            Locale Management
+        </h2>
+
+        <section id="fn-i18n-locale" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-i18n-locale" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.locale()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the current locale.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - The current locale code (e.g., "en", "fr", "de")
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">println(I18n.locale())  // "en"</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-i18n-set-locale" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-i18n-set-locale" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.set_locale(locale)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set the current locale.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">locale</code> : <code class="text-purple-400">String</code> - The locale code to set
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">I18n.set_locale("fr")
+I18n.set_locale("de")</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Translations -->
+    <section id="section-translations" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Translations</h2>
+
+        <section id="fn-i18n-translate" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-i18n-translate" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.translate(key, locale?, translations?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Translate a key to the specified locale.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The translation key</div>
+                    <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale (uses current if not specified)</div>
+                    <div><code class="text-amber-400">translations</code> : <code class="text-purple-400">Hash?</code> - Optional translations hash</div>
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let translations = {
+    "en.greeting": "Hello",
+    "fr.greeting": "Bonjour",
+    "de.greeting": "Hallo",
+    "en.welcome": "Welcome, {name}!"
+}
+
+I18n.translate("greeting", "fr", translations)  // "Bonjour"
+I18n.translate("greeting", "en", translations)  // "Hello"</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-i18n-plural" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-i18n-plural" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.plural(key, count, locale?, translations?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Handle pluralization based on count.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Plural Forms</h4>
+                <div class="text-sm text-gray-400 mb-4">
+                    Use suffixes: <code class="text-amber-400">_zero</code>, <code class="text-amber-400">_one</code>, <code class="text-amber-400">_other</code>
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">let translations = {
+    "en.items_zero": "No items",
+    "en.items_one": "1 item",
+    "en.items_other": "{count} items"
+}
+
+I18n.plural("items", 0, "en", translations)   // "No items"
+I18n.plural("items", 1, "en", translations)   // "1 item"
+I18n.plural("items", 5, "en", translations)   // "5 items"</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Formatting -->
+    <section id="section-formatting" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Locale-Aware Formatting</h2>
+
+        <section id="fn-i18n-format-number" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-i18n-format-number" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.format_number(number, locale?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Format a number according to locale conventions.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">I18n.format_number(1234.56, "en")  // "1,234.56"
+I18n.format_number(1234.56, "fr")  // "1 234,56"
+I18n.format_number(1234.56, "de")  // "1.234,56"</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-i18n-format-currency" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-i18n-format-currency" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.format_currency(amount, currency, locale?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Format a currency amount.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">amount</code> : <code class="text-purple-400">Float</code> - The amount</div>
+                    <div><code class="text-amber-400">currency</code> : <code class="text-purple-400">String</code> - Currency code (USD, EUR, etc.)</div>
+                    <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale</div>
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">I18n.format_currency(1234.56, "USD", "en")  // "$1,234.56"
+I18n.format_currency(1234.56, "EUR", "de")  // "1.234,56 €"
+I18n.format_currency(1234.56, "GBP", "en")  // "£1,234.56"</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-i18n-format-date" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-i18n-format-date" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.format_date(timestamp, locale?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Format a date according to locale conventions.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let ts = __datetime_parse("2024-01-15T10:30:00Z")
+
+I18n.format_date(ts, "en")  // "01/15/2024"
+I18n.format_date(ts, "fr")  // "15/01/2024"
+I18n.format_date(ts, "de")  // "15.01.2024"</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Example -->
+    <section id="section-example" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Define translations
+let translations = {
+    "en.welcome": "Welcome!",
+    "en.cart_items_zero": "Your cart is empty",
+    "en.cart_items_one": "You have 1 item in your cart",
+    "en.cart_items_other": "You have {count} items in your cart",
+    "en.total": "Total: {amount}",
+
+    "fr.welcome": "Bienvenue!",
+    "fr.cart_items_zero": "Votre panier est vide",
+    "fr.cart_items_one": "Vous avez 1 article",
+    "fr.cart_items_other": "Vous avez {count} articles",
+    "fr.total": "Total: {amount}"
+}
+
+// Set locale based on user preference
+I18n.set_locale(user["preferred_locale"] ?? "en")
+
+// Use translations
+let welcome = I18n.translate("welcome", null, translations)
+let cart_msg = I18n.plural("cart_items", cart_count, null, translations)
+let total = I18n.format_currency(cart_total, "USD")</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/testing" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Testing Functions
+        </a>
+        <a href="/docs/language" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Language Reference
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

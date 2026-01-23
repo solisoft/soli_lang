@@ -1,0 +1,243 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">DateTime</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent">DateTime Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Date/time parsing, formatting, arithmetic, and comparison using Unix timestamps.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-12">
+        <p class="text-gray-400">
+            Soli uses Unix timestamps (integers) for datetime operations. These are low-level functions prefixed with <code class="text-indigo-400">__datetime_</code>. For higher-level operations, use the <code class="text-indigo-400">DateTime</code> class.
+        </p>
+    </div>
+
+    <!-- Current Time -->
+    <section id="section-current-time" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Current Time
+        </h2>
+
+        <section id="fn-datetime-now-local" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-now-local" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_now_local()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the current local time as a Unix timestamp.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - Unix timestamp in seconds
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-datetime-now-utc" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-now-utc" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_now_utc()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the current UTC time as a Unix timestamp.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - Unix timestamp in seconds (UTC)
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Parsing & Formatting -->
+    <section id="section-parsing-formatting" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Parsing & Formatting</h2>
+
+        <section id="fn-datetime-parse" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-parse" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_parse(string)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Parse an ISO 8601 or RFC date string to a Unix timestamp.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let ts = __datetime_parse("2024-01-15T10:30:00Z")
+let ts2 = __datetime_parse("2024-01-15")</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-datetime-format" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-format" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_format(timestamp, format)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Format a timestamp using strftime format specifiers.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Common Format Specifiers</h4>
+                <div class="text-sm text-gray-400 grid grid-cols-2 gap-2 mb-4">
+                    <div><code class="text-amber-400">%Y</code> - Year (4 digits)</div>
+                    <div><code class="text-amber-400">%m</code> - Month (01-12)</div>
+                    <div><code class="text-amber-400">%d</code> - Day (01-31)</div>
+                    <div><code class="text-amber-400">%H</code> - Hour (00-23)</div>
+                    <div><code class="text-amber-400">%M</code> - Minute (00-59)</div>
+                    <div><code class="text-amber-400">%S</code> - Second (00-59)</div>
+                    <div><code class="text-amber-400">%B</code> - Month name</div>
+                    <div><code class="text-amber-400">%A</code> - Weekday name</div>
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">__datetime_format(ts, "%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
+__datetime_format(ts, "%B %d, %Y")           // "January 15, 2024"
+__datetime_format(ts, "%A")                  // "Monday"</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-datetime-to-iso" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-to-iso" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_to_iso(timestamp)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Convert a timestamp to ISO 8601 format.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">__datetime_to_iso(ts)  // "2024-01-15T10:30:00Z"</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Components -->
+    <section id="section-components" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Date Components</h2>
+
+        <section id="fn-datetime-components" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-components" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_components(timestamp)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get individual date/time components from a timestamp.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Hash</code> with keys: year, month, day, hour, minute, second, weekday
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let parts = __datetime_components(ts)
+println(parts["year"])     // 2024
+println(parts["month"])    // 1
+println(parts["day"])      // 15
+println(parts["weekday"])  // "monday"</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Arithmetic -->
+    <section id="section-arithmetic" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Arithmetic & Comparison</h2>
+
+        <section id="fn-datetime-add" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-add" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_add(timestamp, seconds)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Add seconds to a timestamp.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let tomorrow = __datetime_add(ts, 86400)      // Add 1 day
+let next_hour = __datetime_add(ts, 3600)      // Add 1 hour</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-datetime-sub" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-sub" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_sub(timestamp, seconds)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Subtract seconds from a timestamp.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let yesterday = __datetime_sub(ts, 86400)  // Subtract 1 day</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-datetime-diff" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-datetime-diff" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">__datetime_diff(timestamp1, timestamp2)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the difference between two timestamps in seconds.</p>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="fn-datetime-is-before" class="scroll-mt-20">
+                    <a href="#fn-datetime-is-before" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">__datetime_is_before(ts1, ts2)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Check if ts1 is before ts2</p>
+                </section>
+
+                <section id="fn-datetime-is-after" class="scroll-mt-20">
+                    <a href="#fn-datetime-is-after" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">__datetime_is_after(ts1, ts2)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Check if ts1 is after ts2</p>
+                </section>
+            </div>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/env" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Env Functions
+        </a>
+        <a href="/docs/builtins/validation" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Validation Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

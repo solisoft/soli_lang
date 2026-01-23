@@ -1,0 +1,118 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">JSON</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">JSON Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Parse and stringify JSON data.
+        </p>
+    </div>
+
+    <!-- JSON Functions -->
+    <section id="section-json-functions" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                </svg>
+            </span>
+            Parsing & Serialization
+        </h2>
+
+        <section id="fn-json-parse" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-json-parse" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">json_parse(string)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Parse a JSON string into a Soli value (Hash, Array, String, Int, Float, Bool, or null).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">string</code> : <code class="text-purple-400">String</code> - A valid JSON string
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Any</code> - The parsed value
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let data = json_parse('{"name": "Alice", "age": 30}')
+println(data["name"])  // Alice
+
+let numbers = json_parse('[1, 2, 3, 4, 5]')
+println(numbers[0])  // 1</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-json-stringify" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-json-stringify" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">json_stringify(value)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Serialize a Soli value to a JSON string.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">value</code> : <code class="text-purple-400">Any</code> - A JSON-compatible value (Hash, Array, String, Int, Float, Bool, null)
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - The JSON string representation
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let json = json_stringify({ "name": "Alice", "scores": [95, 87] })
+println(json)  // {"name":"Alice","scores":[95,87]}
+
+let arr = json_stringify([1, 2, 3])
+println(arr)  // [1,2,3]</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Common Patterns -->
+    <section id="section-patterns" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Common Patterns</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Reading and Writing JSON Files</h3>
+            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Read JSON file
+let config = json_parse(slurp("config.json"))
+println(config["database"]["host"])
+
+// Write JSON file
+let data = { "users": [{ "name": "Alice" }] }
+barf("data.json", json_stringify(data))</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/http" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            HTTP Functions
+        </a>
+        <a href="/docs/builtins/crypto" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Crypto Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

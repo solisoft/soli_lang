@@ -907,7 +907,8 @@ fn run_hyper_server_worker_pool(
     let hot_reload_versions = Arc::new(HotReloadVersions::new());
     let hot_reload_versions_for_watcher = hot_reload_versions.clone();
 
-    // Spawn file watcher thread for hot reload
+    // Spawn file watcher thread for hot reload (only in dev mode)
+    if dev_mode {
     let watch_folder = folder.to_path_buf();
     let watch_controllers_dir = controllers_dir.clone();
     let watch_views_dir = views_dir.clone();
@@ -1075,6 +1076,7 @@ fn run_hyper_server_worker_pool(
             println!();
         }
     });
+    } // end if dev_mode for hot reload thread
 
     // Spawn worker threads
     let mut workers = Vec::new();

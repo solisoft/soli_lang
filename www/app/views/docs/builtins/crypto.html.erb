@@ -1,0 +1,171 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Crypto</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-red-400 to-rose-400 bg-clip-text text-transparent">Cryptography Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Password hashing with Argon2, X25519 key exchange, Ed25519 signatures.
+        </p>
+    </div>
+
+    <!-- Password Hashing -->
+    <section id="section-password-hashing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+            </span>
+            Password Hashing
+        </h2>
+
+        <section id="fn-argon2-hash" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-argon2-hash" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">argon2_hash(password)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Hash a password using Argon2id (recommended algorithm). Also available as <code class="text-indigo-400">password_hash</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">password</code> : <code class="text-purple-400">String</code> - The plain text password to hash
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - The Argon2id hash string
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let hash = argon2_hash("secretpassword")
+// $argon2id$v=19$m=19456,t=2,p=1$...</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-argon2-verify" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-argon2-verify" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">argon2_verify(password, hash)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Verify a password against an Argon2id hash. Also available as <code class="text-indigo-400">password_verify</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">password</code> : <code class="text-purple-400">String</code> - The plain text password to verify</div>
+                    <div><code class="text-amber-400">hash</code> : <code class="text-purple-400">String</code> - The stored hash to verify against</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Bool</code> - true if password matches, false otherwise
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">if argon2_verify(user_input, stored_hash) {
+    println("Password correct!")
+} else {
+    println("Invalid password")
+}</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- X25519 Key Exchange -->
+    <section id="section-x25519" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">X25519 Key Exchange</h2>
+
+        <section id="fn-x25519-keypair" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-x25519-keypair" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">x25519_keypair()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate an X25519 key pair for Diffie-Hellman key exchange.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code>
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let keypair = x25519_keypair()
+println(keypair["public"])   // Base64 public key
+println(keypair["private"])  // Base64 private key</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-x25519-shared-secret" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-x25519-shared-secret" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">x25519_shared_secret(private_key, public_key)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Compute a shared secret from your private key and another party's public key.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let alice = x25519_keypair()
+let bob = x25519_keypair()
+
+// Both compute the same shared secret
+let alice_secret = x25519_shared_secret(alice["private"], bob["public"])
+let bob_secret = x25519_shared_secret(bob["private"], alice["public"])
+// alice_secret == bob_secret</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Ed25519 Signatures -->
+    <section id="section-ed25519" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Ed25519 Signatures</h2>
+
+        <section id="fn-ed25519-keypair" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-ed25519-keypair" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">ed25519_keypair()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate an Ed25519 signing key pair for digital signatures.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code>
+                </div>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
+<pre><code class="language-soli text-sm">let keypair = ed25519_keypair()
+// Use keypair["private"] to sign messages
+// Share keypair["public"] for verification</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/json" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            JSON Functions
+        </a>
+        <a href="/docs/builtins/jwt" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            JWT Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

@@ -1,0 +1,243 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Soli Language Reference</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            A comprehensive guide to the Soli programming language. Learn the syntax, types, control flow, functions, classes, and advanced features that make Soli unique.
+        </p>
+    </div>
+
+    <!-- Table of Contents -->
+    <nav class="not-prose mb-16">
+        <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            Language Topics
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <a href="/docs/language/variables-types" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center text-purple-400 text-sm font-mono">1</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Variables & Types</span>
+            </a>
+            <a href="/docs/language/operators" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-pink-500/20 flex items-center justify-center text-pink-400 text-sm font-mono">2</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Operators</span>
+            </a>
+            <a href="/docs/language/control-flow" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">3</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Control Flow</span>
+            </a>
+            <a href="/docs/language/functions" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">4</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Functions</span>
+            </a>
+            <a href="/docs/language/collections" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-sm font-mono">5</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Collections</span>
+            </a>
+            <a href="/docs/language/classes-oop" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center text-red-400 text-sm font-mono">6</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Classes & OOP</span>
+            </a>
+            <a href="/docs/language/pattern-matching" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">7</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Pattern Matching</span>
+            </a>
+            <a href="/docs/language/pipeline-operator" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-teal-500/20 flex items-center justify-center text-teal-400 text-sm font-mono">8</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Pipeline Operator</span>
+            </a>
+            <a href="/docs/language/modules" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-lime-500/20 flex items-center justify-center text-lime-400 text-sm font-mono">9</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Modules</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Getting Started Section -->
+    <section id="section-getting-started" class="scroll-mt-20 mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            Getting Started
+        </h2>
+
+        <section id="section-what-is-soli" class="scroll-mt-20 mb-8">
+            <h3 class="text-xl font-semibold text-white mb-4">What is Soli?</h3>
+            <p class="text-gray-400 mb-6">
+                Soli is a modern, statically-typed programming language designed for clarity and expressiveness. It combines object-oriented programming with functional concepts like the pipeline operator, making it ideal for web development and data processing.
+            </p>
+        </section>
+
+        <section id="section-hello-world" class="scroll-mt-20 mb-8">
+            <h3 class="text-xl font-semibold text-white mb-4">Hello World</h3>
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+                    <span class="text-xs text-gray-400 font-mono">hello.soli</span>
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span class="text-xs text-gray-500">Runnable</span>
+                    </div>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// The classic first program
+print("Hello, World!");</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="section-first-program" class="scroll-mt-20 mb-8">
+            <h3 class="text-xl font-semibold text-white mb-4">Your First Soli Program</h3>
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+                    <span class="text-xs text-gray-400 font-mono">area.soli</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// A simple program that calculates the area of a circle
+fn calculate_area(radius: Float) -> Float {
+    return 3.14159 * radius * radius;
+}
+
+let radius = 5.0;
+let area = calculate_area(radius);
+print("The area of a circle with radius " + str(radius) + " is " + str(area));
+// Output: The area of a circle with radius 5.0 is 78.53975</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="section-running-soli" class="scroll-mt-20 mb-8">
+            <h3 class="text-xl font-semibold text-white mb-4">Running Soli Code</h3>
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Run a single file
+soli run hello.soli
+
+# Run with hot reload (development)
+soli serve
+
+# Run tests
+soli test
+
+# Build for production
+soli build --release</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Quick Reference -->
+    <section class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-gray-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+            </span>
+            Quick Reference
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5">
+                    <span class="text-xs text-gray-400 font-mono">Variables & Functions</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Variables
+let name = "Alice";
+let age: Int = 30;
+const PI = 3.14159;
+
+// Function
+fn add(a: Int, b: Int) -> Int {
+    return a + b;
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5">
+                    <span class="text-xs text-gray-400 font-mono">Class</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Person {
+    name: String;
+    new(name: String) {
+        this.name = name;
+    }
+    fn greet() -> String {
+        return "Hello, " + this.name;
+    }
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5">
+                    <span class="text-xs text-gray-400 font-mono">Control Flow</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// If/Else
+if (condition) {
+    // code
+} else {
+    // code
+}
+
+// For Loop
+for (item in collection) {
+    // code
+}
+
+// Match
+match value {
+    pattern => result,
+    _ => default,
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5">
+                    <span class="text-xs text-gray-400 font-mono">Pipeline & Collections</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Pipeline
+value |> fn1() |> fn2();
+
+// Collections
+arr.map(fn(x) x * 2);
+hash.filter(fn(p) p[1] > 0);</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Call to Action -->
+    <div class="rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/20 p-8 text-center">
+        <h3 class="text-2xl font-bold text-white mb-3">Ready to Learn?</h3>
+        <p class="text-gray-400 mb-6">
+            Start with Variables & Types to learn the fundamentals of Soli.
+        </p>
+        <div class="flex flex-wrap justify-center gap-4">
+            <a href="/docs/language/variables-types" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+                Start Learning
+            </a>
+            <a href="/docs/builtins" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-colors border border-white/10">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                Built-in Functions
+            </a>
+        </div>
+    </div>
+</div>

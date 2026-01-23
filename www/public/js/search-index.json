@@ -1,0 +1,1237 @@
+{
+  "entries": [
+    {
+      "title": "print",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-print",
+      "signature": "print(value)",
+      "description": "Prints a value to standard output without a newline",
+      "keywords": ["output", "console", "io", "display"]
+    },
+    {
+      "title": "println",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-println",
+      "signature": "println(value)",
+      "description": "Prints a value to standard output with a newline",
+      "keywords": ["output", "console", "io", "display"]
+    },
+    {
+      "title": "input",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-input",
+      "signature": "input(prompt?)",
+      "description": "Reads a line of input from the user",
+      "keywords": ["read", "stdin", "user input", "io"]
+    },
+    {
+      "title": "type",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-type",
+      "signature": "type(value)",
+      "description": "Returns the type name of a value as a string",
+      "keywords": ["typeof", "introspection", "reflection"]
+    },
+    {
+      "title": "str",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-str",
+      "signature": "str(value)",
+      "description": "Convert a value to a string",
+      "keywords": ["string", "convert", "cast", "tostring"]
+    },
+    {
+      "title": "int",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-int",
+      "signature": "int(value)",
+      "description": "Convert a value to an integer",
+      "keywords": ["integer", "convert", "cast", "parse"]
+    },
+    {
+      "title": "float",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-float",
+      "signature": "float(value)",
+      "description": "Convert a value to a float",
+      "keywords": ["decimal", "convert", "cast", "parse"]
+    },
+    {
+      "title": "len",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-len",
+      "signature": "len(value)",
+      "description": "Returns the length of a string, array, or hash",
+      "keywords": ["length", "size", "count"]
+    },
+    {
+      "title": "push",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-push",
+      "signature": "push(array, value)",
+      "description": "Add an element to the end of an array",
+      "keywords": ["array", "append", "add"]
+    },
+    {
+      "title": "pop",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-pop",
+      "signature": "pop(array)",
+      "description": "Remove and return the last element from an array",
+      "keywords": ["array", "remove", "last"]
+    },
+    {
+      "title": "range",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-range",
+      "signature": "range(start, end, step?)",
+      "description": "Creates an array of numbers from start to end (exclusive)",
+      "keywords": ["array", "sequence", "iterate", "numbers"]
+    },
+    {
+      "title": "keys",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-keys",
+      "signature": "keys(hash)",
+      "description": "Returns an array of all keys in a hash",
+      "keywords": ["hash", "object", "map", "dictionary"]
+    },
+    {
+      "title": "values",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-values",
+      "signature": "values(hash)",
+      "description": "Returns an array of all values in a hash",
+      "keywords": ["hash", "object", "map", "dictionary"]
+    },
+    {
+      "title": "entries",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-entries",
+      "signature": "entries(hash)",
+      "description": "Returns an array of [key, value] pairs",
+      "keywords": ["hash", "object", "pairs", "iterate"]
+    },
+    {
+      "title": "has_key",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-has-key",
+      "signature": "has_key(hash, key)",
+      "description": "Check if a key exists in a hash",
+      "keywords": ["hash", "contains", "exists", "check"]
+    },
+    {
+      "title": "merge",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-merge",
+      "signature": "merge(h1, h2)",
+      "description": "Merge two hashes together",
+      "keywords": ["hash", "combine", "join", "object"]
+    },
+    {
+      "title": "split",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-split",
+      "signature": "split(str, sep)",
+      "description": "Split a string by a separator",
+      "keywords": ["string", "tokenize", "explode"]
+    },
+    {
+      "title": "join",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-join",
+      "signature": "join(arr, sep)",
+      "description": "Join array elements with a separator",
+      "keywords": ["string", "combine", "implode"]
+    },
+    {
+      "title": "upcase",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-upcase",
+      "signature": "upcase(str)",
+      "description": "Convert string to uppercase",
+      "keywords": ["string", "uppercase", "capitalize"]
+    },
+    {
+      "title": "downcase",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-upcase",
+      "signature": "downcase(str)",
+      "description": "Convert string to lowercase",
+      "keywords": ["string", "lowercase"]
+    },
+    {
+      "title": "trim",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-upcase",
+      "signature": "trim(str)",
+      "description": "Remove whitespace from both ends of a string",
+      "keywords": ["string", "strip", "whitespace"]
+    },
+    {
+      "title": "replace",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-replace",
+      "signature": "replace(str, from, to)",
+      "description": "Replace all occurrences of a substring",
+      "keywords": ["string", "substitute", "find"]
+    },
+    {
+      "title": "html_escape",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-html-escape",
+      "signature": "html_escape(str)",
+      "description": "Escape HTML special characters",
+      "keywords": ["html", "xss", "security", "encode"]
+    },
+    {
+      "title": "html_unescape",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-html-escape",
+      "signature": "html_unescape(str)",
+      "description": "Unescape HTML entities",
+      "keywords": ["html", "decode"]
+    },
+    {
+      "title": "sanitize_html",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-html-escape",
+      "signature": "sanitize_html(str)",
+      "description": "Remove dangerous HTML attributes and tags",
+      "keywords": ["html", "xss", "security", "clean"]
+    },
+    {
+      "title": "abs",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-abs",
+      "signature": "abs(n)",
+      "description": "Returns the absolute value of a number",
+      "keywords": ["math", "absolute"]
+    },
+    {
+      "title": "min",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-abs",
+      "signature": "min(a, b)",
+      "description": "Returns the smaller of two numbers",
+      "keywords": ["math", "minimum", "compare"]
+    },
+    {
+      "title": "max",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-abs",
+      "signature": "max(a, b)",
+      "description": "Returns the larger of two numbers",
+      "keywords": ["math", "maximum", "compare"]
+    },
+    {
+      "title": "sqrt",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-sqrt",
+      "signature": "sqrt(n)",
+      "description": "Returns the square root of a number",
+      "keywords": ["math", "root"]
+    },
+    {
+      "title": "pow",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-sqrt",
+      "signature": "pow(base, exp)",
+      "description": "Returns base raised to the power of exp",
+      "keywords": ["math", "power", "exponent"]
+    },
+    {
+      "title": "clock",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-clock",
+      "signature": "clock()",
+      "description": "Returns the current Unix timestamp as a float",
+      "keywords": ["time", "timestamp", "benchmark"]
+    },
+    {
+      "title": "slurp",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-slurp",
+      "signature": "slurp(path)",
+      "description": "Read an entire file into a string",
+      "keywords": ["file", "read", "io"]
+    },
+    {
+      "title": "barf",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-barf",
+      "signature": "barf(path, content)",
+      "description": "Write content to a file",
+      "keywords": ["file", "write", "io"]
+    },
+    {
+      "title": "http_get",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-get",
+      "signature": "http_get(url, options?)",
+      "description": "Perform an HTTP GET request",
+      "keywords": ["http", "request", "fetch", "api"]
+    },
+    {
+      "title": "http_post",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-post",
+      "signature": "http_post(url, body, options?)",
+      "description": "Perform an HTTP POST request with a body",
+      "keywords": ["http", "request", "api", "send"]
+    },
+    {
+      "title": "http_get_json",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-get-json",
+      "signature": "http_get_json(url)",
+      "description": "GET request with automatic JSON parsing",
+      "keywords": ["http", "json", "api", "fetch"]
+    },
+    {
+      "title": "http_post_json",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-post-json",
+      "signature": "http_post_json(url, data)",
+      "description": "POST request with automatic JSON serialization",
+      "keywords": ["http", "json", "api", "send"]
+    },
+    {
+      "title": "http_request",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-request",
+      "signature": "http_request(method, url, options?)",
+      "description": "Perform any HTTP method (GET, POST, PUT, PATCH, DELETE)",
+      "keywords": ["http", "request", "api"]
+    },
+    {
+      "title": "http_ok",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-ok",
+      "signature": "http_ok(resp)",
+      "description": "Check if HTTP status is exactly 200",
+      "keywords": ["http", "status", "response"]
+    },
+    {
+      "title": "http_success",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-success",
+      "signature": "http_success(resp)",
+      "description": "Check if HTTP status is 2xx",
+      "keywords": ["http", "status", "response"]
+    },
+    {
+      "title": "http_get_all",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-get-all",
+      "signature": "http_get_all(urls)",
+      "description": "Execute multiple GET requests in parallel",
+      "keywords": ["http", "parallel", "batch", "concurrent"]
+    },
+    {
+      "title": "http_parallel",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-http-parallel",
+      "signature": "http_parallel(requests)",
+      "description": "Execute multiple requests of different methods in parallel",
+      "keywords": ["http", "parallel", "batch", "concurrent"]
+    },
+    {
+      "title": "json_parse",
+      "type": "function",
+      "category": "JSON",
+      "path": "/docs/builtins/json#fn-json-parse",
+      "signature": "json_parse(string)",
+      "description": "Parse a JSON string into a Soli value",
+      "keywords": ["json", "parse", "decode", "deserialize"]
+    },
+    {
+      "title": "json_stringify",
+      "type": "function",
+      "category": "JSON",
+      "path": "/docs/builtins/json#fn-json-stringify",
+      "signature": "json_stringify(value)",
+      "description": "Serialize a Soli value to a JSON string",
+      "keywords": ["json", "stringify", "encode", "serialize"]
+    },
+    {
+      "title": "argon2_hash",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-argon2-hash",
+      "signature": "argon2_hash(password)",
+      "description": "Hash a password using Argon2id",
+      "keywords": ["password", "hash", "security", "argon2"]
+    },
+    {
+      "title": "argon2_verify",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-argon2-verify",
+      "signature": "argon2_verify(password, hash)",
+      "description": "Verify a password against an Argon2id hash",
+      "keywords": ["password", "verify", "security", "argon2"]
+    },
+    {
+      "title": "password_hash",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-argon2-hash",
+      "signature": "password_hash(password)",
+      "description": "Alias for argon2_hash",
+      "keywords": ["password", "hash", "security"]
+    },
+    {
+      "title": "password_verify",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-argon2-verify",
+      "signature": "password_verify(password, hash)",
+      "description": "Alias for argon2_verify",
+      "keywords": ["password", "verify", "security"]
+    },
+    {
+      "title": "x25519_keypair",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-x25519-keypair",
+      "signature": "x25519_keypair()",
+      "description": "Generate an X25519 key pair for Diffie-Hellman key exchange",
+      "keywords": ["crypto", "key", "diffie-hellman", "exchange"]
+    },
+    {
+      "title": "x25519_shared_secret",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-x25519-shared-secret",
+      "signature": "x25519_shared_secret(private_key, public_key)",
+      "description": "Compute a shared secret from keys",
+      "keywords": ["crypto", "secret", "diffie-hellman"]
+    },
+    {
+      "title": "ed25519_keypair",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-ed25519-keypair",
+      "signature": "ed25519_keypair()",
+      "description": "Generate an Ed25519 signing key pair",
+      "keywords": ["crypto", "signature", "key", "signing"]
+    },
+    {
+      "title": "jwt_sign",
+      "type": "function",
+      "category": "JWT",
+      "path": "/docs/builtins/jwt#fn-jwt-sign",
+      "signature": "jwt_sign(payload, secret, options?)",
+      "description": "Create a signed JWT token",
+      "keywords": ["jwt", "token", "auth", "sign"]
+    },
+    {
+      "title": "jwt_verify",
+      "type": "function",
+      "category": "JWT",
+      "path": "/docs/builtins/jwt#fn-jwt-verify",
+      "signature": "jwt_verify(token, secret)",
+      "description": "Verify and decode a JWT token",
+      "keywords": ["jwt", "token", "auth", "verify"]
+    },
+    {
+      "title": "jwt_decode",
+      "type": "function",
+      "category": "JWT",
+      "path": "/docs/builtins/jwt#fn-jwt-decode",
+      "signature": "jwt_decode(token)",
+      "description": "Decode a JWT without verification",
+      "keywords": ["jwt", "token", "decode"]
+    },
+    {
+      "title": "regex_match",
+      "type": "function",
+      "category": "Regex",
+      "path": "/docs/builtins/regex#fn-regex-match",
+      "signature": "regex_match(pattern, string)",
+      "description": "Test if a string matches a regex pattern",
+      "keywords": ["regex", "match", "test", "pattern"]
+    },
+    {
+      "title": "regex_find",
+      "type": "function",
+      "category": "Regex",
+      "path": "/docs/builtins/regex#fn-regex-find",
+      "signature": "regex_find(pattern, string)",
+      "description": "Find the first match in a string",
+      "keywords": ["regex", "find", "search", "pattern"]
+    },
+    {
+      "title": "regex_find_all",
+      "type": "function",
+      "category": "Regex",
+      "path": "/docs/builtins/regex#fn-regex-find-all",
+      "signature": "regex_find_all(pattern, string)",
+      "description": "Find all matches in a string",
+      "keywords": ["regex", "findall", "search", "global"]
+    },
+    {
+      "title": "regex_replace",
+      "type": "function",
+      "category": "Regex",
+      "path": "/docs/builtins/regex#fn-regex-replace",
+      "signature": "regex_replace(pattern, string, replacement)",
+      "description": "Replace the first match",
+      "keywords": ["regex", "replace", "substitute"]
+    },
+    {
+      "title": "regex_replace_all",
+      "type": "function",
+      "category": "Regex",
+      "path": "/docs/builtins/regex#fn-regex-replace-all",
+      "signature": "regex_replace_all(pattern, string, replacement)",
+      "description": "Replace all matches",
+      "keywords": ["regex", "replaceall", "substitute", "global"]
+    },
+    {
+      "title": "regex_split",
+      "type": "function",
+      "category": "Regex",
+      "path": "/docs/builtins/regex#fn-regex-split",
+      "signature": "regex_split(pattern, string)",
+      "description": "Split a string by a regex pattern",
+      "keywords": ["regex", "split", "tokenize"]
+    },
+    {
+      "title": "regex_capture",
+      "type": "function",
+      "category": "Regex",
+      "path": "/docs/builtins/regex#fn-regex-capture",
+      "signature": "regex_capture(pattern, string)",
+      "description": "Capture named groups from a pattern",
+      "keywords": ["regex", "capture", "groups", "extract"]
+    },
+    {
+      "title": "regex_escape",
+      "type": "function",
+      "category": "Regex",
+      "path": "/docs/builtins/regex#fn-regex-escape",
+      "signature": "regex_escape(string)",
+      "description": "Escape special regex characters",
+      "keywords": ["regex", "escape", "quote"]
+    },
+    {
+      "title": "getenv",
+      "type": "function",
+      "category": "Env",
+      "path": "/docs/builtins/env#fn-getenv",
+      "signature": "getenv(name)",
+      "description": "Get the value of an environment variable",
+      "keywords": ["env", "environment", "config"]
+    },
+    {
+      "title": "setenv",
+      "type": "function",
+      "category": "Env",
+      "path": "/docs/builtins/env#fn-setenv",
+      "signature": "setenv(name, value)",
+      "description": "Set an environment variable",
+      "keywords": ["env", "environment", "config"]
+    },
+    {
+      "title": "unsetenv",
+      "type": "function",
+      "category": "Env",
+      "path": "/docs/builtins/env#fn-unsetenv",
+      "signature": "unsetenv(name)",
+      "description": "Remove an environment variable",
+      "keywords": ["env", "environment", "delete"]
+    },
+    {
+      "title": "hasenv",
+      "type": "function",
+      "category": "Env",
+      "path": "/docs/builtins/env#fn-hasenv",
+      "signature": "hasenv(name)",
+      "description": "Check if an environment variable is set",
+      "keywords": ["env", "environment", "exists"]
+    },
+    {
+      "title": "dotenv",
+      "type": "function",
+      "category": "Env",
+      "path": "/docs/builtins/env#fn-dotenv",
+      "signature": "dotenv(path?)",
+      "description": "Load environment variables from .env files",
+      "keywords": ["env", "dotenv", "config", "file"]
+    },
+    {
+      "title": "__datetime_now_local",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-now-local",
+      "signature": "__datetime_now_local()",
+      "description": "Get the current local time as a Unix timestamp",
+      "keywords": ["datetime", "time", "now", "local"]
+    },
+    {
+      "title": "__datetime_now_utc",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-now-utc",
+      "signature": "__datetime_now_utc()",
+      "description": "Get the current UTC time as a Unix timestamp",
+      "keywords": ["datetime", "time", "now", "utc"]
+    },
+    {
+      "title": "__datetime_parse",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-parse",
+      "signature": "__datetime_parse(string)",
+      "description": "Parse an ISO 8601 or RFC date string to a Unix timestamp",
+      "keywords": ["datetime", "parse", "iso8601"]
+    },
+    {
+      "title": "__datetime_format",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-format",
+      "signature": "__datetime_format(timestamp, format)",
+      "description": "Format a timestamp using strftime format specifiers",
+      "keywords": ["datetime", "format", "strftime"]
+    },
+    {
+      "title": "__datetime_to_iso",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-to-iso",
+      "signature": "__datetime_to_iso(timestamp)",
+      "description": "Convert a timestamp to ISO 8601 format",
+      "keywords": ["datetime", "iso8601", "format"]
+    },
+    {
+      "title": "__datetime_components",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-components",
+      "signature": "__datetime_components(timestamp)",
+      "description": "Get individual date/time components from a timestamp",
+      "keywords": ["datetime", "year", "month", "day", "hour"]
+    },
+    {
+      "title": "__datetime_add",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-add",
+      "signature": "__datetime_add(timestamp, seconds)",
+      "description": "Add seconds to a timestamp",
+      "keywords": ["datetime", "add", "arithmetic"]
+    },
+    {
+      "title": "__datetime_sub",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-sub",
+      "signature": "__datetime_sub(timestamp, seconds)",
+      "description": "Subtract seconds from a timestamp",
+      "keywords": ["datetime", "subtract", "arithmetic"]
+    },
+    {
+      "title": "__datetime_diff",
+      "type": "function",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-datetime-diff",
+      "signature": "__datetime_diff(timestamp1, timestamp2)",
+      "description": "Get the difference between two timestamps in seconds",
+      "keywords": ["datetime", "diff", "difference"]
+    },
+    {
+      "title": "V.string",
+      "type": "function",
+      "category": "Validation",
+      "path": "/docs/builtins/validation#fn-v-string",
+      "signature": "V.string()",
+      "description": "Validate string values",
+      "keywords": ["validation", "string", "schema"]
+    },
+    {
+      "title": "V.int",
+      "type": "function",
+      "category": "Validation",
+      "path": "/docs/builtins/validation#fn-v-int",
+      "signature": "V.int()",
+      "description": "Validate integer values",
+      "keywords": ["validation", "integer", "schema"]
+    },
+    {
+      "title": "V.float",
+      "type": "function",
+      "category": "Validation",
+      "path": "/docs/builtins/validation#fn-v-float",
+      "signature": "V.float()",
+      "description": "Validate float values",
+      "keywords": ["validation", "float", "schema"]
+    },
+    {
+      "title": "V.bool",
+      "type": "function",
+      "category": "Validation",
+      "path": "/docs/builtins/validation#fn-v-bool",
+      "signature": "V.bool()",
+      "description": "Validate boolean values",
+      "keywords": ["validation", "boolean", "schema"]
+    },
+    {
+      "title": "V.array",
+      "type": "function",
+      "category": "Validation",
+      "path": "/docs/builtins/validation#fn-v-array",
+      "signature": "V.array(schema?)",
+      "description": "Validate arrays with optional item schema",
+      "keywords": ["validation", "array", "schema"]
+    },
+    {
+      "title": "V.hash",
+      "type": "function",
+      "category": "Validation",
+      "path": "/docs/builtins/validation#fn-v-hash",
+      "signature": "V.hash(schema?)",
+      "description": "Validate hashes with optional nested schema",
+      "keywords": ["validation", "hash", "object", "schema"]
+    },
+    {
+      "title": "validate",
+      "type": "function",
+      "category": "Validation",
+      "path": "/docs/builtins/validation#fn-validate",
+      "signature": "validate(data, schema)",
+      "description": "Validate data against a schema",
+      "keywords": ["validation", "schema", "verify"]
+    },
+    {
+      "title": "session_get",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session#fn-session-get",
+      "signature": "session_get(key)",
+      "description": "Get a value from the session",
+      "keywords": ["session", "get", "state"]
+    },
+    {
+      "title": "session_set",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session#fn-session-set",
+      "signature": "session_set(key, value)",
+      "description": "Store a value in the session",
+      "keywords": ["session", "set", "store", "state"]
+    },
+    {
+      "title": "session_delete",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session#fn-session-delete",
+      "signature": "session_delete(key)",
+      "description": "Remove a value from the session",
+      "keywords": ["session", "delete", "remove"]
+    },
+    {
+      "title": "session_has",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session#fn-session-has",
+      "signature": "session_has(key)",
+      "description": "Check if a key exists in the session",
+      "keywords": ["session", "has", "exists"]
+    },
+    {
+      "title": "session_destroy",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session#fn-session-destroy",
+      "signature": "session_destroy()",
+      "description": "Destroy the entire session",
+      "keywords": ["session", "destroy", "logout"]
+    },
+    {
+      "title": "session_regenerate",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session#fn-session-regenerate",
+      "signature": "session_regenerate()",
+      "description": "Generate a new session ID while preserving data",
+      "keywords": ["session", "regenerate", "security"]
+    },
+    {
+      "title": "session_id",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session#fn-session-id",
+      "signature": "session_id()",
+      "description": "Get the current session ID",
+      "keywords": ["session", "id", "identifier"]
+    },
+    {
+      "title": "describe",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-describe",
+      "signature": "describe(description, fn)",
+      "description": "Define a test group",
+      "keywords": ["test", "describe", "suite", "group"]
+    },
+    {
+      "title": "test",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-test",
+      "signature": "test(description, fn)",
+      "description": "Define an individual test case",
+      "keywords": ["test", "case", "spec"]
+    },
+    {
+      "title": "it",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-it",
+      "signature": "it(description, fn)",
+      "description": "Alternative to test()",
+      "keywords": ["test", "it", "spec"]
+    },
+    {
+      "title": "before_each",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-before-each",
+      "signature": "before_each(fn)",
+      "description": "Run before each test",
+      "keywords": ["test", "setup", "hook"]
+    },
+    {
+      "title": "after_each",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-after-each",
+      "signature": "after_each(fn)",
+      "description": "Run after each test",
+      "keywords": ["test", "teardown", "hook"]
+    },
+    {
+      "title": "before_all",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-before-all",
+      "signature": "before_all(fn)",
+      "description": "Run once before all tests",
+      "keywords": ["test", "setup", "hook"]
+    },
+    {
+      "title": "after_all",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-after-all",
+      "signature": "after_all(fn)",
+      "description": "Run once after all tests",
+      "keywords": ["test", "teardown", "hook"]
+    },
+    {
+      "title": "assert",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-assert",
+      "signature": "assert(condition)",
+      "description": "Assert condition is true",
+      "keywords": ["test", "assert", "expect"]
+    },
+    {
+      "title": "assert_eq",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-assert-eq",
+      "signature": "assert_eq(a, b)",
+      "description": "Assert a equals b",
+      "keywords": ["test", "assert", "equal"]
+    },
+    {
+      "title": "assert_ne",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-assert-ne",
+      "signature": "assert_ne(a, b)",
+      "description": "Assert a does not equal b",
+      "keywords": ["test", "assert", "notequal"]
+    },
+    {
+      "title": "assert_null",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-assert-null",
+      "signature": "assert_null(value)",
+      "description": "Assert value is null",
+      "keywords": ["test", "assert", "null"]
+    },
+    {
+      "title": "assert_not_null",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-assert-not-null",
+      "signature": "assert_not_null(value)",
+      "description": "Assert value is not null",
+      "keywords": ["test", "assert", "notnull"]
+    },
+    {
+      "title": "assert_match",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-assert-match",
+      "signature": "assert_match(str, pattern)",
+      "description": "Assert string matches regex",
+      "keywords": ["test", "assert", "regex", "match"]
+    },
+    {
+      "title": "assert_contains",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-assert-contains",
+      "signature": "assert_contains(coll, val)",
+      "description": "Assert collection contains value",
+      "keywords": ["test", "assert", "contains"]
+    },
+    {
+      "title": "Factory.define",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-factory-define",
+      "signature": "Factory.define(name, data)",
+      "description": "Define a factory with default data",
+      "keywords": ["test", "factory", "mock", "fixture"]
+    },
+    {
+      "title": "Factory.create",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-factory-create",
+      "signature": "Factory.create(name)",
+      "description": "Create an instance from a factory",
+      "keywords": ["test", "factory", "mock", "fixture"]
+    },
+    {
+      "title": "Factory.create_with",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#fn-factory-create-with",
+      "signature": "Factory.create_with(name, overrides)",
+      "description": "Create an instance with custom overrides",
+      "keywords": ["test", "factory", "mock", "fixture"]
+    },
+    {
+      "title": "I18n.locale",
+      "type": "function",
+      "category": "I18n",
+      "path": "/docs/builtins/i18n#fn-i18n-locale",
+      "signature": "I18n.locale()",
+      "description": "Get the current locale",
+      "keywords": ["i18n", "locale", "language", "internationalization"]
+    },
+    {
+      "title": "I18n.set_locale",
+      "type": "function",
+      "category": "I18n",
+      "path": "/docs/builtins/i18n#fn-i18n-set-locale",
+      "signature": "I18n.set_locale(locale)",
+      "description": "Set the current locale",
+      "keywords": ["i18n", "locale", "language", "internationalization"]
+    },
+    {
+      "title": "I18n.translate",
+      "type": "function",
+      "category": "I18n",
+      "path": "/docs/builtins/i18n#fn-i18n-translate",
+      "signature": "I18n.translate(key, locale?, translations?)",
+      "description": "Translate a key to the specified locale",
+      "keywords": ["i18n", "translate", "t", "localization"]
+    },
+    {
+      "title": "I18n.plural",
+      "type": "function",
+      "category": "I18n",
+      "path": "/docs/builtins/i18n#fn-i18n-plural",
+      "signature": "I18n.plural(key, count, locale?, translations?)",
+      "description": "Handle pluralization based on count",
+      "keywords": ["i18n", "plural", "pluralize", "count"]
+    },
+    {
+      "title": "I18n.format_number",
+      "type": "function",
+      "category": "I18n",
+      "path": "/docs/builtins/i18n#fn-i18n-format-number",
+      "signature": "I18n.format_number(number, locale?)",
+      "description": "Format a number according to locale conventions",
+      "keywords": ["i18n", "number", "format", "locale"]
+    },
+    {
+      "title": "I18n.format_currency",
+      "type": "function",
+      "category": "I18n",
+      "path": "/docs/builtins/i18n#fn-i18n-format-currency",
+      "signature": "I18n.format_currency(amount, currency, locale?)",
+      "description": "Format a currency amount",
+      "keywords": ["i18n", "currency", "money", "format"]
+    },
+    {
+      "title": "I18n.format_date",
+      "type": "function",
+      "category": "I18n",
+      "path": "/docs/builtins/i18n#fn-i18n-format-date",
+      "signature": "I18n.format_date(timestamp, locale?)",
+      "description": "Format a date according to locale conventions",
+      "keywords": ["i18n", "date", "format", "locale"]
+    },
+    {
+      "title": "let",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/variables-types#kw-let",
+      "signature": "let name = value",
+      "description": "Declares a mutable variable",
+      "keywords": ["variable", "declare", "assignment"]
+    },
+    {
+      "title": "const",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/variables-types#kw-const",
+      "signature": "const NAME = value",
+      "description": "Declares an immutable constant",
+      "keywords": ["constant", "immutable", "readonly"]
+    },
+    {
+      "title": "if",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/control-flow#kw-if",
+      "signature": "if (condition) { ... }",
+      "description": "Conditional branching statement",
+      "keywords": ["conditional", "branch", "control flow"]
+    },
+    {
+      "title": "else",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/control-flow#kw-if",
+      "signature": "else { ... }",
+      "description": "Alternative branch for if statement",
+      "keywords": ["conditional", "branch", "control flow"]
+    },
+    {
+      "title": "while",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/control-flow#kw-while",
+      "signature": "while (condition) { ... }",
+      "description": "Repeats while a condition is true",
+      "keywords": ["loop", "iterate", "repeat"]
+    },
+    {
+      "title": "for",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/control-flow#kw-for",
+      "signature": "for (item in collection) { ... }",
+      "description": "Iterates over collections or ranges",
+      "keywords": ["loop", "iterate", "foreach"]
+    },
+    {
+      "title": "break",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/control-flow#kw-break",
+      "signature": "break",
+      "description": "Exits the current loop immediately",
+      "keywords": ["loop", "exit", "control flow"]
+    },
+    {
+      "title": "continue",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/control-flow#kw-continue",
+      "signature": "continue",
+      "description": "Skips to the next iteration of the loop",
+      "keywords": ["loop", "skip", "control flow"]
+    },
+    {
+      "title": "unless",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/control-flow#kw-postfix-if",
+      "signature": "expression unless (condition)",
+      "description": "Postfix conditional (negated if)",
+      "keywords": ["conditional", "postfix", "ruby"]
+    },
+    {
+      "title": "fn",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/functions#kw-fn",
+      "signature": "fn name(params) { ... }",
+      "description": "Declares a function",
+      "keywords": ["function", "define", "method"]
+    },
+    {
+      "title": "return",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/functions#kw-return",
+      "signature": "return value",
+      "description": "Returns a value from a function",
+      "keywords": ["function", "exit", "value"]
+    },
+    {
+      "title": "class",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/classes-oop#kw-class",
+      "signature": "class Name { ... }",
+      "description": "Declares a class",
+      "keywords": ["class", "oop", "object"]
+    },
+    {
+      "title": "match",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/pattern-matching#kw-match",
+      "signature": "match value { pattern => expr }",
+      "description": "Pattern matching expression",
+      "keywords": ["pattern", "switch", "case"]
+    },
+    {
+      "title": "import",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/modules#kw-import",
+      "signature": "import module",
+      "description": "Imports a module",
+      "keywords": ["module", "import", "require"]
+    },
+    {
+      "title": "??",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-null-coalesce",
+      "signature": "value ?? default",
+      "description": "Null coalescing operator - returns default if value is null",
+      "keywords": ["null", "coalesce", "default", "optional"]
+    },
+    {
+      "title": "|>",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/pipeline-operator#op-pipeline",
+      "signature": "value |> function",
+      "description": "Pipeline operator for chaining function calls",
+      "keywords": ["pipeline", "pipe", "chain", "functional"]
+    },
+    {
+      "title": "..",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-range",
+      "signature": "start..end",
+      "description": "Range operator - creates an array of integers (exclusive end)",
+      "keywords": ["range", "sequence", "iterate"]
+    },
+    {
+      "title": "Int",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/variables-types#type-int",
+      "signature": "Int",
+      "description": "64-bit signed integer type",
+      "keywords": ["type", "integer", "number"]
+    },
+    {
+      "title": "Float",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/variables-types#type-float",
+      "signature": "Float",
+      "description": "64-bit floating-point type",
+      "keywords": ["type", "decimal", "number"]
+    },
+    {
+      "title": "String",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/variables-types#type-string",
+      "signature": "String",
+      "description": "UTF-8 string type",
+      "keywords": ["type", "text", "characters"]
+    },
+    {
+      "title": "Bool",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/variables-types#type-bool",
+      "signature": "Bool",
+      "description": "Boolean type (true/false)",
+      "keywords": ["type", "boolean", "logical"]
+    },
+    {
+      "title": "Array",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/collections#type-array",
+      "signature": "Array / Type[]",
+      "description": "Ordered collection type",
+      "keywords": ["type", "list", "collection"]
+    },
+    {
+      "title": "Hash",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/collections#type-hash",
+      "signature": "Hash",
+      "description": "Key-value collection type",
+      "keywords": ["type", "object", "map", "dictionary"]
+    }
+  ]
+}

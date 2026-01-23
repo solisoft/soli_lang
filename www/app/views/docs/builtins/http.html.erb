@@ -1,0 +1,243 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">HTTP</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">HTTP Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            HTTP client for GET, POST, PUT, PATCH, DELETE requests with JSON support and parallel requests.
+        </p>
+    </div>
+
+    <!-- Basic HTTP Requests -->
+    <section id="section-basic-requests" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                </svg>
+            </span>
+            Basic HTTP Requests
+        </h2>
+
+        <section id="fn-http-get" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-get" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_get(url, options?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Perform an HTTP GET request. Returns <code class="text-amber-400">{ "status": Int, "body": String, "headers": Hash }</code>.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">let resp = http_get("https://api.example.com/users")
+if resp["status"] == 200 {
+    println(resp["body"])
+}</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-http-post" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-post" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_post(url, body, options?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Perform an HTTP POST request with a body.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">let resp = http_post(
+    "https://api.example.com/users",
+    "name=Alice",
+    { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
+)</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- JSON HTTP Methods -->
+    <section id="section-json-methods" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">JSON HTTP Methods</h2>
+
+        <section id="fn-http-get-json" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-get-json" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_get_json(url)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">GET request with automatic JSON parsing of response body.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">let data = http_get_json("https://api.example.com/users/1")
+println(data["body"]["name"])</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-http-post-json" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-post-json" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_post_json(url, data)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">POST request with automatic JSON serialization.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">let resp = http_post_json(
+    "https://api.example.com/users",
+    { "name": "Alice", "email": "alice@example.com" }
+)</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Generic HTTP Request -->
+    <section id="section-generic-request" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Generic HTTP Request</h2>
+
+        <section id="fn-http-request" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-request" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_request(method, url, options?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.).</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">let resp = http_request("DELETE", "https://api.example.com/users/1")
+let resp = http_request("PATCH", url, { "body": json, "headers": headers })</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Status Code Helpers -->
+    <section id="section-status-helpers" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Status Code Helpers</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="fn-http-ok" class="scroll-mt-20">
+                    <a href="#fn-http-ok" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">http_ok(resp)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Check if status is exactly 200</p>
+                </section>
+
+                <section id="fn-http-success" class="scroll-mt-20">
+                    <a href="#fn-http-success" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">http_success(resp)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Check if status is 2xx</p>
+                </section>
+
+                <section id="fn-http-redirect" class="scroll-mt-20">
+                    <a href="#fn-http-redirect" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">http_redirect(resp)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Check if status is 3xx</p>
+                </section>
+
+                <section id="fn-http-client-error" class="scroll-mt-20">
+                    <a href="#fn-http-client-error" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">http_client_error(resp)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Check if status is 4xx</p>
+                </section>
+
+                <section id="fn-http-server-error" class="scroll-mt-20">
+                    <a href="#fn-http-server-error" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">http_server_error(resp)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Check if status is 5xx</p>
+                </section>
+            </div>
+        </div>
+    </section>
+
+    <!-- Parallel Requests -->
+    <section id="section-parallel-requests" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Parallel Requests</h2>
+
+        <section id="fn-http-get-all" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-get-all" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_get_all(urls)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">let responses = http_get_all([
+    "https://api.example.com/users",
+    "https://api.example.com/posts"
+])</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-http-parallel" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-parallel" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_parallel(requests)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">let responses = http_parallel([
+    { "method": "GET", "url": "https://api.example.com/users" },
+    { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
+])</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/core" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Core Functions
+        </a>
+        <a href="/docs/builtins/json" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            JSON Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

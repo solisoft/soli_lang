@@ -303,31 +303,32 @@ class BlogPost extends Model {
 
 // Usage in controller
 class UsersController extends Controller {
-    fn index() -> Any {
+    fn index(req: Any) -> Any {
         let users = User.all();
-        return this.render("users/index", { "users": users });
+        return render("users/index", { "users": users });
     }
 
-    fn show(id: String) -> Any {
+    fn show(req: Any) -> Any {
+        let id = req["params"]["id"];
         let user = User.find(id);
         let posts = user.posts().order("created_at", "desc").limit(5).all();
-        return this.render("users/show", {
+        return render("users/show", {
             "user": user,
             "posts": posts
         });
     }
 
-    fn create() -> Any {
+    fn create(req: Any) -> Any {
         let result = User.create({
-            "name": this.params["name"],
-            "email": this.params["email"],
-            "age": this.params["age"]
+            "name": req["params"]["name"],
+            "email": req["params"]["email"],
+            "age": req["params"]["age"]
         });
 
         if result["valid"] {
-            return this.redirect("/users/" + result["record"]["id"]);
+            return redirect("/users/" + result["record"]["id"]);
         } else {
-            return this.render("users/new", { "errors": result["errors"] });
+            return render("users/new", { "errors": result["errors"] });
         }
     }
 }

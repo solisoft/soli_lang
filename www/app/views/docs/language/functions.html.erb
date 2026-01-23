@@ -1,0 +1,274 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Functions</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Function declarations, closures, higher-order functions, and default parameters in Soli.
+        </p>
+    </div>
+
+    <!-- Function Declaration -->
+    <section id="section-declaration" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                </svg>
+            </span>
+            Function Declaration
+        </h2>
+
+        <section id="kw-fn" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-fn" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">fn</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Declares a function with optional parameters and return type.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">// No parameters, no return
+fn say_hello() {
+    print("Hello!");
+}
+
+// With parameters
+fn greet(name: String) {
+    print("Hello, " + name + "!");
+}
+
+// With return value
+fn add(a: Int, b: Int) -> Int {
+    return a + b;
+}
+
+// Void function
+fn log_message(msg: String) {
+    print("[LOG] " + msg);
+}
+
+// Early return
+fn absolute(x: Int) -> Int {
+    if (x < 0) {
+        return -x;
+    }
+    return x;
+}</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Recursive Functions -->
+    <section id="section-recursion" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Recursive Functions</h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Calculate factorial
+fn factorial(n: Int) -> Int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+print(factorial(5));  // 120
+
+// Calculate Fibonacci
+fn fibonacci(n: Int) -> Int {
+    if (n <= 1) {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+print(fibonacci(10));  // 55
+
+// Check if a number is prime
+fn is_prime(n: Int) -> Bool {
+    if (n < 2) {
+        return false;
+    }
+    if (n == 2) {
+        return true;
+    }
+    if (n % 2 == 0) {
+        return false;
+    }
+    let i = 3;
+    while (i * i <= n) {
+        if (n % i == 0) {
+            return false;
+        }
+        i = i + 2;
+    }
+    return true;
+}</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Higher-Order Functions -->
+    <section id="section-higher-order" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Higher-Order Functions</h2>
+        <p class="text-gray-400 mb-4">Functions can accept other functions as parameters:</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Function as parameter
+fn apply(x: Int, f: (Int) -> Int) -> Int {
+    return f(x);
+}
+
+fn double(x: Int) -> Int {
+    return x * 2;
+}
+
+fn square(x: Int) -> Int {
+    return x * x;
+}
+
+let result = apply(5, double);   // 10
+let squared = apply(5, square);  // 25
+
+// Passing anonymous functions
+fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[] {
+    let result = [];
+    for (item in arr) {
+        push(result, transformer(item));
+    }
+    return result;
+}
+
+let numbers = [1, 2, 3, 4, 5];
+let doubled = transform_array(numbers, fn(x) x * 2);  // [2, 4, 6, 8, 10]</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Closures -->
+    <section id="section-closures" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Closures</h2>
+        <p class="text-gray-400 mb-4">Functions that capture variables from their enclosing scope:</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Counter using closure
+fn make_counter() -> () -> Int {
+    let count = 0;
+    fn counter() -> Int {
+        count = count + 1;
+        return count;
+    }
+    return counter;
+}
+
+let counter1 = make_counter();
+let counter2 = make_counter();
+
+print(counter1());  // 1
+print(counter1());  // 2
+print(counter1());  // 3
+
+print(counter2());  // 1
+print(counter2());  // 2
+
+// Closure capturing variables
+fn make_greeter(greeting: String) -> (String) -> String {
+    fn greet(name: String) -> String {
+        return greeting + ", " + name + "!";
+    }
+    return greet;
+}
+
+let say_hello = make_greeter("Hello");
+let say_hola = make_greeter("Hola");
+
+print(say_hello("Alice"));  // "Hello, Alice!"
+print(say_hola("Bob"));     // "Hola, Bob!"</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Default Parameters -->
+    <section id="section-default-params" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Default Parameters</h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn greet(name: String, greeting: String = "Hello") -> String {
+    return greeting + ", " + name + "!";
+}
+
+print(greet("Alice"));              // "Hello, Alice!"
+print(greet("Bob", "Hi"));          // "Hi, Bob!"
+print(greet("Charlie", "Welcome")); // "Welcome, Charlie!"
+
+// Optional parameters
+fn create_user(name: String, email: String = null, role: String = "user") -> Hash {
+    let user = {"name": name, "role": role};
+    if (email != null) {
+        user["email"] = email;
+    }
+    return user;
+}
+
+let user1 = create_user("Alice");
+let user2 = create_user("Bob", "bob@example.com");
+let user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Return Keyword -->
+    <section id="section-return" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Return Statement</h2>
+
+        <section id="kw-return" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-return" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">return</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Exits a function and optionally returns a value.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn find_first_even(numbers: Int[]) -> Int {
+    for (n in numbers) {
+        if (n % 2 == 0) {
+            return n;  // Early return
+        }
+    }
+    return -1;  // Not found
+}
+
+let result = find_first_even([1, 3, 5, 4, 7]);  // 4</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/control-flow" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Control Flow
+        </a>
+        <a href="/docs/language/collections" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Collections
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

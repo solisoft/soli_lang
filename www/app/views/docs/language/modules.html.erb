@@ -1,0 +1,205 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Modules</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-lime-400 to-green-400 bg-clip-text text-transparent">Modules</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Organize code with exports, imports, and module structure.
+        </p>
+    </div>
+
+    <!-- Export Declarations -->
+    <section id="section-exports" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-lime-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-lime-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+            </span>
+            Export Declarations
+        </h2>
+
+        <section id="kw-export" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-export" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">export</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Makes a function, class, or constant available to other modules.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">// math.soli
+
+// Private function (not exported)
+fn validate_number(n: Int) -> Bool {
+    return n >= 0;
+}
+
+// Exported functions
+export fn add(a: Int, b: Int) -> Int {
+    return a + b;
+}
+
+export fn subtract(a: Int, b: Int) -> Int {
+    return a - b;
+}
+
+export fn multiply(a: Int, b: Int) -> Int {
+    return a * b;
+}
+
+export fn divide(a: Int, b: Int) -> Float {
+    if (b == 0) {
+        panic("Division by zero");
+    }
+    return float(a) / float(b);
+}
+
+export fn factorial(n: Int) -> Int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Import Statements -->
+    <section id="section-imports" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Import Statements</h2>
+
+        <section id="kw-import" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-import" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">import</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Import functions and classes from other modules.</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Import all exports
+import "./math.soli";
+print(add(2, 3));        // 5
+print(factorial(5));     // 120
+
+// Named imports
+import { add, multiply } from "./math.soli";
+let sum = add(1, 2);          // 3
+let product = multiply(3, 4); // 12
+
+// Aliased imports
+import { add as sum, multiply as times } from "./math.soli";
+let result = sum(10, 20);  // 30
+let doubled = times(5, 6); // 30
+
+// Import everything with a namespace
+import "./utils.soli" as utils;
+let formatted = utils.format_date(DateTime.utc());</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Project Structure -->
+    <section id="section-structure" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Project Structure</h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">my-project/
+├── soli.toml
+├── src/
+│   ├── main.soli
+│   ├── config.soli
+│   └── utils/
+│       ├── mod.soli
+│       ├── string.soli
+│       ├── array.soli
+│       └── datetime.soli
+└── lib/
+    └── math/
+        ├── mod.soli
+        ├── basic.soli
+        └── advanced.soli</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Package Configuration -->
+    <section id="section-package-config" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Package Configuration</h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+                <span class="text-xs text-gray-400 font-mono">soli.toml</span>
+            </div>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-toml text-sm">[package]
+name = "my-app"
+version = "1.0.0"
+description = "My awesome soli application"
+main = "src/main.soli"
+
+[dependencies]
+# Local dependency
+utils = { path = "./lib/utils" }
+
+[dev-dependencies]
+test-utils = { path = "./tests/test-utils" }
+
+[scripts]
+dev = "soli serve"
+build = "soli build --release"
+test = "soli test"</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Keyword -->
+    <section id="section-use" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Use Keyword</h2>
+
+        <section id="kw-use" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-use" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">use</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Alternative syntax for importing (alias for import).</p>
+                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
+<pre><code class="language-soli text-sm">use "./math.soli";
+use { add, multiply } from "./math.soli";
+use "./utils.soli" as utils;</code></pre>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/pipeline-operator" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Pipeline Operator
+        </a>
+        <a href="/docs/builtins" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Built-in Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>
