@@ -21,6 +21,8 @@ impl Interpreter {
                 // Check for breakpoint marker
                 if matches!(value, Value::Breakpoint) {
                     let env_json = self.serialize_environment_for_debug();
+                    eprintln!("[DEBUG BREAKPOINT] Captured env_json length: {}", env_json.len());
+                    eprintln!("[DEBUG BREAKPOINT] env_json preview: {}...", &env_json[..env_json.len().min(200)]);
                     return Err(RuntimeError::Breakpoint {
                         span: expr.span,
                         env_json,
