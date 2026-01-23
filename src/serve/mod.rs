@@ -1142,6 +1142,9 @@ fn worker_loop(
         crate::interpreter::builtins::template::init_templates(views_dir.clone());
     }
 
+    // Set dev mode for file hash caching (production = permanent cache, dev = check mtime)
+    crate::interpreter::builtins::template::set_dev_mode(dev_mode);
+
     // Load controllers in this worker so functions are defined in environment
     load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
 
@@ -1196,6 +1199,8 @@ fn worker_loop(
         // Static files changed - trigger browser refresh via SSE
         if current_static_files != last_static_files_version {
             last_static_files_version = current_static_files;
+            // Clear file hash cache so public_path() recomputes MD5s
+            crate::interpreter::builtins::template::clear_file_hash_cache();
             // Notify browser for live reload (browsers will re-fetch CSS/JS)
             if let Some(ref tx) = _reload_tx {
                 let _ = tx.send(());

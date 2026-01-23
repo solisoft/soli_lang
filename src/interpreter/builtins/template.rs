@@ -3,9 +3,12 @@
 //! Provides the `render()` function for use in controllers to render templates.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::SystemTime;
 
 use crate::interpreter::builtins::datetime::helpers as datetime_helpers;
 use crate::interpreter::builtins::html;
@@ -22,6 +25,31 @@ thread_local! {
 // Thread-local view context for debugging (stores the data passed to render())
 thread_local! {
     static VIEW_DEBUG_CONTEXT: RefCell<Option<Value>> = const { RefCell::new(None) };
+}
+
+// Thread-local file hash cache for public_path() performance
+#[derive(Clone)]
+struct CachedFileHash {
+    hash: String,
+    modified: SystemTime,
+}
+
+thread_local! {
+    static FILE_HASH_CACHE: RefCell<HashMap<PathBuf, CachedFileHash>> = RefCell::new(HashMap::new());
+}
+
+static DEV_MODE: AtomicBool = AtomicBool::new(false);
+
+/// Set dev mode for file hash caching behavior.
+/// In production (dev_mode=false), hashes are cached permanently.
+/// In dev mode (dev_mode=true), file modification times are checked.
+pub fn set_dev_mode(enabled: bool) {
+    DEV_MODE.store(enabled, Ordering::Relaxed);
+}
+
+/// Clear the file hash cache (for hot reload).
+pub fn clear_file_hash_cache() {
+    FILE_HASH_CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
 /// Get the current view context for debugging (if any).
@@ -143,12 +171,40 @@ fn resolve_futures_in_value(value: Value) -> Value {
     }
 }
 
-/// Compute MD5 hash of file contents.
-fn compute_file_md5(path: &PathBuf) -> Result<String, String> {
-    let data = std::fs::read(path).map_err(|e| format!("Failed to read file for MD5: {}", e))?;
+/// Compute MD5 hash of file contents with caching.
+/// In production mode: O(1) lookup from cache after first computation.
+/// In dev mode: checks file modification time before returning cached value.
+fn compute_file_md5_cached(path: &PathBuf) -> Result<String, String> {
+    FILE_HASH_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let dev_mode = DEV_MODE.load(Ordering::Relaxed);
 
-    let hash = md5::compute(&data);
-    Ok(format!("{:x}", hash))
+        if let Some(cached) = cache.get(path) {
+            if !dev_mode {
+                // PRODUCTION: O(1) lookup, no file system check
+                return Ok(cached.hash.clone());
+            }
+            // DEV: Check modification time
+            if let Ok(metadata) = std::fs::metadata(path) {
+                if let Ok(modified) = metadata.modified() {
+                    if modified == cached.modified {
+                        return Ok(cached.hash.clone());
+                    }
+                }
+            }
+        }
+
+        // Cache miss: compute and store
+        let data = std::fs::read(path)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let hash = format!("{:x}", md5::compute(&data));
+        let modified = std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+
+        cache.insert(path.clone(), CachedFileHash { hash: hash.clone(), modified });
+        Ok(hash)
+    })
 }
 
 /// Inject template helper functions into the data context
@@ -230,7 +286,7 @@ fn inject_template_helpers(data: &Value) -> Value {
                         let full_path = public_dir.join(&path);
 
                         // Compute MD5 hash if file exists, otherwise return path without hash
-                        match compute_file_md5(&full_path) {
+                        match compute_file_md5_cached(&full_path) {
                             Ok(hash) => {
                                 // Return path with query parameter
                                 if path.contains('?') {
