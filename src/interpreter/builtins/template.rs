@@ -536,6 +536,49 @@ fn inject_template_helpers(data: &Value) -> Value {
                 new_hash.push((t_key, t_func));
             }
 
+            // Add l() function (localize date) if not present
+            let l_key = Value::String("l".to_string());
+            let has_l = hash.borrow().iter().any(|(k, _)| k.hash_eq(&l_key));
+
+            if !has_l {
+                let l_func =
+                    Value::NativeFunction(NativeFunction::new("l", None, |args| {
+                        if args.is_empty() {
+                            return Err("l() requires at least 1 argument (timestamp)".to_string());
+                        }
+
+                        // Get timestamp (first arg)
+                        let timestamp = match &args[0] {
+                            Value::Int(n) => *n,
+                            Value::String(s) => {
+                                datetime_helpers::datetime_parse(s).unwrap_or(0)
+                            }
+                            other => {
+                                return Err(format!(
+                                    "l() expects timestamp (int) or date string as first argument, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+
+                        // Get format (second arg, default "short")
+                        let format = if args.len() > 1 {
+                            match &args[1] {
+                                Value::String(s) => s.clone(),
+                                _ => "short".to_string(),
+                            }
+                        } else {
+                            "short".to_string()
+                        };
+
+                        // Get locale from i18n helpers
+                        let locale = i18n_helpers::get_locale();
+
+                        Ok(Value::String(datetime_helpers::localize_date(timestamp, &locale, &format)))
+                    }));
+                new_hash.push((l_key, l_func));
+            }
+
             Value::Hash(Rc::new(RefCell::new(new_hash)))
         }
         _ => data.clone(),

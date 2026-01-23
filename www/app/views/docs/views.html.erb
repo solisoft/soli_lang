@@ -96,7 +96,15 @@
 &lt;%= time_ago(post["updated_at"]) %&gt;
 
 &lt;!-- Difference in seconds --&gt;
-&lt;%= datetime_diff(start_time, end_time) %&gt;</code></pre>
+&lt;%= datetime_diff(start_time, end_time) %&gt;
+
+&lt;!-- Localized date formatting (uses current I18n locale) --&gt;
+&lt;%= l(post["created_at"]) %&gt;                 &lt;!-- short format: "01/15/2024" --&gt;
+&lt;%= l(post["created_at"], "long") %&gt;         &lt;!-- "January 15, 2024" --&gt;
+&lt;%= l(post["created_at"], "full") %&gt;         &lt;!-- "Monday, January 15, 2024" --&gt;
+&lt;%= l(post["created_at"], "time") %&gt;         &lt;!-- "10:30 AM" --&gt;
+&lt;%= l(post["created_at"], "datetime") %&gt;     &lt;!-- "01/15/2024 10:30 AM" --&gt;
+&lt;%= l(post["created_at"], "%Y-%m-%d") %&gt;     &lt;!-- custom strftime --&gt;</code></pre>
         </div>
     </div>
 
@@ -136,6 +144,55 @@
                 <tr class="border-b border-white/5">
                     <td class="py-3 px-4 font-mono text-indigo-400">time_ago(ts)</td>
                     <td class="py-3 px-4">Human-readable relative time ("2 hours ago", "3 days ago")</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">l(ts, format?)</td>
+                    <td class="py-3 px-4">Localized date format using current locale ("short", "long", "full", "time", "datetime", or strftime)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">I18n Functions</h3>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">I18n helpers</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- Get current locale --&gt;
+&lt;%= locale() %&gt;  &lt;!-- "en", "fr", etc. --&gt;
+
+&lt;!-- Set locale (usually done in controller) --&gt;
+&lt;% set_locale("fr") %&gt;
+
+&lt;!-- Translate a key --&gt;
+&lt;%= t("hello") %&gt;
+
+&lt;!-- Translate with fallback --&gt;
+&lt;%= t("greeting", "Welcome!") %&gt;</code></pre>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Function</th>
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">locale()</td>
+                    <td class="py-3 px-4">Get current locale code (e.g., "en", "fr")</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">set_locale(code)</td>
+                    <td class="py-3 px-4">Set the current locale</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">t(key, fallback?)</td>
+                    <td class="py-3 px-4">Translate a key with optional fallback</td>
                 </tr>
             </tbody>
         </table>
@@ -197,7 +254,8 @@
     &lt;h1&gt;&lt;%= post["title"] %&gt;&lt;/h1&gt;
 
     &lt;div class="meta"&gt;
-        &lt;span&gt;Published: &lt;%= datetime_format(post["created_at"], "%B %d, %Y") %&gt;&lt;/span&gt;
+        &lt;!-- Localized date (respects I18n.set_locale) --&gt;
+        &lt;span&gt;Published: &lt;%= l(post["created_at"], "long") %&gt;&lt;/span&gt;
         &lt;span&gt;(&lt;%= time_ago(post["created_at"]) %&gt;)&lt;/span&gt;
     &lt;/div&gt;
 

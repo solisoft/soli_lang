@@ -179,6 +179,127 @@ pub fn time_ago(timestamp: i64) -> String {
     }
 }
 
+/// Localize a date/time according to locale and format.
+///
+/// # Arguments
+/// * `timestamp` - Unix timestamp in seconds
+/// * `locale` - Locale code (e.g., "en", "fr", "de", "es")
+/// * `format` - Format name: "short", "long", "full", "time", "datetime", or a strftime string
+///
+/// # Returns
+/// Localized date string
+pub fn localize_date(timestamp: i64, locale: &str, format: &str) -> String {
+    let dt = match DateTime::from_timestamp(timestamp, 0) {
+        Some(dt) => dt,
+        None => return String::new(),
+    };
+
+    // Get month and day names for the locale
+    let (months, days, date_format, time_format, datetime_format_str) = get_locale_data(locale);
+
+    // Handle named formats
+    let strftime_format = match format {
+        "short" => date_format,
+        "long" => "%B %d, %Y",
+        "full" => "%A, %B %d, %Y",
+        "time" => time_format,
+        "datetime" => datetime_format_str,
+        other => other, // Use as strftime format directly
+    };
+
+    // Format the date
+    let formatted = dt.format(strftime_format).to_string();
+
+    // Replace English month/day names with localized versions
+    localize_names(&formatted, &months, &days)
+}
+
+/// Get locale-specific data (month names, day names, formats)
+fn get_locale_data(locale: &str) -> (&'static [&'static str], &'static [&'static str], &'static str, &'static str, &'static str) {
+    match locale {
+        "fr" => (
+            &["janvier", "février", "mars", "avril", "mai", "juin",
+              "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
+            &["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"],
+            "%d/%m/%Y",
+            "%H:%M",
+            "%d/%m/%Y %H:%M",
+        ),
+        "de" => (
+            &["Januar", "Februar", "März", "April", "Mai", "Juni",
+              "Juli", "August", "September", "Oktober", "November", "Dezember"],
+            &["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
+            "%d.%m.%Y",
+            "%H:%M",
+            "%d.%m.%Y %H:%M",
+        ),
+        "es" => (
+            &["enero", "febrero", "marzo", "abril", "mayo", "junio",
+              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+            &["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"],
+            "%d/%m/%Y",
+            "%H:%M",
+            "%d/%m/%Y %H:%M",
+        ),
+        "it" => (
+            &["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+              "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"],
+            &["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
+            "%d/%m/%Y",
+            "%H:%M",
+            "%d/%m/%Y %H:%M",
+        ),
+        "pt" => (
+            &["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+              "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"],
+            &["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"],
+            "%d/%m/%Y",
+            "%H:%M",
+            "%d/%m/%Y %H:%M",
+        ),
+        _ => (
+            // English (default)
+            &["January", "February", "March", "April", "May", "June",
+              "July", "August", "September", "October", "November", "December"],
+            &["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+            "%m/%d/%Y",
+            "%I:%M %p",
+            "%m/%d/%Y %I:%M %p",
+        ),
+    }
+}
+
+/// English month and day names for replacement
+const EN_MONTHS: [&str; 12] = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
+
+const EN_DAYS: [&str; 7] = [
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+];
+
+/// Replace English month/day names with localized versions
+fn localize_names(formatted: &str, months: &[&str], days: &[&str]) -> String {
+    let mut result = formatted.to_string();
+
+    // Replace month names
+    for (i, en_month) in EN_MONTHS.iter().enumerate() {
+        if result.contains(en_month) {
+            result = result.replace(en_month, months[i]);
+        }
+    }
+
+    // Replace day names
+    for (i, en_day) in EN_DAYS.iter().enumerate() {
+        if result.contains(en_day) {
+            result = result.replace(en_day, days[i]);
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
