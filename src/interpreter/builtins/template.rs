@@ -10,11 +10,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
+use std::path::Path;
+
+use crate::ast::stmt::StmtKind;
 use crate::interpreter::builtins::datetime::helpers as datetime_helpers;
 use crate::interpreter::builtins::html;
 use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{Function, NativeFunction, Value};
 use crate::template::{html_response, TemplateCache};
 
 // Thread-local template cache
@@ -50,6 +53,84 @@ pub fn set_dev_mode(enabled: bool) {
 /// Clear the file hash cache (for hot reload).
 pub fn clear_file_hash_cache() {
     FILE_HASH_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
+// Thread-local view helpers registry (functions from app/helpers/*.soli)
+thread_local! {
+    static VIEW_HELPERS: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
+}
+
+/// Register a view helper function (only accessible in templates, not controllers).
+pub fn register_view_helper(name: String, value: Value) {
+    VIEW_HELPERS.with(|helpers| {
+        helpers.borrow_mut().insert(name, value);
+    });
+}
+
+/// Clear all view helpers (for hot reload).
+pub fn clear_view_helpers() {
+    VIEW_HELPERS.with(|helpers| helpers.borrow_mut().clear());
+}
+
+/// Get all registered view helpers.
+pub fn get_view_helpers() -> HashMap<String, Value> {
+    VIEW_HELPERS.with(|helpers| helpers.borrow().clone())
+}
+
+/// Load view helpers from a directory (app/helpers/*.soli).
+/// Parses each file and extracts function definitions without executing in interpreter.
+pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
+    if !helpers_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0;
+
+    // Create a minimal environment for helper functions (they can call each other)
+    let helper_env = Rc::new(RefCell::new(Environment::new()));
+
+    for entry in std::fs::read_dir(helpers_dir)
+        .map_err(|e| format!("Failed to read helpers directory: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().map_or(false, |ext| ext == "soli") {
+            let source = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read helper file '{}': {}", path.display(), e))?;
+
+            // Lex
+            let tokens = crate::lexer::Scanner::new(&source)
+                .scan_tokens()
+                .map_err(|e| format!("Lexer error in {}: {}", path.display(), e))?;
+
+            // Parse
+            let program = crate::parser::Parser::new(tokens)
+                .parse()
+                .map_err(|e| format!("Parser error in {}: {}", path.display(), e))?;
+
+            let source_path = path.to_string_lossy().to_string();
+
+            // Extract function definitions and register them
+            for stmt in &program.statements {
+                if let StmtKind::Function(decl) = &stmt.kind {
+                    let func = Function::from_decl(decl, helper_env.clone(), Some(source_path.clone()));
+                    register_view_helper(decl.name.clone(), Value::Function(Rc::new(func)));
+                    count += 1;
+                }
+            }
+        }
+    }
+
+    // Now update the helper environment so helpers can call each other
+    VIEW_HELPERS.with(|helpers| {
+        let helpers_map = helpers.borrow();
+        for (name, value) in helpers_map.iter() {
+            helper_env.borrow_mut().define(name.clone(), value.clone());
+        }
+    });
+
+    Ok(count)
 }
 
 /// Get the current view context for debugging (if any).
@@ -212,6 +293,19 @@ fn inject_template_helpers(data: &Value) -> Value {
     match data {
         Value::Hash(hash) => {
             let mut new_hash: Vec<(Value, Value)> = hash.borrow().clone();
+
+            // Inject user-defined view helpers from app/helpers/*.soli
+            VIEW_HELPERS.with(|helpers| {
+                let helpers_map = helpers.borrow();
+                for (name, value) in helpers_map.iter() {
+                    let key = Value::String(name.clone());
+                    // Only add if not already present in data (allow override)
+                    let exists = hash.borrow().iter().any(|(k, _)| k.hash_eq(&key));
+                    if !exists {
+                        new_hash.push((key, value.clone()));
+                    }
+                }
+            });
 
             // Check if public_path already exists
             let public_path_key = Value::String("public_path".to_string());

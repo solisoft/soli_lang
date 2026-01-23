@@ -188,17 +188,25 @@ pub fn serve_folder_with_options_and_mode(
         load_middleware(&mut interpreter, &middleware_dir, &mut file_tracker)?;
     }
 
-    // Load helpers from app/helpers directory
+    // Load view helpers from app/helpers directory (only accessible in templates)
     let helpers_dir = app_dir.join("helpers");
     if helpers_dir.exists() {
+        match crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
+            Ok(count) => {
+                if count > 0 {
+                    println!("Loaded {} view helper(s) from {}", count, helpers_dir.display());
+                }
+            }
+            Err(e) => {
+                eprintln!("Error loading view helpers: {}", e);
+            }
+        }
+        // Track helper files for hot reload
         for entry in std::fs::read_dir(&helpers_dir).unwrap() {
             if let Ok(entry) = entry {
                 let path = entry.path();
                 if path.extension().map_or(false, |ext| ext == "soli") {
-                    println!("Loading helper: {}", path.file_stem().unwrap().to_str().unwrap());
-                    if let Err(e) = execute_file(&mut interpreter, &path) {
-                        eprintln!("Error loading helper {}: {}", path.display(), e);
-                    }
+                    file_tracker.track(&path);
                 }
             }
         }
@@ -328,6 +336,7 @@ pub fn serve_folder_with_options_and_mode(
         controllers_dir,
         models_dir,
         middleware_dir,
+        helpers_dir,
         public_dir,
         file_tracker,
         dev_mode,
@@ -696,6 +705,8 @@ struct HotReloadVersions {
     static_files: AtomicU64,
     /// Incremented when routes.soli changes
     routes: AtomicU64,
+    /// Incremented when view helpers change
+    helpers: AtomicU64,
 }
 
 impl HotReloadVersions {
@@ -706,6 +717,7 @@ impl HotReloadVersions {
             views: AtomicU64::new(0),
             static_files: AtomicU64::new(0),
             routes: AtomicU64::new(0),
+            helpers: AtomicU64::new(0),
         }
     }
 }
@@ -770,6 +782,7 @@ fn run_hyper_server_worker_pool(
     controllers_dir: PathBuf,
     models_dir: PathBuf,
     middleware_dir: PathBuf,
+    helpers_dir: PathBuf,
     public_dir: PathBuf,
     _file_tracker: FileTracker,
     dev_mode: bool,
@@ -899,6 +912,7 @@ fn run_hyper_server_worker_pool(
     let watch_controllers_dir = controllers_dir.clone();
     let watch_views_dir = views_dir.clone();
     let watch_middleware_dir = middleware_dir.clone();
+    let watch_helpers_dir = helpers_dir.clone();
     let watch_public_dir = public_dir.clone();
     let watch_routes_file = routes_file.clone();
     let browser_reload_tx = reload_tx.clone();
@@ -987,6 +1001,7 @@ fn run_hyper_server_worker_pool(
             let mut views_changed = false;
             let mut controllers_changed = false;
             let mut middleware_changed = false;
+            let mut helpers_changed = false;
             let mut static_files_changed = false;
             let mut routes_changed = false;
 
@@ -1007,6 +1022,8 @@ fn run_hyper_server_worker_pool(
                         controllers_changed = true;
                     } else if name.ends_with(".soli") && path.starts_with(&watch_middleware_dir) {
                         middleware_changed = true;
+                    } else if name.ends_with(".soli") && path.starts_with(&watch_helpers_dir) {
+                        helpers_changed = true;
                     } else if name.ends_with(".erb") {
                         views_changed = true;
                     }
@@ -1024,6 +1041,10 @@ fn run_hyper_server_worker_pool(
             if middleware_changed {
                 hot_reload_versions_for_watcher.middleware.fetch_add(1, Ordering::Release);
                 println!("   ✓ Signaled middleware reload to all workers");
+            }
+            if helpers_changed {
+                hot_reload_versions_for_watcher.helpers.fetch_add(1, Ordering::Release);
+                println!("   ✓ Signaled view helpers reload to all workers");
             }
             if views_changed {
                 hot_reload_versions_for_watcher.views.fetch_add(1, Ordering::Release);
@@ -1071,6 +1092,7 @@ fn run_hyper_server_worker_pool(
         let work_rx = worker_queues.get_receiver(i);
         let models_dir = models_dir.clone();
         let middleware_dir = middleware_dir.clone();
+        let helpers_dir = helpers_dir.clone();
         let ws_event_rx = ws_event_rx.clone();
         let ws_registry = ws_registry.clone();
         let reload_tx = reload_tx.clone();
@@ -1090,7 +1112,7 @@ fn run_hyper_server_worker_pool(
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut interpreter = Interpreter::new();
 
-                worker_loop(i, work_rx, models_dir, middleware_dir, ws_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle, routes_file, dev_mode);
+                worker_loop(i, work_rx, models_dir, middleware_dir, helpers_dir, ws_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle, routes_file, dev_mode);
             }));
 
             if result.is_err() {
@@ -1122,6 +1144,7 @@ fn worker_loop(
     work_rx: channel::Receiver<RequestData>,
     _models_dir: PathBuf,
     middleware_dir: PathBuf,
+    helpers_dir: PathBuf,
     ws_event_rx: channel::Receiver<WebSocketEventData>,
     ws_registry: Arc<WebSocketRegistry>,
     _reload_tx: Option<broadcast::Sender<()>>,
@@ -1140,6 +1163,13 @@ fn worker_loop(
     // Initialize template engine in this worker
     if views_dir.exists() {
         crate::interpreter::builtins::template::init_templates(views_dir.clone());
+    }
+
+    // Load view helpers in this worker (thread-local)
+    if helpers_dir.exists() {
+        if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
+            eprintln!("Worker {}: Error loading view helpers: {}", worker_id, e);
+        }
     }
 
     // Set dev mode for file hash caching (production = permanent cache, dev = check mtime)
@@ -1162,6 +1192,7 @@ fn worker_loop(
     // Track last seen hot reload versions
     let mut last_controllers_version = hot_reload_versions.controllers.load(Ordering::Acquire);
     let mut last_middleware_version = hot_reload_versions.middleware.load(Ordering::Acquire);
+    let mut last_helpers_version = hot_reload_versions.helpers.load(Ordering::Acquire);
     let mut last_views_version = hot_reload_versions.views.load(Ordering::Acquire);
     let mut last_static_files_version = hot_reload_versions.static_files.load(Ordering::Acquire);
     let mut last_routes_version = hot_reload_versions.routes.load(Ordering::Acquire);
@@ -1172,6 +1203,7 @@ fn worker_loop(
         // Check for hot reload (lock-free version check)
         let current_controllers = hot_reload_versions.controllers.load(Ordering::Acquire);
         let current_middleware = hot_reload_versions.middleware.load(Ordering::Acquire);
+        let current_helpers = hot_reload_versions.helpers.load(Ordering::Acquire);
         let current_views = hot_reload_versions.views.load(Ordering::Acquire);
         let current_static_files = hot_reload_versions.static_files.load(Ordering::Acquire);
         let current_routes = hot_reload_versions.routes.load(Ordering::Acquire);
@@ -1188,6 +1220,15 @@ fn worker_loop(
             let mut file_tracker = FileTracker::new();
             if let Err(e) = load_middleware(interpreter, &middleware_dir, &mut file_tracker) {
                 eprintln!("Worker {}: Error reloading middleware: {}", worker_id, e);
+            }
+        }
+
+        if current_helpers != last_helpers_version {
+            last_helpers_version = current_helpers;
+            // Clear and reload view helpers
+            crate::interpreter::builtins::template::clear_view_helpers();
+            if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
+                eprintln!("Worker {}: Error reloading view helpers: {}", worker_id, e);
             }
         }
 
@@ -2912,6 +2953,11 @@ fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakp
     }
 
     let mut interpreter = crate::interpreter::Interpreter::new();
+
+    // Inject view helpers into REPL environment (same helpers available in templates)
+    for (name, value) in crate::interpreter::builtins::template::get_view_helpers() {
+        interpreter.environment.borrow_mut().define(name, value);
+    }
 
     // Set up breakpoint environment variables first (these are the captured variables)
     if let Some(env_obj) = breakpoint_env {
