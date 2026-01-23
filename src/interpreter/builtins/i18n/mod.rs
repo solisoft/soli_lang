@@ -45,7 +45,7 @@ pub fn register_i18n_class(env: &mut Environment) {
                     set_locale(locale.clone());
                     Ok(Value::String(locale.clone()))
                 }
-                _ => Err("I18n.set_locale expects a string".to_string()),
+                other => Err(format!("I18n.set_locale expects a string, got {}", other.type_name())),
             },
         )),
     );

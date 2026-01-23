@@ -386,20 +386,9 @@ impl Interpreter {
                     return Ok(Value::Function(method));
                 }
                 if let Some(native_method) = class.find_native_static_method(name) {
-                    // Wrap the native static method to prepend the class as first argument
-                    let class_clone = class.clone();
-                    let native_method_clone = native_method.clone();
-                    let method_name = name.to_string();
-                    return Ok(Value::NativeFunction(NativeFunction::new(
-                        &format!("{}.{}", class.name, method_name),
-                        None, // Variadic - we'll check arity in the actual function
-                        move |args| {
-                            // Prepend the class as first argument
-                            let mut new_args = vec![Value::Class(class_clone.clone())];
-                            new_args.extend(args);
-                            (native_method_clone.func)(new_args)
-                        },
-                    )));
+                    // Native static methods don't need the class prepended
+                    // Just return the native function directly
+                    return Ok(Value::NativeFunction((*native_method).clone()));
                 }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: class.name.clone(),
