@@ -21,9 +21,17 @@ impl Interpreter {
                 // Check for breakpoint marker
                 if matches!(value, Value::Breakpoint) {
                     let env_json = self.serialize_environment_for_debug();
+                    let mut stack_trace = self.get_stack_trace();
+                    // Add the breakpoint location as the first entry
+                    let file = self.current_source_path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    stack_trace.insert(0, format!("break() at {}:{}", file, expr.span.line));
                     return Err(RuntimeError::Breakpoint {
                         span: expr.span,
                         env_json,
+                        stack_trace,
                     });
                 }
                 Ok(ControlFlow::Normal)

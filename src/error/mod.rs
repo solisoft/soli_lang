@@ -257,6 +257,8 @@ pub enum RuntimeError {
         span: Span,
         /// JSON-serialized environment variables for debugging
         env_json: String,
+        /// Stack trace captured at the moment of the breakpoint
+        stack_trace: Vec<String>,
     },
 }
 
@@ -319,6 +321,14 @@ impl RuntimeError {
     pub fn breakpoint_env_json(&self) -> Option<&str> {
         match self {
             Self::Breakpoint { env_json, .. } => Some(env_json),
+            _ => None,
+        }
+    }
+
+    /// Get the stack trace from a breakpoint error.
+    pub fn breakpoint_stack_trace(&self) -> Option<&[String]> {
+        match self {
+            Self::Breakpoint { stack_trace, .. } => Some(stack_trace),
             _ => None,
         }
     }

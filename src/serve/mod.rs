@@ -2214,7 +2214,10 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         }
         Err(e) => {
             if dev_mode {
-                let stack_trace = interpreter.get_stack_trace();
+                // Use breakpoint's captured stack trace if available, otherwise get current
+                let stack_trace: Vec<String> = e.breakpoint_stack_trace()
+                    .map(|st| st.to_vec())
+                    .unwrap_or_else(|| interpreter.get_stack_trace());
                 let breakpoint_env = e.breakpoint_env_json();
                 let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, breakpoint_env);
                 ResponseData {
