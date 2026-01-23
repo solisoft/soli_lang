@@ -60,57 +60,75 @@ pub async fn handle_live_reload_websocket(
         };
 
         // Split into read/write
-        let (mut sink, mut _stream) = stream.split();
-
-        // Create a channel for sending messages
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<tungstenite::Message, tungstenite::Error>>(32);
+        let (mut sink, mut stream) = stream.split();
 
         // Send initial connection confirmation
-        if let Err(e) = tx.send(Ok(tungstenite::Message::Text("connected".to_string()))).await {
-            eprintln!("[LiveReload WS] Failed to send confirmation: {}", e);
+        if sink.send(tungstenite::Message::Text("connected".to_string())).await.is_err() {
             return;
         }
 
-        // Spawn a task to forward messages from channel to WebSocket
-        let forward_task = tokio::spawn(async move {
-            while let Some(msg_result) = rx.recv().await {
-                match msg_result {
-                    Ok(msg) => {
-                        if sink.send(msg).await.is_err() {
+        // Create interval for keepalive pings
+        let mut ping_interval = tokio::time::interval(Duration::from_secs(30));
+        ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        // Use select! to handle multiple events properly
+        loop {
+            tokio::select! {
+                // Handle incoming messages from client (detect disconnects)
+                msg = stream.next() => {
+                    match msg {
+                        Some(Ok(tungstenite::Message::Close(_))) => {
+                            // Client closed connection
+                            break;
+                        }
+                        Some(Ok(tungstenite::Message::Pong(_))) => {
+                            // Pong received, connection is alive
+                        }
+                        Some(Ok(_)) => {
+                            // Other message, ignore
+                        }
+                        Some(Err(_)) => {
+                            // Error reading, connection likely closed
+                            break;
+                        }
+                        None => {
+                            // Stream ended
                             break;
                         }
                     }
-                    Err(_) => break,
                 }
-            }
-        });
 
-        // Listen for reload signals with keepalive
-        loop {
-            match tokio::time::timeout(Duration::from_secs(60), reload_rx.recv()).await {
-                Ok(Ok(())) => {
-                    // Reload signal received
-                    if let Err(_) = tx.send(Ok(tungstenite::Message::Text("reload".to_string()))).await {
-                        // Client disconnected - this is normal during page reload
-                        break;
+                // Handle reload signals
+                result = reload_rx.recv() => {
+                    match result {
+                        Ok(()) => {
+                            if sink.send(tungstenite::Message::Text("reload".to_string())).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            // Lagged behind, send reload anyway
+                            if sink.send(tungstenite::Message::Text("reload".to_string())).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            break;
+                        }
                     }
                 }
-                Ok(Err(_)) => {
-                    // Channel closed
-                    break;
-                }
-                Err(_) => {
-                    // Timeout - send keepalive ping
-                    if let Err(_) = tx.send(Ok(tungstenite::Message::Ping(vec![]))).await {
-                        // Client disconnected
+
+                // Send keepalive ping
+                _ = ping_interval.tick() => {
+                    if sink.send(tungstenite::Message::Ping(vec![])).await.is_err() {
                         break;
                     }
                 }
             }
         }
 
-        // Cleanup
-        forward_task.abort();
+        // Send close frame
+        let _ = sink.send(tungstenite::Message::Close(None)).await;
     });
 
     // Return the upgrade response
@@ -133,6 +151,8 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
 
     var retryDelay = 100;
     var maxRetryDelay = 5000;
+    var retryCount = 0;
+    var maxRetries = 10;
     var ws = null;
     var es = null;
 
@@ -204,8 +224,14 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
 
     function reconnect() {
         if (window.__livereload.reconnecting) return;
+        retryCount++;
+        if (retryCount > maxRetries) {
+            console.log('[livereload] Max retries reached, stopping reconnection');
+            return;
+        }
         window.__livereload.reconnecting = true;
         retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+        console.log('[livereload] Reconnecting in ' + retryDelay + 'ms (attempt ' + retryCount + '/' + maxRetries + ')');
         setTimeout(function() {
             window.__livereload.reconnecting = false;
             connect();
@@ -364,6 +390,7 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             window.__livereload.connected = true;
             window.__livereload.reconnecting = false;
             retryDelay = 100;
+            retryCount = 0; // Reset retry count on successful connection
             console.log('[livereload] Connected via WebSocket');
         };
 
