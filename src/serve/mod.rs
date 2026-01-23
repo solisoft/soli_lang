@@ -188,6 +188,22 @@ pub fn serve_folder_with_options_and_mode(
         load_middleware(&mut interpreter, &middleware_dir, &mut file_tracker)?;
     }
 
+    // Load helpers from app/helpers directory
+    let helpers_dir = app_dir.join("helpers");
+    if helpers_dir.exists() {
+        for entry in std::fs::read_dir(&helpers_dir).unwrap() {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.extension().map_or(false, |ext| ext == "soli") {
+                    println!("Loading helper: {}", path.file_stem().unwrap().to_str().unwrap());
+                    if let Err(e) = execute_file(&mut interpreter, &path) {
+                        eprintln!("Error loading helper {}: {}", path.display(), e);
+                    }
+                }
+            }
+        }
+    }
+
     // Scan and load controllers
     let controller_files = scan_controllers(&controllers_dir)?;
     for controller_path in &controller_files {
