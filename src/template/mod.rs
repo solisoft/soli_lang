@@ -19,7 +19,7 @@ use std::time::SystemTime;
 
 use crate::interpreter::value::Value;
 use parser::parse_template;
-use renderer::render_nodes;
+use renderer::{render_nodes, render_nodes_with_path};
 use std::rc::Rc;
 
 /// A cached template with its parsed AST and modification time.
@@ -68,6 +68,7 @@ impl TemplateCache {
     ) -> Result<String, String> {
         // Get the template file path
         let template_path = self.resolve_template_path(template_name)?;
+        let template_path_str = template_path.to_string_lossy().to_string();
 
         // Get template from cache
         let nodes = self.get_or_load_template(&template_path)?;
@@ -76,8 +77,8 @@ impl TemplateCache {
         let partial_renderer =
             |name: &str, ctx: &Value| -> Result<String, String> { self.render_partial(name, ctx) };
 
-        // Render the template content
-        let content = render_nodes(&nodes, data, Some(&partial_renderer))?;
+        // Render the template content with path for error reporting
+        let content = render_nodes_with_path(&nodes, data, Some(&partial_renderer), Some(&template_path_str))?;
 
         // Apply layout if specified
         match layout {
@@ -117,12 +118,13 @@ impl TemplateCache {
         };
 
         let template_path = self.resolve_template_path(&partial_name)?;
+        let template_path_str = template_path.to_string_lossy().to_string();
         let nodes = self.get_or_load_template(&template_path)?;
 
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
 
-        render_nodes(&nodes, data, Some(&partial_renderer))
+        render_nodes_with_path(&nodes, data, Some(&partial_renderer), Some(&template_path_str))
     }
 
     /// Render content with a named layout.
@@ -142,8 +144,9 @@ impl TemplateCache {
 
         match self.resolve_template_path(&layout_template) {
             Ok(layout_path) => {
+                let layout_path_str = layout_path.to_string_lossy().to_string();
                 let layout_nodes = self.get_or_load_template(&layout_path)?;
-                layout::render_layout_nodes(&layout_nodes, content, data, Some(partial_renderer))
+                layout::render_layout_nodes_with_path(&layout_nodes, content, data, Some(partial_renderer), Some(&layout_path_str))
             }
             Err(_) => {
                 // No layout file, return content as-is

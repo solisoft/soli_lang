@@ -3113,8 +3113,8 @@ struct SpanInfo {
 }
 
 fn extract_span_from_error(error_msg: &str) -> SpanInfo {
-    // Try to find file path pattern like "./path/file.soli" or "path/file.soli"
-    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_-]+\.soli)").unwrap();
+    // Try to find file path pattern - supports .soli, .html.erb, and .erb files
+    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_-]+(?:\.html\.erb|\.erb|\.soli))").unwrap();
     let file = file_re.captures(error_msg)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string());
@@ -3128,8 +3128,8 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
         return SpanInfo { file, line, column };
     }
 
-    // Try to find patterns like "file.soli:line"
-    let file_line_re = regex::Regex::new(r"([a-zA-Z_][a-zA-Z0-9_\-.]*\.soli):(\d+)").unwrap();
+    // Try to find patterns like "file.soli:line" or "file.html.erb:line"
+    let file_line_re = regex::Regex::new(r"([a-zA-Z_][a-zA-Z0-9_\-./]*(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
     if let Some(caps) = file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
@@ -3148,7 +3148,8 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
 
 /// Extract file path from a stack frame string like "func_name at ./path/file.soli:10"
 fn extract_file_from_frame(frame: &str) -> Option<String> {
-    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_-]+\.soli)").ok()?;
+    // Support .soli, .html.erb, and .erb files
+    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_-]+(?:\.html\.erb|\.erb|\.soli))").ok()?;
     file_re.captures(frame)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string())
@@ -3208,10 +3209,12 @@ pub fn render_dev_error_page(
     let mut stack_frames = Vec::new();
     let mut frame_index = 0;
 
-    // Regex to find .soli file paths with line numbers
-    let file_regex = regex::Regex::new(r"([./a-zA-Z0-9_-]+\.soli):(\d+)").unwrap();
+    // Regex to find file paths with line numbers - supports .soli, .html.erb, .erb
+    let file_regex = regex::Regex::new(r"([./a-zA-Z0-9_-]+(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
     // Regex to find span info after "at" (line:column)
     let span_regex = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
+    // Regex to find view files in error messages (e.g., "error in /path/to/file.html.erb")
+    let view_file_regex = regex::Regex::new(r"in ([./a-zA-Z0-9_-]+(?:\.html\.erb|\.erb))").unwrap();
 
     for frame in stack_trace.iter() {
         // Skip "Error: ..." entries - they're not actual stack frames
@@ -3222,11 +3225,14 @@ pub fn render_dev_error_page(
         let mut file = "unknown".to_string();
         let mut line: usize = 0;
 
-        // First, try to extract .soli file path
+        // First, try to extract file path (supports .soli, .html.erb, .erb)
         if let Some(caps) = file_regex.captures(frame) {
             file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
             // Get line from file:line pattern as fallback
             line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+        } else if let Some(caps) = view_file_regex.captures(frame) {
+            // Try to find view file path in error message like "error in /path/file.html.erb"
+            file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
         }
 
         // If there's a span after "at" (like "at 11:23"), prefer that line number
@@ -3237,11 +3243,14 @@ pub fn render_dev_error_page(
             }
         }
 
+        // Helper to check if string contains a source file extension
+        let contains_source_ext = |s: &str| s.contains(".soli") || s.contains(".html.erb") || s.contains(".erb");
+
         // Try to extract function name - look for pattern before " at "
         let func = if let Some(at_pos) = frame.find(" at ") {
             let before_at = &frame[..at_pos];
-            // If what's before "at" doesn't contain .soli, it's the function name
-            if !before_at.contains(".soli") {
+            // If what's before "at" doesn't contain a source file, it's the function name
+            if !contains_source_ext(before_at) {
                 before_at.to_string()
             } else {
                 // Extract from file name
@@ -3258,7 +3267,7 @@ pub fn render_dev_error_page(
         // Clean up function name - if it looks like a file path, extract the name
         let display_name = if func.contains('#') || func.contains("::") {
             func.clone()
-        } else if func.contains('/') || func.contains(".soli") {
+        } else if func.contains('/') || contains_source_ext(&func) {
             extract_controller_name(&func)
         } else if func == "unknown" && file != "unknown" {
             extract_controller_name(&file)

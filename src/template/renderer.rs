@@ -33,82 +33,115 @@ pub fn render_nodes(
     data: &Value,
     partial_renderer: Option<&dyn Fn(&str, &Value) -> Result<String, String>>,
 ) -> Result<String, String> {
+    render_nodes_with_path(nodes, data, partial_renderer, None)
+}
+
+/// Render a template AST with the given data context and template path for error reporting.
+///
+/// # Arguments
+/// * `nodes` - The template AST nodes to render
+/// * `data` - The data context (Hash) for variable lookups
+/// * `partial_renderer` - Optional callback for rendering partials
+/// * `template_path` - Optional path to the template file for error messages
+///
+/// # Returns
+/// The rendered HTML string, or an error message including template path.
+pub fn render_nodes_with_path(
+    nodes: &[TemplateNode],
+    data: &Value,
+    partial_renderer: Option<&dyn Fn(&str, &Value) -> Result<String, String>>,
+    template_path: Option<&str>,
+) -> Result<String, String> {
     let mut output = String::new();
 
     for node in nodes {
-        match node {
-            TemplateNode::Literal(s) => {
-                output.push_str(s);
-            }
-            TemplateNode::Output { expr, escaped } => {
-                let value = evaluate_expr(expr, data)?;
-                let s = value_to_string(&value);
-                if *escaped {
-                    output.push_str(&html_escape(&s));
-                } else {
-                    output.push_str(&s);
+        let result: Result<(), String> = (|| {
+            match node {
+                TemplateNode::Literal(s) => {
+                    output.push_str(s);
                 }
-            }
-            TemplateNode::If {
-                condition,
-                body,
-                else_body,
-            } => {
-                let cond_value = evaluate_expr(condition, data)?;
-                if is_truthy(&cond_value) {
-                    output.push_str(&render_nodes(body, data, partial_renderer)?);
-                } else if let Some(else_nodes) = else_body {
-                    output.push_str(&render_nodes(else_nodes, data, partial_renderer)?);
-                }
-            }
-            TemplateNode::For {
-                var,
-                iterable,
-                body,
-            } => {
-                let iterable_value = evaluate_expr(iterable, data)?;
-                match &iterable_value {
-                    Value::Array(arr) => {
-                        for item in arr.borrow().iter() {
-                            // Create new context with loop variable
-                            let loop_data = with_variable(data, var, item.clone())?;
-                            output.push_str(&render_nodes(body, &loop_data, partial_renderer)?);
-                        }
-                    }
-                    Value::Hash(hash) => {
-                        // Iterate over hash entries as [key, value] pairs
-                        for (k, v) in hash.borrow().iter() {
-                            let pair =
-                                Value::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()])));
-                            let loop_data = with_variable(data, var, pair)?;
-                            output.push_str(&render_nodes(body, &loop_data, partial_renderer)?);
-                        }
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Cannot iterate over {}: expected Array or Hash",
-                            iterable_value.type_name()
-                        ));
-                    }
-                }
-            }
-            TemplateNode::Yield => {
-                // Yield is handled by the layout system, not here
-                // If we encounter it during normal rendering, it's an error
-                return Err("yield encountered outside of layout context".to_string());
-            }
-            TemplateNode::Partial { name, context } => {
-                if let Some(renderer) = partial_renderer {
-                    let partial_data = if let Some(ctx_expr) = context {
-                        evaluate_expr(ctx_expr, data)?
+                TemplateNode::Output { expr, escaped } => {
+                    let value = evaluate_expr(expr, data)?;
+                    let s = value_to_string(&value);
+                    if *escaped {
+                        output.push_str(&html_escape(&s));
                     } else {
-                        data.clone()
-                    };
-                    output.push_str(&renderer(name, &partial_data)?);
-                } else {
-                    return Err(format!("Partial rendering not available for '{}'", name));
+                        output.push_str(&s);
+                    }
+                }
+                TemplateNode::If {
+                    condition,
+                    body,
+                    else_body,
+                } => {
+                    let cond_value = evaluate_expr(condition, data)?;
+                    if is_truthy(&cond_value) {
+                        output.push_str(&render_nodes_with_path(body, data, partial_renderer, template_path)?);
+                    } else if let Some(else_nodes) = else_body {
+                        output.push_str(&render_nodes_with_path(else_nodes, data, partial_renderer, template_path)?);
+                    }
+                }
+                TemplateNode::For {
+                    var,
+                    iterable,
+                    body,
+                } => {
+                    let iterable_value = evaluate_expr(iterable, data)?;
+                    match &iterable_value {
+                        Value::Array(arr) => {
+                            for item in arr.borrow().iter() {
+                                // Create new context with loop variable
+                                let loop_data = with_variable(data, var, item.clone())?;
+                                output.push_str(&render_nodes_with_path(body, &loop_data, partial_renderer, template_path)?);
+                            }
+                        }
+                        Value::Hash(hash) => {
+                            // Iterate over hash entries as [key, value] pairs
+                            for (k, v) in hash.borrow().iter() {
+                                let pair =
+                                    Value::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()])));
+                                let loop_data = with_variable(data, var, pair)?;
+                                output.push_str(&render_nodes_with_path(body, &loop_data, partial_renderer, template_path)?);
+                            }
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Cannot iterate over {}: expected Array or Hash",
+                                iterable_value.type_name()
+                            ));
+                        }
+                    }
+                }
+                TemplateNode::Yield => {
+                    // Yield is handled by the layout system, not here
+                    // If we encounter it during normal rendering, it's an error
+                    return Err("yield encountered outside of layout context".to_string());
+                }
+                TemplateNode::Partial { name, context } => {
+                    if let Some(renderer) = partial_renderer {
+                        let partial_data = if let Some(ctx_expr) = context {
+                            evaluate_expr(ctx_expr, data)?
+                        } else {
+                            data.clone()
+                        };
+                        output.push_str(&renderer(name, &partial_data)?);
+                    } else {
+                        return Err(format!("Partial rendering not available for '{}'", name));
+                    }
                 }
             }
+            Ok(())
+        })();
+
+        // If there was an error, add template path context
+        if let Err(e) = result {
+            if let Some(path) = template_path {
+                // Check if error already has path info
+                if !e.contains(".html.erb") && !e.contains(".erb") {
+                    return Err(format!("{} in {}", e, path));
+                }
+            }
+            return Err(e);
         }
     }
 
