@@ -276,6 +276,7 @@ fn compute_file_md5_cached(path: &PathBuf) -> Result<String, String> {
         }
 
         // Cache miss: compute and store
+        eprintln!("[MD5 CACHE MISS] Computing hash for: {} (dev_mode={})", path.display(), dev_mode);
         let data = std::fs::read(path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
         let hash = format!("{:x}", md5::compute(&data));

@@ -5,7 +5,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::interpreter::environment::Environment;
 use crate::interpreter::value::Value;
+use crate::interpreter::Interpreter;
 use crate::template::parser::{BinaryOp, CompareOp, Expr, TemplateNode};
 
 /// Resolve a value if it's a Future, otherwise return as-is.
@@ -258,6 +260,10 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
                 Value::NativeFunction(nf) => {
                     // Call the native function
                     (nf.func)(evaluated_args)
+                }
+                Value::Function(func) => {
+                    // Call user-defined function using interpreter
+                    call_user_function(&func, evaluated_args)
                 }
                 Value::Null => Err(format!("'{}' is not defined (function not found in template context)", name)),
                 _ => Err(format!("'{}' is not a function, got {}", name, func_value.type_name())),
