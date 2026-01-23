@@ -841,7 +841,8 @@ fn find_first_bracket(expr: &str) -> Option<usize> {
     let mut in_string = false;
     let mut string_char = ' ';
 
-    for (i, c) in expr.chars().enumerate() {
+    // Use char_indices() to get byte positions for safe UTF-8 slicing
+    for (i, c) in expr.char_indices() {
         if in_string {
             if c == string_char {
                 in_string = false;
@@ -866,7 +867,8 @@ fn find_matching_bracket_compile(s: &str) -> Option<usize> {
     let mut in_string = false;
     let mut string_char = ' ';
 
-    for (i, c) in s.chars().enumerate() {
+    // Use char_indices() to get byte positions for safe UTF-8 slicing
+    for (i, c) in s.char_indices() {
         if in_string {
             if c == string_char {
                 in_string = false;

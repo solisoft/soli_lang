@@ -153,6 +153,134 @@
         </table>
     </div>
 
+    <h4 class="text-lg font-semibold text-white mb-4">Strftime Format Codes</h4>
+    <p class="text-gray-400 mb-4">Use these codes with <code>datetime_format()</code> or <code>l()</code> for custom formatting:</p>
+    <div class="overflow-x-auto mb-12">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Code</th>
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Description</th>
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Example</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%Y</td>
+                    <td class="py-2 px-4">4-digit year</td>
+                    <td class="py-2 px-4 font-mono">2024</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%y</td>
+                    <td class="py-2 px-4">2-digit year</td>
+                    <td class="py-2 px-4 font-mono">24</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%m</td>
+                    <td class="py-2 px-4">Month (01-12)</td>
+                    <td class="py-2 px-4 font-mono">01</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%B</td>
+                    <td class="py-2 px-4">Full month name</td>
+                    <td class="py-2 px-4 font-mono">January</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%b</td>
+                    <td class="py-2 px-4">Abbreviated month</td>
+                    <td class="py-2 px-4 font-mono">Jan</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%d</td>
+                    <td class="py-2 px-4">Day of month (01-31)</td>
+                    <td class="py-2 px-4 font-mono">15</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%e</td>
+                    <td class="py-2 px-4">Day of month (space-padded)</td>
+                    <td class="py-2 px-4 font-mono">&nbsp;5</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%A</td>
+                    <td class="py-2 px-4">Full weekday name</td>
+                    <td class="py-2 px-4 font-mono">Monday</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%a</td>
+                    <td class="py-2 px-4">Abbreviated weekday</td>
+                    <td class="py-2 px-4 font-mono">Mon</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%H</td>
+                    <td class="py-2 px-4">Hour 24h (00-23)</td>
+                    <td class="py-2 px-4 font-mono">14</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%I</td>
+                    <td class="py-2 px-4">Hour 12h (01-12)</td>
+                    <td class="py-2 px-4 font-mono">02</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%M</td>
+                    <td class="py-2 px-4">Minute (00-59)</td>
+                    <td class="py-2 px-4 font-mono">30</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%S</td>
+                    <td class="py-2 px-4">Second (00-59)</td>
+                    <td class="py-2 px-4 font-mono">45</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%p</td>
+                    <td class="py-2 px-4">AM/PM</td>
+                    <td class="py-2 px-4 font-mono">PM</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%Z</td>
+                    <td class="py-2 px-4">Timezone name</td>
+                    <td class="py-2 px-4 font-mono">UTC</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%j</td>
+                    <td class="py-2 px-4">Day of year (001-366)</td>
+                    <td class="py-2 px-4 font-mono">015</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%W</td>
+                    <td class="py-2 px-4">Week number (00-53)</td>
+                    <td class="py-2 px-4 font-mono">03</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 px-4 font-mono text-indigo-400">%%</td>
+                    <td class="py-2 px-4">Literal %</td>
+                    <td class="py-2 px-4 font-mono">%</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">Common format examples</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- ISO format --&gt;
+&lt;%= datetime_format(ts, "%Y-%m-%d") %&gt;              &lt;!-- 2024-01-15 --&gt;
+&lt;%= datetime_format(ts, "%Y-%m-%dT%H:%M:%S") %&gt;    &lt;!-- 2024-01-15T14:30:45 --&gt;
+
+&lt;!-- Human-readable --&gt;
+&lt;%= datetime_format(ts, "%B %d, %Y") %&gt;            &lt;!-- January 15, 2024 --&gt;
+&lt;%= datetime_format(ts, "%A, %B %e, %Y") %&gt;        &lt;!-- Monday, January 15, 2024 --&gt;
+
+&lt;!-- Time formats --&gt;
+&lt;%= datetime_format(ts, "%H:%M") %&gt;                &lt;!-- 14:30 (24h) --&gt;
+&lt;%= datetime_format(ts, "%I:%M %p") %&gt;             &lt;!-- 02:30 PM (12h) --&gt;
+
+&lt;!-- Combined --&gt;
+&lt;%= datetime_format(ts, "%b %d at %I:%M %p") %&gt;    &lt;!-- Jan 15 at 02:30 PM --&gt;</code></pre>
+        </div>
+    </div>
+
     <h3 class="text-xl font-semibold text-white mb-4">I18n Functions</h3>
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
         <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">

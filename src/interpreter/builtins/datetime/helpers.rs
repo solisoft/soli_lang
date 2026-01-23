@@ -211,7 +211,7 @@ pub fn localize_date(timestamp: i64, locale: &str, format: &str) -> String {
     let formatted = dt.format(strftime_format).to_string();
 
     // Replace English month/day names with localized versions
-    localize_names(&formatted, &months, &days)
+    localize_names(&formatted, months, days, locale)
 }
 
 /// Get locale-specific data (month names, day names, formats)
@@ -269,31 +269,116 @@ fn get_locale_data(locale: &str) -> (&'static [&'static str], &'static [&'static
     }
 }
 
-/// English month and day names for replacement
+/// English month names (full) for replacement
 const EN_MONTHS: [&str; 12] = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
 ];
 
+/// English month names (abbreviated) for replacement
+const EN_MONTHS_SHORT: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
+/// English day names (full) for replacement
 const EN_DAYS: [&str; 7] = [
     "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
 ];
 
+/// English day names (abbreviated) for replacement
+const EN_DAYS_SHORT: [&str; 7] = [
+    "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"
+];
+
+/// Get abbreviated month names for a locale
+fn get_months_short(locale: &str) -> &'static [&'static str] {
+    match locale {
+        "fr" => &["janv.", "févr.", "mars", "avr.", "mai", "juin",
+                  "juil.", "août", "sept.", "oct.", "nov.", "déc."],
+        "de" => &["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni",
+                  "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."],
+        "es" => &["ene.", "feb.", "mar.", "abr.", "may.", "jun.",
+                  "jul.", "ago.", "sept.", "oct.", "nov.", "dic."],
+        "it" => &["gen.", "feb.", "mar.", "apr.", "mag.", "giu.",
+                  "lug.", "ago.", "set.", "ott.", "nov.", "dic."],
+        "pt" => &["jan.", "fev.", "mar.", "abr.", "mai.", "jun.",
+                  "jul.", "ago.", "set.", "out.", "nov.", "dez."],
+        _ => &["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    }
+}
+
+/// Get abbreviated day names for a locale
+fn get_days_short(locale: &str) -> &'static [&'static str] {
+    match locale {
+        "fr" => &["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."],
+        "de" => &["Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So."],
+        "es" => &["lun.", "mar.", "mié.", "jue.", "vie.", "sáb.", "dom."],
+        "it" => &["lun.", "mar.", "mer.", "gio.", "ven.", "sab.", "dom."],
+        "pt" => &["seg.", "ter.", "qua.", "qui.", "sex.", "sáb.", "dom."],
+        _ => &["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    }
+}
+
+/// Check if a word match is standalone (not part of a larger word)
+fn is_standalone_word(s: &str, start: usize, word_len: usize) -> bool {
+    let before_ok = start == 0 || !s[..start].chars().last().map(|c| c.is_alphabetic()).unwrap_or(false);
+    let after_ok = start + word_len >= s.len() || !s[start + word_len..].chars().next().map(|c| c.is_alphabetic()).unwrap_or(false);
+    before_ok && after_ok
+}
+
+/// Replace a word only if it appears as a standalone word
+fn replace_standalone(s: &str, from: &str, to: &str) -> String {
+    let mut result = String::new();
+    let mut remaining = s;
+
+    while let Some(pos) = remaining.find(from) {
+        let abs_pos = s.len() - remaining.len() + pos;
+        if is_standalone_word(s, abs_pos, from.len()) {
+            result.push_str(&remaining[..pos]);
+            result.push_str(to);
+            remaining = &remaining[pos + from.len()..];
+        } else {
+            result.push_str(&remaining[..pos + from.len()]);
+            remaining = &remaining[pos + from.len()..];
+        }
+    }
+    result.push_str(remaining);
+    result
+}
+
 /// Replace English month/day names with localized versions
-fn localize_names(formatted: &str, months: &[&str], days: &[&str]) -> String {
+fn localize_names(formatted: &str, months: &[&str], days: &[&str], locale: &str) -> String {
     let mut result = formatted.to_string();
 
-    // Replace month names
+    // Replace full month names first (they are longer, less chance of partial match)
     for (i, en_month) in EN_MONTHS.iter().enumerate() {
         if result.contains(en_month) {
             result = result.replace(en_month, months[i]);
         }
     }
 
-    // Replace day names
+    // Replace abbreviated month names (only standalone matches)
+    let months_short = get_months_short(locale);
+    for (i, en_month) in EN_MONTHS_SHORT.iter().enumerate() {
+        if result.contains(en_month) {
+            result = replace_standalone(&result, en_month, months_short[i]);
+        }
+    }
+
+    // Replace full day names
     for (i, en_day) in EN_DAYS.iter().enumerate() {
         if result.contains(en_day) {
             result = result.replace(en_day, days[i]);
+        }
+    }
+
+    // Replace abbreviated day names (only standalone matches)
+    let days_short = get_days_short(locale);
+    for (i, en_day) in EN_DAYS_SHORT.iter().enumerate() {
+        if result.contains(en_day) {
+            result = replace_standalone(&result, en_day, days_short[i]);
         }
     }
 
@@ -375,5 +460,47 @@ mod tests {
 
         // 3 days ago
         assert!(time_ago(now - 259200).contains("days ago"));
+    }
+
+    #[test]
+    fn test_localize_date_utf8() {
+        // February 15, 2024 10:30:00 UTC
+        let ts = 1708000200;
+
+        // French - should contain "février" with accent
+        let fr_long = localize_date(ts, "fr", "long");
+        assert!(fr_long.contains("février"), "French long format should contain 'février', got: {}", fr_long);
+
+        // French short format
+        let fr_short = localize_date(ts, "fr", "short");
+        assert!(fr_short.contains("/"), "French short should use / separator, got: {}", fr_short);
+
+        // German - should contain "Februar"
+        let de_long = localize_date(ts, "de", "long");
+        assert!(de_long.contains("Februar"), "German should contain 'Februar', got: {}", de_long);
+
+        // Spanish Wednesday test (miércoles has accent)
+        // March 6, 2024 is a Wednesday
+        let wed_ts = 1709726400;
+        let es_full = localize_date(wed_ts, "es", "full");
+        assert!(es_full.contains("miércoles"), "Spanish full format should contain 'miércoles', got: {}", es_full);
+
+        // Italian with accented day names
+        let it_full = localize_date(wed_ts, "it", "full");
+        assert!(it_full.contains("mercoledì"), "Italian full format should contain 'mercoledì', got: {}", it_full);
+
+        // Custom format with UTF-8 literal
+        let custom = localize_date(ts, "fr", "Créé le %d/%m/%Y à %H:%M");
+        assert!(custom.contains("à"), "Custom format should preserve 'à', got: {}", custom);
+        assert!(custom.contains("Créé"), "Custom format should preserve 'Créé', got: {}", custom);
+
+        // Test abbreviated month names (%b) with French locale
+        let fr_abbrev = localize_date(ts, "fr", "%d %b à %Hh");
+        assert!(fr_abbrev.contains("févr."), "French abbreviated should contain 'févr.', got: {}", fr_abbrev);
+        assert!(fr_abbrev.contains("à"), "French abbreviated should preserve 'à', got: {}", fr_abbrev);
+
+        // Test abbreviated day names (%a) with French locale
+        let fr_day_abbrev = localize_date(wed_ts, "fr", "%a %d %b");
+        assert!(fr_day_abbrev.contains("mer."), "French abbreviated day should contain 'mer.', got: {}", fr_day_abbrev);
     }
 }
