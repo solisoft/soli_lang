@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::interpreter::value::Value;
+use crate::interpreter::Interpreter;
 use crate::template::parser::{parse_template, BinaryOp, CompareOp, Expr, TemplateNode};
 
 /// Resolve a value if it's a Future, otherwise return as-is.
@@ -286,7 +287,7 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
 
             let evaluated_args = evaluated_args?;
 
-            // Look up the function in the data context (should be a NativeFunction)
+            // Look up the function in the data context
             let func_value = get_hash_value(data, name)?;
 
             match func_value {
@@ -294,7 +295,15 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
                     // Call the native function
                     (nf.func)(evaluated_args)
                 }
-                _ => Err(format!("'{}' is not a function", name)),
+                Value::Function(func) => {
+                    // Call user-defined function using interpreter
+                    call_user_function(&func, evaluated_args)
+                }
+                Value::Null => Err(format!(
+                    "'{}' is not defined (function not found in layout context)",
+                    name
+                )),
+                _ => Err(format!("'{}' is not a function, got {}", name, func_value.type_name())),
             }
         }
     }
@@ -573,6 +582,42 @@ fn with_variable(data: &Value, name: &str, value: Value) -> Result<Value, String
         }
         _ => Err("Data context must be a Hash".to_string()),
     }
+}
+
+/// Call a user-defined function (from helpers) using an interpreter.
+fn call_user_function(
+    func: &crate::interpreter::value::Function,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    // Create a new interpreter with builtins
+    let mut interpreter = Interpreter::new();
+
+    // Copy variables from the function's closure into the interpreter's environment
+    // This allows helpers to call other helpers
+    let closure_vars = func.closure.borrow().get_all_variables();
+    for (name, value) in closure_vars {
+        interpreter.environment.borrow_mut().define(name, value);
+    }
+
+    // Bind arguments to parameters
+    for (i, param) in func.params.iter().enumerate() {
+        let arg_value = args.get(i).cloned().unwrap_or(Value::Null);
+        interpreter.environment.borrow_mut().define(param.name.clone(), arg_value);
+    }
+
+    // Execute statements and capture return value
+    for stmt in &func.body {
+        match interpreter.execute(stmt) {
+            Ok(crate::interpreter::executor::ControlFlow::Return(value)) => {
+                return Ok(value);
+            }
+            Ok(_) => continue,
+            Err(e) => return Err(format!("Error in helper function '{}': {}", func.name, e)),
+        }
+    }
+
+    // No explicit return - return null
+    Ok(Value::Null)
 }
 
 #[cfg(test)]
