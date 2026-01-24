@@ -501,17 +501,25 @@ SOLIDB_PASSWORD=admin
 }
 
 fn create_gitignore(app_path: &Path) -> Result<(), String> {
-    let content = r#"# Soli MVC
-soli.pid
-soli.log
-
-# Dependencies
+    let content = r#"# Dependencies
 node_modules/
 
 # Build artifacts
 /target/
 *.o
 *.so
+
+# Process files
+*.pid
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
 
 # IDE
 .idea/
@@ -523,15 +531,6 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Logs
-*.log
-logs/
 
 # Coverage
 coverage/
@@ -859,7 +858,7 @@ pub fn create_app(name: &str) -> Result<(), String> {
     // Display header
     ProgressDisplay::header(name);
 
-    let mut progress = ProgressDisplay::new(6);
+    let mut progress = ProgressDisplay::new(7);
 
     // Step 1: Create directory structure
     progress.step("Creating directory structure...");
@@ -907,6 +906,12 @@ pub fn create_app(name: &str) -> Result<(), String> {
         progress.step("Building Tailwind CSS...");
         ProgressDisplay::skip("npm not available");
     }
+
+    // Step 7: Initialize git repository
+    progress.step("Initializing git repository...");
+    io::stdout().flush().unwrap();
+    println!(); // Move to next line for spinner
+    init_git_repo(app_path);
 
     // Print created files summary
     println!();
@@ -984,6 +989,67 @@ fn build_tailwind_css(app_path: &Path) {
         }
         _ => {
             spinner.stop_with_warning("CSS build failed - run 'npm run build:css' manually");
+        }
+    }
+}
+
+/// Initialize git repository with spinner
+fn init_git_repo(app_path: &Path) {
+    // Check if git is available
+    if std::process::Command::new("git")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        let spinner = Spinner::start("Initializing git repository...");
+        spinner.stop_with_warning("git not found - run 'git init' manually");
+        return;
+    }
+
+    let spinner = Spinner::start("Initializing git repository...");
+
+    // Run git init
+    let init_result = std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(app_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    if init_result.is_err() || !init_result.unwrap().success() {
+        spinner.stop_with_warning("git init failed");
+        return;
+    }
+
+    // Stage all files
+    let add_result = std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(app_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    if add_result.is_err() || !add_result.unwrap().success() {
+        spinner.stop_with_warning("git init succeeded but staging failed");
+        return;
+    }
+
+    // Create initial commit
+    let commit_result = std::process::Command::new("git")
+        .args(["commit", "-m", "Initial commit from soli new"])
+        .current_dir(app_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    match commit_result {
+        Ok(status) if status.success() => {
+            spinner.stop_with_success("Git repository initialized");
+        }
+        _ => {
+            spinner.stop_with_warning("git init succeeded but commit failed");
         }
     }
 }
