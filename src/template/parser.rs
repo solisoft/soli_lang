@@ -139,7 +139,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                     chars.next(); // consume second '='
                     is_unescape = true;
                 }
-            } else if is_raw {
+            } elsif is_raw {
                 chars.next(); // consume '-'
             }
 
@@ -164,9 +164,9 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
 
             if is_raw {
                 tokens.push(Token::OutputRaw(tag_content, tag_line));
-            } else if is_unescape {
+            } elsif is_unescape {
                 tokens.push(Token::OutputUnescape(tag_content, tag_line));
-            } else if is_output {
+            } elsif is_output {
                 tokens.push(Token::OutputEscaped(tag_content, tag_line));
             } else {
                 tokens.push(Token::Code(tag_content, tag_line));
@@ -207,7 +207,7 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
             Token::OutputEscaped(expr, line) => {
                 if expr == "yield" {
                     nodes.push(TemplateNode::Yield);
-                } else if expr.starts_with("render ") || expr.starts_with("render(") {
+                } elsif expr.starts_with("render ") || expr.starts_with("render(") {
                     // Parse partial render
                     let partial = parse_partial_call(expr, *line)?;
                     nodes.push(partial);
@@ -251,12 +251,12 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                     let (if_node, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     nodes.push(if_node);
                     i += consumed;
-                } else if code.starts_with("for ") {
+                } elsif code.starts_with("for ") {
                     // Parse for loop
                     let (for_node, consumed) = parse_for_block(&tokens[i..], *line)?;
                     nodes.push(for_node);
                     i += consumed;
-                } else if code == "end" || code.starts_with("else") || code.starts_with("elsif ") {
+                } elsif code == "end" || code.starts_with("else") || code.starts_with("elsif ") {
                     // These should be handled by their parent block parsers
                     return Err(format!("Unexpected '{}' outside of block at line {}", code, line));
                 } else {
@@ -294,11 +294,11 @@ fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(
                         },
                         i + 1,
                     ));
-                } else if code == "else" {
+                } elsif code == "else" {
                     in_else = true;
                     else_body = Some(Vec::new());
                     i += 1;
-                } else if code.starts_with("elsif ") {
+                } elsif code.starts_with("elsif ") {
                     // Handle elsif as nested if in else
                     let elsif_condition = compile_expr(code[6..].trim());
                     let (elsif_node, consumed) = parse_if_block(&tokens[i..], elsif_condition, *line)?;
@@ -313,7 +313,7 @@ fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(
                         },
                         i + consumed,
                     ));
-                } else if code.starts_with("if ") {
+                } elsif code.starts_with("if ") {
                     // Nested if
                     let nested_condition = compile_expr(code[3..].trim());
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], nested_condition, *line)?;
@@ -323,7 +323,7 @@ fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(
                         body.push(nested_if);
                     }
                     i += consumed;
-                } else if code.starts_with("for ") {
+                } elsif code.starts_with("for ") {
                     // Nested for
                     let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
                     if in_else {
@@ -349,7 +349,7 @@ fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(
             Token::OutputEscaped(expr, line) => {
                 let node = if expr == "yield" {
                     TemplateNode::Yield
-                } else if expr.starts_with("render ") || expr.starts_with("render(") {
+                } elsif expr.starts_with("render ") || expr.starts_with("render(") {
                     parse_partial_call(expr, *line)?
                 } else {
                     TemplateNode::Output {
@@ -436,13 +436,13 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                         },
                         i + 1,
                     ));
-                } else if code.starts_with("if ") {
+                } elsif code.starts_with("if ") {
                     // Nested if
                     let condition = compile_expr(code[3..].trim());
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
                     i += consumed;
-                } else if code.starts_with("for ") {
+                } elsif code.starts_with("for ") {
                     // Nested for
                     let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
                     body.push(nested_for);
@@ -459,7 +459,7 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
             Token::OutputEscaped(expr, line) => {
                 let node = if expr == "yield" {
                     TemplateNode::Yield
-                } else if expr.starts_with("render ") || expr.starts_with("render(") {
+                } elsif expr.starts_with("render ") || expr.starts_with("render(") {
                     parse_partial_call(expr, *line)?
                 } else {
                     TemplateNode::Output {
@@ -568,7 +568,7 @@ fn parse_partial_call(expr: &str, line: usize) -> Result<TemplateNode, String> {
             .trim_end_matches(')')
             .trim();
         inner
-    } else if expr.starts_with("render ") {
+    } elsif expr.starts_with("render ") {
         // Space form: render 'name' or render 'name', context
         expr[7..].trim()
     } else {
@@ -890,9 +890,9 @@ fn compile_variable_access(expr: &str) -> Expr {
             // Handle any further access
             if after_bracket.is_empty() {
                 return indexed;
-            } else if after_bracket.starts_with('.') {
+            } elsif after_bracket.starts_with('.') {
                 return compile_chained_access(indexed, &after_bracket[1..]);
-            } else if after_bracket.starts_with('[') {
+            } elsif after_bracket.starts_with('[') {
                 return compile_further_brackets(indexed, after_bracket);
             }
         }
@@ -981,7 +981,7 @@ fn compile_chained_access(base: Expr, field: &str) -> Expr {
     // Check for method-like properties
     let (current_field, rest) = if let Some(dot_pos) = field.find('.') {
         (&field[..dot_pos], Some(&field[dot_pos + 1..]))
-    } else if let Some(bracket_pos) = find_first_bracket(field) {
+    } elsif let Some(bracket_pos) = find_first_bracket(field) {
         (&field[..bracket_pos], Some(&field[bracket_pos..]))
     } else {
         (field, None)
@@ -1016,9 +1016,9 @@ fn compile_further_brackets(base: Expr, brackets: &str) -> Expr {
 
         if after.is_empty() {
             indexed
-        } else if after.starts_with('.') {
+        } elsif after.starts_with('.') {
             compile_chained_access(indexed, &after[1..])
-        } else if after.starts_with('[') {
+        } elsif after.starts_with('[') {
             compile_further_brackets(indexed, after)
         } else {
             indexed

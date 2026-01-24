@@ -163,9 +163,9 @@ function connect() {
 
             if (data.type === 'join') {
                 addSystemMessage('New user joined the session');
-            } else if (data.type === 'leave') {
+            } elsif (data.type === 'leave') {
                 addSystemMessage('User left the session');
-            } else if (data.type === 'message') {
+            } elsif (data.type === 'message') {
                 // Determine if it's my message (simplified for demo)
                 // In a real app, we'd check user ID
                 addMessage(data.text, 'others');
@@ -193,7 +193,7 @@ function addSystemMessage(text) {
 
 function addMessage(text, type) {
     if (!text) return;
-    
+
     const messagesDiv = document.getElementById('messages');
     const div = document.createElement('div');
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -238,7 +238,7 @@ function sendMessage() {
     if (text && ws && ws.readyState === WebSocket.OPEN) {
         // Optimistic UI update
         addMessage(text, 'me');
-        
+
         const message = JSON.stringify({ text: text });
         ws.send(message);
         input.value = '';

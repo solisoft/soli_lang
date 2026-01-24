@@ -88,7 +88,7 @@ pub fn register_i18n_class(env: &mut Environment) {
                 }
             }) {
                 Ok(trans.1.clone())
-            } else if let Some(trans) = translations.iter().find(|(k, _)| {
+            } elsif let Some(trans) = translations.iter().find(|(k, _)| {
                 if let Value::String(s) = k {
                     s == &format!("en.{}", key)
                 } else {
@@ -140,7 +140,7 @@ pub fn register_i18n_class(env: &mut Environment) {
             // Simple pluralization: use _zero for 0, _one for 1, _other for plural
             let plural_key = if n == 0 {
                 format!("{}.{}_zero", locale, key)
-            } else if n == 1 {
+            } elsif n == 1 {
                 format!("{}.{}_one", locale, key)
             } else {
                 format!("{}.{}_other", locale, key)

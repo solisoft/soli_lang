@@ -100,7 +100,7 @@ impl<'a> Scanner<'a> {
             '=' => {
                 if self.match_char('=') {
                     Ok(self.make_token(TokenKind::EqualEqual))
-                } else if self.match_char('>') {
+                } elsif self.match_char('>') {
                     Ok(self.make_token(TokenKind::FatArrow))
                 } else {
                     Ok(self.make_token(TokenKind::Equal))
@@ -137,7 +137,7 @@ impl<'a> Scanner<'a> {
             '|' => {
                 if self.match_char('>') {
                     Ok(self.make_token(TokenKind::Pipeline))
-                } else if self.match_char('|') {
+                } elsif self.match_char('|') {
                     Ok(self.make_token(TokenKind::Or))
                 } else {
                     Ok(self.make_token(TokenKind::Pipe))
@@ -174,7 +174,7 @@ impl<'a> Scanner<'a> {
                         while self.peek().is_some() && self.peek() != Some('\n') {
                             self.advance();
                         }
-                    } else if self.peek_next() == Some('*') {
+                    } elsif self.peek_next() == Some('*') {
                         // Block comment
                         self.advance(); // consume /
                         self.advance(); // consume *
@@ -349,7 +349,7 @@ impl<'a> Scanner<'a> {
                         if c2 == '(' {
                             _paren_depth += 1;
                             current.push(c2);
-                        } else if c2 == ')' {
+                        } elsif c2 == ')' {
                             _paren_depth -= 1;
                             if _paren_depth == 0 {
                                 break;
@@ -386,7 +386,7 @@ impl<'a> Scanner<'a> {
             if c.is_ascii_digit() {
                 value.push(c);
                 self.advance();
-            } else if c == '.' && !is_float {
+            } elsif c == '.' && !is_float {
                 // Check if next char is a digit (to distinguish from method calls)
                 if let Some(next) = self.peek_next() {
                     if next.is_ascii_digit() {
@@ -399,7 +399,7 @@ impl<'a> Scanner<'a> {
                 } else {
                     break;
                 }
-            } else if c == '_' {
+            } elsif c == '_' {
                 // Allow underscores in numbers for readability
                 self.advance();
             } else {

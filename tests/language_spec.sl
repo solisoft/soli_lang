@@ -322,12 +322,12 @@ describe("If/Else Statements", fn() {
         assert_eq(result, 2);
     });
 
-    test("if-else if-else chain", fn() {
+    test("if-elsif-else chain", fn() {
         let x = 2;
         let result = "";
         if (x == 1) {
             result = "one";
-        } else if (x == 2) {
+        } elsif (x == 2) {
             result = "two";
         } else {
             result = "other";

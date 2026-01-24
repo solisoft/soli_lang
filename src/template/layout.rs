@@ -109,7 +109,7 @@ pub fn render_layout_nodes_with_path(
                     let cond_value = evaluate_expr(condition, data)?;
                     if is_truthy(&cond_value) {
                         output.push_str(&render_layout_nodes_with_path(body, content, data, partial_renderer, layout_path)?);
-                    } else if let Some(else_nodes) = else_body {
+                    } elsif let Some(else_nodes) = else_body {
                         output.push_str(&render_layout_nodes_with_path(
                             else_nodes,
                             content,

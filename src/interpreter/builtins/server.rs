@@ -242,7 +242,7 @@ pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> 
     for (pat, actual) in pattern_parts.iter().zip(path_parts.iter()) {
         if let Some(param_name) = pat.strip_prefix(':') {
             params.insert(param_name.to_string(), actual.to_string());
-        } else if pat != actual {
+        } elsif pat != actual {
             // Literal mismatch
             return None;
         }

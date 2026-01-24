@@ -11,13 +11,13 @@ class Duration {
         let multiplier = 1.0;
         if (unit == "days") {
             multiplier = 86400.0;
-        } else if (unit == "hours") {
+        } elsif (unit == "hours") {
             multiplier = 3600.0;
-        } else if (unit == "minutes") {
+        } elsif (unit == "minutes") {
             multiplier = 60.0;
-        } else if (unit == "seconds") {
+        } elsif (unit == "seconds") {
             multiplier = 1.0;
-        } else if (unit == "milliseconds") {
+        } elsif (unit == "milliseconds") {
             multiplier = 0.001;
         } else {
             print("Error: Unknown duration unit: " + unit);

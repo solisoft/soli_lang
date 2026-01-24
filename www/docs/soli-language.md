@@ -274,7 +274,7 @@ if (!is_raining) {
 let score = 85;
 if (score >= 90 && attendance >= 80) {
     print("Grade: A");
-} else if (score >= 80 || extra_credit > 10) {
+} elsif (score >= 80 || extra_credit > 10) {
     print("Grade: B");
 }
 ```
@@ -369,11 +369,11 @@ let grade = 85;
 let letter;
 if (grade >= 90) {
     letter = "A";
-} else if (grade >= 80) {
+} elsif (grade >= 80) {
     letter = "B";
-} else if (grade >= 70) {
+} elsif (grade >= 70) {
     letter = "C";
-} else if (grade >= 60) {
+} elsif (grade >= 60) {
     letter = "D";
 } else {
     letter = "F";
@@ -388,7 +388,7 @@ let has_plans = true;
 if (is_weekend) {
     if (is_holiday) {
         print("Holiday vacation!");
-    } else if (has_plans) {
+    } elsif (has_plans) {
         print("Busy with plans");
     } else {
         print("Relaxing at home");
@@ -2891,7 +2891,7 @@ class Person {
 ```soli
 if (condition) {
     // code
-} else if (other) {
+} elsif (other) {
     // code
 } else {
     // code

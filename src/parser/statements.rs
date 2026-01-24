@@ -9,17 +9,17 @@ impl Parser {
     pub(crate) fn statement(&mut self) -> ParseResult<Stmt> {
         if self.check(&TokenKind::If) {
             self.if_statement()
-        } else if self.check(&TokenKind::While) {
+        } elsif self.check(&TokenKind::While) {
             self.while_statement()
-        } else if self.check(&TokenKind::For) {
+        } elsif self.check(&TokenKind::For) {
             self.for_statement()
-        } else if self.check(&TokenKind::Return) {
+        } elsif self.check(&TokenKind::Return) {
             self.return_statement()
-        } else if self.check(&TokenKind::Throw) {
+        } elsif self.check(&TokenKind::Throw) {
             self.throw_statement()
-        } else if self.check(&TokenKind::Try) {
+        } elsif self.check(&TokenKind::Try) {
             self.try_statement()
-        } else if self.check(&TokenKind::LeftBrace) {
+        } elsif self.check(&TokenKind::LeftBrace) {
             self.block_statement()
         } else {
             self.expression_statement()

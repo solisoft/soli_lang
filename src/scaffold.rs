@@ -652,7 +652,7 @@ fn authenticate(req: Any) -> Any {
     let api_key = "";
     if has_key(headers, "X-Api-Key") {
         api_key = headers["X-Api-Key"];
-    } else if has_key(headers, "x-api-key") {
+    } elsif has_key(headers, "x-api-key") {
         api_key = headers["x-api-key"];
     }
 
@@ -1862,7 +1862,7 @@ fn to_pascal_case(s: &str) -> String {
     for c in s.chars() {
         if c == '_' || c == '-' {
             capitalize_next = true;
-        } else if capitalize_next {
+        } elsif capitalize_next {
             result.push(c.to_ascii_uppercase());
             capitalize_next = false;
         } else {

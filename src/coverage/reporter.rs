@@ -242,9 +242,9 @@ impl CoverageReporter {
     fn html_coverage_color(&self, percent: f64) -> String {
         if percent >= 90.0 {
             "#22c55e".to_string()
-        } else if percent >= 75.0 {
+        } elsif percent >= 75.0 {
             "#eab308".to_string()
-        } else if percent >= 50.0 {
+        } elsif percent >= 50.0 {
             "#f97316".to_string()
         } else {
             "#ef4444".to_string()

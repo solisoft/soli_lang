@@ -535,7 +535,7 @@ fn load_middleware(
 
             let flags = if global_only {
                 " [global_only]".to_string()
-            } else if scope_only {
+            } elsif scope_only {
                 " [scope_only]".to_string()
             } else {
                 "".to_string()
@@ -681,7 +681,7 @@ fn track_view_files(views_dir: &Path, file_tracker: &mut FileTracker) -> Result<
                 let path = entry.path();
                 if path.is_dir() {
                     track_recursive(&path, file_tracker)?;
-                } else if path.extension().map_or(false, |ext| ext == "erb") {
+                } elsif path.extension().map_or(false, |ext| ext == "erb") {
                     file_tracker.track(&path);
                 }
             }
@@ -956,7 +956,7 @@ fn run_hyper_server_worker_pool(
                     let path = entry.path();
                     if path.is_dir() {
                         track_views_recursive(&path, tracker);
-                    } else if path.extension().map_or(false, |ext| ext == "erb") {
+                    } elsif path.extension().map_or(false, |ext| ext == "erb") {
                         tracker.track(&path);
                     }
                 }
@@ -971,7 +971,7 @@ fn run_hyper_server_worker_pool(
                     let path = entry.path();
                     if path.is_dir() {
                         track_static_recursive(&path, tracker);
-                    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    } elsif let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                         if ["css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff", "woff2", "ttf"].contains(&ext) {
                             tracker.track(&path);
                         }
@@ -1019,13 +1019,13 @@ fn run_hyper_server_worker_pool(
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if name == "routes.sl" {
                         routes_changed = true;
-                    } else if name.ends_with("_controller.sl") {
+                    } elsif name.ends_with("_controller.sl") {
                         controllers_changed = true;
-                    } else if name.ends_with(".sl") && path.starts_with(&watch_middleware_dir) {
+                    } elsif name.ends_with(".sl") && path.starts_with(&watch_middleware_dir) {
                         middleware_changed = true;
-                    } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
+                    } elsif name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
                         helpers_changed = true;
-                    } else if name.ends_with(".erb") {
+                    } elsif name.ends_with(".erb") {
                         views_changed = true;
                     }
                 }
@@ -2534,7 +2534,7 @@ fn to_pascal_case_controller(controller_key: &str) -> String {
     for c in controller_key.chars() {
         if c == '_' {
             capitalize_next = true;
-        } else if capitalize_next {
+        } elsif capitalize_next {
             result.push(c.to_ascii_uppercase());
             capitalize_next = false;
         } else {
@@ -2611,7 +2611,7 @@ fn parse_request_body(
 
     if content_type.starts_with("application/json") {
         parsed.json = parse_json_body(body);
-    } else if content_type.starts_with("application/x-www-form-urlencoded") {
+    } elsif content_type.starts_with("application/x-www-form-urlencoded") {
         parsed.form = parse_form_urlencoded_body(body);
     }
 
@@ -2846,7 +2846,7 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
 async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let body = req.into_body().collect().await?.to_bytes();
     let body_str = String::from_utf8_lossy(&body);
-    
+
     // Parse JSON body
     let json: serde_json::Value = match serde_json::from_str(&body_str) {
         Ok(json) => json,
@@ -2865,7 +2865,7 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
 
     // Execute the code using the interpreter
     let result = execute_repl_code(&code, request_data, breakpoint_env);
-    
+
     let response_json = serde_json::json!({
         "result": result.result,
         "error": result.error
@@ -2882,7 +2882,7 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
 async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let uri = req.uri();
     let query = uri.query().unwrap_or("");
-    
+
     // Parse query parameters
     let file = query.split('&')
         .filter_map(|p| {
@@ -3255,13 +3255,13 @@ fn extract_json_field(json: &str, field: &str) -> Option<String> {
         for (i, c) in chars.iter().enumerate() {
             if *c == '{' || *c == '[' {
                 depth += 1;
-            } else if *c == '}' || *c == ']' {
+            } elsif *c == '}' || *c == ']' {
                 depth -= 1;
                 if depth == 0 {
                     end = after_start + i + 1;
                     break;
                 }
-            } else if *c == ',' && depth == 0 {
+            } elsif *c == ',' && depth == 0 {
                 end = after_start + i;
                 break;
             }
@@ -3409,7 +3409,7 @@ pub fn render_dev_error_page(
             file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
             // Get line from file:line pattern as fallback
             line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-        } else if let Some(caps) = view_file_regex.captures(frame) {
+        } elsif let Some(caps) = view_file_regex.captures(frame) {
             // Try to find view file path in error message like "error in /path/file.html.erb"
             file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
         }
@@ -3442,7 +3442,7 @@ pub fn render_dev_error_page(
                     // Extract from file name
                     extract_controller_name(&file)
                 }
-            } else if file != "unknown" {
+            } elsif file != "unknown" {
                 // No " at " - extract function name from file
                 extract_controller_name(&file)
             } else {
@@ -3453,9 +3453,9 @@ pub fn render_dev_error_page(
             // Clean up function name - if it looks like a file path, extract the name
             let display = if func.contains('#') || func.contains("::") {
                 func.clone()
-            } else if func.contains('/') || contains_source_ext(&func) {
+            } elsif func.contains('/') || contains_source_ext(&func) {
                 extract_controller_name(&func)
-            } else if func == "unknown" && file != "unknown" {
+            } elsif func == "unknown" && file != "unknown" {
                 extract_controller_name(&file)
             } else {
                 func.clone()
@@ -3814,7 +3814,7 @@ pub fn render_dev_error_page(
                     historyIndex--;
                     input.value = history[historyIndex];
                 }}
-            }} else if (direction === 'down') {{
+            }} elsif (direction === 'down') {{
                 if (historyIndex < history.length - 1) {{
                     historyIndex++;
                     input.value = history[historyIndex];
@@ -3917,7 +3917,7 @@ pub fn render_dev_error_page(
                 if (el) {{
                     if (data === null || data === undefined) {{
                         el.innerHTML = '<span class="text-gray-500 italic">No data</span>';
-                    }} else if (typeof data === 'object' && Object.keys(data).length === 0) {{
+                    }} elsif (typeof data === 'object' && Object.keys(data).length === 0) {{
                         el.innerHTML = '<span class="text-gray-500 italic">Empty</span>';
                     }} else {{
                         el.innerHTML = formatJson(data);
@@ -3945,7 +3945,7 @@ pub fn render_dev_error_page(
                 if (e.key === 'ArrowUp') {{
                     e.preventDefault();
                     navigateHistory('up');
-                }} else if (e.key === 'ArrowDown') {{
+                }} elsif (e.key === 'ArrowDown') {{
                     e.preventDefault();
                     navigateHistory('down');
                 }}

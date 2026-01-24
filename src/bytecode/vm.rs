@@ -1666,7 +1666,7 @@ impl VM {
                         current_tag = String::new();
                         tag_buffer.clear();
                         tag_buffer.push(c);
-                    } else if c == '>' {
+                    } elsif c == '>' {
                         if in_tag {
                             tag_buffer.push(c);
                             let tag = tag_buffer.trim().to_lowercase();
@@ -1731,7 +1731,7 @@ impl VM {
                             if is_allowed && !is_dangerous_attr {
                                 let cleaned_tag = if is_closing {
                                     format!("</{}>", tag_name)
-                                } else if is_self_closing {
+                                } elsif is_self_closing {
                                     format!("<{}/>", tag_name)
                                 } else {
                                     let attrs: Vec<&str> = tag
@@ -1780,7 +1780,7 @@ impl VM {
                         } else {
                             result.push(c);
                         }
-                    } else if in_tag {
+                    } elsif in_tag {
                         tag_buffer.push(c);
                     } else {
                         result.push(c);
@@ -1807,9 +1807,9 @@ impl VM {
                 for c in s.chars() {
                     if c == '<' {
                         in_tag = true;
-                    } else if c == '>' {
+                    } elsif c == '>' {
                         in_tag = false;
-                    } else if !in_tag {
+                    } elsif !in_tag {
                         result.push(c);
                     }
                 }
@@ -2655,7 +2655,7 @@ impl VM {
                                     if let Some(method) = method {
                                         let bound = VMValue::BoundMethod(inst.clone(), method);
                                         self.push(bound);
-                                    } else if class.borrow().find_native_method(&name).is_some() {
+                                    } elsif class.borrow().find_native_method(&name).is_some() {
                                         // Check for native method
                                         let class_name = class.borrow().name.clone();
                                         let bound = VMValue::BoundNativeMethod(
@@ -2699,7 +2699,7 @@ impl VM {
                                             ));
                                         }
                                     }
-                                } else if class_name == "Duration" {
+                                } elsif class_name == "Duration" {
                                     match name.as_str() {
                                         "between" => {
                                             let closure = create_duration_between_closure();
@@ -2716,7 +2716,7 @@ impl VM {
                                             ));
                                         }
                                     }
-                                } else if class_name == "I18n" {
+                                } elsif class_name == "I18n" {
                                     match name.as_str() {
                                         "locale" => {
                                             let closure = create_i18n_locale_closure();
@@ -3302,7 +3302,7 @@ impl VM {
                 return Ok(());
             }
             // Check if we have a finally handler
-            else if handler.finally_ip > 0 {
+            elsif handler.finally_ip > 0 {
                 // Unwind to handler's stack depth
                 self.unwind_stack(handler.stack_depth);
 
@@ -3581,14 +3581,14 @@ impl VM {
         // Handle built-in static method closures directly
         if function_name == "datetime_utc" {
             return self.handle_datetime_utc(arg_count);
-        } else if function_name == "datetime_parse" {
+        } elsif function_name == "datetime_parse" {
             return self.handle_datetime_parse(arg_count);
-        } else if function_name == "duration_between" {
+        } elsif function_name == "duration_between" {
             return self.handle_duration_between(arg_count);
-        } else if function_name.starts_with("duration_") {
+        } elsif function_name.starts_with("duration_") {
             let method_name = function_name.strip_prefix("duration_").unwrap();
             return self.handle_duration_from_value(method_name, arg_count);
-        } else if function_name.starts_with("i18n_") {
+        } elsif function_name.starts_with("i18n_") {
             return self.handle_i18n_method(&function_name, arg_count);
         }
 
@@ -3945,7 +3945,7 @@ impl VM {
 
                 let plural_suffix = if n == 0 {
                     "_zero"
-                } else if n == 1 {
+                } elsif n == 1 {
                     "_one"
                 } else {
                     "_other"
@@ -4267,7 +4267,7 @@ impl VM {
                     .borrow_mut()
                     .static_methods
                     .insert(name.to_string(), method);
-            } else if name == "constructor" {
+            } elsif name == "constructor" {
                 class.borrow_mut().constructor = Some(method);
             } else {
                 class.borrow_mut().methods.insert(name.to_string(), method);
@@ -4404,7 +4404,7 @@ fn json_to_vm_value(json: &serde_json::Value) -> Result<VMValue, RuntimeError> {
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Ok(VMValue::Int(i))
-            } else if let Some(f) = n.as_f64() {
+            } elsif let Some(f) = n.as_f64() {
                 Ok(VMValue::Float(f))
             } else {
                 Err(RuntimeError::new(

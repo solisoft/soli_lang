@@ -31,9 +31,9 @@ impl TypeChecker {
         for stmt in &program.statements {
             if let StmtKind::Class(decl) = &stmt.kind {
                 self.declare_class(decl);
-            } else if let StmtKind::Interface(decl) = &stmt.kind {
+            } elsif let StmtKind::Interface(decl) = &stmt.kind {
                 self.declare_interface(decl);
-            } else if let StmtKind::Function(decl) = &stmt.kind {
+            } elsif let StmtKind::Function(decl) = &stmt.kind {
                 self.declare_function(decl);
             }
         }
@@ -63,7 +63,7 @@ impl TypeChecker {
                 _ => {
                     if let Some(class) = self.env.get_class(name) {
                         Type::Class(class.clone())
-                    } else if let Some(iface) = self.env.get_interface(name) {
+                    } elsif let Some(iface) = self.env.get_interface(name) {
                         Type::Interface(iface.clone())
                     } else {
                         Type::Unknown

@@ -513,7 +513,7 @@ pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Ok(Value::Int(i))
-            } else if let Some(f) = n.as_f64() {
+            } elsif let Some(f) = n.as_f64() {
                 Ok(Value::Float(f))
             } else {
                 Err("Invalid JSON number".to_string())

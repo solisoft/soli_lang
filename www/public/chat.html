@@ -130,9 +130,9 @@
 
                     if (data.type === 'join') {
                         addMessage('User joined: ' + data.user, 'join');
-                    } else if (data.type === 'leave') {
+                    } elsif (data.type === 'leave') {
                         addMessage('User left: ' + data.user, 'leave');
-                    } else if (data.type === 'disconnect') {
+                    } elsif (data.type === 'disconnect') {
                         addMessage('Client disconnected: ' + data.connection_id, 'leave');
                     } else {
                         // Regular message - just display it

@@ -417,7 +417,7 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             if (event.data === 'reload') {
                 console.log('[livereload] Reload signal received');
                 asyncReload();
-            } else if (event.data === 'ping') {
+            } elsif (event.data === 'ping') {
                 // Keepalive response if needed
             }
         };
@@ -482,7 +482,7 @@ mod tests {
             .header(header::CONNECTION, "upgrade")
             .body(())
             .unwrap();
-        
+
         assert!(is_websocket_upgrade(&req));
     }
 
