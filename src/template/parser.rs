@@ -3,6 +3,7 @@
 //! Parses templates with syntax like:
 //! - `<%= expr %>` - HTML-escaped output
 //! - `<%- expr %>` - Raw/unescaped output
+//! - `<%== expr %>` - HTML-unescaped output (shorthand for `<%= html_unescape(expr) %>`)
 //! - `<% code %>` - Control flow (if, for, end, else, elsif)
 //! - `<%= yield %>` - Layout content insertion point
 
@@ -69,7 +70,7 @@ pub enum CompareOp {
 pub enum TemplateNode {
     /// Raw HTML/text content
     Literal(String),
-    /// Output expression: `<%= expr %>` (escaped) or `<%== expr %>` (raw)
+    /// Output expression: `<%= expr %>` (escaped), `<%- expr %>` (raw), or `<%== expr %>` (unescape)
     Output { expr: Expr, escaped: bool, line: usize },
     /// If conditional block
     If {
@@ -94,10 +95,11 @@ pub enum TemplateNode {
 /// Token types during lexing
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
-    Literal(String, usize),        // content, line
-    OutputEscaped(String, usize),  // <%= ... %>, line
-    OutputRaw(String, usize),      // <%- ... %>, line
-    Code(String, usize),           // <% ... %>, line
+    Literal(String, usize),         // content, line
+    OutputEscaped(String, usize),   // <%= ... %>, line
+    OutputRaw(String, usize),       // <%- ... %>, line
+    OutputUnescape(String, usize),  // <%== ... %>, line (html_unescape)
+    Code(String, usize),            // <% ... %>, line
 }
 
 /// Parse an ERB-style template into an AST.
@@ -125,12 +127,20 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::Literal(std::mem::take(&mut current_literal), literal_start_line));
             }
 
-            // Check for output tag types: <%= (escaped) or <%- (raw)
+            // Check for output tag types: <%== (unescape), <%= (escaped), or <%- (raw)
             let is_output = chars.peek() == Some(&'=');
             let is_raw = chars.peek() == Some(&'-');
+            let mut is_unescape = false;
 
-            if is_output || is_raw {
-                chars.next(); // consume '=' or '-'
+            if is_output {
+                chars.next(); // consume first '='
+                // Check for second '=' (<%==)
+                if chars.peek() == Some(&'=') {
+                    chars.next(); // consume second '='
+                    is_unescape = true;
+                }
+            } else if is_raw {
+                chars.next(); // consume '-'
             }
 
             // Read until closing %>
@@ -154,6 +164,8 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
 
             if is_raw {
                 tokens.push(Token::OutputRaw(tag_content, tag_line));
+            } else if is_unescape {
+                tokens.push(Token::OutputUnescape(tag_content, tag_line));
             } else if is_output {
                 tokens.push(Token::OutputEscaped(tag_content, tag_line));
             } else {
@@ -218,6 +230,16 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                         line: *line,
                     });
                 }
+                i += 1;
+            }
+            Token::OutputUnescape(expr, line) => {
+                // <%== expr %> is shorthand for <%= html_unescape(expr) %>
+                let inner_expr = compile_expr(expr);
+                nodes.push(TemplateNode::Output {
+                    expr: Expr::Call("html_unescape".to_string(), vec![inner_expr]),
+                    escaped: false, // Don't escape the unescaped output
+                    line: *line,
+                });
                 i += 1;
             }
             Token::Code(code, line) => {
@@ -360,6 +382,21 @@ fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(
                 }
                 i += 1;
             }
+            Token::OutputUnescape(expr, line) => {
+                // <%== expr %> is shorthand for <%= html_unescape(expr) %>
+                let inner_expr = compile_expr(expr);
+                let node = TemplateNode::Output {
+                    expr: Expr::Call("html_unescape".to_string(), vec![inner_expr]),
+                    escaped: false,
+                    line: *line,
+                };
+                if in_else {
+                    else_body.as_mut().unwrap().push(node);
+                } else {
+                    body.push(node);
+                }
+                i += 1;
+            }
         }
     }
 
@@ -443,6 +480,17 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                         escaped: false,
                         line: *line,
                     }
+                };
+                body.push(node);
+                i += 1;
+            }
+            Token::OutputUnescape(expr, line) => {
+                // <%== expr %> is shorthand for <%= html_unescape(expr) %>
+                let inner_expr = compile_expr(expr);
+                let node = TemplateNode::Output {
+                    expr: Expr::Call("html_unescape".to_string(), vec![inner_expr]),
+                    escaped: false,
+                    line: *line,
                 };
                 body.push(node);
                 i += 1;
@@ -1051,6 +1099,33 @@ mod tests {
     fn test_tokenize_raw_output() {
         let tokens = tokenize("<%- raw_html %>").unwrap();
         assert_eq!(tokens, vec![Token::OutputRaw("raw_html".to_string(), 1)]);
+    }
+
+    #[test]
+    fn test_tokenize_unescape_output() {
+        let tokens = tokenize("<%== encoded %>").unwrap();
+        assert_eq!(tokens, vec![Token::OutputUnescape("encoded".to_string(), 1)]);
+    }
+
+    #[test]
+    fn test_parse_unescape_output() {
+        let nodes = parse_template("<%== encoded %>").unwrap();
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::Output { expr, escaped, .. } => {
+                // Should be a call to html_unescape
+                match expr {
+                    Expr::Call(name, args) => {
+                        assert_eq!(name, "html_unescape");
+                        assert_eq!(args.len(), 1);
+                        assert_eq!(args[0], Expr::Var("encoded".to_string()));
+                    }
+                    _ => panic!("Expected Call expression"),
+                }
+                assert!(!escaped); // Should not escape the unescaped output
+            }
+            _ => panic!("Expected Output node"),
+        }
     }
 
     #[test]
