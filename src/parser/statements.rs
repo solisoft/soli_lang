@@ -9,17 +9,17 @@ impl Parser {
     pub(crate) fn statement(&mut self) -> ParseResult<Stmt> {
         if self.check(&TokenKind::If) {
             self.if_statement()
-        } elsif self.check(&TokenKind::While) {
+        } else if self.check(&TokenKind::While) {
             self.while_statement()
-        } elsif self.check(&TokenKind::For) {
+        } else if self.check(&TokenKind::For) {
             self.for_statement()
-        } elsif self.check(&TokenKind::Return) {
+        } else if self.check(&TokenKind::Return) {
             self.return_statement()
-        } elsif self.check(&TokenKind::Throw) {
+        } else if self.check(&TokenKind::Throw) {
             self.throw_statement()
-        } elsif self.check(&TokenKind::Try) {
+        } else if self.check(&TokenKind::Try) {
             self.try_statement()
-        } elsif self.check(&TokenKind::LeftBrace) {
+        } else if self.check(&TokenKind::LeftBrace) {
             self.block_statement()
         } else {
             self.expression_statement()
@@ -41,6 +41,43 @@ impl Parser {
 
         let else_branch = if self.match_token(&TokenKind::Else) {
             Some(Box::new(self.statement()?))
+        } else if self.check(&TokenKind::Elsif) {
+            // Handle elsif as else { if ... }
+            Some(Box::new(self.elsif_statement()?))
+        } else {
+            None
+        };
+
+        let span = start_span.merge(&self.previous_span());
+
+        Ok(Stmt::new(
+            StmtKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            },
+            span,
+        ))
+    }
+
+    fn elsif_statement(&mut self) -> ParseResult<Stmt> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::Elsif)?;
+
+        // Parentheses are optional around the condition
+        let has_paren = self.match_token(&TokenKind::LeftParen);
+        let condition = self.expression()?;
+        if has_paren {
+            self.expect(&TokenKind::RightParen)?;
+        }
+
+        let then_branch = Box::new(self.statement()?);
+
+        let else_branch = if self.match_token(&TokenKind::Else) {
+            Some(Box::new(self.statement()?))
+        } else if self.check(&TokenKind::Elsif) {
+            // Handle chained elsif
+            Some(Box::new(self.elsif_statement()?))
         } else {
             None
         };

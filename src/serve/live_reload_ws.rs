@@ -417,7 +417,7 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             if (event.data === 'reload') {
                 console.log('[livereload] Reload signal received');
                 asyncReload();
-            } elsif (event.data === 'ping') {
+            } else if (event.data === 'ping') {
                 // Keepalive response if needed
             }
         };

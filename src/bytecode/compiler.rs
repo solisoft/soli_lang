@@ -439,7 +439,7 @@ impl Compiler {
 
                     // Compile finally block
                     self.compile_statement(finally_blk)?;
-                } elsif catch_block.is_none() {
+                } else if catch_block.is_none() {
                     // If only finally, patch it to current position
                     let current_offset = self.current_offset();
                     let chunk = &mut self.current.function.chunk;
@@ -451,7 +451,7 @@ impl Compiler {
                     let end_jump = self.emit_jump(OpCode::Jump, line);
                     self.patch_jump(end_jump);
                     self.emit_op(OpCode::PopTry, line);
-                } elsif catch_block.is_none() {
+                } else if catch_block.is_none() {
                     // Only finally - need to pop try
                     self.emit_op(OpCode::PopTry, line);
                 }

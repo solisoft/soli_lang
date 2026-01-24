@@ -62,7 +62,7 @@ impl Interpreter {
                 let cond_value = self.evaluate(condition)?;
                 if cond_value.is_truthy() {
                     self.execute(then_branch)
-                } elsif let Some(else_br) = else_branch {
+                } else if let Some(else_br) = else_branch {
                     self.execute(else_br)
                 } else {
                     Ok(ControlFlow::Normal)

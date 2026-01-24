@@ -10,15 +10,15 @@ impl Parser {
     pub(crate) fn declaration(&mut self) -> ParseResult<Stmt> {
         if self.check(&TokenKind::Import) {
             self.import_declaration()
-        } elsif self.check(&TokenKind::Export) {
+        } else if self.check(&TokenKind::Export) {
             self.export_declaration()
-        } elsif self.check(&TokenKind::Fn) {
+        } else if self.check(&TokenKind::Fn) {
             self.function_declaration()
-        } elsif self.check(&TokenKind::Class) {
+        } else if self.check(&TokenKind::Class) {
             self.class_declaration()
-        } elsif self.check(&TokenKind::Interface) {
+        } else if self.check(&TokenKind::Interface) {
             self.interface_declaration()
-        } elsif self.check(&TokenKind::Let) {
+        } else if self.check(&TokenKind::Let) {
             self.let_declaration()
         } else {
             self.statement()
@@ -39,13 +39,13 @@ impl Parser {
         let specifier = if self.check(&TokenKind::StringLiteral(String::new())) {
             // import "path";
             ImportSpecifier::All
-        } elsif self.match_token(&TokenKind::Star) {
+        } else if self.match_token(&TokenKind::Star) {
             // import * as name from "path";
             self.expect(&TokenKind::As)?;
             let name = self.expect_identifier()?;
             self.expect(&TokenKind::From)?;
             ImportSpecifier::Namespace(name)
-        } elsif self.match_token(&TokenKind::LeftBrace) {
+        } else if self.match_token(&TokenKind::LeftBrace) {
             // import { items } from "path";
             let mut items = Vec::new();
 
@@ -124,11 +124,11 @@ impl Parser {
         // Parse the declaration being exported
         let inner = if self.check(&TokenKind::Fn) {
             self.function_declaration()?
-        } elsif self.check(&TokenKind::Class) {
+        } else if self.check(&TokenKind::Class) {
             self.class_declaration()?
-        } elsif self.check(&TokenKind::Interface) {
+        } else if self.check(&TokenKind::Interface) {
             self.interface_declaration()?
-        } elsif self.check(&TokenKind::Let) {
+        } else if self.check(&TokenKind::Let) {
             self.let_declaration()?
         } else {
             return Err(ParserError::general(
@@ -209,9 +209,9 @@ impl Parser {
                     ));
                 }
                 constructor = Some(self.parse_constructor()?);
-            } elsif self.check(&TokenKind::Fn) {
+            } else if self.check(&TokenKind::Fn) {
                 methods.push(self.parse_method(visibility, is_static)?);
-            } elsif self.is_class_level_statement() {
+            } else if self.is_class_level_statement() {
                 // Parse class-level statements like validates(...), before_save(...)
                 class_statements.push(self.parse_class_level_statement()?);
             } else {
@@ -280,11 +280,11 @@ impl Parser {
         loop {
             if self.match_token(&TokenKind::Public) {
                 visibility = Visibility::Public;
-            } elsif self.match_token(&TokenKind::Private) {
+            } else if self.match_token(&TokenKind::Private) {
                 visibility = Visibility::Private;
-            } elsif self.match_token(&TokenKind::Protected) {
+            } else if self.match_token(&TokenKind::Protected) {
                 visibility = Visibility::Protected;
-            } elsif self.match_token(&TokenKind::Static) {
+            } else if self.match_token(&TokenKind::Static) {
                 is_static = true;
             } else {
                 break;

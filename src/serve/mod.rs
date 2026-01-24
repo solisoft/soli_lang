@@ -535,7 +535,7 @@ fn load_middleware(
 
             let flags = if global_only {
                 " [global_only]".to_string()
-            } elsif scope_only {
+            } else if scope_only {
                 " [scope_only]".to_string()
             } else {
                 "".to_string()
@@ -681,7 +681,7 @@ fn track_view_files(views_dir: &Path, file_tracker: &mut FileTracker) -> Result<
                 let path = entry.path();
                 if path.is_dir() {
                     track_recursive(&path, file_tracker)?;
-                } elsif path.extension().map_or(false, |ext| ext == "erb") {
+                } else if path.extension().map_or(false, |ext| ext == "erb") {
                     file_tracker.track(&path);
                 }
             }
@@ -956,7 +956,7 @@ fn run_hyper_server_worker_pool(
                     let path = entry.path();
                     if path.is_dir() {
                         track_views_recursive(&path, tracker);
-                    } elsif path.extension().map_or(false, |ext| ext == "erb") {
+                    } else if path.extension().map_or(false, |ext| ext == "erb") {
                         tracker.track(&path);
                     }
                 }
@@ -971,7 +971,7 @@ fn run_hyper_server_worker_pool(
                     let path = entry.path();
                     if path.is_dir() {
                         track_static_recursive(&path, tracker);
-                    } elsif let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                         if ["css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff", "woff2", "ttf"].contains(&ext) {
                             tracker.track(&path);
                         }
@@ -1019,13 +1019,13 @@ fn run_hyper_server_worker_pool(
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if name == "routes.sl" {
                         routes_changed = true;
-                    } elsif name.ends_with("_controller.sl") {
+                    } else if name.ends_with("_controller.sl") {
                         controllers_changed = true;
-                    } elsif name.ends_with(".sl") && path.starts_with(&watch_middleware_dir) {
+                    } else if name.ends_with(".sl") && path.starts_with(&watch_middleware_dir) {
                         middleware_changed = true;
-                    } elsif name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
+                    } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
                         helpers_changed = true;
-                    } elsif name.ends_with(".erb") {
+                    } else if name.ends_with(".erb") {
                         views_changed = true;
                     }
                 }
@@ -2534,7 +2534,7 @@ fn to_pascal_case_controller(controller_key: &str) -> String {
     for c in controller_key.chars() {
         if c == '_' {
             capitalize_next = true;
-        } elsif capitalize_next {
+        } else if capitalize_next {
             result.push(c.to_ascii_uppercase());
             capitalize_next = false;
         } else {
@@ -2611,7 +2611,7 @@ fn parse_request_body(
 
     if content_type.starts_with("application/json") {
         parsed.json = parse_json_body(body);
-    } elsif content_type.starts_with("application/x-www-form-urlencoded") {
+    } else if content_type.starts_with("application/x-www-form-urlencoded") {
         parsed.form = parse_form_urlencoded_body(body);
     }
 
@@ -3255,13 +3255,13 @@ fn extract_json_field(json: &str, field: &str) -> Option<String> {
         for (i, c) in chars.iter().enumerate() {
             if *c == '{' || *c == '[' {
                 depth += 1;
-            } elsif *c == '}' || *c == ']' {
+            } else if *c == '}' || *c == ']' {
                 depth -= 1;
                 if depth == 0 {
                     end = after_start + i + 1;
                     break;
                 }
-            } elsif *c == ',' && depth == 0 {
+            } else if *c == ',' && depth == 0 {
                 end = after_start + i;
                 break;
             }
@@ -3409,7 +3409,7 @@ pub fn render_dev_error_page(
             file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
             // Get line from file:line pattern as fallback
             line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-        } elsif let Some(caps) = view_file_regex.captures(frame) {
+        } else if let Some(caps) = view_file_regex.captures(frame) {
             // Try to find view file path in error message like "error in /path/file.html.erb"
             file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
         }
@@ -3442,7 +3442,7 @@ pub fn render_dev_error_page(
                     // Extract from file name
                     extract_controller_name(&file)
                 }
-            } elsif file != "unknown" {
+            } else if file != "unknown" {
                 // No " at " - extract function name from file
                 extract_controller_name(&file)
             } else {
@@ -3453,9 +3453,9 @@ pub fn render_dev_error_page(
             // Clean up function name - if it looks like a file path, extract the name
             let display = if func.contains('#') || func.contains("::") {
                 func.clone()
-            } elsif func.contains('/') || contains_source_ext(&func) {
+            } else if func.contains('/') || contains_source_ext(&func) {
                 extract_controller_name(&func)
-            } elsif func == "unknown" && file != "unknown" {
+            } else if func == "unknown" && file != "unknown" {
                 extract_controller_name(&file)
             } else {
                 func.clone()
@@ -3814,7 +3814,7 @@ pub fn render_dev_error_page(
                     historyIndex--;
                     input.value = history[historyIndex];
                 }}
-            }} elsif (direction === 'down') {{
+            }} else if (direction === 'down') {{
                 if (historyIndex < history.length - 1) {{
                     historyIndex++;
                     input.value = history[historyIndex];
@@ -3917,7 +3917,7 @@ pub fn render_dev_error_page(
                 if (el) {{
                     if (data === null || data === undefined) {{
                         el.innerHTML = '<span class="text-gray-500 italic">No data</span>';
-                    }} elsif (typeof data === 'object' && Object.keys(data).length === 0) {{
+                    }} else if (typeof data === 'object' && Object.keys(data).length === 0) {{
                         el.innerHTML = '<span class="text-gray-500 italic">Empty</span>';
                     }} else {{
                         el.innerHTML = formatJson(data);
@@ -3945,7 +3945,7 @@ pub fn render_dev_error_page(
                 if (e.key === 'ArrowUp') {{
                     e.preventDefault();
                     navigateHistory('up');
-                }} elsif (e.key === 'ArrowDown') {{
+                }} else if (e.key === 'ArrowDown') {{
                     e.preventDefault();
                     navigateHistory('down');
                 }}

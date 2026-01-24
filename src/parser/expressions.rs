@@ -263,7 +263,7 @@ impl Parser {
 
         let (key_expr, value_expr) = if let Some(kv) = key_value {
             (kv.0, kv.1)
-        } elsif let Some(k) = key {
+        } else if let Some(k) = key {
             // key was parsed but not value - parse value
             self.expect_hash_separator()?;
             let v = self.expression()?;
@@ -514,17 +514,17 @@ impl Parser {
         let params = if self.match_token(&TokenKind::Or) {
             // -> || ...
             Vec::new()
-        } elsif self.match_token(&TokenKind::Pipe) {
+        } else if self.match_token(&TokenKind::Pipe) {
             // -> |args| ...
             let p = self.parse_lambda_params_list(&TokenKind::Pipe)?;
             self.expect(&TokenKind::Pipe)?;
             p
-        } elsif self.match_token(&TokenKind::LeftParen) {
+        } else if self.match_token(&TokenKind::LeftParen) {
             // -> (args) ...
             let p = self.parse_lambda_params_list(&TokenKind::RightParen)?;
             self.expect(&TokenKind::RightParen)?;
             p
-        } elsif self.check(&TokenKind::Identifier(String::new())) {
+        } else if self.check(&TokenKind::Identifier(String::new())) {
             // -> x, y { body }
             let mut p = Vec::new();
             loop {

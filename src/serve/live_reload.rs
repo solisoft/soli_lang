@@ -124,7 +124,7 @@ pub fn inject_live_reload_script(html: &str) -> String {
         result.push_str(script);
         result.push_str(&html[pos..]);
         result
-    } elsif let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
+    } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
         // Fallback: insert before </html>
         let mut result = String::with_capacity(html.len() + script.len());
         result.push_str(&html[..pos]);

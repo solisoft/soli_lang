@@ -87,9 +87,9 @@ pub fn strip_html(s: &str) -> String {
     for c in s.chars() {
         if c == '<' {
             in_tag = true;
-        } elsif c == '>' {
+        } else if c == '>' {
             in_tag = false;
-        } elsif !in_tag {
+        } else if !in_tag {
             result.push(c);
         }
     }
@@ -107,7 +107,7 @@ pub fn sanitize_html(s: &str) -> String {
             in_tag = true;
             tag_buffer.clear();
             tag_buffer.push(c);
-        } elsif c == '>' {
+        } else if c == '>' {
             if in_tag {
                 tag_buffer.push(c);
                 let tag = tag_buffer.trim().to_lowercase();
@@ -141,7 +141,7 @@ pub fn sanitize_html(s: &str) -> String {
                 if is_allowed && !is_dangerous_attr {
                     let cleaned_tag = if is_closing {
                         format!("</{}>", tag_name)
-                    } elsif is_self_closing {
+                    } else if is_self_closing {
                         format!("<{}/>", tag_name)
                     } else {
                         let attrs: Vec<&str> = tag
@@ -183,7 +183,7 @@ pub fn sanitize_html(s: &str) -> String {
             } else {
                 result.push(c);
             }
-        } elsif in_tag {
+        } else if in_tag {
             tag_buffer.push(c);
         } else {
             result.push(c);

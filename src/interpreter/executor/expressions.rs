@@ -1080,7 +1080,7 @@ impl Interpreter {
                     if func.params.len() >= 2 {
                         call_env.define(func.params[0].name.clone(), key.clone());
                         call_env.define(func.params[1].name.clone(), value.clone());
-                    } elsif func.params.len() == 1 {
+                    } else if func.params.len() == 1 {
                         // If only one param, pass [key, value] array
                         let pair =
                             Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
@@ -1146,7 +1146,7 @@ impl Interpreter {
                     if func.params.len() >= 2 {
                         call_env.define(func.params[0].name.clone(), key.clone());
                         call_env.define(func.params[1].name.clone(), value.clone());
-                    } elsif func.params.len() == 1 {
+                    } else if func.params.len() == 1 {
                         // If only one param, pass [key, value] array
                         let pair =
                             Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
@@ -1199,7 +1199,7 @@ impl Interpreter {
                     if func.params.len() >= 2 {
                         call_env.define(func.params[0].name.clone(), key.clone());
                         call_env.define(func.params[1].name.clone(), value.clone());
-                    } elsif func.params.len() == 1 {
+                    } else if func.params.len() == 1 {
                         // If only one param, pass [key, value] array
                         let pair =
                             Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));

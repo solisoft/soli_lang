@@ -237,13 +237,13 @@ impl TypeChecker {
             BinaryOp::Add => {
                 if matches!(left_type, Type::String) || matches!(right_type, Type::String) {
                     Ok(Type::String)
-                } elsif left_type.is_numeric() && right_type.is_numeric() {
+                } else if left_type.is_numeric() && right_type.is_numeric() {
                     if matches!(left_type, Type::Float) || matches!(right_type, Type::Float) {
                         Ok(Type::Float)
                     } else {
                         Ok(Type::Int)
                     }
-                } elsif matches!(left_type, Type::Any | Type::Unknown)
+                } else if matches!(left_type, Type::Any | Type::Unknown)
                     || matches!(right_type, Type::Any | Type::Unknown)
                 {
                     Ok(Type::Any)
@@ -261,7 +261,7 @@ impl TypeChecker {
                     } else {
                         Ok(Type::Int)
                     }
-                } elsif matches!(left_type, Type::Any | Type::Unknown)
+                } else if matches!(left_type, Type::Any | Type::Unknown)
                     || matches!(right_type, Type::Any | Type::Unknown)
                 {
                     Ok(Type::Any)

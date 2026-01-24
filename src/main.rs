@@ -184,10 +184,10 @@ fn parse_args() -> Options {
                             let arg = &args[i];
                             if arg.contains(':') {
                                 fields.push(arg.clone());
-                            } elsif arg == "." || arg == "/" {
+                            } else if arg == "." || arg == "/" {
                                 // It's a folder path, not a field
                                 break;
-                            } elsif !arg.is_empty() {
+                            } else if !arg.is_empty() {
                                 // Assume it's a folder if it doesn't contain ':'
                                 break;
                             }
@@ -296,7 +296,7 @@ fn parse_args() -> Options {
                             eprintln!("Invalid port number: {}", args[i]);
                             process::exit(64);
                         });
-                    } elsif args[i] == "--workers" {
+                    } else if args[i] == "--workers" {
                         i += 1;
                         if i >= args.len() {
                             eprintln!("--workers requires a number");
@@ -307,11 +307,11 @@ fn parse_args() -> Options {
                             eprintln!("Invalid workers number: {}", args[i]);
                             process::exit(64);
                         });
-                    } elsif args[i] == "-d" {
+                    } else if args[i] == "-d" {
                         daemonize = true; // Enable daemon mode
-                    } elsif args[i] == "--dev" {
+                    } else if args[i] == "--dev" {
                         dev_mode = true; // Enable development mode
-                    } elsif args[i] == "--mode" {
+                    } else if args[i] == "--mode" {
                         i += 1;
                         if i >= args.len() {
                             eprintln!("--mode requires a mode argument");
@@ -343,7 +343,7 @@ fn parse_args() -> Options {
                                 process::exit(64);
                             }
                         };
-                    } elsif args[i].starts_with('-') {
+                    } else if args[i].starts_with('-') {
                         eprintln!("Unknown option for serve: {}", args[i]);
                         print_usage();
                         process::exit(64);
@@ -424,7 +424,7 @@ fn parse_args() -> Options {
                                 process::exit(64);
                             }
                         }
-                    } elsif path.is_none() {
+                    } else if path.is_none() {
                         path = Some(args[i].clone());
                     } else {
                         eprintln!("Only one test path can be specified");
@@ -899,7 +899,7 @@ impl ReplState {
         {
             // Wrap as print statement for expression evaluation
             format!("print({});", trimmed)
-        } elsif !source.ends_with(';') && !source.ends_with('}') {
+        } else if !source.ends_with(';') && !source.ends_with('}') {
             format!("{};", source)
         } else {
             source.to_string()
@@ -1063,7 +1063,7 @@ fn collect_test_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {
                         files.push(path);
                     }
                 }
-            } elsif path.is_dir() {
+            } else if path.is_dir() {
                 files.extend(collect_test_files(&path));
             }
         }

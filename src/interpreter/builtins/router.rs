@@ -23,7 +23,7 @@ fn extract_middleware_from_value(value: &Value) -> Vec<Value> {
         } else {
             eprintln!("Warning: Middleware '{}' not found", name);
         }
-    } elsif let Value::Array(arr) = value {
+    } else if let Value::Array(arr) = value {
         for item in arr.borrow().iter() {
             if let Value::String(name) = item {
                 // Look up the middleware function by name
@@ -117,7 +117,7 @@ pub fn resolve_handler(
 ) -> Result<Value, String> {
     let (controller, action) = if let Some((c, a)) = action_str.split_once('#') {
         (c, a)
-    } elsif let Some(c) = current_controller {
+    } else if let Some(c) = current_controller {
         (c, action_str)
     } else {
         return Err(format!(
@@ -299,7 +299,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                 } else {
                     if path.is_empty() {
                         current.path_prefix.clone()
-                    } elsif path.starts_with('/') {
+                    } else if path.starts_with('/') {
                         // Absolute path overrides context? Or appends?
                         // Rails: match 'foo' -> prefix/foo
                         format!("{}/{}", current.path_prefix, path.trim_start_matches('/'))
@@ -518,7 +518,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                 } else {
                     if path.is_empty() {
                         current.path_prefix.clone()
-                    } elsif path.starts_with('/') {
+                    } else if path.starts_with('/') {
                         format!("{}/{}", current.path_prefix, path.trim_start_matches('/'))
                     } else {
                         format!("{}/{}", current.path_prefix, path)

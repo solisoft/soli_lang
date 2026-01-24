@@ -159,7 +159,7 @@ fn to_class_name(file_name: &str) -> String {
     for c in without_suffix.chars() {
         if c == '_' {
             capitalize = true;
-        } elsif capitalize {
+        } else if capitalize {
             result.push(c.to_ascii_uppercase());
             capitalize = false;
         } else {
@@ -190,7 +190,7 @@ fn extract_class_name(source: &str) -> Option<String> {
             let after_class = &trimmed["class ".len()..];
             let class_name = if let Some(pos) = after_class.find(" extends ") {
                 &after_class[..pos]
-            } elsif let Some(pos) = after_class.find(" ") {
+            } else if let Some(pos) = after_class.find(" ") {
                 &after_class[..pos]
             } else {
                 after_class
@@ -300,7 +300,7 @@ fn extract_static_block(source: &str) -> Result<String, String> {
         } else {
             if c == '{' {
                 depth += 1;
-            } elsif c == '}' {
+            } else if c == '}' {
                 depth -= 1;
                 if depth == 0 {
                     break;
