@@ -1192,6 +1192,58 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_unescape_in_if() {
+        // Test <%== inside if block
+        let nodes = parse_template("<% if show %><%== encoded %><% end %>").unwrap();
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::If { body, .. } => {
+                assert_eq!(body.len(), 1);
+                match &body[0] {
+                    TemplateNode::Output { expr, escaped, .. } => {
+                        match expr {
+                            Expr::Call(name, args) => {
+                                assert_eq!(name, "html_unescape");
+                                assert_eq!(args[0], Expr::Var("encoded".to_string()));
+                            }
+                            _ => panic!("Expected Call expression"),
+                        }
+                        assert!(!escaped);
+                    }
+                    _ => panic!("Expected Output node"),
+                }
+            }
+            _ => panic!("Expected If node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_unescape_in_for() {
+        // Test <%== inside for block
+        let nodes = parse_template("<% for item in items %><%== item %><% end %>").unwrap();
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::For { body, .. } => {
+                assert_eq!(body.len(), 1);
+                match &body[0] {
+                    TemplateNode::Output { expr, escaped, .. } => {
+                        match expr {
+                            Expr::Call(name, args) => {
+                                assert_eq!(name, "html_unescape");
+                                assert_eq!(args[0], Expr::Var("item".to_string()));
+                            }
+                            _ => panic!("Expected Call expression"),
+                        }
+                        assert!(!escaped);
+                    }
+                    _ => panic!("Expected Output node"),
+                }
+            }
+            _ => panic!("Expected For node"),
+        }
+    }
+
+    #[test]
     fn test_parse_for() {
         let nodes = parse_template("<% for item in items %><%= item %><% end %>").unwrap();
         assert_eq!(
