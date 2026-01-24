@@ -44,10 +44,8 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Any?</code> - The stored value or null if not found
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let user_id = session_get("user_id")
+                <pre data-filename="Example"><code class="language-soli text-sm">let user_id = session_get("user_id")
 let cart = session_get("shopping_cart") ?? []</code></pre>
-                </div>
             </div>
         </section>
 
@@ -65,10 +63,8 @@ let cart = session_get("shopping_cart") ?? []</code></pre>
                     <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The session key</div>
                     <div><code class="text-amber-400">value</code> : <code class="text-purple-400">Any</code> - The value to store (must be JSON-serializable)</div>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">session_set("user_id", 123)
+                <pre data-filename="Example"><code class="language-soli text-sm">session_set("user_id", 123)
 session_set("preferences", { "theme": "dark", "lang": "en" })</code></pre>
-                </div>
             </div>
         </section>
 
@@ -81,10 +77,8 @@ session_set("preferences", { "theme": "dark", "lang": "en" })</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Remove a value from the session.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">session_delete("user_id")
+                <pre data-filename="Example"><code class="language-soli text-sm">session_delete("user_id")
 session_delete("temporary_data")</code></pre>
-                </div>
             </div>
         </section>
 
@@ -101,11 +95,9 @@ session_delete("temporary_data")</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Bool</code> - true if the key exists
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">if session_has("user_id") {
+                <pre data-filename="Example"><code class="language-soli text-sm">if session_has("user_id") {
     // User is logged in
 }</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -123,10 +115,8 @@ session_delete("temporary_data")</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Destroy the entire session. Removes all data and invalidates the session ID.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">// Logout
+                <pre data-filename="Example"><code class="language-soli text-sm">// Logout
 session_destroy()</code></pre>
-                </div>
             </div>
         </section>
 
@@ -139,11 +129,9 @@ session_destroy()</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Generate a new session ID while preserving data. <span class="text-yellow-400">Important:</span> Call this after login to prevent session fixation attacks.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">// After successful login
+                <pre data-filename="Example"><code class="language-soli text-sm">// After successful login
 session_set("user_id", user["id"])
 session_regenerate()  // Security: generate new session ID</code></pre>
-                </div>
             </div>
         </section>
 
@@ -170,8 +158,7 @@ session_regenerate()  // Security: generate new session ID</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
-            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Login
+            <pre data-filename="Example"><code class="language-soli text-sm">// Login
 fn login(email: String, password: String) -> Bool {
     let user = User.find_by_email(email)
     if !user || !argon2_verify(password, user["password_hash"]) {
@@ -196,13 +183,11 @@ fn current_user() -> Hash? {
 fn logout() {
     session_destroy()
 }</code></pre>
-            </div>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Flash Messages</h3>
-            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Set a flash message
+            <pre data-filename="Example"><code class="language-soli text-sm">// Set a flash message
 fn flash(type: String, message: String) {
     let flashes = session_get("_flashes") ?? []
     push(flashes, { "type": type, "message": message })
@@ -219,7 +204,6 @@ fn get_flashes() -> Array {
 // Usage
 flash("success", "Account created!")
 flash("error", "Invalid email address")</code></pre>
-            </div>
         </div>
     </section>
 

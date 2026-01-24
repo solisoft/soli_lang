@@ -37,12 +37,7 @@
         Install Soli CLI
     </h2>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Terminal</span>
-        </div>
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Clone the repository
+    <pre data-filename="Terminal"><code class="language-bash text-sm"># Clone the repository
 git clone https://github.com/solisoft/soli_lang.git
 cd soli_lang
 
@@ -51,23 +46,14 @@ cargo install --path .
 
 # Verify installation
 soli --version</code></pre>
-        </div>
-    </div>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
         <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">3</div>
         Create Your Project
     </h2>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Terminal</span>
-        </div>
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Create a new Soli app
+    <pre data-filename="Terminal"><code class="language-bash text-sm"># Create a new Soli app
 soli new my_app</code></pre>
-        </div>
-    </div>
 
     <p class="text-gray-400 mb-8">
         This command creates a new project with everything you need:
@@ -86,15 +72,8 @@ soli new my_app</code></pre>
         Start Development Server
     </h2>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Terminal</span>
-        </div>
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm">cd my_app
+    <pre data-filename="Terminal"><code class="language-bash text-sm">cd my_app
 soli serve . --dev</code></pre>
-        </div>
-    </div>
 
     <p class="mb-8 text-gray-400">
         Your app is now running at <a href="http://localhost:3000" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:3000</a>
@@ -121,9 +100,7 @@ soli serve . --dev</code></pre>
 
     <p class="text-gray-400 mb-6">Understanding the layout of a Soli MVC application.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-text text-sm">my_app/
+    <pre data-filename="Directory Layout"><code class="language-text text-sm">my_app/
 ├── app/
 │   ├── controllers/          # Request handlers
 │   │   └── home_controller.sl
@@ -149,23 +126,14 @@ soli serve . --dev</code></pre>
 ├── .env                      # Environment variables
 ├── package.json              # Node.js dependencies
 └── tailwind.config.js        # Tailwind configuration</code></pre>
-        </div>
-    </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Production Deployment</h2>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Terminal</span>
-        </div>
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Start production server
+    <pre data-filename="Terminal"><code class="language-bash text-sm"># Start production server
 soli serve . --port 3000
 
 # Or run as a daemon (background process)
 soli serve . -d</code></pre>
-        </div>
-    </div>
 
     <div class="my-8 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
         <div class="flex items-start gap-3">

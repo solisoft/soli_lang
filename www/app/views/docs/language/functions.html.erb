@@ -36,8 +36,7 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Declares a function with optional parameters and return type.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// No parameters, no return
+                <pre data-filename="Example"><code class="language-soli text-sm">// No parameters, no return
 fn say_hello() {
     print("Hello!");
 }
@@ -64,7 +63,6 @@ fn absolute(x: Int) -> Int {
     }
     return x;
 }</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -223,7 +221,16 @@ fn create_user(name: String, email: String = null, role: String = "user") -> Has
 let user1 = create_user("Alice");
 let user2 = create_user("Bob", "bob@example.com");
 let user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
-            </div>
+
+                <pre data-filename="Example"><code class="language-soli text-sm">fn add(a, b) {
+    return a + b
+}
+
+println(add(1, 2)) // 3</code></pre>
+
+                <p class="text-gray-400 mb-3">Anonymous functions (closures).</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let add = fn(a, b) { a + b }
+println(add(1, 2)) // 3</code></pre>
         </div>
     </section>
 
@@ -240,8 +247,7 @@ let user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Exits a function and optionally returns a value.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn find_first_even(numbers: Int[]) -> Int {
+                <pre data-filename="Example"><code class="language-soli text-sm">fn find_first_even(numbers: Int[]) -> Int {
     for (n in numbers) {
         if (n % 2 == 0) {
             return n;  // Early return

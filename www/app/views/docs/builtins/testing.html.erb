@@ -65,8 +65,7 @@
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
-            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">describe("Calculator", fn() {
+            <pre data-filename="test_example.sl"><code class="language-soli text-sm">describe("Calculator", fn() {
     test("adds numbers", fn() {
         assert_eq(add(1, 2), 3)
     })
@@ -85,7 +84,6 @@
         })
     })
 })</code></pre>
-            </div>
         </div>
     </section>
 
@@ -273,8 +271,8 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Define a factory with default data.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">Factory.define("user", {
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">Factory.define("user", {
     "name": "Test User",
     "email": "test@example.com",
     "age": 25
@@ -292,8 +290,8 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Create an instance from a factory.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let user = Factory.create("user")
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">let user = Factory.create("user")
 println(user["name"])  // "Test User"</code></pre>
                 </div>
             </div>
@@ -308,8 +306,8 @@ println(user["name"])  // "Test User"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Create an instance with custom overrides.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let admin = Factory.create_with("user", { "role": "admin" })
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">let admin = Factory.create_with("user", { "role": "admin" })
 println(admin["role"])  // "admin"
 println(admin["name"])  // "Test User" (from factory)</code></pre>
                 </div>

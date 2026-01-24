@@ -47,14 +47,12 @@
                     <div><code class="text-amber-400">expires_in</code> : <code class="text-purple-400">Int</code> - Token lifetime in seconds</div>
                     <div><code class="text-amber-400">algorithm</code> : <code class="text-purple-400">String</code> - HS256, HS384, or HS512 (default: HS256)</div>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let token = jwt_sign(
+                <pre data-filename="Example"><code class="language-soli text-sm">let token = jwt_sign(
     { "sub": "user123", "role": "admin" },
     "my-secret-key",
     { "expires_in": 3600 }
 )
 // eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code></pre>
-                </div>
             </div>
         </section>
 
@@ -76,15 +74,13 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - The payload if valid, or <code>{ "error": true, "message": String }</code> if invalid
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let result = jwt_verify(token, "my-secret-key")
+                <pre data-filename="Example"><code class="language-soli text-sm">let result = jwt_verify(token, "my-secret-key")
 if has_key(result, "error") {
     println("Invalid token: " + result["message"])
 } else {
     println("User: " + result["sub"])
     println("Role: " + result["role"])
 }</code></pre>
-                </div>
             </div>
         </section>
 
@@ -105,11 +101,9 @@ if has_key(result, "error") {
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - The payload without verification
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">// Useful for debugging or extracting public info
+                <pre data-filename="Example"><code class="language-soli text-sm">// Useful for debugging or extracting public info
 let payload = jwt_decode(token)
 println(payload["sub"])  // User ID without verification</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -120,8 +114,7 @@ println(payload["sub"])  // User ID without verification</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
-            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Login endpoint
+            <pre data-filename="Example"><code class="language-soli text-sm">// Login endpoint
 fn login(email: String, password: String) -> Hash {
     let user = User.find_by_email(email)
     if !user || !argon2_verify(password, user["password_hash"]) {
@@ -153,7 +146,6 @@ fn authenticate(req: Hash) -> Hash? {
 
     return result
 }</code></pre>
-            </div>
         </div>
     </section>
 

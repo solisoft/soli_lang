@@ -44,13 +44,11 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Any</code> - The parsed value
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let data = json_parse('{"name": "Alice", "age": 30}')
+                <pre data-filename="Example"><code class="language-soli text-sm">let data = json_parse('{"name": "Alice", "age": 30}')
 println(data["name"])  // Alice
 
 let numbers = json_parse('[1, 2, 3, 4, 5]')
 println(numbers[0])  // 1</code></pre>
-                </div>
             </div>
         </section>
 
@@ -71,13 +69,11 @@ println(numbers[0])  // 1</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The JSON string representation
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let json = json_stringify({ "name": "Alice", "scores": [95, 87] })
+                <pre data-filename="Example"><code class="language-soli text-sm">let json = json_stringify({ "name": "Alice", "scores": [95, 87] })
 println(json)  // {"name":"Alice","scores":[95,87]}
 
 let arr = json_stringify([1, 2, 3])
 println(arr)  // [1,2,3]</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -88,15 +84,13 @@ println(arr)  // [1,2,3]</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Reading and Writing JSON Files</h3>
-            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Read JSON file
+            <pre data-filename="Example"><code class="language-soli text-sm">// Read JSON file
 let config = json_parse(slurp("config.json"))
 println(config["database"]["host"])
 
 // Write JSON file
 let data = { "users": [{ "name": "Alice" }] }
 barf("data.json", json_stringify(data))</code></pre>
-            </div>
         </div>
     </section>
 

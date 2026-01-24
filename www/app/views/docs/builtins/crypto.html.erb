@@ -44,10 +44,8 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The Argon2id hash string
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let hash = argon2_hash("secretpassword")
+                <pre data-filename="Example"><code class="language-soli text-sm">let hash = argon2_hash("secretpassword")
 // $argon2id$v=19$m=19456,t=2,p=1$...</code></pre>
-                </div>
             </div>
         </section>
 
@@ -69,13 +67,11 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Bool</code> - true if password matches, false otherwise
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">if argon2_verify(user_input, stored_hash) {
+                <pre data-filename="Example"><code class="language-soli text-sm">if argon2_verify(user_input, stored_hash) {
     println("Password correct!")
 } else {
     println("Invalid password")
 }</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -97,11 +93,9 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let keypair = x25519_keypair()
+                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = x25519_keypair()
 println(keypair["public"])   // Base64 public key
 println(keypair["private"])  // Base64 private key</code></pre>
-                </div>
             </div>
         </section>
 
@@ -114,15 +108,13 @@ println(keypair["private"])  // Base64 private key</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Compute a shared secret from your private key and another party's public key.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let alice = x25519_keypair()
+                <pre data-filename="Example"><code class="language-soli text-sm">let alice = x25519_keypair()
 let bob = x25519_keypair()
 
 // Both compute the same shared secret
 let alice_secret = x25519_shared_secret(alice["private"], bob["public"])
 let bob_secret = x25519_shared_secret(bob["private"], alice["public"])
 // alice_secret == bob_secret</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -144,11 +136,9 @@ let bob_secret = x25519_shared_secret(bob["private"], alice["public"])
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let keypair = ed25519_keypair()
+                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = ed25519_keypair()
 // Use keypair["private"] to sign messages
 // Share keypair["public"] for verification</code></pre>
-                </div>
             </div>
         </section>
     </section>

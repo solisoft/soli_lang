@@ -37,16 +37,6 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Passes the left-hand value as the first argument to the right-hand function.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn double(x: Int) -> Int { return x * 2; }
-fn add_one(x: Int) -> Int { return x + 1; }
-fn square(x: Int) -> Int { return x * x; }
-
-let result = 5 |> double() |> add_one() |> square();
-print(result);  // (5 * 2 + 1)^2 = 121
-
-// Without pipeline (nested calls - harder to read)
-let same_result = square(add_one(double(5)));</code></pre>
                 </div>
             </div>
         </section>

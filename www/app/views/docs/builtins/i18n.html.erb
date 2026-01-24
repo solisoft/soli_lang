@@ -40,9 +40,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The current locale code (e.g., "en", "fr", "de")
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">println(I18n.locale())  // "en"</code></pre>
-                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">println(I18n.locale())  // "en"</code></pre>
             </div>
         </section>
 
@@ -59,10 +57,8 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">locale</code> : <code class="text-purple-400">String</code> - The locale code to set
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">I18n.set_locale("fr")
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.set_locale("fr")
 I18n.set_locale("de")</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -86,8 +82,7 @@ I18n.set_locale("de")</code></pre>
                     <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale (uses current if not specified)</div>
                     <div><code class="text-amber-400">translations</code> : <code class="text-purple-400">Hash?</code> - Optional translations hash</div>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let translations = {
+                <pre data-filename="Example"><code class="language-soli text-sm">let translations = {
     "en.greeting": "Hello",
     "fr.greeting": "Bonjour",
     "de.greeting": "Hallo",
@@ -96,7 +91,6 @@ I18n.set_locale("de")</code></pre>
 
 I18n.translate("greeting", "fr", translations)  // "Bonjour"
 I18n.translate("greeting", "en", translations)  // "Hello"</code></pre>
-                </div>
             </div>
         </section>
 
@@ -113,8 +107,7 @@ I18n.translate("greeting", "en", translations)  // "Hello"</code></pre>
                 <div class="text-sm text-gray-400 mb-4">
                     Use suffixes: <code class="text-amber-400">_zero</code>, <code class="text-amber-400">_one</code>, <code class="text-amber-400">_other</code>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let translations = {
+                <pre data-filename="Example"><code class="language-soli text-sm">let translations = {
     "en.items_zero": "No items",
     "en.items_one": "1 item",
     "en.items_other": "{count} items"
@@ -123,7 +116,6 @@ I18n.translate("greeting", "en", translations)  // "Hello"</code></pre>
 I18n.plural("items", 0, "en", translations)   // "No items"
 I18n.plural("items", 1, "en", translations)   // "1 item"
 I18n.plural("items", 5, "en", translations)   // "5 items"</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -141,11 +133,9 @@ I18n.plural("items", 5, "en", translations)   // "5 items"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Format a number according to locale conventions.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">I18n.format_number(1234.56, "en")  // "1,234.56"
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.format_number(1234.56, "en")  // "1,234.56"
 I18n.format_number(1234.56, "fr")  // "1 234,56"
 I18n.format_number(1234.56, "de")  // "1.234,56"</code></pre>
-                </div>
             </div>
         </section>
 
@@ -164,11 +154,9 @@ I18n.format_number(1234.56, "de")  // "1.234,56"</code></pre>
                     <div><code class="text-amber-400">currency</code> : <code class="text-purple-400">String</code> - Currency code (USD, EUR, etc.)</div>
                     <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale</div>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">I18n.format_currency(1234.56, "USD", "en")  // "$1,234.56"
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.format_currency(1234.56, "USD", "en")  // "$1,234.56"
 I18n.format_currency(1234.56, "EUR", "de")  // "1.234,56 €"
 I18n.format_currency(1234.56, "GBP", "en")  // "£1,234.56"</code></pre>
-                </div>
             </div>
         </section>
 
@@ -181,13 +169,11 @@ I18n.format_currency(1234.56, "GBP", "en")  // "£1,234.56"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Format a date according to locale conventions.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let ts = __datetime_parse("2024-01-15T10:30:00Z")
+                <pre data-filename="Example"><code class="language-soli text-sm">let ts = __datetime_parse("2024-01-15T10:30:00Z")
 
 I18n.format_date(ts, "en")  // "01/15/2024"
 I18n.format_date(ts, "fr")  // "15/01/2024"
 I18n.format_date(ts, "de")  // "15.01.2024"</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -197,8 +183,7 @@ I18n.format_date(ts, "de")  // "15.01.2024"</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Define translations
+            <pre data-filename="Example"><code class="language-soli text-sm">// Define translations
 let translations = {
     "en.welcome": "Welcome!",
     "en.cart_items_zero": "Your cart is empty",
@@ -220,7 +205,6 @@ I18n.set_locale(user["preferred_locale"] ?? "en")
 let welcome = I18n.translate("welcome", null, translations)
 let cart_msg = I18n.plural("cart_items", cart_count, null, translations)
 let total = I18n.format_currency(cart_total, "USD")</code></pre>
-            </div>
         </div>
     </section>
 

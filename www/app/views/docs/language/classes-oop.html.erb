@@ -36,8 +36,7 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Defines a class with properties and methods.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">class Person {
+                <pre data-filename="Example"><code class="language-soli text-sm">class Person {
     name: String;
     age: Int;
     email: String;
@@ -75,7 +74,6 @@ print(bob.introduce());    // "Hi, I'm Bob and I'm 25 years old..."
 
 alice.have_birthday();
 print(alice.age);          // 31</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -93,8 +91,7 @@ print(alice.age);          // 31</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Create a subclass that inherits from a parent class.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Base class
+                <pre data-filename="Example"><code class="language-soli text-sm">// Base class
 class Animal {
     name: String;
     age: Int;
@@ -139,7 +136,6 @@ print(dog.speak());        // "Buddy barks!"
 print(dog.get_info());     // "Buddy is 3 years old"
 print(dog.fetch());        // "Buddy fetches the ball!"
 print(dog.breed);          // "Golden Retriever"</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -157,8 +153,7 @@ print(dog.breed);          // "Golden Retriever"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Define contracts that classes must implement.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Define an interface
+                <pre data-filename="Example"><code class="language-soli text-sm">// Define an interface
 interface Drawable {
     fn draw() -> String;
     fn get_color() -> String;
@@ -205,7 +200,6 @@ let shapes: Drawable[] = [
 for (shape in shapes) {
     print(shape.draw());  // Polymorphic call
 }</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -288,8 +282,7 @@ print(account.get_balance());     // 1500.0</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Properties and methods that belong to the class, not instances.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">class MathUtils {
+                <pre data-filename="Example"><code class="language-soli text-sm">class MathUtils {
     static PI: Float = 3.14159265359;
     static E: Float = 2.71828182846;
 
@@ -321,7 +314,6 @@ print(MathUtils.PI);           // 3.14159265359
 print(MathUtils.square(4.0));  // 16.0
 print(MathUtils.cube(3.0));    // 27.0
 print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -330,31 +322,31 @@ print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
     <section id="section-this-super" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">this and super</h2>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <section id="kw-this" class="scroll-mt-20">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#kw-this" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">this</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 text-sm">Reference to the current instance.</p>
-                </div>
-            </section>
+        <p class="text-gray-400 mb-3">Reference to the current instance.</p>
+        <pre data-filename="my_class.sl"><code class="language-soli text-sm">class User {
+    fn new(name) {
+        this.name = name;
+    }
 
-            <section id="kw-super" class="scroll-mt-20">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#kw-super" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">super</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 text-sm">Reference to the parent class constructor/methods.</p>
-                </div>
-            </section>
-        </div>
+    fn say_hello() {
+        println("Hello, " + this.name);
+    }
+}</code></pre>
+
+        <p class="text-gray-400 mb-3">Inheritance.</p>
+        <pre data-filename="my_class.sl"><code class="language-soli text-sm">class Admin extends User {
+    fn say_hello() {
+        super.say_hello();
+        println("I am an admin.");
+    }
+}</code></pre>
+
+        <p class="text-gray-400 mb-3">Static methods.</p>
+        <pre data-filename="my_class.sl"><code class="language-soli text-sm">class Math {
+    static fn add(a, b) {
+        return a + b;
+    }
+}</code></pre>
     </section>
 
     <!-- Navigation -->

@@ -36,8 +36,7 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Ordered, mutable collection of elements.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Creating arrays
+<pre data-filename="Example"><code class="language-soli text-sm">// Creating arrays
 let numbers = [1, 2, 3, 4, 5];
 let names = ["Alice", "Bob", "Charlie"];
 
@@ -54,7 +53,6 @@ print(numbers[-1]);  // 5 (last element)
 
 // Modify elements
 numbers[0] = 10;</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -72,11 +70,9 @@ numbers[0] = 10;</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Transform each element using a function.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
 let doubled = numbers.map(fn(x) x * 2);
 print(doubled);  // [2, 4, 6, 8, 10]</code></pre>
-                </div>
             </div>
         </section>
 
@@ -89,11 +85,9 @@ print(doubled);  // [2, 4, 6, 8, 10]</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Keep elements matching a condition.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 let evens = numbers.filter(fn(x) x % 2 == 0);
 print(evens);  // [2, 4, 6, 8, 10]</code></pre>
-                </div>
             </div>
         </section>
 
@@ -106,10 +100,8 @@ print(evens);  // [2, 4, 6, 8, 10]</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Accumulate to a single value.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 let sum = numbers.reduce(fn(acc, x) acc + x, 0);  // 55</code></pre>
-                </div>
             </div>
         </section>
 
@@ -122,10 +114,8 @@ let sum = numbers.reduce(fn(acc, x) acc + x, 0);  // 55</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Iterate with side effects.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3];
 numbers.each(fn(x) print(x));  // Prints each number</code></pre>
-                </div>
             </div>
         </section>
 
@@ -138,8 +128,7 @@ numbers.each(fn(x) print(x));  // Prints each number</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Search and check array elements.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 // find - first matching element
 let first_even = numbers.find(fn(x) x % 2 == 0);  // 2
@@ -184,8 +173,7 @@ print(result);  // [4, 16, 36]</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Key-value collection (dictionary/map).</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Creating hashes
+                <pre data-filename="Example"><code class="language-soli text-sm">// Creating hashes
 let person = {
     "name": "Alice",
     "age": 30,
@@ -212,7 +200,6 @@ print(person["email"]);  // null (key doesn't exist)
 // Modify values
 person["age"] = 31;
 person["country"] = "France";  // Add new key</code></pre>
-                </div>
             </div>
         </section>
     </section>

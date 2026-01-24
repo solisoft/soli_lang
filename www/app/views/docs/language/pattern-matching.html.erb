@@ -36,15 +36,13 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Match a value against patterns and execute corresponding code.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let x = 42;
+                <pre data-filename="Example"><code class="language-soli text-sm">let x = 42;
 let result = match x {
     42 => "the answer",
     0 => "zero",
     _ => "something else",
 };
 print(result);  // "the answer"</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -190,14 +188,12 @@ print(describe_value([1, 2, 3]));   // "Array with 3 elements"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Matches any value. Use as a default/catch-all case.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let status = "unknown";
+                <pre data-filename="Example"><code class="language-soli text-sm">let status = "unknown";
 let message = match status {
     "active" => "User is active",
     "inactive" => "User is inactive",
     _ => "Status: " + status,  // Default case
 };</code></pre>
-                </div>
             </div>
         </section>
     </section>

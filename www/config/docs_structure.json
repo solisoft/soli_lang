@@ -1,0 +1,261 @@
+[
+    {
+        "id": "getting_started",
+        "title": "Getting Started",
+        "icon": "rocket",
+        "pages": [
+            {
+                "id": "introduction",
+                "title": "Introduction",
+                "path": "/docs/getting-started/introduction"
+            },
+            {
+                "id": "installation",
+                "title": "Installation",
+                "path": "/docs/getting-started/installation"
+            }
+        ]
+    },
+    {
+        "id": "core_concepts",
+        "title": "Core Concepts",
+        "icon": "cube",
+        "pages": [
+            {
+                "id": "routing",
+                "title": "Routing",
+                "path": "/docs/core-concepts/routing"
+            },
+            {
+                "id": "controllers",
+                "title": "Controllers",
+                "path": "/docs/core-concepts/controllers"
+            },
+            {
+                "id": "middleware",
+                "title": "Middleware",
+                "path": "/docs/core-concepts/middleware"
+            },
+            {
+                "id": "views",
+                "title": "Views",
+                "path": "/docs/core-concepts/views"
+            },
+            {
+                "id": "websockets",
+                "title": "WebSockets",
+                "path": "/docs/core-concepts/websockets"
+            },
+            {
+                "id": "i18n",
+                "title": "Internationalization",
+                "path": "/docs/core-concepts/i18n"
+            },
+            {
+                "id": "request_params",
+                "title": "Request Parameters",
+                "path": "/docs/core-concepts/request-params"
+            }
+        ]
+    },
+    {
+        "id": "database",
+        "title": "Database",
+        "icon": "database",
+        "pages": [
+            {
+                "id": "configuration",
+                "title": "Configuration",
+                "path": "/docs/database/configuration"
+            },
+            {
+                "id": "models",
+                "title": "Models & ORM",
+                "path": "/docs/database/models"
+            },
+            {
+                "id": "migrations",
+                "title": "Migrations",
+                "path": "/docs/database/migrations"
+            }
+        ]
+    },
+    {
+        "id": "security",
+        "title": "Security",
+        "icon": "shield-check",
+        "pages": [
+            {
+                "id": "authentication",
+                "title": "Authentication",
+                "path": "/docs/security/authentication"
+            },
+            {
+                "id": "sessions",
+                "title": "Sessions",
+                "path": "/docs/security/sessions"
+            },
+            {
+                "id": "validation",
+                "title": "Validation",
+                "path": "/docs/security/validation"
+            }
+        ]
+    },
+    {
+        "id": "development_tools",
+        "title": "Development Tools",
+        "icon": "wrench",
+        "pages": [
+            {
+                "id": "testing",
+                "title": "Testing",
+                "path": "/docs/development-tools/testing"
+            },
+            {
+                "id": "live_reload",
+                "title": "Live Reload",
+                "path": "/docs/development-tools/live-reload"
+            },
+            {
+                "id": "debugging",
+                "title": "Debugging",
+                "path": "/docs/development-tools/debugging"
+            },
+            {
+                "id": "scaffold",
+                "title": "Scaffold Generator",
+                "path": "/docs/development-tools/scaffold"
+            }
+        ]
+    },
+    {
+        "id": "language",
+        "title": "Language Reference",
+        "icon": "code-bracket",
+        "pages": [
+            {
+                "id": "index",
+                "title": "Overview",
+                "path": "/docs/language"
+            },
+            {
+                "id": "variables_types",
+                "title": "Variables & Types",
+                "path": "/docs/language/variables-types"
+            },
+            {
+                "id": "operators",
+                "title": "Operators",
+                "path": "/docs/language/operators"
+            },
+            {
+                "id": "control_flow",
+                "title": "Control Flow",
+                "path": "/docs/language/control-flow"
+            },
+            {
+                "id": "functions",
+                "title": "Functions",
+                "path": "/docs/language/functions"
+            },
+            {
+                "id": "collections",
+                "title": "Collections",
+                "path": "/docs/language/collections"
+            },
+            {
+                "id": "classes_oop",
+                "title": "Classes & OOP",
+                "path": "/docs/language/classes-oop"
+            },
+            {
+                "id": "pattern_matching",
+                "title": "Pattern Matching",
+                "path": "/docs/language/pattern-matching"
+            },
+            {
+                "id": "pipeline_operator",
+                "title": "Pipeline Operator",
+                "path": "/docs/language/pipeline-operator"
+            },
+            {
+                "id": "modules",
+                "title": "Modules",
+                "path": "/docs/language/modules"
+            }
+        ]
+    },
+    {
+        "id": "builtins",
+        "title": "Built-in Functions",
+        "icon": "library",
+        "pages": [
+            {
+                "id": "index",
+                "title": "Overview",
+                "path": "/docs/builtins"
+            },
+            {
+                "id": "core",
+                "title": "Core",
+                "path": "/docs/builtins/core"
+            },
+            {
+                "id": "http",
+                "title": "HTTP",
+                "path": "/docs/builtins/http"
+            },
+            {
+                "id": "json",
+                "title": "JSON",
+                "path": "/docs/builtins/json"
+            },
+            {
+                "id": "crypto",
+                "title": "Crypto",
+                "path": "/docs/builtins/crypto"
+            },
+            {
+                "id": "jwt",
+                "title": "JWT",
+                "path": "/docs/builtins/jwt"
+            },
+            {
+                "id": "regex",
+                "title": "Regex",
+                "path": "/docs/builtins/regex"
+            },
+            {
+                "id": "env",
+                "title": "Env",
+                "path": "/docs/builtins/env"
+            },
+            {
+                "id": "datetime",
+                "title": "DateTime",
+                "path": "/docs/builtins/datetime"
+            },
+            {
+                "id": "validation",
+                "title": "Validation",
+                "path": "/docs/builtins/validation"
+            },
+            {
+                "id": "session",
+                "title": "Session",
+                "path": "/docs/builtins/session"
+            },
+            {
+                "id": "testing",
+                "title": "Testing",
+                "path": "/docs/builtins/testing"
+            },
+            {
+                "id": "i18n",
+                "title": "I18n",
+                "path": "/docs/builtins/i18n"
+            }
+        ]
+    }
+]

@@ -5,26 +5,36 @@ fn index(req: Any) -> Any {
     return redirect("/docs/getting-started/introduction");
 }
 
+// Helper to load navigation structure
+fn get_docs_structure() -> Any {
+    let content = slurp("config/docs_structure.json");
+    if (content == null) {
+        return [];
+    }
+    return json_parse(content);
+}
+
+// Helper to render docs pages with consistent context
+fn render_docs(view: String, title: String, section: String, subsection: String) -> Any {
+    return render(view, {
+        "title": title,
+        "section": section,
+        "subsection": subsection,
+        "layout": "layouts/docs",
+        "docs_structure": get_docs_structure()
+    });
+}
+
 // ============================================================================
 // Getting Started
 // ============================================================================
 
 fn getting_started_introduction(req: Any) -> Any {
-    return render("docs/getting-started/introduction", {
-        "title": "Introduction",
-        "section": "getting_started",
-        "subsection": "introduction",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/getting-started/introduction", "Introduction", "getting_started", "introduction");
 }
 
 fn getting_started_installation(req: Any) -> Any {
-    return render("docs/getting-started/installation", {
-        "title": "Installation",
-        "section": "getting_started",
-        "subsection": "installation",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/getting-started/installation", "Installation", "getting_started", "installation");
 }
 
 // ============================================================================
@@ -32,66 +42,31 @@ fn getting_started_installation(req: Any) -> Any {
 // ============================================================================
 
 fn core_concepts_routing(req: Any) -> Any {
-    return render("docs/core-concepts/routing", {
-        "title": "Routing",
-        "section": "core_concepts",
-        "subsection": "routing",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/core-concepts/routing", "Routing", "core_concepts", "routing");
 }
 
 fn core_concepts_controllers(req: Any) -> Any {
-    return render("docs/core-concepts/controllers", {
-        "title": "Controllers",
-        "section": "core_concepts",
-        "subsection": "controllers",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/core-concepts/controllers", "Controllers", "core_concepts", "controllers");
 }
 
 fn core_concepts_middleware(req: Any) -> Any {
-    return render("docs/core-concepts/middleware", {
-        "title": "Middleware",
-        "section": "core_concepts",
-        "subsection": "middleware",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/core-concepts/middleware", "Middleware", "core_concepts", "middleware");
 }
 
 fn core_concepts_views(req: Any) -> Any {
-    return render("docs/core-concepts/views", {
-        "title": "Views",
-        "section": "core_concepts",
-        "subsection": "views",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/core-concepts/views", "Views", "core_concepts", "views");
 }
 
 fn core_concepts_websockets(req: Any) -> Any {
-    return render("docs/core-concepts/websockets", {
-        "title": "WebSockets",
-        "section": "core_concepts",
-        "subsection": "websockets",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/core-concepts/websockets", "WebSockets", "core_concepts", "websockets");
 }
 
 fn core_concepts_i18n(req: Any) -> Any {
-    return render("docs/core-concepts/i18n", {
-        "title": "Internationalization",
-        "section": "core_concepts",
-        "subsection": "i18n",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/core-concepts/i18n", "Internationalization", "core_concepts", "i18n");
 }
 
 fn core_concepts_request_params(req: Any) -> Any {
-    return render("docs/core-concepts/request-params", {
-        "title": "Request Parameters",
-        "section": "core_concepts",
-        "subsection": "request_params",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/core-concepts/request-params", "Request Parameters", "core_concepts", "request_params");
 }
 
 // ============================================================================
@@ -99,30 +74,15 @@ fn core_concepts_request_params(req: Any) -> Any {
 // ============================================================================
 
 fn database_configuration(req: Any) -> Any {
-    return render("docs/database/configuration", {
-        "title": "Database Configuration",
-        "section": "database",
-        "subsection": "configuration",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/database/configuration", "Database Configuration", "database", "configuration");
 }
 
 fn database_models(req: Any) -> Any {
-    return render("docs/database/models", {
-        "title": "Models & ORM",
-        "section": "database",
-        "subsection": "models",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/database/models", "Models & ORM", "database", "models");
 }
 
 fn database_migrations(req: Any) -> Any {
-    return render("docs/database/migrations", {
-        "title": "Migrations",
-        "section": "database",
-        "subsection": "migrations",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/database/migrations", "Migrations", "database", "migrations");
 }
 
 // ============================================================================
@@ -130,30 +90,15 @@ fn database_migrations(req: Any) -> Any {
 // ============================================================================
 
 fn security_authentication(req: Any) -> Any {
-    return render("docs/security/authentication", {
-        "title": "Authentication with JWT",
-        "section": "security",
-        "subsection": "authentication",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/security/authentication", "Authentication with JWT", "security", "authentication");
 }
 
 fn security_sessions(req: Any) -> Any {
-    return render("docs/security/sessions", {
-        "title": "Session Management",
-        "section": "security",
-        "subsection": "sessions",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/security/sessions", "Session Management", "security", "sessions");
 }
 
 fn security_validation(req: Any) -> Any {
-    return render("docs/security/validation", {
-        "title": "Input Validation",
-        "section": "security",
-        "subsection": "validation",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/security/validation", "Input Validation", "security", "validation");
 }
 
 // ============================================================================
@@ -161,39 +106,19 @@ fn security_validation(req: Any) -> Any {
 // ============================================================================
 
 fn development_tools_testing(req: Any) -> Any {
-    return render("docs/development-tools/testing", {
-        "title": "Testing",
-        "section": "development_tools",
-        "subsection": "testing",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/development-tools/testing", "Testing", "development_tools", "testing");
 }
 
 fn development_tools_live_reload(req: Any) -> Any {
-    return render("docs/development-tools/live-reload", {
-        "title": "Live Reload",
-        "section": "development_tools",
-        "subsection": "live_reload",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/development-tools/live-reload", "Live Reload", "development_tools", "live_reload");
 }
 
 fn development_tools_debugging(req: Any) -> Any {
-    return render("docs/development-tools/debugging", {
-        "title": "Debugging",
-        "section": "development_tools",
-        "subsection": "debugging",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/development-tools/debugging", "Debugging", "development_tools", "debugging");
 }
 
 fn development_tools_scaffold(req: Any) -> Any {
-    return render("docs/development-tools/scaffold", {
-        "title": "Scaffold Generator",
-        "section": "development_tools",
-        "subsection": "scaffold",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/development-tools/scaffold", "Scaffold Generator", "development_tools", "scaffold");
 }
 
 // ============================================================================
@@ -201,93 +126,43 @@ fn development_tools_scaffold(req: Any) -> Any {
 // ============================================================================
 
 fn language_index(req: Any) -> Any {
-    return render("docs/language/index", {
-        "title": "Soli Language Reference",
-        "section": "language",
-        "subsection": "index",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/index", "Soli Language Reference", "language", "index");
 }
 
 fn language_variables_types(req: Any) -> Any {
-    return render("docs/language/variables-types", {
-        "title": "Variables & Types",
-        "section": "language",
-        "subsection": "variables_types",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/variables-types", "Variables & Types", "language", "variables_types");
 }
 
 fn language_operators(req: Any) -> Any {
-    return render("docs/language/operators", {
-        "title": "Operators",
-        "section": "language",
-        "subsection": "operators",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/operators", "Operators", "language", "operators");
 }
 
 fn language_control_flow(req: Any) -> Any {
-    return render("docs/language/control-flow", {
-        "title": "Control Flow",
-        "section": "language",
-        "subsection": "control_flow",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/control-flow", "Control Flow", "language", "control_flow");
 }
 
 fn language_functions(req: Any) -> Any {
-    return render("docs/language/functions", {
-        "title": "Functions",
-        "section": "language",
-        "subsection": "functions",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/functions", "Functions", "language", "functions");
 }
 
 fn language_collections(req: Any) -> Any {
-    return render("docs/language/collections", {
-        "title": "Collections",
-        "section": "language",
-        "subsection": "collections",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/collections", "Collections", "language", "collections");
 }
 
 fn language_classes_oop(req: Any) -> Any {
-    return render("docs/language/classes-oop", {
-        "title": "Classes & OOP",
-        "section": "language",
-        "subsection": "classes_oop",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/classes-oop", "Classes & OOP", "language", "classes_oop");
 }
 
 fn language_pattern_matching(req: Any) -> Any {
-    return render("docs/language/pattern-matching", {
-        "title": "Pattern Matching",
-        "section": "language",
-        "subsection": "pattern_matching",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/pattern-matching", "Pattern Matching", "language", "pattern_matching");
 }
 
 fn language_pipeline_operator(req: Any) -> Any {
-    return render("docs/language/pipeline-operator", {
-        "title": "Pipeline Operator",
-        "section": "language",
-        "subsection": "pipeline_operator",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/pipeline-operator", "Pipeline Operator", "language", "pipeline_operator");
 }
 
 fn language_modules(req: Any) -> Any {
-    return render("docs/language/modules", {
-        "title": "Modules",
-        "section": "language",
-        "subsection": "modules",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/language/modules", "Modules", "language", "modules");
 }
 
 // ============================================================================
@@ -295,120 +170,55 @@ fn language_modules(req: Any) -> Any {
 // ============================================================================
 
 fn builtins_index(req: Any) -> Any {
-    return render("docs/builtins/index", {
-        "title": "Built-in Functions",
-        "section": "builtins",
-        "subsection": "index",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/index", "Built-in Functions", "builtins", "index");
 }
 
 fn builtins_core(req: Any) -> Any {
-    return render("docs/builtins/core", {
-        "title": "Core Functions",
-        "section": "builtins",
-        "subsection": "core",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/core", "Core Functions", "builtins", "core");
 }
 
 fn builtins_http(req: Any) -> Any {
-    return render("docs/builtins/http", {
-        "title": "HTTP Functions",
-        "section": "builtins",
-        "subsection": "http",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/http", "HTTP Functions", "builtins", "http");
 }
 
 fn builtins_json(req: Any) -> Any {
-    return render("docs/builtins/json", {
-        "title": "JSON Functions",
-        "section": "builtins",
-        "subsection": "json",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/json", "JSON Functions", "builtins", "json");
 }
 
 fn builtins_crypto(req: Any) -> Any {
-    return render("docs/builtins/crypto", {
-        "title": "Crypto Functions",
-        "section": "builtins",
-        "subsection": "crypto",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/crypto", "Crypto Functions", "builtins", "crypto");
 }
 
 fn builtins_jwt(req: Any) -> Any {
-    return render("docs/builtins/jwt", {
-        "title": "JWT Functions",
-        "section": "builtins",
-        "subsection": "jwt",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/jwt", "JWT Functions", "builtins", "jwt");
 }
 
 fn builtins_regex(req: Any) -> Any {
-    return render("docs/builtins/regex", {
-        "title": "Regex Functions",
-        "section": "builtins",
-        "subsection": "regex",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/regex", "Regex Functions", "builtins", "regex");
 }
 
 fn builtins_env(req: Any) -> Any {
-    return render("docs/builtins/env", {
-        "title": "Environment Functions",
-        "section": "builtins",
-        "subsection": "env",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/env", "Environment Functions", "builtins", "env");
 }
 
 fn builtins_datetime(req: Any) -> Any {
-    return render("docs/builtins/datetime", {
-        "title": "DateTime Functions",
-        "section": "builtins",
-        "subsection": "datetime",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/datetime", "DateTime Functions", "builtins", "datetime");
 }
 
 fn builtins_validation(req: Any) -> Any {
-    return render("docs/builtins/validation", {
-        "title": "Validation Functions",
-        "section": "builtins",
-        "subsection": "validation",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/validation", "Validation Functions", "builtins", "validation");
 }
 
 fn builtins_session(req: Any) -> Any {
-    return render("docs/builtins/session", {
-        "title": "Session Functions",
-        "section": "builtins",
-        "subsection": "session",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/session", "Session Functions", "builtins", "session");
 }
 
 fn builtins_testing(req: Any) -> Any {
-    return render("docs/builtins/testing", {
-        "title": "Testing Functions",
-        "section": "builtins",
-        "subsection": "testing",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/testing", "Testing Functions", "builtins", "testing");
 }
 
 fn builtins_i18n(req: Any) -> Any {
-    return render("docs/builtins/i18n", {
-        "title": "I18n Functions",
-        "section": "builtins",
-        "subsection": "i18n",
-        "layout": "layouts/docs"
-    });
+    return render_docs("docs/builtins/i18n", "I18n Functions", "builtins", "i18n");
 }
 
 // ============================================================================

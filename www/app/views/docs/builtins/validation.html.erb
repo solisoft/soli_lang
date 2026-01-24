@@ -192,8 +192,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - <code>{ "valid": Bool, "data": Hash, "errors": Array }</code>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let schema = {
+                <pre data-filename="Example"><code class="language-soli text-sm">let schema = {
     "name": V.string().required().min(2).max(100),
     "email": V.string().required().email(),
     "age": V.int().optional().min(0).max(150),
@@ -214,7 +213,7 @@ if result["valid"] {
         println(error["field"] + ": " + error["message"])
     }
 }</code></pre>
-                </div>
+
             </div>
         </section>
     </section>
@@ -225,8 +224,7 @@ if result["valid"] {
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">User Registration</h3>
-            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let user_schema = {
+            <pre data-filename="Example"><code class="language-soli text-sm">let user_schema = {
     "username": V.string().required().min(3).max(20).pattern("^[a-zA-Z0-9_]+$"),
     "email": V.string().required().email(),
     "password": V.string().required().min(8),
@@ -244,13 +242,11 @@ fn register(params: Hash) -> Hash {
     let user = User.create(result["data"])
     return { "user": user }
 }</code></pre>
-            </div>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Nested Validation</h3>
-            <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let order_schema = {
+            <pre data-filename="Example"><code class="language-soli text-sm">let order_schema = {
     "customer": V.hash({
         "name": V.string().required(),
         "email": V.string().required().email()
@@ -260,7 +256,6 @@ fn register(params: Hash) -> Hash {
         "quantity": V.int().required().min(1)
     })).min(1)
 }</code></pre>
-            </div>
         </div>
     </section>
 

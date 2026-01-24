@@ -121,78 +121,29 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Both conditions must be true.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let age = 25;
+                <pre data-filename="Example"><code class="language-soli text-sm">let age = 25;
 let has_license = true;
 
 if (age >= 18 && has_license) {
     print("Can drive");
 }</code></pre>
-                </div>
-            </div>
-        </section>
 
-        <section id="op-or" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#op-or" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">||</code>
-                    <span class="text-gray-400 text-sm">Logical OR</span>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
                 <p class="text-gray-400 mb-3">At least one condition must be true.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">if (is_weekend || is_holiday) {
+                <pre data-filename="Example"><code class="language-soli text-sm">if (is_weekend || is_holiday) {
     print("Day off!");
 }</code></pre>
-                </div>
-            </div>
-        </section>
 
-        <section id="op-not" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#op-not" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">!</code>
-                    <span class="text-gray-400 text-sm">Logical NOT</span>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
                 <p class="text-gray-400 mb-3">Negates the condition.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">if (!is_raining) {
+                <pre data-filename="Example"><code class="language-soli text-sm">if (!is_raining) {
     print("No umbrella needed");
 }</code></pre>
-                </div>
-            </div>
-        </section>
-    </section>
 
-    <!-- String Operations -->
-    <section id="section-string-ops" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">String Operations</h2>
-
-        <section id="op-concat" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#op-concat" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">+</code>
-                    <span class="text-gray-400 text-sm">String Concatenation</span>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Concatenation
+                <p class="text-gray-400 mb-3">String Concatenation.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">// Concatenation
 let greeting = "Hello, " + "World!";    // "Hello, World!"
 let message = "Value: " + 42;           // "Value: 42" (auto-conversion)</code></pre>
-                </div>
-            </div>
-        </section>
 
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-            <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// String methods
+                <pre data-filename="Example"><code class="language-soli text-sm">// String methods
 let text = "  Hello, World!  ";
 print(text.trim());        // "Hello, World!"
 print(text.upper());       // "  HELLO, WORLD!  "
@@ -206,26 +157,9 @@ print(s.find("World"));    // 7 (index of first occurrence)
 print(s.contains("Hello"));  // true
 print(s.starts_with("Hell"));  // true
 print(s.ends_with("!"));      // true</code></pre>
-            </div>
-        </div>
-    </section>
 
-    <!-- Null Coalescing -->
-    <section id="section-null-coalescing" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Null Coalescing</h2>
-
-        <section id="op-null-coalesce" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#op-null-coalesce" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">??</code>
-                    <span class="text-gray-400 text-sm">Null Coalescing Operator</span>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
                 <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">??</code> to provide default values for null.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">let user = {"name": "Alice", "email": null};
+                <pre data-filename="Example"><code class="language-soli text-sm">let user = {"name": "Alice", "email": null};
 
 // Traditional null check
 let email = user["email"];
@@ -239,36 +173,15 @@ let display_email = user["email"] ?? "unknown";
 // Chaining with null values
 let city = user["address"]["city"] ?? "Unknown City";
 // If any key in the chain is null/missing, returns "Unknown City"</code></pre>
-                </div>
-            </div>
-        </section>
-    </section>
 
-    <!-- Range Operator -->
-    <section id="section-range-operator" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Range Operator</h2>
-
-        <section id="op-range" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#op-range" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">..</code>
-                    <span class="text-gray-400 text-sm">Range Operator</span>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
                 <p class="text-gray-400 mb-3">Creates a range of integers (exclusive end).</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Range creates an array
+                <pre data-filename="Example"><code class="language-soli text-sm">// Range creates an array
 let numbers = 1..5;  // [1, 2, 3, 4]
 
 // Use in for loops
 for (i in 0..10) {
     print(i);  // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
 }</code></pre>
-                </div>
-            </div>
-        </section>
     </section>
 
     <!-- Navigation -->

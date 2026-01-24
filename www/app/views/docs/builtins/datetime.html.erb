@@ -80,10 +80,8 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Parse an ISO 8601 or RFC date string to a Unix timestamp.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let ts = __datetime_parse("2024-01-15T10:30:00Z")
+                <pre data-filename="Example"><code class="language-soli text-sm">let ts = __datetime_parse("2024-01-15T10:30:00Z")
 let ts2 = __datetime_parse("2024-01-15")</code></pre>
-                </div>
             </div>
         </section>
 
@@ -107,11 +105,9 @@ let ts2 = __datetime_parse("2024-01-15")</code></pre>
                     <div><code class="text-amber-400">%B</code> - Month name</div>
                     <div><code class="text-amber-400">%A</code> - Weekday name</div>
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">__datetime_format(ts, "%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
+<pre data-filename="Example"><code class="language-soli text-sm">__datetime_format(ts, "%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
 __datetime_format(ts, "%B %d, %Y")           // "January 15, 2024"
 __datetime_format(ts, "%A")                  // "Monday"</code></pre>
-                </div>
             </div>
         </section>
 
@@ -124,9 +120,7 @@ __datetime_format(ts, "%A")                  // "Monday"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Convert a timestamp to ISO 8601 format.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">__datetime_to_iso(ts)  // "2024-01-15T10:30:00Z"</code></pre>
-                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">__datetime_to_iso(ts)  // "2024-01-15T10:30:00Z"</code></pre>
             </div>
         </section>
     </section>
@@ -148,13 +142,11 @@ __datetime_format(ts, "%A")                  // "Monday"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> with keys: year, month, day, hour, minute, second, weekday
                 </div>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let parts = __datetime_components(ts)
+                <pre data-filename="Example"><code class="language-soli text-sm">let parts = __datetime_components(ts)
 println(parts["year"])     // 2024
 println(parts["month"])    // 1
 println(parts["day"])      // 15
 println(parts["weekday"])  // "monday"</code></pre>
-                </div>
             </div>
         </section>
     </section>
@@ -172,10 +164,8 @@ println(parts["weekday"])  // "monday"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Add seconds to a timestamp.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let tomorrow = __datetime_add(ts, 86400)      // Add 1 day
+                <pre data-filename="Example"><code class="language-soli text-sm">let tomorrow = __datetime_add(ts, 86400)      // Add 1 day
 let next_hour = __datetime_add(ts, 3600)      // Add 1 hour</code></pre>
-                </div>
             </div>
         </section>
 
@@ -188,9 +178,7 @@ let next_hour = __datetime_add(ts, 3600)      // Add 1 hour</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Subtract seconds from a timestamp.</p>
-                <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto mt-4">
-<pre><code class="language-soli text-sm">let yesterday = __datetime_sub(ts, 86400)  // Subtract 1 day</code></pre>
-                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let yesterday = __datetime_sub(ts, 86400)  // Subtract 1 day</code></pre>
             </div>
         </section>
 
@@ -206,14 +194,6 @@ let next_hour = __datetime_add(ts, 3600)      // Add 1 hour</code></pre>
             </div>
         </section>
 
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-datetime-is-before" class="scroll-mt-20">
-                    <a href="#fn-datetime-is-before" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">__datetime_is_before(ts1, ts2)</code>
-                    </a>
-                    <p class="text-gray-400 text-sm mt-1">Check if ts1 is before ts2</p>
-                </section>
 
                 <section id="fn-datetime-is-after" class="scroll-mt-20">
                     <a href="#fn-datetime-is-after" class="group flex items-center gap-2">
