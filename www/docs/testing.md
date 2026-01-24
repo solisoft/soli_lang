@@ -13,10 +13,10 @@ myapp/
 │   ├── models/
 │   └── views/
 └── tests/
-    ├── users_spec.soli
-    ├── posts_spec.soli
+    ├── users_spec.sl
+    ├── posts_spec.sl
     └── integration/
-        └── api_spec.soli
+        └── api_spec.sl
 ```
 
 ## Test DSL
@@ -208,9 +208,9 @@ soli test --coverage-min=80          # Fail if < 80%
 ```
 Coverage: 87.5% (1250/1428 lines) ✓
 
-src/controllers/users.soli     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  94.2%
-src/models/user.soli           ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  91.1%
-src/controllers/posts.soli     ▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░  78.5%
+src/controllers/users.sl     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  94.2%
+src/models/user.sl           ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  91.1%
+src/controllers/posts.sl     ▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░  78.5%
 ```
 
 ### Coverage Configuration
@@ -286,7 +286,7 @@ describe("UsersController", fn() {
 soli test
 
 # Run specific file
-soli test tests/users_spec.soli
+soli test tests/users_spec.sl
 
 # Run with coverage
 soli test --coverage
@@ -305,6 +305,6 @@ Tests: 45 passed, 2 failed
 Coverage: 87.5% (1250/1428 lines) ✓
 
 Failed tests:
-  - "returns 422 with invalid email" (users_spec.soli:42)
-  - "shows deleted user" (users_spec.soli:89)
+  - "returns 422 with invalid email" (users_spec.sl:42)
+  - "shows deleted user" (users_spec.sl:89)
 ```

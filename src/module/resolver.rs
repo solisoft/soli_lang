@@ -242,27 +242,27 @@ impl ModuleResolver {
         self.find_module_file(&resolved)
     }
 
-    /// Find the actual module file (handles .soli extension).
+    /// Find the actual module file (handles .sl extension).
     fn find_module_file(&self, path: &Path) -> Result<PathBuf, ResolveError> {
         // Try exact path
         if path.exists() && path.is_file() {
             return self.canonicalize(path);
         }
 
-        // Try with .soli extension
-        let with_ext = path.with_extension("soli");
+        // Try with .sl extension
+        let with_ext = path.with_extension("sl");
         if with_ext.exists() && with_ext.is_file() {
             return self.canonicalize(&with_ext);
         }
 
-        // Try as directory with index.soli
-        let index = path.join("index.soli");
+        // Try as directory with index.sl
+        let index = path.join("index.sl");
         if index.exists() && index.is_file() {
             return self.canonicalize(&index);
         }
 
-        // Try as directory with mod.soli
-        let mod_file = path.join("mod.soli");
+        // Try as directory with mod.sl
+        let mod_file = path.join("mod.sl");
         if mod_file.exists() && mod_file.is_file() {
             return self.canonicalize(&mod_file);
         }

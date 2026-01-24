@@ -7,7 +7,7 @@ Middleware provides a way to filter HTTP requests and responses.
 Create a file in `app/middleware/`:
 
 ```soli
-// app/middleware/auth.soli
+// app/middleware/auth.sl
 fn authenticate(req: Any) -> Any {
     let token = req.headers["Authorization"];
 
@@ -27,7 +27,7 @@ fn authenticate(req: Any) -> Any {
 Log all incoming requests:
 
 ```soli
-// app/middleware/logging.soli
+// app/middleware/logging.sl
 fn log_request(req: Any) -> Any {
     let timestamp = datetime::now();
     println(timestamp + " " + req.method + " " + req.path);
@@ -40,7 +40,7 @@ fn log_request(req: Any) -> Any {
 Handle Cross-Origin Resource Sharing:
 
 ```soli
-// app/middleware/cors.soli
+// app/middleware/cors.sl
 fn cors(req: Any) -> Any {
     let response = req;
     response.headers["Access-Control-Allow-Origin"] = "*";
@@ -53,7 +53,7 @@ fn cors(req: Any) -> Any {
 ### Authentication
 
 ```soli
-// app/middleware/auth.soli
+// app/middleware/auth.sl
 fn auth(req: Any) -> Any {
     let session = req.cookies["session"];
 
@@ -71,14 +71,14 @@ fn auth(req: Any) -> Any {
 ### In Routes
 
 ```soli
-// config/routes.soli
+// config/routes.sl
 get("/dashboard", "dashboard#index", ["auth", "logging"]);
 get("/admin", "admin#panel", ["auth", "admin_only"]);
 ```
 
 ### Global Middleware
 
-Apply to all routes in `config/routes.soli`:
+Apply to all routes in `config/routes.sl`:
 
 ```soli
 // Apply logging to all routes

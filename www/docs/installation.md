@@ -41,7 +41,7 @@ npm run dev
 
 ### 1. Configure Routes
 
-Edit `config/routes.soli`:
+Edit `config/routes.sl`:
 
 ```soli
 get("/", "home#index");
@@ -94,14 +94,14 @@ cargo build --release
 Create a test file:
 
 ```soli
-// test.soli
+// test.sl
 println("Hello, SoliLang!");
 ```
 
 Run it:
 
 ```bash
-soli test.soli
+soli test.sl
 ```
 
 You should see: `Hello, SoliLang!`

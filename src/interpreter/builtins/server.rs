@@ -757,7 +757,7 @@ pub fn get_ws_registry() -> std::sync::Arc<crate::serve::websocket::WebSocketReg
 
 /// Register WebSocket server functions in the given environment.
 pub fn register_websocket_builtins(env: &mut Environment) {
-    // Note: The websocket() DSL function is defined in routes.soli via router_websocket()
+    // Note: The websocket() DSL function is defined in routes.sl via router_websocket()
     // WebSocket routes are registered using the DSL: websocket("/path", "controller#handler")
 
     // ws_send(connection_id, message) - Send message to a specific client

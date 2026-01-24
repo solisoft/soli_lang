@@ -143,7 +143,7 @@ let result = validate({
 ## Complete Example: User Registration
 
 ```soli
-// app/controllers/users_controller.soli
+// app/controllers/users_controller.sl
 
 fn new(req: Any) -> Any {
     return {

@@ -4,10 +4,10 @@ Controllers handle HTTP requests and return responses. SoliLang supports OOP-sty
 
 ## Creating a Controller
 
-Create a file in `app/controllers/` with a `_controller.soli` suffix:
+Create a file in `app/controllers/` with a `_controller.sl` suffix:
 
 ```soli
-// app/controllers/users_controller.soli
+// app/controllers/users_controller.sl
 class UsersController extends Controller {
     fn index(req: Any) -> Any {
         return render("users/index", {
@@ -90,7 +90,7 @@ class PostsController extends Controller {
 Create an `ApplicationController` with shared configuration:
 
 ```soli
-// app/controllers/application_controller.soli
+// app/controllers/application_controller.sl
 class ApplicationController extends Controller {
     static {
         this.layout = "application";
@@ -117,7 +117,7 @@ class ApplicationController extends Controller {
 Subclasses inherit the configuration and can override it:
 
 ```soli
-// app/controllers/posts_controller.soli
+// app/controllers/posts_controller.sl
 class PostsController extends ApplicationController {
     static {
         # Override layout for this controller
@@ -406,7 +406,7 @@ fn create(req: Any) -> Any {
 Routes use `controller#action` syntax:
 
 ```soli
-# config/routes.soli
+# config/routes.sl
 get("/", "home#index");
 get("/users", "users#index");
 get("/users/:id", "users#show");
@@ -425,10 +425,10 @@ The router automatically:
 
 | File | Class | Route Prefix |
 |------|-------|--------------|
-| `home_controller.soli` | `HomeController` | `home#` |
-| `users_controller.soli` | `UsersController` | `users#` |
-| `posts_controller.soli` | `PostsController` | `posts#` |
-| `admin/users_controller.soli` | `Admin::UsersController` | `admin/users#` |
+| `home_controller.sl` | `HomeController` | `home#` |
+| `users_controller.sl` | `UsersController` | `users#` |
+| `posts_controller.sl` | `PostsController` | `posts#` |
+| `admin/users_controller.sl` | `Admin::UsersController` | `admin/users#` |
 
 ## Best Practices
 

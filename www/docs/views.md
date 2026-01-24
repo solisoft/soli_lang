@@ -346,7 +346,7 @@ Localizes a date/time according to the current locale.
 
 ## Application Helpers
 
-When you create a new application with `soli new`, a starter helper file is generated at `app/helpers/application_helper.soli`. These helpers complement the built-in functions and are automatically available in all templates.
+When you create a new application with `soli new`, a starter helper file is generated at `app/helpers/application_helper.sl`. These helpers complement the built-in functions and are automatically available in all templates.
 
 ### truncate(text, length, suffix)
 
@@ -530,10 +530,10 @@ Converts text to a URL-friendly slug by lowercasing, replacing spaces and specia
 
 ### Customizing Application Helpers
 
-You can add your own helpers by editing `app/helpers/application_helper.soli`:
+You can add your own helpers by editing `app/helpers/application_helper.sl`:
 
 ```soli
-// app/helpers/application_helper.soli
+// app/helpers/application_helper.sl
 
 // ... existing helpers ...
 

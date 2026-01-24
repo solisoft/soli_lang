@@ -90,7 +90,7 @@ let msg = "Hello \(name)!";
 
 ### Modules/Imports
 ```soli
-import "./utils/math.soli";
+import "./utils/math.sl";
 print(math.add(1, 2));
 ```
 
@@ -172,19 +172,19 @@ throw RuntimeError.new("Something failed");
 ```
 myapp/
 ├── config/
-│   └── routes.soli      # URL routing rules
+│   └── routes.sl      # URL routing rules
 ├── controllers/         # Request handlers
-│   └── users_controller.soli
+│   └── users_controller.sl
 ├── models/              # Data models
-│   └── user.soli
+│   └── user.sl
 ├── views/               # Templates
 │   ├── users/
-│   │   ├── index.html.soli
-│   │   └── show.html.soli
+│   │   ├── index.html.sl
+│   │   └── show.html.sl
 │   └── layouts/
-│       └── application.html.soli
+│       └── application.html.sl
 ├── public/              # Static assets
-└── main.soli            # Entry point
+└── main.sl            # Entry point
 ```
 
 ### Routes Example
@@ -218,7 +218,7 @@ post("/users", fn() {
 | Index | `arr[0]`, `hash["key"]` |
 | Pipeline | `value |> fn()` |
 | String interp | `"Hello \(name)"` |
-| Import | `import "./file.soli"` |
+| Import | `import "./file.sl"` |
 
 ## Execution Modes
 
@@ -227,7 +227,7 @@ post("/users", fn() {
 
 ## File Extension
 
-- `.soli` - Soli source files
+- `.sl` - Soli source files
 
 ## Model ORM
 

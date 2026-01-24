@@ -22,7 +22,7 @@ fn run_program(source: &str) {
 
 /// Load and run a benchmark program file.
 fn run_benchmark_file(name: &str) {
-    let path = format!("benches/programs/{}.soli", name);
+    let path = format!("benches/programs/{}.sl", name);
     let source = fs::read_to_string(&path).expect(&format!("failed to read {}", path));
     run_program(&source);
 }
@@ -99,7 +99,7 @@ fn string_benchmarks(c: &mut Criterion) {
 fn parsing_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("parsing");
 
-    let source = fs::read_to_string("benches/programs/class_ops.soli").unwrap();
+    let source = fs::read_to_string("benches/programs/class_ops.sl").unwrap();
 
     group.bench_function("parse_class_program", |b| {
         b.iter(|| {
@@ -116,7 +116,7 @@ fn parsing_benchmarks(c: &mut Criterion) {
 fn typecheck_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("typecheck");
 
-    let source = fs::read_to_string("benches/programs/class_ops.soli").unwrap();
+    let source = fs::read_to_string("benches/programs/class_ops.sl").unwrap();
     let tokens = Scanner::new(&source).scan_tokens().unwrap();
     let mut parser = Parser::new(tokens);
     let program = parser.parse().unwrap();

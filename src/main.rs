@@ -75,7 +75,7 @@ struct Options {
 fn print_usage() {
     eprintln!("Soli v0.1.0 - Solilang Interpreter");
     eprintln!();
-    eprintln!("Usage: soli [options] [script.soli]");
+    eprintln!("Usage: soli [options] [script.sl]");
     eprintln!("       soli new <app_name>");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--mode MODE]");
@@ -110,9 +110,9 @@ fn print_usage() {
     eprintln!();
     eprintln!("Examples:");
     eprintln!("  soli                          Start interactive REPL");
-    eprintln!("  soli script.soli              Run a script file");
-    eprintln!("  soli --bytecode script.soli   Run with bytecode VM");
-    eprintln!("  soli --disassemble fib.soli   Show bytecode and run");
+    eprintln!("  soli script.sl                Run a script file");
+    eprintln!("  soli --bytecode script.sl     Run with bytecode VM");
+    eprintln!("  soli --disassemble fib.sl     Show bytecode and run");
     eprintln!("  soli new my_app               Create a new MVC application");
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
@@ -123,7 +123,7 @@ fn print_usage() {
     eprintln!("  soli serve my_app --workers 16 Start server with 16 workers");
     eprintln!("  soli serve my_app --mode bytecode  Use bytecode VM for MVC server");
     eprintln!("  soli test                     Run all tests in tests/");
-    eprintln!("  soli test spec.soli           Run specific test file");
+    eprintln!("  soli test spec.sl             Run specific test file");
     eprintln!("  soli test --coverage          Run tests with coverage");
     eprintln!("  soli test --jobs=4            Run tests with 4 workers");
     eprintln!("  soli db:migrate up            Run pending migrations");
@@ -1059,7 +1059,7 @@ fn collect_test_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension() {
-                    if ext == "soli" {
+                    if ext == "sl" {
                         files.push(path);
                     }
                 }

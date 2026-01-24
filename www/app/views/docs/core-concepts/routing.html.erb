@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Routing</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Routes map HTTP requests to controller actions. Define your application's URL structure in <code>config/routes.soli</code>.
+            Routes map HTTP requests to controller actions. Define your application's URL structure in <code>config/routes.sl</code>.
         </p>
     </div>
 
@@ -54,7 +54,7 @@
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">config/routes.soli</span>
+            <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
         </div>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Root page
@@ -74,7 +74,7 @@ post("/contact", "home#submit_contact");</code></pre>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
         <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">config/routes.soli</span>
+            <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
         </div>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Capture user ID
@@ -92,7 +92,7 @@ get("/users/:id?", "users#show");</code></pre>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/controllers/users_controller.soli</span>
+            <span class="text-xs text-gray-400 font-mono">app/controllers/users_controller.sl</span>
         </div>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn show(req: Any) -> Any {
@@ -112,7 +112,7 @@ get("/users/:id?", "users#show");</code></pre>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/controllers/search_controller.soli</span>
+            <span class="text-xs text-gray-400 font-mono">app/controllers/search_controller.sl</span>
         </div>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// URL: /search?q=solilang&page=1
@@ -213,7 +213,7 @@ get("/about", "home#about");</code></pre>
         </h4>
         <p class="text-indigo-200/80 text-sm">
             Soli can automatically map routes to controllers based on naming conventions. 
-            Defining a method named <code>index</code> in <code>home_controller.soli</code> automatically handles <code>GET /home</code>.
+            Defining a method named <code>index</code> in <code>home_controller.sl</code> automatically handles <code>GET /home</code>.
         </p>
     </div>
 

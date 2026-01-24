@@ -83,11 +83,11 @@ pub enum StmtKind {
 /// An import specifier (what to import from a module).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportSpecifier {
-    /// Import all exports: import "module.soli";
+    /// Import all exports: import "module.sl";
     All,
-    /// Import specific items: import { foo, bar } from "module.soli";
+    /// Import specific items: import { foo, bar } from "module.sl";
     Named(Vec<ImportItem>),
-    /// Import as namespace: import * as mod from "module.soli";
+    /// Import as namespace: import * as mod from "module.sl";
     Namespace(String),
 }
 

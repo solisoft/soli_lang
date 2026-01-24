@@ -205,7 +205,7 @@ pub fn serve_folder_with_options_and_mode(
         for entry in std::fs::read_dir(&helpers_dir).unwrap() {
             if let Ok(entry) = entry {
                 let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "soli") {
+                if path.extension().map_or(false, |ext| ext == "sl") {
                     file_tracker.track(&path);
                 }
             }
@@ -226,7 +226,7 @@ pub fn serve_folder_with_options_and_mode(
         })? {
             if let Ok(entry) = entry {
                 let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "soli") {
+                if path.extension().map_or(false, |ext| ext == "sl") {
                     file_tracker.track(&path);
                 }
             }
@@ -245,8 +245,8 @@ pub fn serve_folder_with_options_and_mode(
     // Set live reload flag for template injection (only in dev mode)
     live_reload::set_live_reload_enabled(dev_mode);
 
-    // Load routes from config/routes.soli if it exists
-    let routes_file = folder.join("config").join("routes.soli");
+    // Load routes from config/routes.sl if it exists
+    let routes_file = folder.join("config").join("routes.sl");
     if routes_file.exists() {
 
         // Define DSL helpers in Soli
@@ -456,9 +456,9 @@ fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, RuntimeError
         })?;
 
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "soli") {
+        if path.extension().map_or(false, |ext| ext == "sl") {
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.ends_with("_controller.soli") {
+                if name.ends_with("_controller.sl") {
                     controllers.push(path);
                 }
             }
@@ -476,7 +476,7 @@ fn load_models(interpreter: &mut Interpreter, models_dir: &Path) -> Result<(), R
     })? {
         if let Ok(entry) = entry {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "soli") {
+            if path.extension().map_or(false, |ext| ext == "sl") {
                 println!("Loading model: {}", path.display());
                 execute_file(interpreter, &path)?;
             }
@@ -703,7 +703,7 @@ struct HotReloadVersions {
     views: AtomicU64,
     /// Incremented when static files (CSS, JS) change
     static_files: AtomicU64,
-    /// Incremented when routes.soli changes
+    /// Incremented when routes.sl changes
     routes: AtomicU64,
     /// Incremented when view helpers change
     helpers: AtomicU64,
@@ -928,7 +928,7 @@ fn run_hyper_server_worker_pool(
         if let Ok(entries) = std::fs::read_dir(&watch_controllers_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "soli") {
+                if path.extension().map_or(false, |ext| ext == "sl") {
                     file_tracker.track(&path);
                 }
             }
@@ -938,13 +938,13 @@ fn run_hyper_server_worker_pool(
         if let Ok(entries) = std::fs::read_dir(&watch_middleware_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "soli") {
+                if path.extension().map_or(false, |ext| ext == "sl") {
                     file_tracker.track(&path);
                 }
             }
         }
 
-        // Track routes.soli file
+        // Track routes.sl file
         if watch_routes_file.exists() {
             file_tracker.track(&watch_routes_file);
         }
@@ -1017,13 +1017,13 @@ fn run_hyper_server_worker_pool(
                 }
 
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name == "routes.soli" {
+                    if name == "routes.sl" {
                         routes_changed = true;
-                    } else if name.ends_with("_controller.soli") {
+                    } else if name.ends_with("_controller.sl") {
                         controllers_changed = true;
-                    } else if name.ends_with(".soli") && path.starts_with(&watch_middleware_dir) {
+                    } else if name.ends_with(".sl") && path.starts_with(&watch_middleware_dir) {
                         middleware_changed = true;
-                    } else if name.ends_with(".soli") && path.starts_with(&watch_helpers_dir) {
+                    } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
                         helpers_changed = true;
                     } else if name.ends_with(".erb") {
                         views_changed = true;
@@ -1250,7 +1250,7 @@ fn worker_loop(
             }
         }
 
-        // Routes changed - reload routes.soli
+        // Routes changed - reload routes.sl
         if current_routes != last_routes_version {
             last_routes_version = current_routes;
             reload_routes_in_worker(worker_id, interpreter, &routes_file);
@@ -1317,7 +1317,7 @@ fn load_controllers_in_worker(worker_id: usize, interpreter: &mut Interpreter, c
     if let Ok(entries) = std::fs::read_dir(controllers_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "soli") {
+            if path.extension().map_or(false, |ext| ext == "sl") {
                 if let Err(e) = execute_file(interpreter, &path) {
                     eprintln!("Worker {}: Error loading {}: {}", worker_id, path.display(), e);
                 }
@@ -1359,7 +1359,7 @@ fn load_controllers_in_worker(worker_id: usize, interpreter: &mut Interpreter, c
 }
 
 /// Define DSL helpers for routes in the interpreter.
-/// This must be called before routes.soli can be executed.
+/// This must be called before routes.sl can be executed.
 fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
     let dsl_source = r#"
         fn resources(name: Any, block: Any) {
@@ -1417,7 +1417,7 @@ fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), RuntimeError> 
 }
 
 /// Reload routes in a worker thread.
-/// Clears existing routes, resets router context, and re-executes routes.soli.
+/// Clears existing routes, resets router context, and re-executes routes.sl.
 fn reload_routes_in_worker(
     worker_id: usize,
     interpreter: &mut Interpreter,
@@ -1432,7 +1432,7 @@ fn reload_routes_in_worker(
     // 3. Reset router context
     crate::interpreter::builtins::router::reset_router_context();
 
-    // 4. Re-execute routes.soli (DSL helpers are already defined in interpreter)
+    // 4. Re-execute routes.sl (DSL helpers are already defined in interpreter)
     if routes_file.exists() {
         if let Err(e) = execute_file(interpreter, routes_file) {
             eprintln!("Worker {}: Error reloading routes: {}", worker_id, e);
@@ -3279,9 +3279,9 @@ struct SpanInfo {
 }
 
 fn extract_span_from_error(error_msg: &str) -> SpanInfo {
-    // Try to find file path pattern - supports .soli, .html.erb, and .erb files
+    // Try to find file path pattern - supports .sl, .html.erb, and .erb files
     // Include @ for paths like /home/user@domain.com/...
-    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.soli))").unwrap();
+    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl))").unwrap();
     let file = file_re.captures(error_msg)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string());
@@ -3304,8 +3304,8 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
         return SpanInfo { file, line, column };
     }
 
-    // Try to find patterns like "file.soli:line" or "file.html.erb:line"
-    let file_line_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
+    // Try to find patterns like "file.sl:line" or "file.html.erb:line"
+    let file_line_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl)):(\d+)").unwrap();
     if let Some(caps) = file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
@@ -3322,10 +3322,10 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     SpanInfo { file, line: 1, column: 1 }
 }
 
-/// Extract file path from a stack frame string like "func_name at ./path/file.soli:10"
+/// Extract file path from a stack frame string like "func_name at ./path/file.sl:10"
 fn extract_file_from_frame(frame: &str) -> Option<String> {
-    // Support .soli, .html.erb, and .erb files (include @ for paths like /home/user@domain.com/...)
-    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.soli))").ok()?;
+    // Support .sl, .html.erb, and .erb files (include @ for paths like /home/user@domain.com/...)
+    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl))").ok()?;
     file_re.captures(frame)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string())
@@ -3385,8 +3385,8 @@ pub fn render_dev_error_page(
     let mut stack_frames = Vec::new();
     let mut frame_index = 0;
 
-    // Regex to find file paths with line numbers - supports .soli, .html.erb, .erb (include @ for paths)
-    let file_regex = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.soli)):(\d+)").unwrap();
+    // Regex to find file paths with line numbers - supports .sl, .html.erb, .erb (include @ for paths)
+    let file_regex = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl)):(\d+)").unwrap();
     // Regex to find span info after "at" (line:column)
     let span_regex = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
     // Regex to find view files in error messages (e.g., "error in /path/to/file.html.erb")
@@ -3404,7 +3404,7 @@ pub fn render_dev_error_page(
         let mut file = "unknown".to_string();
         let mut line: usize = 0;
 
-        // First, try to extract file path (supports .soli, .html.erb, .erb)
+        // First, try to extract file path (supports .sl, .html.erb, .erb)
         if let Some(caps) = file_regex.captures(frame) {
             file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
             // Get line from file:line pattern as fallback
@@ -3423,7 +3423,7 @@ pub fn render_dev_error_page(
         }
 
         // Helper to check if string contains a source file extension
-        let contains_source_ext = |s: &str| s.contains(".soli") || s.contains(".html.erb") || s.contains(".erb");
+        let contains_source_ext = |s: &str| s.contains(".sl") || s.contains(".html.erb") || s.contains(".erb");
 
         // Determine display name based on frame type
         let (display_name, icon_html) = if is_view_frame {
@@ -3977,7 +3977,7 @@ pub fn render_dev_error_page(
 }
 
 /// Extract controller name from a file path
-/// "./app/controllers/home_controller.soli" -> "home_controller"
+/// "./app/controllers/home_controller.sl" -> "home_controller"
 fn extract_controller_name(path: &str) -> String {
     std::path::Path::new(path)
         .file_stem()

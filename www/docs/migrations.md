@@ -6,7 +6,7 @@ Migrations provide a structured way to evolve your database schema over time. Ea
 
 Migrations are stored in `db/migrations/` with the naming convention:
 ```
-YYYYMMDDHHMMSS_name.soli
+YYYYMMDDHHMMSS_name.sl
 ```
 
 Each migration file contains `up()` and `down()` functions:
@@ -33,7 +33,7 @@ soli db:migrate generate create_users_table
 
 This creates a timestamped migration file:
 ```
-db/migrations/20260122143052_create_users_table.soli
+db/migrations/20260122143052_create_users_table.sl
 ```
 
 ### Run Migrations
@@ -199,7 +199,7 @@ fn up(db: Any) -> Any {
 Here's a complete migration for a blog application:
 
 ```soli
-// db/migrations/20260122143052_create_blog_schema.soli
+// db/migrations/20260122143052_create_blog_schema.sl
 // Migration: create_blog_schema
 // Created: 2026-01-22 14:30:52
 

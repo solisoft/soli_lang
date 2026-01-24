@@ -88,7 +88,7 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
 
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "soli") {
+        if path.is_file() && path.extension().map_or(false, |ext| ext == "sl") {
             if let Some(file_name) = path.file_stem().and_then(|n| n.to_str()) {
                 // Skip non-controller files
                 if !file_name.ends_with("_controller") {

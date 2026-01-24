@@ -14,7 +14,7 @@
 //! ## Example Middleware
 //!
 //! ```soli
-//! // app/middleware/auth.soli
+//! // app/middleware/auth.sl
 //! fn authenticate(req: Any) -> Any {
 //!     let token = req["headers"]["Authorization"];
 //!     if (token == "") {
@@ -34,7 +34,7 @@
 //! Runs for ALL routes and cannot be scoped.
 //!
 //! ```soli
-//! // app/middleware/cors.soli
+//! // app/middleware/cors.sl
 //! // order: 5
 //! // global_only: true
 //!
@@ -49,7 +49,7 @@
 //! Does NOT run globally. Only runs when explicitly scoped.
 //!
 //! ```soli
-//! // app/middleware/auth.soli
+//! // app/middleware/auth.sl
 //! // order: 20
 //! // scope_only: true
 //!
@@ -64,7 +64,7 @@
 //! Runs globally by default, but can also be scoped.
 //!
 //! ```soli
-//! // app/middleware/validation.soli
+//! // app/middleware/validation.sl
 //! // order: 15
 //!
 //! fn validate_request(req: Any) -> Any {
@@ -73,7 +73,7 @@
 //! }
 //! ```
 //!
-//! In routes.soli, use the `middleware()` helper to apply scoped middleware:
+//! In routes.sl, use the `middleware()` helper to apply scoped middleware:
 //!
 //! ```soli
 //! // Only apply authentication to these routes
@@ -278,7 +278,7 @@ pub fn scan_middleware_files(middleware_dir: &Path) -> Result<Vec<PathBuf>, Runt
         })?;
 
         let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "soli") {
+        if path.extension().is_some_and(|ext| ext == "sl") {
             files.push(path);
         }
     }

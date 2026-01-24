@@ -85,18 +85,18 @@
 <pre><code class="language-text text-sm">my_app/
 ├── app/
 │   ├── controllers/      # Request handlers
-│   │   └── home_controller.soli
+│   │   └── home_controller.sl
 │   ├── models/           # Data models
-│   │   └── user.soli
+│   │   └── user.sl
 │   ├── views/            # HTML templates
 │   │   ├── layouts/      # Shared layouts
 │   │   │   └── application.html.erb
 │   │   └── home/
 │   │       └── index.html.erb
 │   └── middleware/       # Request interceptors
-│       └── auth.soli
+│       └── auth.sl
 ├── config/
-│   └── routes.soli       # Route definitions
+│   └── routes.sl       # Route definitions
 ├── public/               # Static assets
 │   ├── css/
 │   └── js/
@@ -115,7 +115,7 @@
             </h3>
             <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
                 <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                    <span class="text-xs text-gray-400 font-mono">config/routes.soli</span>
+                    <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
                 </div>
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">get("/", "home#index");
@@ -131,7 +131,7 @@ get("/users/:id", "users#show");</code></pre>
             </h3>
             <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
                 <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                    <span class="text-xs text-gray-400 font-mono">app/controllers/home_controller.soli</span>
+                    <span class="text-xs text-gray-400 font-mono">app/controllers/home_controller.sl</span>
                 </div>
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn index(req: Any) -> Any {

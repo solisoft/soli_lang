@@ -4,7 +4,7 @@ SoliLang MVC uses a simple, declarative routing system.
 
 ## Basic Routes
 
-Define routes in `config/routes.soli`:
+Define routes in `config/routes.sl`:
 
 ```soli
 // HTTP method, path, controller#action

@@ -17,12 +17,12 @@ soli generate scaffold users
 ```
 
 This creates:
-- Model: `app/models/users_model.soli`
-- Controller: `app/controllers/users_controller.soli`
+- Model: `app/models/users_model.sl`
+- Controller: `app/controllers/users_controller.sl`
 - Views: `app/views/users/` (index, show, new, edit, _form partial)
-- Tests: `tests/models/users_test.soli`, `tests/controllers/users_controller_test.soli`
-- Migration: `db/migrations/<timestamp>create_users_<timestamp>.soli`
-- Routes: Added to `config/routes.soli`
+- Tests: `tests/models/users_test.sl`, `tests/controllers/users_controller_test.sl`
+- Migration: `db/migrations/<timestamp>create_users_<timestamp>.sl`
+- Routes: Added to `config/routes.sl`
 
 ## Generate with Fields
 

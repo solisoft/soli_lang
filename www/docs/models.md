@@ -11,12 +11,12 @@ Create model files in `app/models/`. The collection name is **automatically deri
 - `UserProfile` → `"user_profiles"`
 
 ```soli
-// app/models/user.soli
+// app/models/user.sl
 class User extends Model { }
 ```
 
 ```soli
-// app/models/blog_post.soli
+// app/models/blog_post.sl
 class BlogPost extends Model { }
 ```
 
@@ -272,7 +272,7 @@ SDBQL uses:
 ## Complete Example
 
 ```soli
-// app/models/user.soli
+// app/models/user.sl
 class User extends Model {
     validates("email", { "presence": true, "uniqueness": true })
     validates("name", { "presence": true, "min_length": 2 })
@@ -292,7 +292,7 @@ class User extends Model {
     }
 }
 
-// app/models/blog_post.soli
+// app/models/blog_post.sl
 class BlogPost extends Model {
     validates("title", { "presence": true, "min_length": 3 })
 

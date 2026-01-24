@@ -57,19 +57,19 @@ soli serve .
 mvc_app/
 ├── app/
 │   ├── controllers/          # Route handlers
-│   │   ├── home_controller.soli
-│   │   ├── users_controller.soli
-│   │   └── admin_controller.soli
+│   │   ├── home_controller.sl
+│   │   ├── users_controller.sl
+│   │   └── admin_controller.sl
 │   ├── middleware/           # Middleware functions
-│   │   ├── auth.soli         # Authentication (scope_only)
-│   │   ├── cors.soli         # CORS headers (global_only)
-│   │   └── logging.soli      # Request logging (global_only)
+│   │   ├── auth.sl         # Authentication (scope_only)
+│   │   ├── cors.sl         # CORS headers (global_only)
+│   │   └── logging.sl      # Request logging (global_only)
 │   ├── models/               # Data models
 │   └── views/                # Templates
 │       ├── home/
 │       └── layouts/
 ├── config/
-│   └── routes.soli           # Route definitions
+│   └── routes.sl           # Route definitions
 ├── public/                   # Static files
 │   └── docs.html             # Framework documentation
 └── README.md                 # This file
@@ -151,7 +151,7 @@ Configure middleware behavior using special comments:
 
 ### Route DSL
 
-Available helpers in `routes.soli`:
+Available helpers in `routes.sl`:
 
 | Helper | Description |
 |--------|-------------|
@@ -167,7 +167,7 @@ Available helpers in `routes.soli`:
 ## 📝 Example Routes
 
 ```soli
-// config/routes.soli
+// config/routes.sl
 
 // Scoped authentication middleware
 middleware("authenticate", -> {
@@ -226,7 +226,7 @@ No restart needed!
 
 ## 🏗️ Creating New Controllers
 
-1. Create `app/controllers/name_controller.soli`:
+1. Create `app/controllers/name_controller.sl`:
 
 ```soli
 fn index(req: Any) -> Any {
@@ -239,7 +239,7 @@ fn show(req: Any) -> Any {
 }
 ```
 
-2. Add routes in `config/routes.soli`:
+2. Add routes in `config/routes.sl`:
 
 ```soli
 get("/users", "users#index");

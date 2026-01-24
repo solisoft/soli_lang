@@ -1,8 +1,8 @@
 //! Convention-based routing for MVC controllers.
 //!
 //! Routes are derived from controller filename + function name:
-//! - `home_controller.soli` maps to root `/`
-//! - `users_controller.soli` maps to `/users`
+//! - `home_controller.sl` maps to root `/`
+//! - `users_controller.sl` maps to `/users`
 //! - Function names map to HTTP methods and actions:
 //!   - `index()` → GET on collection (e.g., `/users`)
 //!   - `show(id)` → GET with param (e.g., `/users/:id`)

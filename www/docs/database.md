@@ -250,7 +250,7 @@ Error: Database 'mydb' not found
 
 ### Environment Variables Not Loading
 
-**Solution**: Ensure `.env` is in your project root (same directory as `main.soli`).
+**Solution**: Ensure `.env` is in your project root (same directory as `main.sl`).
 
 ## Next Steps
 

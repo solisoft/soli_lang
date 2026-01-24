@@ -1,10 +1,10 @@
 // Main program demonstrating the module system
 
 // Import all exports from math module
-import "./lib/math.soli";
+import "./lib/math.sl";
 
 // Import specific functions from utils module
-import { greet, max } from "./lib/utils.soli";
+import { greet, max } from "./lib/utils.sl";
 
 // Use imported functions
 print("=== Module System Demo ===");

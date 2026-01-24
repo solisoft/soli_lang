@@ -45,7 +45,7 @@ mvc_app/
 │   ├── models/         # Data models
 │   └── views/          # Templates
 ├── config/
-│   └── routes.soli     # Route definitions
+│   └── routes.sl     # Route definitions
 ├── public/             # Static assets
 └── views/
     └── layouts/        # Page layouts

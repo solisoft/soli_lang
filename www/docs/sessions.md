@@ -107,7 +107,7 @@ fn logout(req: Any) -> Any {
 Create a reusable authentication middleware:
 
 ```soli
-// app/middleware/auth.soli
+// app/middleware/auth.sl
 fn require_auth(req: Any) -> Any {
     if !session_has("authenticated") || session_get("authenticated") != true {
         return {
@@ -139,7 +139,7 @@ fn require_role(req: Any, required_role: String) -> Any {
 Use in routes:
 
 ```soli
-// config/routes.soli
+// config/routes.sl
 get("/profile", "user#profile", ["auth"]);
 get("/admin", "admin#dashboard", ["auth", "role:admin"]);
 post("/users", "users#create", ["auth", "role:admin"]);

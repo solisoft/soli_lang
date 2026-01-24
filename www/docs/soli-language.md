@@ -52,7 +52,7 @@ print("The area of a circle with radius " + str(radius) + " is " + str(area));
 
 ```bash
 # Run a single file
-soli run hello.soli
+soli run hello.sl
 
 # Run with hot reload (development)
 soli serve
@@ -2137,7 +2137,7 @@ print("Total Revenue: $" + str(total_revenue));  // $2750
 ### Creating Modules
 
 ```soli
-// math.soli - A module exporting utility functions
+// math.sl - A module exporting utility functions
 
 // Private function (not exported)
 fn validate_number(n: Int) -> Bool {
@@ -2183,26 +2183,26 @@ export fn fibonacci(n: Int) -> Int {
 
 ```soli
 // Import all exports from a module
-import "./math.soli";
+import "./math.sl";
 
 print(add(2, 3));        // 5
 print(factorial(5));     // 120
 print(fibonacci(10));    // 55
 
 // Named imports - only import specific functions
-import { add, multiply } from "./math.soli";
+import { add, multiply } from "./math.sl";
 
 let sum = add(1, 2);          // 3
 let product = multiply(3, 4); // 12
 
 // Aliased imports - import with different names
-import { add as sum, multiply as times } from "./math.soli";
+import { add as sum, multiply as times } from "./math.sl";
 
 let result = sum(10, 20);  // 30
 let doubled = times(5, 6); // 30
 
 // Import everything with a namespace
-import "./utils.soli" as utils;
+import "./utils.sl" as utils;
 
 let formatted = utils.format_date(DateTime.utc());
 let cleaned = utils.sanitize_input(user_input);
@@ -2214,25 +2214,25 @@ let cleaned = utils.sanitize_input(user_input);
 my-project/
 ├── soli.toml
 ├── src/
-│   ├── main.soli
-│   ├── config.soli
+│   ├── main.sl
+│   ├── config.sl
 │   └── utils/
-│       ├── mod.soli
-│       ├── string.soli
-│       ├── array.soli
-│       └── datetime.soli
+│       ├── mod.sl
+│       ├── string.sl
+│       ├── array.sl
+│       └── datetime.sl
 └── lib/
     └── math/
-        ├── mod.soli
-        ├── basic.soli
-        └── advanced.soli
+        ├── mod.sl
+        ├── basic.sl
+        └── advanced.sl
 ```
 
 ```soli
-// src/main.soli
-import "./config.soli";
-import "./utils/mod.soli" as utils;
-import "../lib/math/mod.soli" as math;
+// src/main.sl
+import "./config.sl";
+import "./utils/mod.sl" as utils;
+import "../lib/math/mod.sl" as math;
 
 fn main() {
     let config = load_config();
@@ -2250,7 +2250,7 @@ fn main() {
 name = "my-app"
 version = "1.0.0"
 description = "My awesome Soli application"
-main = "src/main.soli"
+main = "src/main.sl"
 authors = ["Author Name <author@example.com>"]
 
 [dependencies]
@@ -2258,7 +2258,7 @@ authors = ["Author Name <author@example.com>"]
 utils = { path = "./lib/utils" }
 
 # Git dependency (future)
-# math = { git = "https://github.com/user/math.soli" }
+# math = { git = "https://github.com/user/math.sl" }
 
 [dev-dependencies]
 test-utils = { path = "./tests/test-utils" }
@@ -2927,13 +2927,13 @@ value |> fn1() |> fn2();
 
 ### Module
 ```soli
-// math.soli
+// math.sl
 export fn add(a: Int, b: Int) -> Int {
     return a + b;
 }
 
-// main.soli
-import "./math.soli";
+// main.sl
+import "./math.sl";
 print(add(2, 3));
 ```
 

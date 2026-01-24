@@ -2,8 +2,8 @@
 module.exports = {
   content: [
     "./app/views/**/*.{erb,html,html.erb,etlua}",
-    "./app/controllers/**/*.soli",
-    "./app/helpers/**/*.soli"
+    "./app/controllers/**/*.sl",
+    "./app/helpers/**/*.sl"
   ],
   theme: {
     extend: {

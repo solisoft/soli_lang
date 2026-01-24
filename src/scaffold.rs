@@ -262,7 +262,7 @@ get("/health", "home#health");
 
 print("Routes loaded!");
 "#;
-    write_file(&app_path.join("config/routes.soli"), content)
+    write_file(&app_path.join("config/routes.sl"), content)
 }
 
 fn create_home_controller(app_path: &Path) -> Result<(), String> {
@@ -287,7 +287,7 @@ class HomeController extends Controller {
 }
 "#;
     write_file(
-        &app_path.join("app/controllers/home_controller.soli"),
+        &app_path.join("app/controllers/home_controller.sl"),
         content,
     )
 }
@@ -418,9 +418,9 @@ fn create_index_view(app_path: &Path) -> Result<(), String> {
                 </div>
                 <div class="p-4 font-mono text-sm">
                     <div class="text-slate-500"># Edit your routes</div>
-                    <div class="text-emerald-400">vim config/routes.soli</div>
+                    <div class="text-emerald-400">vim config/routes.sl</div>
                     <div class="mt-3 text-slate-500"># Create a new controller</div>
-                    <div class="text-emerald-400">vim app/controllers/posts_controller.soli</div>
+                    <div class="text-emerald-400">vim app/controllers/posts_controller.sl</div>
                     <div class="mt-3 text-slate-500"># Create a view</div>
                     <div class="text-emerald-400">vim app/views/posts/index.html.erb</div>
                     <div class="mt-3 text-slate-500"># Restart with hot reload</div>
@@ -585,7 +585,7 @@ fn pluralize_simple(count: Int, word: String) -> String {
 }
 "#;
     write_file(
-        &app_path.join("app/helpers/application_helper.soli"),
+        &app_path.join("app/helpers/application_helper.sl"),
         content,
     )
 }
@@ -618,7 +618,7 @@ fn add_cors_headers(req: Any) -> Any {
 }
 "#;
     write_file(
-        &app_path.join("app/middleware/cors.soli"),
+        &app_path.join("app/middleware/cors.sl"),
         cors_content,
     )?;
 
@@ -630,7 +630,7 @@ fn add_cors_headers(req: Any) -> Any {
 // This middleware checks for authentication.
 // It only runs when explicitly scoped to routes.
 //
-// Usage in routes.soli:
+// Usage in routes.sl:
 //   middleware("authenticate", -> {
 //       get("/admin", "admin#index");
 //       get("/admin/settings", "admin#settings");
@@ -680,7 +680,7 @@ fn authenticate(req: Any) -> Any {
 }
 "#;
     write_file(
-        &app_path.join("app/middleware/auth.soli"),
+        &app_path.join("app/middleware/auth.sl"),
         auth_content,
     )
 }
@@ -769,7 +769,7 @@ soli serve . -d
 │       ├── home/        # Home page views
 │       └── layouts/     # Layout templates
 ├── config/
-│   └── routes.soli      # Route definitions
+│   └── routes.sl      # Route definitions
 ├── db/
 │   └── migrations/      # Database migrations
 ├── public/              # Static assets
@@ -927,7 +927,7 @@ pub fn create_app(name: &str) -> Result<(), String> {
     println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m models/         \x1b[2m# Data models\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m views/          \x1b[2m# Templates\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m config/");
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m routes.soli     \x1b[2m# URL routing\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m routes.sl     \x1b[2m# URL routing\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m db/migrations/      \x1b[2m# Database migrations\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m public/             \x1b[2m# Static assets\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m└──\x1b[0m tests/              \x1b[2m# Test files\x1b[0m");
@@ -1137,7 +1137,7 @@ class {model_name} extends Model {{
 
     let model_path = app_path
         .join("app/models")
-        .join(format!("{}_model.soli", to_snake_case(name)));
+        .join(format!("{}_model.sl", to_snake_case(name)));
     write_file(&model_path, &content)?;
     Ok(())
 }
@@ -1233,7 +1233,7 @@ class {controller_name} extends Controller {{
 
     let controller_path = app_path
         .join("app/controllers")
-        .join(format!("{}_controller.soli", to_snake_case(name)));
+        .join(format!("{}_controller.sl", to_snake_case(name)));
     write_file(&controller_path, &content)?;
     Ok(())
 }
@@ -1662,7 +1662,7 @@ describe("{}Model", fn() {{
         collection_name = collection_name
     );
 
-    let model_test_path = models_dir.join(format!("{}_test.soli", snake_name));
+    let model_test_path = models_dir.join(format!("{}_test.sl", snake_name));
     write_file(&model_test_path, &model_test_content)?;
     println!("  Created: {}", model_test_path.display());
 
@@ -1737,7 +1737,7 @@ describe("{}Controller", fn() {{
     }})
 
     test("should have correct routes defined", fn() {{
-        assert_true(true, "Routes should be defined in config/routes.soli");
+        assert_true(true, "Routes should be defined in config/routes.sl");
     }})
 }})
 "#,
@@ -1746,7 +1746,7 @@ describe("{}Controller", fn() {{
         collection_name = collection_name
     );
 
-    let controller_test_path = controllers_dir.join(format!("{}_controller_test.soli", snake_name));
+    let controller_test_path = controllers_dir.join(format!("{}_controller_test.sl", snake_name));
     write_file(&controller_test_path, &controller_test_content)?;
     println!("  Created: {}", controller_test_path.display());
 
@@ -1763,7 +1763,7 @@ fn create_migration(app_path: &Path, name: &str, fields: &[FieldDefinition]) -> 
         .map_err(|e| format!("Failed to get timestamp: {}", e))?
         .as_secs();
 
-    let filename = format!("{}{}_{}.soli", timestamp, migration_name, timestamp);
+    let filename = format!("{}{}_{}.sl", timestamp, migration_name, timestamp);
     let migrations_dir = app_path.join("db/migrations");
     let migration_path = migrations_dir.join(&filename);
 
@@ -1824,7 +1824,7 @@ fn down(db: Any) -> Any {{
 
 fn add_routes(app_path: &Path, name: &str) -> Result<(), String> {
     let resource_name = to_snake_case_plural(name);
-    let routes_file = app_path.join("config/routes.soli");
+    let routes_file = app_path.join("config/routes.sl");
 
     let new_routes = format!(
         r#"
@@ -1848,7 +1848,7 @@ delete("/{resource}/:id", "{resource}#delete")
         content.push_str(&new_routes);
         std::fs::write(&routes_file, content)
             .map_err(|e| format!("Failed to write routes file: {}", e))?;
-        println!("  Updated: {}/config/routes.soli", app_path.display());
+        println!("  Updated: {}/config/routes.sl", app_path.display());
     } else {
         write_file(&routes_file, &new_routes)?;
     }
@@ -1933,11 +1933,11 @@ pub fn print_scaffold_success_message(name: &str) {
     println!("  \x1b[2mGenerated files:\x1b[0m");
     println!();
     println!(
-        "    \x1b[36mapp/models/{}_model.soli\x1b[0m",
+        "    \x1b[36mapp/models/{}_model.sl\x1b[0m",
         to_snake_case(name)
     );
     println!(
-        "    \x1b[36mapp/controllers/{}_controller.soli\x1b[0m",
+        "    \x1b[36mapp/controllers/{}_controller.sl\x1b[0m",
         to_snake_case(name)
     );
     println!(
@@ -1964,14 +1964,14 @@ pub fn print_scaffold_success_message(name: &str) {
     println!("  \x1b[2mTest files:\x1b[0m");
     println!();
     println!(
-        "    \x1b[36mtests/models/{}_test.soli\x1b[0m",
+        "    \x1b[36mtests/models/{}_test.sl\x1b[0m",
         to_snake_case(name)
     );
     println!(
-        "    \x1b[36mtests/controllers/{}_controller_test.soli\x1b[0m",
+        "    \x1b[36mtests/controllers/{}_controller_test.sl\x1b[0m",
         to_snake_case(name)
     );
     println!();
-    println!("  \x1b[2mRoutes added to:\x1b[0m \x1b[36mconfig/routes.soli\x1b[0m");
+    println!("  \x1b[2mRoutes added to:\x1b[0m \x1b[36mconfig/routes.sl\x1b[0m");
     println!();
 }

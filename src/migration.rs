@@ -1,7 +1,7 @@
 //! Database migration system for Soli MVC applications.
 //!
 //! Migrations are stored in `db/migrations/` with naming convention:
-//! `YYYYMMDDHHMMSS_name.soli`
+//! `YYYYMMDDHHMMSS_name.sl`
 //!
 //! Each migration file should contain `up()` and `down()` functions:
 //!
@@ -148,7 +148,7 @@ pub struct Migration {
 
 impl Migration {
     /// Parse migration info from filename
-    /// Expected format: YYYYMMDDHHMMSS_name.soli
+    /// Expected format: YYYYMMDDHHMMSS_name.sl
     pub fn from_path(path: &Path) -> Option<Self> {
         let filename = path.file_stem()?.to_str()?;
         let parts: Vec<&str> = filename.splitn(2, '_').collect();
@@ -205,7 +205,7 @@ impl MigrationRunner {
                 entry
                     .path()
                     .extension()
-                    .map(|ext| ext == "soli")
+                    .map(|ext| ext == "sl")
                     .unwrap_or(false)
             })
             .filter_map(|entry| Migration::from_path(&entry.path()))
@@ -543,7 +543,7 @@ pub fn generate_migration(app_path: &Path, name: &str) -> Result<PathBuf, String
         .map(|c| if c.is_alphanumeric() { c } else { '_' })
         .collect();
 
-    let filename = format!("{}_{}.soli", timestamp, safe_name);
+    let filename = format!("{}_{}.sl", timestamp, safe_name);
     let filepath = migrations_path.join(&filename);
 
     // Generate migration template

@@ -57,7 +57,7 @@ pub fn clear_file_mtime_cache() {
     FILE_MTIME_CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
-// Thread-local view helpers registry (functions from app/helpers/*.soli)
+// Thread-local view helpers registry (functions from app/helpers/*.sl)
 /// Maximum size for view helpers cache.
 const VIEW_HELPERS_MAX_SIZE: usize = 500;
 
@@ -87,7 +87,7 @@ pub fn get_view_helpers() -> HashMap<String, Value> {
     VIEW_HELPERS.with(|helpers| helpers.borrow().clone())
 }
 
-/// Load view helpers from a directory (app/helpers/*.soli).
+/// Load view helpers from a directory (app/helpers/*.sl).
 /// Parses each file and extracts function definitions without executing in interpreter.
 pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     if !helpers_dir.exists() {
@@ -105,7 +105,7 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
 
-        if path.extension().map_or(false, |ext| ext == "soli") {
+        if path.extension().map_or(false, |ext| ext == "sl") {
             let source = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read helper file '{}': {}", path.display(), e))?;
 
@@ -303,7 +303,7 @@ fn inject_template_helpers(data: &Value) -> Value {
         Value::Hash(hash) => {
             let mut new_hash: Vec<(Value, Value)> = hash.borrow().clone();
 
-            // Inject user-defined view helpers from app/helpers/*.soli
+            // Inject user-defined view helpers from app/helpers/*.sl
             VIEW_HELPERS.with(|helpers| {
                 let helpers_map = helpers.borrow();
                 for (name, value) in helpers_map.iter() {

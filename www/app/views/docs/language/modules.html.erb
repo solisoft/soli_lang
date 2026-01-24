@@ -37,7 +37,7 @@
                 </a>
                 <p class="text-gray-400 mb-3">Makes a function, class, or constant available to other modules.</p>
                 <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">// math.soli
+<pre><code class="language-soli text-sm">// math.sl
 
 // Private function (not exported)
 fn validate_number(n: Int) -> Bool {
@@ -90,22 +90,22 @@ export fn factorial(n: Int) -> Int {
                 <p class="text-gray-400 mb-3">Import functions and classes from other modules.</p>
                 <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Import all exports
-import "./math.soli";
+import "./math.sl";
 print(add(2, 3));        // 5
 print(factorial(5));     // 120
 
 // Named imports
-import { add, multiply } from "./math.soli";
+import { add, multiply } from "./math.sl";
 let sum = add(1, 2);          // 3
 let product = multiply(3, 4); // 12
 
 // Aliased imports
-import { add as sum, multiply as times } from "./math.soli";
+import { add as sum, multiply as times } from "./math.sl";
 let result = sum(10, 20);  // 30
 let doubled = times(5, 6); // 30
 
 // Import everything with a namespace
-import "./utils.soli" as utils;
+import "./utils.sl" as utils;
 let formatted = utils.format_date(DateTime.utc());</code></pre>
                 </div>
             </div>
@@ -120,18 +120,18 @@ let formatted = utils.format_date(DateTime.utc());</code></pre>
 <pre><code class="language-text text-sm">my-project/
 ├── soli.toml
 ├── src/
-│   ├── main.soli
-│   ├── config.soli
+│   ├── main.sl
+│   ├── config.sl
 │   └── utils/
-│       ├── mod.soli
-│       ├── string.soli
-│       ├── array.soli
-│       └── datetime.soli
+│       ├── mod.sl
+│       ├── string.sl
+│       ├── array.sl
+│       └── datetime.sl
 └── lib/
     └── math/
-        ├── mod.soli
-        ├── basic.soli
-        └── advanced.soli</code></pre>
+        ├── mod.sl
+        ├── basic.sl
+        └── advanced.sl</code></pre>
             </div>
         </div>
     </section>
@@ -148,7 +148,7 @@ let formatted = utils.format_date(DateTime.utc());</code></pre>
 name = "my-app"
 version = "1.0.0"
 description = "My awesome soli application"
-main = "src/main.soli"
+main = "src/main.sl"
 
 [dependencies]
 # Local dependency
@@ -179,9 +179,9 @@ test = "soli test"</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Alternative syntax for importing (alias for import).</p>
                 <div class="rounded-lg bg-gray-950 ring-1 ring-white/10 p-3 overflow-x-auto">
-<pre><code class="language-soli text-sm">use "./math.soli";
-use { add, multiply } from "./math.soli";
-use "./utils.soli" as utils;</code></pre>
+<pre><code class="language-soli text-sm">use "./math.sl";
+use { add, multiply } from "./math.sl";
+use "./utils.sl" as utils;</code></pre>
                 </div>
             </div>
         </section>

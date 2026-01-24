@@ -13,7 +13,7 @@ pub struct Package {
     pub version: String,
     /// Package description
     pub description: Option<String>,
-    /// Main entry point (default: src/main.soli)
+    /// Main entry point (default: src/main.sl)
     pub main: String,
     /// Dependencies: name -> path or version
     pub dependencies: HashMap<String, Dependency>,
@@ -61,7 +61,7 @@ impl Package {
             name: name.to_string(),
             version: "0.1.0".to_string(),
             description: None,
-            main: "src/main.soli".to_string(),
+            main: "src/main.sl".to_string(),
             dependencies: HashMap::new(),
         }
     }
@@ -225,13 +225,13 @@ mod tests {
 [package]
 name = "my-app"
 version = "1.0.0"
-main = "src/main.soli"
+main = "src/main.sl"
 "#;
 
         let pkg = Package::parse(content).unwrap();
         assert_eq!(pkg.name, "my-app");
         assert_eq!(pkg.version, "1.0.0");
-        assert_eq!(pkg.main, "src/main.soli");
+        assert_eq!(pkg.main, "src/main.sl");
     }
 
     #[test]

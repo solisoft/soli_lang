@@ -382,26 +382,26 @@ user.each(fn(pair) {
 ### File Structure
 ```
 myproject/
-├── main.soli
+├── main.sl
 ├── utils/
-│   ├── mod.soli
-│   ├── math.soli
-│   └── strings.soli
+│   ├── mod.sl
+│   ├── math.sl
+│   └── strings.sl
 └── models/
-    └── user.soli
+    └── user.sl
 ```
 
 ### Import Syntax
 ```soli
 // Import entire module
-import "./utils/math.soli";
+import "./utils/math.sl";
 print(utils.add(1, 2));
 
 // Import specific items
 from "./utils/strings" import {uppercase, lowercase};
 
 // Re-export from module
-// In utils/mod.soli:
+// In utils/mod.sl:
 pub mod strings;
 pub mod math;
 
@@ -412,7 +412,7 @@ pub class MyClass { }
 
 ### Module Scope
 ```soli
-// utils.soli
+// utils.sl
 let private_var = "hidden";
 pub fn public_fn() { }
 ```
