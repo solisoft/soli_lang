@@ -3107,6 +3107,10 @@ video {
   color: rgb(165 180 252 / var(--tw-text-opacity, 1));
 }
 
+.text-indigo-300\/50 {
+  color: rgb(165 180 252 / 0.5);
+}
+
 .text-indigo-400 {
   --tw-text-opacity: 1;
   color: rgb(129 140 248 / var(--tw-text-opacity, 1));
