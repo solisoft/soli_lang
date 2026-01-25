@@ -293,7 +293,8 @@ project/
 │   │   ├── controller.json
 │   │   ├── middleware.json
 │   │   ├── routes.json
-│   │   └── views.json
+│   │   ├── views.json
+│   │   └── solidb.json        # SoliDB integration patterns
 │   └── examples/              # Annotated examples
 │       ├── controller.sl
 │       ├── middleware.sl
@@ -302,12 +303,13 @@ project/
 │   ├── app/
 │   │   ├── controllers/       # Request handlers (.sl files)
 │   │   ├── middleware/        # HTTP middleware functions
-│   │   ├── models/            # Data models (extends Model)
+│   │   ├── models/            # Data models with SolidB integration
 │   │   ├── views/             # Templates and layouts
 │   │   └── helpers/           # View helper functions
 │   ├── config/
 │   │   └── routes.sl          # Route definitions
 │   └── public/                # Static assets
+├── ../solidb/                  # SoliDB database (sibling directory)
 ```
 
 ### Convention Files for AI Agents
@@ -320,6 +322,7 @@ AI agents should read `.soli/context.json` for framework metadata and `.soli/con
 - `.soli/conventions/middleware.json` - Middleware types, execution order
 - `.soli/conventions/routes.json` - Route patterns, REST conventions
 - `.soli/conventions/views.json` - Template syntax, variable access
+- `.soli/conventions/solidb.json` - SoliDB/SolidB database integration patterns
 
 ### Controller Generation Patterns
 
@@ -578,6 +581,13 @@ Use get/post/put/delete helpers
 3. Parameters: `/path/:param_name`
 4. Scope middleware: `middleware("name", -> { routes })`
 
+**When integrating SoliDB/SolidB:**
+1. Initialize connection: `this.db = solidb_connect("localhost", 6745, "api_key")`
+2. Execute query: `solidb_query(db, database, sdbql, params)`
+3. CRUD operations: `solidb_insert/get/update/delete()`
+4. Transactions: `solidb_transaction(db, database, fn(tx) { ... })`
+5. SDBQL syntax: `FOR doc IN collection FILTER condition RETURN doc`
+
 ### File Locations Reference
 
 | Component | Location |
@@ -590,8 +600,441 @@ Use get/post/put/delete helpers
 | Routes | `config/routes.sl` |
 | Conventions | `.soli/conventions/*.json` |
 | Examples | `.soli/examples/*.sl` |
+| SolidB Database | `../solidb/` |
 
-## Example: Simple Web Handler
+## SoliDB (SolidB) Database Integration
+
+SoliDB (SolidB) is the recommended database for Soli MVC applications. It's a lightweight, high-performance multi-document database with native Soli language support.
+
+### Overview
+
+| Feature | Description |
+|---------|-------------|
+| **Name** | SoliDB / SolidB |
+| **Version** | 0.5.0 |
+| **Repository** | https://github.com/solisoft/solidb |
+| **Documentation** | https://solidb.solisoft.net/docs/ |
+| **Default Port** | 6745 |
+| **Query Language** | SDBQL (ArangoDB-inspired) |
+
+### Key Features
+
+- **JSON Document Storage** - Store and query JSON documents
+- **SDBQL Query Language** - Powerful query syntax with FOR/FILTER/SORT/LIMIT/RETURN
+- **Multi-node Replication** - Peer-to-peer replication with automatic sync
+- **Sharding** - Horizontal data partitioning
+- **ACID Transactions** - Atomic operations with configurable isolation
+- **Lua Scripting** - Server-side scripts for custom endpoints
+- **WebSocket Real-time** - LiveQuery subscriptions
+- **Vector Search** - Hybrid search with vector indexes
+
+### Built-in SolidB Functions
+
+| Function | Description |
+|----------|-------------|
+| `solidb_connect(host, port, api_key)` | Connect to SoliDB server |
+| `solidb_query(db, database, query, params)` | Execute SDBQL query |
+| `solidb_insert(db, database, collection, document)` | Insert document, returns with _id |
+| `solidb_get(db, database, collection, id)` | Get document by ID |
+| `solidb_update(db, database, collection, id, data)` | Update document |
+| `solidb_delete(db, database, collection, id)` | Delete document |
+| `solidb_transaction(db, database, fn(tx) { ... })` | Execute atomic transaction |
+
+### Controller Integration Pattern
+
+```soli
+class PostsController extends Controller {
+    static {
+        this.db = solidb_connect("localhost", 6745, "your-api-key");
+        this.database = "myapp";
+    }
+    
+    fn index(req: Any) -> Any {
+        let posts = solidb_query(this.db, this.database, 
+            "FOR doc IN posts SORT doc.created_at DESC RETURN doc", {});
+        return render("posts/index", {"posts": posts});
+    }
+    
+    fn show(req: Any) -> Any {
+        let id = req["params"]["id"];
+        let post = solidb_get(this.db, this.database, "posts", id);
+        if (post == null) {
+            return {"status": 404, "body": "Not found"};
+        }
+        return render("posts/show", {"post": post});
+    }
+    
+    fn create(req: Any) -> Any {
+        let data = req["json"];
+        let result = solidb_insert(this.db, this.database, "posts", {
+            "title": data["title"],
+            "content": data["content"],
+            "created_at": datetime_now()
+        });
+        return {"status": 201, "body": json_stringify(result)};
+    }
+}
+```
+
+### SDBQL Query Syntax
+
+**Basic Queries:**
+```sdbql
+FOR doc IN posts RETURN doc                                    -- All documents
+FOR doc IN posts FILTER doc.status == "published" RETURN doc   -- Filtered
+FOR doc IN posts SORT doc.created_at DESC LIMIT 10 RETURN doc  -- Sorted & limited
+```
+
+**Parameterized Queries:**
+```sdbql
+FOR doc IN posts
+FILTER doc.status == @status AND LIKE(doc.title, @search, true)
+SORT doc.created_at DESC
+LIMIT 20
+RETURN doc
+```
+
+**Aggregations:**
+```sdbql
+FOR doc IN posts
+COLLECT status = doc.status WITH COUNT INTO count
+RETURN {status, count}
+```
+
+**Joins:**
+```sdbql
+FOR post IN posts
+FOR author IN authors
+FILTER post.author_id == author._key
+RETURN {post, author}
+```
+
+### SDBQL Complete Function Reference
+
+**String Functions:**
+| Function | Syntax | Description | Example |
+|----------|--------|-------------|---------|
+| `UPPER` | `UPPER(string)` | Convert to uppercase | `UPPER(doc.name)` |
+| `LOWER` | `LOWER(string)` | Convert to lowercase | `LOWER(doc.email)` |
+| `TRIM` | `TRIM(string)` | Remove whitespace | `TRIM(doc.content)` |
+| `CONCAT` | `CONCAT(a, b, ...)` | Concatenate strings | `CONCAT(doc.first, " ", doc.last)` |
+| `SUBSTRING` | `SUBSTRING(str, start, [len])` | Extract substring | `SUBSTRING(doc.body, 0, 100)` |
+| `REPLACE` | `REPLACE(str, search, replace)` | Replace substring | `REPLACE(doc.text, "old", "new")` |
+| `CONTAINS` | `CONTAINS(haystack, needle)` | Check if contains | `CONTAINS(doc.desc, "keyword")` |
+| `STARTS_WITH` | `STARTS_WITH(str, prefix)` | Check prefix | `STARTS_WITH(doc.url, "https://")` |
+| `ENDS_WITH` | `ENDS_WITH(str, suffix)` | Check suffix | `ENDS_WITH(doc.file, ".pdf")` |
+| `SPLIT` | `SPLIT(str, separator)` | Split into array | `SPLIT(doc.tags, ",")` |
+| `LENGTH` | `LENGTH(string)` | String length | `LENGTH(doc.name)` |
+| `LEFT` | `LEFT(str, len)` | Left substring | `LEFT(doc.code, 5)` |
+| `RIGHT` | `RIGHT(str, len)` | Right substring | `RIGHT(doc.sku, 3)` |
+| `REVERSE` | `REVERSE(str)` | Reverse string | `REVERSE(doc.palindrome)` |
+
+**Numeric/Math Functions:**
+| Function | Syntax | Description | Example |
+|----------|--------|-------------|---------|
+| `TO_NUMBER` | `TO_NUMBER(val)` | Convert to number | `TO_NUMBER(doc.price)` |
+| `FLOOR` | `FLOOR(num)` | Round down | `FLOOR(doc.average)` |
+| `CEIL` | `CEIL(num)` | Round up | `CEIL(doc.score)` |
+| `ROUND` | `ROUND(num, [decimals])` | Round number | `ROUND(doc.rating, 2)` |
+| `ABS` | `ABS(num)` | Absolute value | `ABS(doc.delta)` |
+| `SQRT` | `SQRT(num)` | Square root | `SQRT(doc.value)` |
+| `POWER` | `POWER(base, exp)` | Power | `POWER(doc.base, 2)` |
+| `MOD` | `MOD(num, divisor)` | Modulo | `MOD(doc.value, 10)` |
+| `MIN` | `MIN(a, b, ...)` | Minimum | `MIN(doc.a, doc.b)` |
+| `MAX` | `MAX(a, b, ...)` | Maximum | `MAX(doc.values)` |
+| `SUM` | `SUM(array)` | Sum of array | `SUM(doc.prices)` |
+| `AVG` | `AVG(array)` | Average of array | `AVG(doc.scores)` |
+
+**Array Functions:**
+| Function | Syntax | Description | Example |
+|----------|--------|-------------|---------|
+| `FIRST` | `FIRST(array)` | First element | `FIRST(doc.items)` |
+| `LAST` | `LAST(array)` | Last element | `LAST(doc.items)` |
+| `LENGTH` | `LENGTH(array)` | Array length | `LENGTH(doc.tags)` |
+| `PUSH` | `PUSH(array, val)` | Add element | `PUSH(doc.items, "new")` |
+| `POP` | `POP(array)` | Remove last | `POP(doc.queue)` |
+| `APPEND` | `APPEND(a, b)` | Concatenate | `APPEND(doc.a, doc.b)` |
+| `UNIQUE` | `UNIQUE(array)` | Remove duplicates | `UNIQUE(doc.dups)` |
+| `SORTED` | `SORTED(array)` | Sort ascending | `SORTED(doc.nums)` |
+| `SORTED_DESC` | `SORTED_DESC(array)` | Sort descending | `SORTED_DESC(doc.nums)` |
+| `REVERSE` | `REVERSE(array)` | Reverse array | `REVERSE(doc.list)` |
+| `FLATTEN` | `FLATTEN(array, [depth])` | Flatten nested | `FLATTEN(doc.nested)` |
+| `SLICE` | `SLICE(arr, start, [len])` | Extract slice | `SLICE(doc.list, 0, 10)` |
+| `POSITION` | `POSITION(arr, val)` | Find index | `POSITION(doc.items, "x")` |
+| `REMOVE_VALUE` | `REMOVE_VALUE(arr, val)` | Remove value | `REMOVE_VALUE(doc.t, "x")` |
+| `REMOVE_NTH` | `REMOVE_NTH(arr, idx)` | Remove at index | `REMOVE_NTH(doc.l, 5)` |
+
+**DateTime Functions:**
+| Function | Syntax | Description | Example |
+|----------|--------|-------------|---------|
+| `DATE_FORMAT` | `DATE_FORMAT(date, fmt)` | Format date | `DATE_FORMAT(doc.d, "%Y-%m-%d")` |
+| `DATE_NOW` | `DATE_NOW()` | Current time | `DATE_NOW()` |
+| `DATE_ADD` | `DATE_ADD(date, n, unit)` | Add duration | `DATE_ADD(doc.d, 7, "day")` |
+| `DATE_SUB` | `DATE_SUB(date, n, unit)` | Subtract duration | `DATE_SUB(doc.d, 1, "month")` |
+| `DATE_DIFF` | `DATE_DIFF(a, b, unit)` | Date difference | `DATE_DIFF(doc.e, doc.s, "day")` |
+| `IS_SAME_DATE` | `IS_SAME_DATE(a, b)` | Same date? | `IS_SAME_DATE(doc.a, doc.b)` |
+| `IS_BEFORE` | `IS_BEFORE(a, b)` | A before B? | `IS_BEFORE(doc.a, doc.b)` |
+| `IS_AFTER` | `IS_AFTER(a, b)` | A after B? | `IS_AFTER(doc.a, doc.b)` |
+
+**Type Conversion Functions:**
+| Function | Syntax | Description | Example |
+|----------|--------|-------------|---------|
+| `TO_STRING` | `TO_STRING(val)` | Convert to string | `TO_STRING(doc.n)` |
+| `TO_NUMBER` | `TO_NUMBER(val)` | Convert to number | `TO_NUMBER(doc.s)` |
+| `TO_BOOL` | `TO_BOOL(val)` | Convert to bool | `TO_BOOL(doc.s)` |
+| `TO_ARRAY` | `TO_ARRAY(val)` | Convert to array | `TO_ARRAY(doc.v)` |
+| `IS_NULL` | `IS_NULL(val)` | Is null? | `IS_NULL(doc.v)` |
+| `IS_BOOL` | `IS_BOOL(val)` | Is boolean? | `IS_BOOL(doc.v)` |
+| `IS_NUMBER` | `IS_NUMBER(val)` | Is number? | `IS_NUMBER(doc.v)` |
+| `IS_STRING` | `IS_STRING(val)` | Is string? | `IS_STRING(doc.v)` |
+| `IS_ARRAY` | `IS_ARRAY(val)` | Is array? | `IS_ARRAY(doc.v)` |
+| `IS_OBJECT` | `IS_OBJECT(val)` | Is object? | `IS_OBJECT(doc.v)` |
+| `IS_INTEGER` | `IS_INTEGER(val)` | Is integer? | `IS_INTEGER(doc.v)` |
+| `IS_DATETIME` | `IS_DATETIME(val)` | Is datetime? | `IS_DATETIME(doc.v)` |
+
+**Aggregate Functions (COLLECT):**
+```sdbql
+FOR doc IN orders
+  COLLECT status = doc.status WITH COUNT INTO count
+  RETURN {status, count}
+
+FOR doc IN sales
+  COLLECT year = DATE_FORMAT(doc.date, "%Y")
+  AGGREGATE total = SUM(doc.amount), avg = AVG(doc.amount)
+  RETURN {year, total, avg}
+```
+
+**Geo Functions:**
+| Function | Syntax | Description |
+|----------|--------|-------------|
+| `DISTANCE` | `DISTANCE(geo1, geo2)` | Distance between points |
+| `GEO_DISTANCE` | `GEO_DISTANCE(a, b)` | Geo distance in meters |
+| `GEO_CONTAINS` | `GEO_CONTAINS(area, point)` | Contains check |
+| `GEO_INTERSECTS` | `GEO_INTERSECTS(a, b)` | Intersection check |
+
+**Vector Functions:**
+| Function | Syntax | Description |
+|----------|--------|-------------|
+| `VECTOR_COSINE` | `VECTOR_COSINE(a, b)` | Cosine similarity |
+| `VECTOR_EUCLIDEAN` | `VECTOR_EUCLIDEAN(a, b)` | Euclidean distance |
+| `VECTOR_SIMILARITY` | `VECTOR_SIMILARITY(a, b)` | Similarity score |
+
+**Phonetic Functions:**
+| Function | Syntax | Description |
+|----------|--------|-------------|
+| `SOUNDEX` | `SOUNDEX(str)` | Soundex code |
+| `METAPHONE` | `METAPHONE(str)` | Metaphone code |
+| `NYSIIS` | `NYSIIS(str)` | NYSIIS code |
+| `COLOGNE` | `COLOGNE(str)` | Cologne phonetic |
+
+**JSON Functions:**
+| Function | Syntax | Description |
+|----------|--------|-------------|
+| `JSON_PARSE` | `JSON_PARSE(str)` | Parse JSON string |
+| `JSON_STRINGIFY` | `JSON_STRINGIFY(val)` | Stringify to JSON |
+| `JSON_VALUE` | `JSON_VALUE(json, path)` | Extract value |
+| `JSON_QUERY` | `JSON_QUERY(json, path)` | Extract sub-object |
+
+**Advanced Query Patterns:**
+```sdbql
+-- UPSERT (insert or update)
+UPSERT { _key: @key }
+  INSERT { _key: @key, count: 1 }
+  UPDATE { count: OLD.count + 1 }
+  IN page_views
+
+-- Graph traversal
+FOR v, e, p IN 1..3 ANY @start GRAPH "my_graph"
+  RETURN {vertex: v, path: p}
+
+-- Subqueries
+FOR user IN users
+  LET posts = (FOR p IN posts FILTER p.user_id == user._key RETURN p)
+  RETURN {user, posts}
+
+-- Window functions
+FOR doc IN sales
+  SORT doc.date
+  LET running_total = SUM(doc.amount) 
+    OVER (ORDER BY doc.date ROWS UNBOUNDED PRECEDING)
+  RETURN {doc, running_total}
+
+-- Case expressions
+RETURN {
+  category: CASE
+    WHEN doc.price < 10 THEN "budget"
+    WHEN doc.price < 100 THEN "mid"
+    ELSE "premium"
+  END
+}
+
+-- Optional chaining
+RETURN {
+  city: doc.address?.city,
+  zip: doc.address?.zipcode
+}
+
+-- Nullish coalescing
+RETURN {
+  name: doc.nickname ?? doc.first_name ?? "Unknown"
+}
+```
+
+### API Endpoints
+
+**Database & Collections:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| List databases | GET | `/_api/databases` |
+| Create database | POST | `/_api/database` |
+| Delete database | DELETE | `/_api/database/{name}` |
+| List collections | GET | `/_api/database/{db}/collection` |
+| Create collection | POST | `/_api/database/{db}/collection` |
+| Delete collection | DELETE | `/_api/database/{db}/collection/{name}` |
+| Truncate collection | PUT | `/_api/database/{db}/collection/{name}/truncate` |
+| Collection stats | GET | `/_api/database/{db}/collection/{name}/stats` |
+| Collection count | GET | `/_api/database/{db}/collection/{name}/count` |
+
+**Documents:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| Insert document | POST | `/_api/database/{db}/document/{collection}` |
+| Batch insert | POST | `/_api/database/{db}/document/{collection}/_batch` |
+| Get document | GET | `/_api/database/{db}/document/{collection}/{id}` |
+| Update document | PUT | `/_api/database/{db}/document/{collection}/{id}` |
+| Delete document | DELETE | `/_api/database/{db}/document/{collection}/{id}` |
+
+**Queries:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| Execute query | POST | `/_api/database/{db}/query` |
+| Explain query | POST | `/_api/database/{db}/explain` |
+| Create cursor | POST | `/_api/database/{db}/cursor` |
+| Next batch | PUT | `/_api/database/{db}/cursor/{id}` |
+| Delete cursor | DELETE | `/_api/database/{db}/cursor/{id}` |
+| NL query | POST | `/_api/database/{db}/nl` |
+| NL feedback | POST | `/_api/database/{db}/nl/feedback` |
+
+**Indexes:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| Create index | POST | `/_api/database/{db}/index/{collection}` |
+| List indexes | GET | `/_api/database/{db}/index/{collection}` |
+| Delete index | DELETE | `/_api/database/{db}/index/{collection}/{name}` |
+| Rebuild index | PUT | `/_api/database/{db}/index/{collection}/rebuild` |
+| Create geo | POST | `/_api/database/{db}/geo/{collection}` |
+| Geo near | POST | `/_api/database/{db}/geo/{collection}/{field}/near` |
+| Geo within | POST | `/_api/database/{db}/geo/{collection}/{field}/within` |
+| Create vector | POST | `/_api/database/{db}/vector/{collection}` |
+| Vector search | POST | `/_api/database/{db}/vector/{collection}/{index}/search` |
+| Hybrid search | POST | `/_api/database/{db}/hybrid/{collection}/search` |
+| Create TTL | POST | `/_api/database/{db}/ttl/{collection}` |
+
+**Transactions:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| Begin transaction | POST | `/_api/database/{db}/transaction/begin` |
+| Commit transaction | POST | `/_api/database/{db}/transaction/{id}/commit` |
+| Rollback transaction | POST | `/_api/database/{db}/transaction/{id}/rollback` |
+| Insert in tx | POST | `/_api/database/{db}/transaction/{id}/document/{collection}` |
+| Update in tx | PUT | `/_api/database/{db}/transaction/{id}/document/{collection}/{key}` |
+| Delete in tx | DELETE | `/_api/database/{db}/transaction/{id}/document/{collection}/{key}` |
+| Query in tx | POST | `/_api/database/{db}/transaction/{id}/query` |
+
+**Cluster:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| Cluster status | GET | `/_api/cluster/status` |
+| Cluster info | GET | `/_api/cluster/info` |
+| Remove node | POST | `/_api/cluster/remove-node` |
+| Rebalance | POST | `/_api/cluster/rebalance` |
+
+**Auth (RBAC):**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| List roles | GET | `/_api/auth/roles` |
+| Create role | POST | `/_api/auth/roles` |
+| Get role | GET | `/_api/auth/roles/{name}` |
+| Update role | PUT | `/_api/auth/roles/{name}` |
+| Delete role | DELETE | `/_api/auth/roles/{name}` |
+| List users | GET | `/_api/auth/users` |
+| Create user | POST | `/_api/auth/users` |
+| Assign role | POST | `/_api/auth/users/{username}/roles` |
+| Revoke role | DELETE | `/_api/auth/users/{username}/roles/{role}` |
+| Get current user | GET | `/_api/auth/me` |
+| Change password | PUT | `/_api/auth/password` |
+| Create API key | POST | `/_api/auth/api-keys` |
+| List API keys | GET | `/_api/auth/api-keys` |
+
+**Queues & Cron:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| List queues | GET | `/_api/database/{db}/queues` |
+| List jobs | GET | `/_api/database/{db}/queues/{name}/jobs` |
+| Enqueue job | POST | `/_api/database/{db}/queues/{name}/enqueue` |
+| Cancel job | DELETE | `/_api/database/{db}/queues/jobs/{id}` |
+| List cron jobs | GET | `/_api/database/{db}/cron` |
+| Create cron job | POST | `/_api/database/{db}/cron` |
+| Update cron job | PUT | `/_api/database/{db}/cron/{id}` |
+| Delete cron job | DELETE | `/_api/database/{db}/cron/{id}` |
+
+**Scripts & Triggers:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| List scripts | GET | `/_api/database/{db}/scripts` |
+| Create script | POST | `/_api/database/{db}/scripts` |
+| Execute script | POST | `/_api/database/{db}/scripts/{id}/execute` |
+| List triggers | GET | `/_api/database/{db}/triggers` |
+| Create trigger | POST | `/_api/database/{db}/triggers` |
+
+**Blobs:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| Upload blob | POST | `/_api/blob/{db}/{collection}` |
+| Download blob | GET | `/_api/blob/{db}/{collection}/{key}` |
+
+**Columnar:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| Create columnar | POST | `/_api/database/{db}/columnar` |
+| List columnars | GET | `/_api/database/{db}/columnar` |
+| Insert columnar | POST | `/_api/database/{db}/columnar/{collection}/insert` |
+| Aggregate | POST | `/_api/database/{db}/columnar/{collection}/aggregate` |
+| Query columnar | POST | `/_api/database/{db}/columnar/{collection}/query` |
+
+**Environment:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| List env vars | GET | `/_api/database/{db}/env` |
+| Set env var | PUT | `/_api/database/{db}/env/{key}` |
+| Delete env var | DELETE | `/_api/database/{db}/env/{key}` |
+
+**System:**
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| System stats | GET | `/_api/system/stats` |
+| Health check | GET | `/_api/system/health` |
+| Version info | GET | `/_api/system/version` |
+
+### AI Agent Integration
+
+SolidB includes native AI agent support:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET/POST /_api/ai/agents` | Register, list, update agents |
+| `GET/POST /_api/ai/tasks` | Task claim/complete/fail operations |
+| `GET/POST /_api/ai/contributions` | Agent contribution management |
+| `POST /_api/ai/generate` | Content generation with LLM |
+
+### Conventions Files
+
+| File | Description |
+|------|-------------|
+| `.soli/conventions/solidb.json` | SoliDB integration patterns and API specs |
+| `.soli/context.json` | Database configuration and connection info |
+
+### Example: Simple Web Handler
 ```soli
 // Fetch users and render template
 fn get_users() -> Any {

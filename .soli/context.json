@@ -9,7 +9,7 @@
     "app": {
       "controllers": "Request handlers, extend Controller base class",
       "middleware": "HTTP middleware functions (global and scoped)",
-      "models": "Data models (extends Model) - planned feature",
+      "models": "Data models with SoliDB/SolidB integration",
       "views": "ERB-style templates and layouts",
       "helpers": "View helper functions"
     },
@@ -17,6 +17,73 @@
       "routes.sl": "Route definitions (get, post, put, delete, resources)"
     },
     "public": "Static assets (CSS, JS, images)"
+  },
+
+  "databases": {
+    "solidb": {
+      "name": "SoliDB (SolidB)",
+      "description": "A lightweight, high-performance multi-document database with SDBQL query language",
+      "version": "0.5.0",
+      "url": "https://github.com/solisoft/solidb",
+      "docs": "https://solidb.solisoft.net/docs/",
+      "fileExtension": ".sl",
+      "features": [
+        "JSON document storage",
+        "SDBQL query language (ArangoDB-inspired)",
+        "Multi-node replication and sharding",
+        "ACID transactions",
+        "Lua scripting",
+        "WebSocket real-time subscriptions",
+        "Blob storage",
+        "Vector search and hybrid queries"
+      ],
+      "api": {
+        "baseUrl": "http://localhost:6745",
+        "version": "v1",
+        "endpoints": {
+          "query": "POST /_api/database/{db}/query",
+          "explain": "POST /_api/database/{db}/explain",
+          "transaction": "POST /_api/database/{db}/transaction",
+          "documents": {
+            "insert": "POST /_api/database/{db}/document/{collection}",
+            "get": "GET /_api/database/{db}/document/{collection}/{id}",
+            "update": "PUT /_api/database/{db}/document/{collection}/{id}",
+            "delete": "DELETE /_api/database/{db}/document/{collection}/{id}"
+          },
+          "collections": {
+            "list": "GET /_api/database/{db}/collection",
+            "create": "POST /_api/database/{db}/collection",
+            "delete": "DELETE /_api/database/{db}/collection/{name}"
+          },
+          "indexes": {
+            "create": "POST /_api/database/{db}/index/{collection}",
+            "list": "GET /_api/database/{db}/index/{collection}"
+          },
+          "ai": {
+            "agents": "GET/POST /_api/ai/agents",
+            "tasks": "GET/POST /_api/ai/tasks",
+            "contributions": "GET/POST /_api/ai/contributions",
+            "generate": "POST /_api/ai/generate"
+          }
+        }
+      },
+      "sdbql": {
+        "syntax": "FOR doc IN collection FILTER condition RETURN doc",
+        "clauses": ["FOR", "FILTER", "SORT", "LIMIT", "OFFSET", "RETURN", "COLLECT", "LET", "UPSERT", "INSERT", "UPDATE", "REMOVE", "REPLACE"],
+        "functions": ["LENGTH", "CONTAINS", "LIKE", "DATE_FORMAT", "DISTANCE", "TO_NUMBER", "TO_STRING", "TO_BOOL", "FIRST", "LAST", "APPEND", "PUSH", "POP", "REMOVE", "UNIQUE", "SORTED", "MIN", "MAX", "SUM", "AVG"]
+      },
+      "luaScripting": {
+        "collection": "db.collection_name",
+        "query": "db:query(sdbql_string, params)",
+        "documents": {
+          "insert": "db.collection:insert(document)",
+          "get": "db.collection:get(id)",
+          "update": "db.collection:update(id, data)",
+          "delete": "db.collection:delete(id)"
+        },
+        "transactions": "db:transaction(function() ... end)"
+      }
+    }
   },
 
   "conventions": {
@@ -93,7 +160,11 @@
     "generateMiddleware": "Generate authentication middleware that checks for session",
     "generateRoutes": "Add RESTful routes for {resource} resource",
     "generateViews": "Generate index and show views for {resource}",
-    "scaffoldResource": "Create full scaffold for {resource} with fields: {fields}"
+    "scaffoldResource": "Create full scaffold for {resource} with fields: {fields}",
+    "solidbIntegration": "Create a SoliDB/SolidB model for {collection} with SDBQL queries for CRUD operations",
+    "solidbQuery": "Write SDBQL query to {operation} from {collection} collection",
+    "solidbTransaction": "Implement atomic transaction for {operation} using SoliDB driver",
+    "solidbLuaScript": "Create Lua script for {purpose} in SoliDB scripting module"
   },
 
   "filePaths": {
@@ -102,6 +173,9 @@
     "routes": "config/routes.sl",
     "controllers": "app/controllers/*.sl",
     "middleware": "app/middleware/*.sl",
-    "views": "app/views/*/"
+    "views": "app/views/*/",
+    "models": "app/models/*.sl",
+    "scripts": "app/scripts/*.lua",
+    "solidb": "../solidb/"
   }
 }
