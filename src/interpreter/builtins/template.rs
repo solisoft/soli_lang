@@ -124,7 +124,8 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
             // Extract function definitions and register them
             for stmt in &program.statements {
                 if let StmtKind::Function(decl) = &stmt.kind {
-                    let func = Function::from_decl(decl, helper_env.clone(), Some(source_path.clone()));
+                    let func =
+                        Function::from_decl(decl, helper_env.clone(), Some(source_path.clone()));
                     register_view_helper(decl.name.clone(), Value::Function(Rc::new(func)));
                     count += 1;
                 }
@@ -203,7 +204,7 @@ pub fn templates_have_changes() -> bool {
 }
 
 /// Get the template cache, initializing if necessary.
-fn get_template_cache() -> Result<Rc<TemplateCache>, String> {
+pub fn get_template_cache() -> Result<Rc<TemplateCache>, String> {
     TEMPLATE_CACHE.with(|cache| {
         let cache_ref = cache.borrow();
         if let Some(tc) = cache_ref.as_ref() {
@@ -224,6 +225,39 @@ fn get_template_cache() -> Result<Rc<TemplateCache>, String> {
 
         Err("Template system not initialized. Call init_templates() first.".to_string())
     })
+}
+
+/// Render an error template with the given status code and context.
+/// Returns None if the custom template doesn't exist.
+pub fn render_error_template(status_code: u16, message: &str, request_id: &str) -> Option<String> {
+    let template_cache = match get_template_cache() {
+        Ok(tc) => tc,
+        Err(_) => return None,
+    };
+
+    let template_name = format!("errors/{}", status_code);
+
+    // Create error context for the template
+    let error_data = Value::Hash(Rc::new(RefCell::new(vec![
+        (
+            Value::String("status".to_string()),
+            Value::Int(status_code as i64),
+        ),
+        (
+            Value::String("message".to_string()),
+            Value::String(message.to_string()),
+        ),
+        (
+            Value::String("request_id".to_string()),
+            Value::String(request_id.to_string()),
+        ),
+    ])));
+
+    // Try to render the template without layout (error pages should be standalone)
+    match template_cache.render(&template_name, &error_data, Some(None)) {
+        Ok(content) => Some(content),
+        Err(_) => None,
+    }
 }
 
 /// Recursively resolve all Future values in a Value.
@@ -271,8 +305,8 @@ fn get_file_mtime_cached(path: &PathBuf) -> Result<String, String> {
         let dev_mode = DEV_MODE.load(Ordering::Relaxed);
 
         // Get current mtime
-        let metadata = std::fs::metadata(path)
-            .map_err(|e| format!("Failed to stat file: {}", e))?;
+        let metadata =
+            std::fs::metadata(path).map_err(|e| format!("Failed to stat file: {}", e))?;
         let modified = metadata
             .modified()
             .map_err(|e| format!("Failed to get mtime: {}", e))?;
@@ -410,14 +444,20 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             // Add strip_html() function if not present
             let strip_html_key = Value::String("strip_html".to_string());
-            let has_strip_html = hash.borrow().iter().any(|(k, _)| k.hash_eq(&strip_html_key));
+            let has_strip_html = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&strip_html_key));
 
             if !has_strip_html {
                 let strip_html_func =
                     Value::NativeFunction(NativeFunction::new("strip_html", Some(1), |args| {
                         match &args[0] {
                             Value::String(s) => Ok(Value::String(html::strip_html(s))),
-                            other => Err(format!("strip_html() expects string, got {}", other.type_name())),
+                            other => Err(format!(
+                                "strip_html() expects string, got {}",
+                                other.type_name()
+                            )),
                         }
                     }));
                 new_hash.push((strip_html_key, strip_html_func));
@@ -464,7 +504,10 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             // Add html_escape() function if not present
             let html_escape_key = Value::String("html_escape".to_string());
-            let has_html_escape = hash.borrow().iter().any(|(k, _)| k.hash_eq(&html_escape_key));
+            let has_html_escape = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&html_escape_key));
 
             if !has_html_escape {
                 let html_escape_func =
@@ -480,14 +523,20 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             // Add html_unescape() function if not present
             let html_unescape_key = Value::String("html_unescape".to_string());
-            let has_html_unescape = hash.borrow().iter().any(|(k, _)| k.hash_eq(&html_unescape_key));
+            let has_html_unescape = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&html_unescape_key));
 
             if !has_html_unescape {
                 let html_unescape_func =
                     Value::NativeFunction(NativeFunction::new("html_unescape", Some(1), |args| {
                         match &args[0] {
                             Value::String(s) => Ok(Value::String(html::html_unescape(s))),
-                            other => Err(format!("html_unescape() expects string, got {}", other.type_name())),
+                            other => Err(format!(
+                                "html_unescape() expects string, got {}",
+                                other.type_name()
+                            )),
                         }
                     }));
                 new_hash.push((html_unescape_key, html_unescape_func));
@@ -495,14 +544,20 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             // Add sanitize_html() function if not present
             let sanitize_html_key = Value::String("sanitize_html".to_string());
-            let has_sanitize_html = hash.borrow().iter().any(|(k, _)| k.hash_eq(&sanitize_html_key));
+            let has_sanitize_html = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&sanitize_html_key));
 
             if !has_sanitize_html {
                 let sanitize_html_func =
                     Value::NativeFunction(NativeFunction::new("sanitize_html", Some(1), |args| {
                         match &args[0] {
                             Value::String(s) => Ok(Value::String(html::sanitize_html(s))),
-                            other => Err(format!("sanitize_html() expects string, got {}", other.type_name())),
+                            other => Err(format!(
+                                "sanitize_html() expects string, got {}",
+                                other.type_name()
+                            )),
                         }
                     }));
                 new_hash.push((sanitize_html_key, sanitize_html_func));
@@ -510,7 +565,10 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             // Add datetime_now() function if not present
             let datetime_now_key = Value::String("datetime_now".to_string());
-            let has_datetime_now = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_now_key));
+            let has_datetime_now = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&datetime_now_key));
 
             if !has_datetime_now {
                 let datetime_now_func =
@@ -522,11 +580,16 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             // Add datetime_format() function if not present
             let datetime_format_key = Value::String("datetime_format".to_string());
-            let has_datetime_format = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_format_key));
+            let has_datetime_format = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&datetime_format_key));
 
             if !has_datetime_format {
-                let datetime_format_func =
-                    Value::NativeFunction(NativeFunction::new("datetime_format", Some(2), |args| {
+                let datetime_format_func = Value::NativeFunction(NativeFunction::new(
+                    "datetime_format",
+                    Some(2),
+                    |args| {
                         let timestamp = match &args[0] {
                             Value::Int(n) => *n,
                             Value::String(s) => {
@@ -549,14 +612,20 @@ fn inject_template_helpers(data: &Value) -> Value {
                                 ))
                             }
                         };
-                        Ok(Value::String(datetime_helpers::datetime_format(timestamp, &format)))
-                    }));
+                        Ok(Value::String(datetime_helpers::datetime_format(
+                            timestamp, &format,
+                        )))
+                    },
+                ));
                 new_hash.push((datetime_format_key, datetime_format_func));
             }
 
             // Add datetime_parse() function if not present
             let datetime_parse_key = Value::String("datetime_parse".to_string());
-            let has_datetime_parse = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_parse_key));
+            let has_datetime_parse = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&datetime_parse_key));
 
             if !has_datetime_parse {
                 let datetime_parse_func =
@@ -580,11 +649,16 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             // Add datetime_add_days() function if not present
             let datetime_add_days_key = Value::String("datetime_add_days".to_string());
-            let has_datetime_add_days = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_add_days_key));
+            let has_datetime_add_days = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&datetime_add_days_key));
 
             if !has_datetime_add_days {
-                let datetime_add_days_func =
-                    Value::NativeFunction(NativeFunction::new("datetime_add_days", Some(2), |args| {
+                let datetime_add_days_func = Value::NativeFunction(NativeFunction::new(
+                    "datetime_add_days",
+                    Some(2),
+                    |args| {
                         let timestamp = match &args[0] {
                             Value::Int(n) => *n,
                             other => {
@@ -603,18 +677,26 @@ fn inject_template_helpers(data: &Value) -> Value {
                                 ))
                             }
                         };
-                        Ok(Value::Int(datetime_helpers::datetime_add_days(timestamp, days)))
-                    }));
+                        Ok(Value::Int(datetime_helpers::datetime_add_days(
+                            timestamp, days,
+                        )))
+                    },
+                ));
                 new_hash.push((datetime_add_days_key, datetime_add_days_func));
             }
 
             // Add datetime_add_hours() function if not present
             let datetime_add_hours_key = Value::String("datetime_add_hours".to_string());
-            let has_datetime_add_hours = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_add_hours_key));
+            let has_datetime_add_hours = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&datetime_add_hours_key));
 
             if !has_datetime_add_hours {
-                let datetime_add_hours_func =
-                    Value::NativeFunction(NativeFunction::new("datetime_add_hours", Some(2), |args| {
+                let datetime_add_hours_func = Value::NativeFunction(NativeFunction::new(
+                    "datetime_add_hours",
+                    Some(2),
+                    |args| {
                         let timestamp = match &args[0] {
                             Value::Int(n) => *n,
                             other => {
@@ -633,26 +715,32 @@ fn inject_template_helpers(data: &Value) -> Value {
                                 ))
                             }
                         };
-                        Ok(Value::Int(datetime_helpers::datetime_add_hours(timestamp, hours)))
-                    }));
+                        Ok(Value::Int(datetime_helpers::datetime_add_hours(
+                            timestamp, hours,
+                        )))
+                    },
+                ));
                 new_hash.push((datetime_add_hours_key, datetime_add_hours_func));
             }
 
             // Add datetime_diff() function if not present
             let datetime_diff_key = Value::String("datetime_diff".to_string());
-            let has_datetime_diff = hash.borrow().iter().any(|(k, _)| k.hash_eq(&datetime_diff_key));
+            let has_datetime_diff = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&datetime_diff_key));
 
             if !has_datetime_diff {
-                let datetime_diff_func =
-                    Value::NativeFunction(NativeFunction::new("datetime_diff", Some(2), |args| {
+                let datetime_diff_func = Value::NativeFunction(NativeFunction::new(
+                    "datetime_diff",
+                    Some(2),
+                    |args| {
                         let t1 = match &args[0] {
                             Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                    "datetime_diff() expects timestamp (int) as first argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
+                            other => return Err(format!(
+                                "datetime_diff() expects timestamp (int) as first argument, got {}",
+                                other.type_name()
+                            )),
                         };
                         let t2 = match &args[1] {
                             Value::Int(n) => *n,
@@ -664,7 +752,8 @@ fn inject_template_helpers(data: &Value) -> Value {
                             }
                         };
                         Ok(Value::Int(datetime_helpers::datetime_diff(t1, t2)))
-                    }));
+                    },
+                ));
                 new_hash.push((datetime_diff_key, datetime_diff_func));
             }
 
@@ -690,7 +779,9 @@ fn inject_template_helpers(data: &Value) -> Value {
                         };
                         // Use current locale for localized output
                         let locale = i18n_helpers::get_locale();
-                        Ok(Value::String(datetime_helpers::time_ago_localized(timestamp, &locale)))
+                        Ok(Value::String(datetime_helpers::time_ago_localized(
+                            timestamp, &locale,
+                        )))
                     }));
                 new_hash.push((time_ago_key, time_ago_func));
             }
@@ -709,7 +800,10 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             // Add set_locale() function if not present
             let set_locale_key = Value::String("set_locale".to_string());
-            let has_set_locale = hash.borrow().iter().any(|(k, _)| k.hash_eq(&set_locale_key));
+            let has_set_locale = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&set_locale_key));
 
             if !has_set_locale {
                 let set_locale_func =
@@ -734,20 +828,19 @@ fn inject_template_helpers(data: &Value) -> Value {
             let has_t = hash.borrow().iter().any(|(k, _)| k.hash_eq(&t_key));
 
             if !has_t {
-                let t_func =
-                    Value::NativeFunction(NativeFunction::new("t", Some(1), |args| {
-                        let key = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "t() expects string key, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        // Return the key itself as fallback (translations loaded elsewhere)
-                        Ok(Value::String(key))
-                    }));
+                let t_func = Value::NativeFunction(NativeFunction::new("t", Some(1), |args| {
+                    let key = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        other => {
+                            return Err(format!(
+                                "t() expects string key, got {}",
+                                other.type_name()
+                            ))
+                        }
+                    };
+                    // Return the key itself as fallback (translations loaded elsewhere)
+                    Ok(Value::String(key))
+                }));
                 new_hash.push((t_key, t_func));
             }
 
@@ -756,41 +849,38 @@ fn inject_template_helpers(data: &Value) -> Value {
             let has_l = hash.borrow().iter().any(|(k, _)| k.hash_eq(&l_key));
 
             if !has_l {
-                let l_func =
-                    Value::NativeFunction(NativeFunction::new("l", None, |args| {
-                        if args.is_empty() {
-                            return Err("l() requires at least 1 argument (timestamp)".to_string());
+                let l_func = Value::NativeFunction(NativeFunction::new("l", None, |args| {
+                    if args.is_empty() {
+                        return Err("l() requires at least 1 argument (timestamp)".to_string());
+                    }
+
+                    // Get timestamp (first arg)
+                    let timestamp = match &args[0] {
+                        Value::Int(n) => *n,
+                        Value::String(s) => datetime_helpers::datetime_parse(s).unwrap_or(0),
+                        other => return Err(format!(
+                            "l() expects timestamp (int) or date string as first argument, got {}",
+                            other.type_name()
+                        )),
+                    };
+
+                    // Get format (second arg, default "short")
+                    let format = if args.len() > 1 {
+                        match &args[1] {
+                            Value::String(s) => s.clone(),
+                            _ => "short".to_string(),
                         }
+                    } else {
+                        "short".to_string()
+                    };
 
-                        // Get timestamp (first arg)
-                        let timestamp = match &args[0] {
-                            Value::Int(n) => *n,
-                            Value::String(s) => {
-                                datetime_helpers::datetime_parse(s).unwrap_or(0)
-                            }
-                            other => {
-                                return Err(format!(
-                                    "l() expects timestamp (int) or date string as first argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
+                    // Get locale from i18n helpers
+                    let locale = i18n_helpers::get_locale();
 
-                        // Get format (second arg, default "short")
-                        let format = if args.len() > 1 {
-                            match &args[1] {
-                                Value::String(s) => s.clone(),
-                                _ => "short".to_string(),
-                            }
-                        } else {
-                            "short".to_string()
-                        };
-
-                        // Get locale from i18n helpers
-                        let locale = i18n_helpers::get_locale();
-
-                        Ok(Value::String(datetime_helpers::localize_date(timestamp, &locale, &format)))
-                    }));
+                    Ok(Value::String(datetime_helpers::localize_date(
+                        timestamp, &locale, &format,
+                    )))
+                }));
                 new_hash.push((l_key, l_func));
             }
 

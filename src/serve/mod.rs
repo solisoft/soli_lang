@@ -2581,10 +2581,11 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
                             body: error_html,
                         }
                     } else {
+                        let error_html = render_production_error_page(500, "An error occurred while processing your request.");
                         ResponseData {
                             status: 500,
-                            headers: vec![],
-                            body: format!("Internal Server Error: {}", e),
+                            headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                            body: error_html,
                         }
                     }
                 }
@@ -2601,10 +2602,11 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
                     body: error_html,
                 }
             } else {
+                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
                 ResponseData {
                     status: 500,
-                    headers: vec![],
-                    body: format!("Handler not found: {}", e),
+                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    body: error_html,
                 }
             }
         }
@@ -2661,10 +2663,11 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
                     body: error_html,
                 }
             } else {
+                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
                 ResponseData {
                     status: 500,
-                    headers: vec![],
-                    body: format!("Controller instantiation error: {}", e),
+                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    body: error_html,
                 }
             });
         }
@@ -2701,10 +2704,11 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
                     body: error_html,
                 }
             } else {
+                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
                 ResponseData {
                     status: 500,
-                    headers: vec![],
-                    body: format!("Action error: {}", e),
+                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    body: error_html,
                 }
             }
         }
@@ -3037,14 +3041,15 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                 let elapsed = start_time.elapsed();
                 println!("[LOG] {} {} - 404 ({:.3}ms)", method, path, elapsed.as_secs_f64() * 1000.0);
             }
+            let error_html = render_production_error_page(404, "The page you're looking for doesn't exist.");
             return ResponseData {
                 status: 404,
                 headers: if is_new_session {
-                    vec![("Set-Cookie".to_string(), create_session_cookie(&session_id))]
+                    vec![("Set-Cookie".to_string(), create_session_cookie(&session_id)), ("Content-Type".to_string(), "text/html; charset=utf-8".to_string())]
                 } else {
-                    vec![]
+                    vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())]
                 },
-                body: "Not Found".to_string(),
+                body: error_html,
             };
         }
     };
@@ -3136,10 +3141,11 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                             body: error_html,
                         });
                     }
+                    let error_html = render_production_error_page(500, "An error occurred while processing your request.");
                     return finalize_response(ResponseData {
                         status: 500,
-                        headers: vec![],
-                        body: format!("Middleware error: {}", err),
+                        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                        body: error_html,
                     });
                 }
             },
@@ -3154,10 +3160,11 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                         body: error_html,
                     });
                 }
+                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
                 return finalize_response(ResponseData {
                     status: 500,
-                    headers: vec![],
-                    body: format!("Middleware error: {}", e),
+                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    body: error_html,
                 });
             }
         }
@@ -3201,10 +3208,11 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                             body: error_html,
                         });
                     }
+                    let error_html = render_production_error_page(500, "An error occurred while processing your request.");
                     return finalize_response(ResponseData {
                         status: 500,
-                        headers: vec![],
-                        body: format!("Middleware error: {}", err),
+                        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                        body: error_html,
                     });
                 }
             },
@@ -3219,10 +3227,11 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                         body: error_html,
                     });
                 }
+                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
                 return finalize_response(ResponseData {
                     status: 500,
-                    headers: vec![],
-                    body: format!("Middleware error: {}", e),
+                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    body: error_html,
                 });
             }
         }
@@ -4398,4 +4407,213 @@ pub fn get_source_file(file_path: &str, _line: usize) -> Option<HashMap<String, 
         .collect();
 
     Some([(file_path.to_string(), lines)].iter().cloned().collect())
+}
+
+fn render_production_error_page(status_code: u16, message: &str) -> String {
+    let request_id = format!("{:08x}", rand::random::<u32>());
+
+    // Try to render a custom error template first
+    // Custom templates should be placed in app/views/errors/{status_code}.html.erb
+    // Available context variables: status, message, request_id
+    if let Some(custom_html) = crate::interpreter::builtins::template::render_error_template(
+        status_code,
+        message,
+        &request_id,
+    ) {
+        return custom_html;
+    }
+
+    // Fall back to default error page
+    let (title, heading, description, code_class) = match status_code {
+        400 => (
+            "400 Bad Request".to_string(),
+            "Bad Request".to_string(),
+            "The request could not be understood by the server due to malformed syntax.".to_string(),
+            "warning".to_string(),
+        ),
+        403 => (
+            "403 Forbidden".to_string(),
+            "Forbidden".to_string(),
+            "You don't have permission to access this resource.".to_string(),
+            "warning".to_string(),
+        ),
+        404 => (
+            "404 Not Found".to_string(),
+            "Page Not Found".to_string(),
+            "The page you're looking for doesn't exist or has been moved.".to_string(),
+            "warning".to_string(),
+        ),
+        405 => (
+            "405 Method Not Allowed".to_string(),
+            "Method Not Allowed".to_string(),
+            "The HTTP method used is not allowed for this resource.".to_string(),
+            "warning".to_string(),
+        ),
+        500 => (
+            "500 Internal Server Error".to_string(),
+            "Internal Server Error".to_string(),
+            "Something went wrong on our end. Please try again later.".to_string(),
+            "error".to_string(),
+        ),
+        502 => (
+            "502 Bad Gateway".to_string(),
+            "Bad Gateway".to_string(),
+            "The server received an invalid response from the upstream server.".to_string(),
+            "error".to_string(),
+        ),
+        503 => (
+            "503 Service Unavailable".to_string(),
+            "Service Unavailable".to_string(),
+            "The service is temporarily unavailable. Please try again later.".to_string(),
+            "error".to_string(),
+        ),
+        _ => {
+            let status_text = get_status_text(status_code).to_string();
+            (
+                format!("{} {}", status_code, status_text),
+                status_text.clone(),
+                "An error occurred while processing your request.".to_string(),
+                "info".to_string(),
+            )
+        }
+    };
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }}
+        .container {{
+            text-align: center;
+            max-width: 500px;
+        }}
+        .error-code {{
+            font-size: 120px;
+            font-weight: 700;
+            color: #e9ecef;
+            line-height: 1;
+            margin-bottom: 20px;
+        }}
+        .error-code.error {{ color: #f8d7da; }}
+        .error-code.warning {{ color: #fff3cd; }}
+        .error-code.info {{ color: #d1ecf1; }}
+        h1 {{
+            font-size: 28px;
+            font-weight: 600;
+            color: #343a40;
+            margin-bottom: 12px;
+        }}
+        p {{
+            font-size: 16px;
+            color: #6c757d;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }}
+        .actions {{
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }}
+        .btn {{
+            display: inline-flex;
+            align-items: center;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+        .btn-primary {{
+            background-color: #007bff;
+            color: white;
+            border: none;
+        }}
+        .btn-primary:hover {{
+            background-color: #0056b3;
+        }}
+        .btn-secondary {{
+            background-color: transparent;
+            color: #6c757d;
+            border: 1px solid #dee2e6;
+        }}
+        .btn-secondary:hover {{
+            background-color: #f8f9fa;
+            border-color: #adb5bd;
+        }}
+        .error-details {{
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid #dee2e6;
+            font-size: 12px;
+            color: #adb5bd;
+        }}
+        .error-id {{
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error-code {code_class}">{status_code}</div>
+        <h1>{heading}</h1>
+        <p>{description}</p>
+        <div class="actions">
+            <a href="/" class="btn btn-primary">Go to Homepage</a>
+            <button onclick="history.back()" class="btn btn-secondary">Go Back</button>
+        </div>
+        <div class="error-details">
+            <p>If this problem persists, please contact support with the error ID below.</p>
+            <p style="margin-top: 8px;">Error ID: <span class="error-id">{request_id}</span></p>
+        </div>
+    </div>
+</body>
+</html>"#,
+        title = escape_html(&title),
+        status_code = status_code,
+        heading = escape_html(&heading),
+        description = escape_html(&description),
+        code_class = code_class,
+        request_id = request_id,
+    )
+}
+
+fn get_status_text(status_code: u16) -> &'static str {
+    match status_code {
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        408 => "Request Timeout",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        504 => "Gateway Timeout",
+        _ => "Error",
+    }
 }
