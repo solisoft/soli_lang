@@ -7,7 +7,7 @@ fn index(req: Any) -> Any {
 
 // Helper to load navigation structure
 fn get_docs_structure() -> Any {
-    let content = slurp("www/config/docs_structure.json");
+    let content = slurp("config/docs_structure.json");
     if (content == null) {
         return [];
     }
