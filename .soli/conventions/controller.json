@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Soli MVC Controller Convention",
+  "description": "Machine-readable conventions for Soli MVC controllers",
+  "type": "object",
+  "properties": {
+    "naming": {
+      "type": "object",
+      "properties": {
+        "class": {
+          "type": "object",
+          "properties": {
+            "pattern": {"type": "string", "pattern": "^[A-Z][a-zA-Z]*Controller$"},
+            "examples": ["UsersController", "PostsController", "Admin::UsersController"],
+            "description": "PascalCase, singular, ends with Controller"
+          }
+        },
+        "file": {
+          "type": "object",
+          "properties": {
+            "pattern": {"type": "string", "pattern": "^[a-z_]+_controller\\.sl$"},
+            "examples": ["users_controller.sl", "posts_controller.sl"],
+            "description": "snake_case ending with _controller.sl"
+          }
+        }
+      }
+    },
+    "baseClass": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "enum": ["Controller"]},
+        "location": {"type": "string"},
+        "description": {"type": "string", "description": "Controllers must extend Controller base class"}
+      }
+    },
+    "staticBlock": {
+      "type": "object",
+      "properties": {
+        "layout": {
+          "type": "string",
+          "description": "Layout property set in static block",
+          "examples": ["this.layout = \"application\""]
+        },
+        "beforeAction": {
+          "type": "string",
+          "description": "Callback before each action",
+          "examples": ["this.before_action = fn(req) { /* logic */ }"]
+        },
+        "afterAction": {
+          "type": "string",
+          "description": "Callback after each action",
+          "examples": ["this.after_action = fn(req, res) { /* logic */ }"]
+        }
+      }
+    },
+    "methods": {
+      "type": "object",
+      "properties": {
+        "signature": {
+          "type": "string",
+          "pattern": "^fn [a-z_]+\\(req: Any\\) -> Any$",
+          "examples": ["fn index(req: Any) -> Any", "fn show(req: Any) -> Any"],
+          "description": "All public methods take req: Any parameter and return Any"
+        },
+        "privatePrefix": {
+          "type": "string",
+          "pattern": "^_[a-z_]+$",
+          "examples": ["_helper_method", "_process_params"],
+          "description": "Private methods start with underscore"
+        },
+        "restActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "enum": ["index", "show", "new", "create", "edit", "update", "destroy"]
+              },
+              "httpMethod": {"type": "string"},
+              "path": {"type": "string", "examples": ["/posts", "/posts/:id", "/posts/new"]},
+              "description": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "type": "object",
+      "properties": {
+        "render": {
+          "type": "object",
+          "properties": {
+            "signature": {"type": "string", "examples": ["render(\"posts/index\", {\"posts\": posts})"]},
+            "templatePath": {"type": "string", "examples": ["posts/index", "posts/show"]},
+            "data": {"type": "string", "description": "Hash with template variables"}
+          }
+        },
+        "json": {
+          "type": "object",
+          "properties": {
+            "format": {"type": "string", "examples": ["{\"status\": 200, \"data\": data}"]},
+            "contentType": {"type": "string", "enum": ["application/json"]}
+          }
+        },
+        "redirect": {
+          "type": "string",
+          "examples": ["redirect(\"/posts\")", "redirect(\"/posts/\" + id)"],
+          "description": "Return redirect URL string"
+        },
+        "raw": {
+          "type": "object",
+          "properties": {
+            "status": {"type": "integer", "examples": [200, 201, 400, 404, 500]},
+            "body": {"type": "string"},
+            "headers": {"type": "object"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Soli MVC Routing Convention",
+  "description": "Machine-readable conventions for Soli MVC routes",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "object",
+      "properties": {
+        "basic": {
+          "type": "string",
+          "pattern": "HTTP_METHOD('/path', 'controller#action')",
+          "examples": ["get(\"/posts\", \"posts#index\")", "post(\"/users\", \"users#create\")"],
+          "description": "Basic route pattern"
+        },
+        "withParams": {
+          "type": "string",
+          "pattern": "HTTP_METHOD('/path/:param', 'controller#action')",
+          "examples": ["get(\"/posts/:id\", \"posts#show\")", "put(\"/users/:id\", \"users#update\")"],
+          "description": "Route with path parameters"
+        },
+        "scoped": {
+          "type": "string",
+          "pattern": "middleware('name', -> { routes })",
+          "examples": ["middleware(\"authenticate\", -> { get(\"/admin\", \"admin#index\"); })"],
+          "description": "Routes wrapped in middleware scope"
+        }
+      }
+    },
+    "httpMethods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "enum": ["get", "post", "put", "delete", "patch"]},
+          "usage": {"type": "string", "examples": ["get(\"/path\", \"c#a\")"]},
+          "semantics": {"type": "string"}
+        }
+      }
+    },
+    "controllerActionFormat": {
+      "type": "object",
+      "properties": {
+        "controller": {
+          "type": "string",
+          "pattern": "^[a-z_]+$",
+          "examples": ["posts", "users", "admin/users"],
+          "description": "snake_case controller name (file basename without _controller)"
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z_]+$",
+          "examples": ["index", "show", "create", "update", "destroy"],
+          "description": "snake_case action method name"
+        },
+        "separator": {
+          "type": "string",
+          "pattern": "#",
+          "description": "Controller and action separated by hash"
+        }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "syntax": {
+          "type": "string",
+          "pattern": ":param_name",
+          "examples": [":id", ":user_id", ":slug"],
+          "description": "Colon-prefixed path segments become route parameters"
+        },
+        "access": {
+          "type": "string",
+          "examples": ["req[\"params\"][\"id\"]"],
+          "description": "Parameters accessed via req['params']['param_name']"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "syntax": {
+          "type": "string",
+          "pattern": "resources('name', null)",
+          "examples": ["resources('posts', null)", "resources('users', null)"],
+          "description": "Generate RESTful routes for resource"
+        },
+        "generatedRoutes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {"type": "string"},
+              "path": {"type": "string"},
+              "action": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "specialRoutes": {
+      "type": "object",
+      "properties": {
+        "websocket": {
+          "type": "string",
+          "pattern": "router_websocket('/path', 'controller#action')",
+          "examples": ["router_websocket(\"/ws\", \"chat#websocket\")"],
+          "description": "WebSocket upgrade route"
+        },
+        "live": {
+          "type": "string",
+          "pattern": "router_live('/path', 'ControllerLive')",
+          "examples": ["router_live(\"/counter\", \"CounterLive\")"],
+          "description": "LiveView component route"
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "properties": {
+        "path": {"type": "string", "pattern": "config/routes.sl"},
+        "format": {"type": "string", "description": "One statement per line, terminated with semicolon"}
+      }
+    }
+  }
+}

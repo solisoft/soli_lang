@@ -60,6 +60,11 @@
                 "id": "request_params",
                 "title": "Request Parameters",
                 "path": "/docs/core-concepts/request-params"
+            },
+            {
+                "id": "error_pages",
+                "title": "Error Pages",
+                "path": "/docs/core-concepts/error-pages"
             }
         ]
     },

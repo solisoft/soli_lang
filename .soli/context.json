@@ -1,0 +1,107 @@
+{
+  "framework": "Soli MVC",
+  "version": "1.0.0",
+  "description": "A web programming language with built-in MVC framework",
+  "language": "Soli",
+  "fileExtension": ".sl",
+  
+  "projectStructure": {
+    "app": {
+      "controllers": "Request handlers, extend Controller base class",
+      "middleware": "HTTP middleware functions (global and scoped)",
+      "models": "Data models (extends Model) - planned feature",
+      "views": "ERB-style templates and layouts",
+      "helpers": "View helper functions"
+    },
+    "config": {
+      "routes.sl": "Route definitions (get, post, put, delete, resources)"
+    },
+    "public": "Static assets (CSS, JS, images)"
+  },
+
+  "conventions": {
+    "controller": {
+      "baseClass": "Controller",
+      "fileSuffix": "_controller.sl",
+      "classNaming": "PascalCase ending with 'Controller'",
+      "methodNaming": "snake_case",
+      "methodSignature": "fn method_name(req: Any) -> Any",
+      "requiredMethods": ["index", "show", "new", "create", "edit", "update", "destroy"],
+      "privateMethods": "prefixed with '_' (e.g., _helper_method)",
+      "renderFunction": "render(template_path: string, data: hash) -> Any",
+      "responseTypes": ["html", "json", "redirect", "raw"],
+      "layout": "static property this.layout = \"layout_name\""
+    },
+    
+    "middleware": {
+      "fileSuffix": ".sl",
+      "functionSignature": "fn middleware_name(req: Any) -> Any",
+      "returnFormat": {
+        "continue": "boolean - whether to continue to next middleware/controller",
+        "request": "modified request hash (optional)",
+        "response": "early response hash (optional, skips rest of chain)"
+      },
+      "types": {
+        "global": "runs for ALL routes, marked with // global_only: true",
+        "scope": "runs only when explicitly scoped with middleware() wrapper",
+        "regular": "can be global or scoped"
+      },
+      "order": "ascending number in // order: N comment",
+      "scopeOnly": "marked with // scope_only: true"
+    },
+    
+    "routes": {
+      "pattern": "HTTP_METHOD('/path', 'controller#action')",
+      "httpMethods": ["get", "post", "put", "delete", "patch"],
+      "controllerAction": "lowercase_controller#lowercase_action",
+      "parameters": "captured with :param_name syntax",
+      "resources": "resources('name', null) generates RESTful routes",
+      "middleware": "middleware('name', -> { scoped routes })",
+      "websocket": "router_websocket('/path', 'controller#action')",
+      "live": "router_live('/path', 'ControllerLive')"
+    },
+    
+    "views": {
+      "directory": "app/views/{controller_name}/",
+      "fileExtension": ".html.erb",
+      "partialPrefix": "_",
+      "layoutFile": "layouts/application.html.erb",
+      "yieldTag": "<%= yield %>",
+      "variables": "passed in render() data hash, accessed as @variable_name",
+      "helpers": {
+        "h()": "HTML escape",
+        "html_escape()": "HTML escape",
+        "datetime_format()": "format DateTime",
+        "render_partial()": "include partial template"
+      }
+    },
+    
+    "models": {
+      "baseClass": "Model",
+      "fileSuffix": ".sl",
+      "classNaming": "PascalCase singular (e.g., User, Post)",
+      "collectionNaming": "auto-derived from class name (User → users)",
+      "crudMethods": ["create", "find", "all", "update", "destroy"],
+      "queryMethods": ["where", "order", "limit", "offset"],
+      "callbacks": ["before_save", "after_create", "before_delete", "after_find"],
+      "validations": "validates(field_name, { options })"
+    }
+  },
+
+  "aiPrompts": {
+    "generateController": "Generate a {resource}Controller with CRUD actions (index, show, new, create, edit, update, destroy)",
+    "generateMiddleware": "Generate authentication middleware that checks for session",
+    "generateRoutes": "Add RESTful routes for {resource} resource",
+    "generateViews": "Generate index and show views for {resource}",
+    "scaffoldResource": "Create full scaffold for {resource} with fields: {fields}"
+  },
+
+  "filePaths": {
+    "conventions": ".soli/conventions/*.json",
+    "examples": ".soli/examples/*.sl",
+    "routes": "config/routes.sl",
+    "controllers": "app/controllers/*.sl",
+    "middleware": "app/middleware/*.sl",
+    "views": "app/views/*/"
+  }
+}

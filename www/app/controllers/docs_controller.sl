@@ -77,6 +77,10 @@ fn core_concepts_request_params(req: Any) -> Any {
     return render_docs("docs/core-concepts/request-params", "Request Parameters", "core_concepts", "request_params");
 }
 
+fn core_concepts_error_pages(req: Any) -> Any {
+    return render_docs("docs/core-concepts/error-pages", "Error Pages", "core_concepts", "error_pages");
+}
+
 // ============================================================================
 // Database
 // ============================================================================
@@ -275,6 +279,10 @@ fn redirect_i18n(req: Any) -> Any {
 
 fn redirect_request_params(req: Any) -> Any {
     return redirect("/docs/core-concepts/request-params");
+}
+
+fn redirect_error_pages(req: Any) -> Any {
+    return redirect("/docs/core-concepts/error-pages");
 }
 
 fn redirect_database(req: Any) -> Any {

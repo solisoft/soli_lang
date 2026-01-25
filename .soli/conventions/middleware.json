@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Soli MVC Middleware Convention",
+  "description": "Machine-readable conventions for Soli MVC middleware",
+  "type": "object",
+  "properties": {
+    "naming": {
+      "type": "object",
+      "properties": {
+        "function": {
+          "type": "string",
+          "pattern": "^[a-z_]+$",
+          "examples": ["authenticate", "cors", "session_check", "log_request"],
+          "description": "snake_case function names"
+        },
+        "file": {
+          "type": "string",
+          "pattern": "^[a-z_]+\\.sl$",
+          "examples": ["authenticate.sl", "cors.sl"],
+          "description": "snake_case matching function name, .sl extension"
+        }
+      }
+    },
+    "functionSignature": {
+      "type": "object",
+      "properties": {
+        "parameter": {
+          "type": "string",
+          "examples": ["req: Any"],
+          "description": "Single parameter: request hash"
+        },
+        "return": {
+          "type": "string",
+          "examples": ["Any"],
+          "description": "Returns modified request or response"
+        }
+      }
+    },
+    "returnFormat": {
+      "type": "object",
+      "properties": {
+        "continue": {
+          "type": "boolean",
+          "description": "If true, continue to next middleware/controller. If false, stop.",
+          "examples": [true, false]
+        },
+        "request": {
+          "type": "object",
+          "description": "Optional modified request to pass to next handler",
+          "examples": [{"headers": {"Authorization": "Bearer token"}}]
+        },
+        "response": {
+          "type": "object",
+          "description": "Optional early response (bypasses rest of chain)",
+          "examples": [{"status": 401, "body": "Unauthorized"}]
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "order": {
+          "type": "integer",
+          "description": "Execution order (lower = runs first)",
+          "examples": [10, 20, 30, 50, 100]
+        },
+        "globalOnly": {
+          "type": "boolean",
+          "description": "If true, only runs for all routes globally",
+          "examples": [true]
+        },
+        "scopeOnly": {
+          "type": "boolean",
+          "description": "If true, only runs when explicitly scoped",
+          "examples": [true]
+        }
+      }
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["global", "scope", "regular"]
+          },
+          "description": {"type": "string"},
+          "markers": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "type": {"type": "string"},
+          "order": {"type": "integer"},
+          "code": {"type": "string"}
+        }
+      }
+    }
+  }
+}

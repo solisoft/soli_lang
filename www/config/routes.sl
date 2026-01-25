@@ -32,6 +32,7 @@ get("/docs/core-concepts/websockets", "docs#core_concepts_websockets");
 get("/docs/core-concepts/liveview", "docs#core_concepts_liveview");
 get("/docs/core-concepts/i18n", "docs#core_concepts_i18n");
 get("/docs/core-concepts/request-params", "docs#core_concepts_request_params");
+get("/docs/core-concepts/error-pages", "docs#core_concepts_error_pages");
 
 // Database
 get("/docs/database/configuration", "docs#database_configuration");
@@ -91,6 +92,7 @@ get("/docs/websockets", "docs#redirect_websockets");
 get("/docs/liveview", "docs#redirect_liveview");
 get("/docs/i18n", "docs#redirect_i18n");
 get("/docs/request-params", "docs#redirect_request_params");
+get("/docs/error-pages", "docs#redirect_error_pages");
 get("/docs/database", "docs#redirect_database");
 get("/docs/models", "docs#redirect_models");
 get("/docs/migrations", "docs#redirect_migrations");

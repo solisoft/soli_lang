@@ -2,7 +2,16 @@
 
 **Soli** is a web-oriented programming language designed with strict minimum features. It focuses on the essential capabilities needed for server-side web development while maintaining simplicity and readability.
 
-## Core Philosophy
+## Table of Contents
+
+1. [Core Philosophy](#core-philosophy)
+2. [Language Features](#language-features-minimal-set)
+3. [Built-in Functions](#built-in-functions-web-focused)
+4. [Web MVC Architecture](#web-mvc-architecture)
+5. [AI/LLM Code Generation Guide](#ai-llm-code-generation-guide)
+6. [Syntax Summary](#syntax-summary)
+7. [Model ORM](#model-orm)
+8. [Examples](#examples)
 
 - **Minimum Features, Maximum Utility**: Only essential language constructs
 - **Web-First**: Built for server-side web development (HTTP, templates, MVC)
@@ -269,6 +278,318 @@ class Post extends Model {
     }
 }
 ```
+
+## AI/LLM Code Generation Guide
+
+This section provides guidance for AI/LLM agents generating code for the Soli MVC framework.
+
+### Framework Structure Overview
+
+```
+project/
+├── .soli/                      # AI-friendly convention files
+│   ├── context.json           # Framework metadata for AI agents
+│   ├── conventions/           # Machine-readable conventions
+│   │   ├── controller.json
+│   │   ├── middleware.json
+│   │   ├── routes.json
+│   │   └── views.json
+│   └── examples/              # Annotated examples
+│       ├── controller.sl
+│       ├── middleware.sl
+│       └── routes.sl
+├── www/                       # MVC framework web application
+│   ├── app/
+│   │   ├── controllers/       # Request handlers (.sl files)
+│   │   ├── middleware/        # HTTP middleware functions
+│   │   ├── models/            # Data models (extends Model)
+│   │   ├── views/             # Templates and layouts
+│   │   └── helpers/           # View helper functions
+│   ├── config/
+│   │   └── routes.sl          # Route definitions
+│   └── public/                # Static assets
+```
+
+### Convention Files for AI Agents
+
+AI agents should read `.soli/context.json` for framework metadata and `.soli/conventions/*.json` for detailed patterns.
+
+**Key convention files:**
+- `.soli/context.json` - Framework metadata, naming conventions, response types
+- `.soli/conventions/controller.json` - Controller patterns, method signatures
+- `.soli/conventions/middleware.json` - Middleware types, execution order
+- `.soli/conventions/routes.json` - Route patterns, REST conventions
+- `.soli/conventions/views.json` - Template syntax, variable access
+
+### Controller Generation Patterns
+
+**Basic CRUD Controller Template:**
+```soli
+class {Resource}Controller extends Controller {
+    static {
+        this.layout = "application";
+    }
+    
+    fn index(req: Any) -> Any {
+        let {resources} = {Resource}.all();
+        return render("{resources}/index", {
+            "{resources}": {resources},
+            "title": "{Resource} List"
+        });
+    }
+    
+    fn show(req: Any) -> Any {
+        let id = req["params"]["id"];
+        let {resource} = {Resource}.find(id);
+        if ({resource} == null) {
+            return {"status": 404, "body": "{Resource} not found"};
+        }
+        return render("{resources}/show", {"{resource}": {resource}});
+    }
+    
+    fn new(req: Any) -> Any {
+        return render("{resources}/new", {"title": "New {Resource}"}]);
+    }
+    
+    fn create(req: Any) -> Any {
+        let data = req["json"];
+        let result = {Resource}.create(data);
+        if (result["valid"]) {
+            return {"status": 302, "headers": {"Location": "/{resources}/" + result["id"]}};
+        }
+        return {"status": 422, "body": json_stringify({"errors": result["errors"]})};
+    }
+    
+    fn edit(req: Any) -> Any {
+        let id = req["params"]["id"];
+        let {resource} = {Resource}.find(id);
+        if ({resource} == null) {
+            return {"status": 404, "body": "{Resource} not found"};
+        }
+        return render("{resources}/edit", {"{resource}": {resource}}]);
+    }
+    
+    fn update(req: Any) -> Any {
+        let id = req["params"]["id"];
+        let data = req["json"];
+        let result = {Resource}.update(id, data);
+        if (result["valid"]) {
+            return {"status": 302, "headers": {"Location": "/{resources}/" + id}};
+        }
+        return {"status": 422, "body": json_stringify({"errors": result["errors"]})};
+    }
+    
+    fn destroy(req: Any) -> Any {
+        let id = req["params"]["id"];
+        {Resource}.destroy(id);
+        return {"status": 302, "headers": {"Location": "/{resources}"}};
+    }
+}
+```
+
+**Controller Naming Conventions:**
+- Class name: `PascalCase` ending with `Controller` (e.g., `UsersController`)
+- File name: `snake_case` ending with `_controller.sl` (e.g., `users_controller.sl`)
+- Method signature: `fn method_name(req: Any) -> Any`
+
+### Middleware Generation Patterns
+
+**Scope-only Middleware Template:**
+```soli
+// order: N
+// scope_only: true
+
+fn {middleware_name}(req: Any) -> Any {
+    // Authentication/authorization logic
+    
+    if (condition_met) {
+        return {"continue": true, "request": req};
+    }
+    
+    return {
+        "continue": false,
+        "response": {
+            "status": 401,
+            "headers": {"Content-Type": "application/json"},
+            "body": json_stringify({"error": "Unauthorized"})
+        }
+    };
+}
+```
+
+**Global-only Middleware Template:**
+```soli
+// order: N
+// global_only: true
+
+fn {middleware_name}(req: Any) -> Any {
+    // Logic that runs for all requests
+    
+    return {"continue": true, "request": req};
+}
+```
+
+### Route Generation Patterns
+
+**Basic Routes:**
+```soli
+get("/{path}", "{controller}#{action}");
+post("/{path}", "{controller}#{action}");
+put("/{path}/{id}", "{controller}#{action}");
+delete("/{path}/{id}", "{controller}#{action}");
+```
+
+**Scoped Middleware Routes:**
+```soli
+middleware("{middleware_name}", -> {
+    get("/{path}", "{controller}#{action}");
+    get("/{path}/:id", "{controller}#{action}");
+});
+```
+
+**RESTful Resource Routes:**
+```soli
+resources("{resource}", null);  // Generates all CRUD routes
+```
+
+**WebSocket Routes:**
+```soli
+router_websocket("/ws/{path}", "{controller}#{handler}");
+```
+
+**LiveView Routes:**
+```soli
+router_live("/{path}", "{ComponentLive}");
+```
+
+### View Generation Patterns
+
+**ERB Template Syntax:**
+```erb
+<%= expression %>     <!-- Output HTML-escaped result -->
+<% code %>            <!-- Execute code without output -->
+<%= yield %>          <!-- Layout content insertion -->
+```
+
+**Index View Template:**
+```erb
+<h1><%= @title %></h1>
+
+<% if (@{resources}.length > 0) { %>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        <% for ({resource} in @{resources}) { %>
+        <tr>
+            <td><%= {resource}["id"] %></td>
+            <td><%= h({resource}["name"]) %></td>
+            <td>
+                <a href="/<%= h({resource}["name"]) %>/<%= {resource}["id"] %>">View</a>
+            </td>
+        </tr>
+        <% } %>
+    </tbody>
+</table>
+<% } else { %>
+<p>No {resources} found.</p>
+<% } %>
+
+<a href="/<%= h({resources}) %>/new">New {Resource}</a>
+```
+
+### Common Generation Tasks
+
+**1. Generate Full Resource Scaffold:**
+```
+Generate a PostsController with CRUD actions (index, show, new, create, edit, update, destroy)
+Add RESTful routes in config/routes.sl
+Generate views: index, show, new, edit, _form
+```
+
+**2. Generate API Controller:**
+```
+Generate an ApiController with JSON endpoints
+Use render() with data hash for HTML, return dict with status/body for JSON
+```
+
+**3. Add Authentication Middleware:**
+```
+Create authenticate middleware (scope_only: true, order: 20)
+Protect routes with middleware("authenticate", -> { ... })
+```
+
+**4. Generate CRUD Routes:**
+```
+Add routes for PostsController: index, show, new, create, edit, update, destroy
+Use get/post/put/delete helpers
+```
+
+### Response Types Reference
+
+| Response Type | Return Format | Example |
+|--------------|---------------|---------|
+| HTML View | `render(template, data)` | `return render("posts/index", {"posts": posts});` |
+| JSON | `{"status": N, "body": json_stringify(data)}` | `return {"status": 200, "body": json_stringify({"id": 1})};` |
+| Redirect | `{"status": 302, "headers": {"Location": url}}` | `return {"status": 302, "headers": {"Location": "/posts"}};` |
+| Raw | `{"status": N, "body": string}` | `return {"status": 404, "body": "Not found"};` |
+
+### Request Access Patterns
+
+| Data | Access Pattern |
+|------|----------------|
+| Path parameters | `req["params"]["param_name"]` |
+| Query string | `req["query"]["key"]` |
+| JSON body | `req["json"]["field"]` |
+| Headers | `req["headers"]["Header-Name"]` |
+| Session | `session_get("key")` |
+| Cookies | `req["cookies"]["name"]` |
+
+### Built-in Helpers in Views
+
+| Helper | Usage | Description |
+|--------|-------|-------------|
+| `h()` | `<%= h(text) %>` | HTML escape |
+| `datetime_format()` | `<%= datetime_format(date, "%Y-%m-%d") %>` | Format DateTime |
+| `render_partial()` | `<%= render_partial("path", data) %>` | Include partial |
+
+### AI Agent Quick Reference
+
+**When generating controllers:**
+1. Extend `Controller` base class
+2. Use `fn method(req: Any) -> Any` signature
+3. Return `render()` for HTML, dict for JSON/redirect
+4. Access params via `req["params"]`, body via `req["json"]`
+
+**When generating middleware:**
+1. Mark global with `// global_only: true`
+2. Mark scoped with `// scope_only: true`
+3. Set order with `// order: N`
+4. Return `{"continue": bool, "request"?: dict, "response"?: dict}`
+
+**When generating routes:**
+1. Use `get/post/put/delete/patch` helpers
+2. Format: `HTTP_METHOD('/path', 'controller#action')`
+3. Parameters: `/path/:param_name`
+4. Scope middleware: `middleware("name", -> { routes })`
+
+### File Locations Reference
+
+| Component | Location |
+|-----------|----------|
+| Controllers | `app/controllers/{name}_controller.sl` |
+| Middleware | `app/middleware/{name}.sl` |
+| Views | `app/views/{controller}/{action}.html.erb` |
+| Layouts | `app/views/layouts/{name}.html.erb` |
+| Partials | `app/views/{controller}/_{name}.html.erb` |
+| Routes | `config/routes.sl` |
+| Conventions | `.soli/conventions/*.json` |
+| Examples | `.soli/examples/*.sl` |
 
 ## Example: Simple Web Handler
 ```soli

@@ -1,0 +1,368 @@
+<div class="space-y-12">
+    <!-- Header -->
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-orange-400 to-red-400 animate-gradient-x">
+                Error Pages
+            </span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
+            Custom error handling for production mode with support for branded error pages.
+        </p>
+    </div>
+
+    <!-- Overview Section -->
+    <section>
+        <div class="bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-2xl p-8 border border-white/10 shadow-xl backdrop-blur-sm">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-red-500/20 rounded-lg text-red-400">
+                    <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold text-white mb-3 mt-0 border-none">Production-Ready Error Pages</h2>
+                    <p class="text-gray-300 leading-relaxed mb-0">
+                        Soli provides detailed error pages during development and clean, user-friendly pages in production. You can customize error pages to match your brand.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Development vs Production -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 text-sm border border-cyan-500/30">1</span>
+            Development vs Production Mode
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white/5 rounded-xl p-6 border border-white/5">
+                <div class="flex items-center gap-2 mb-4">
+                    <div class="p-2 bg-yellow-500/20 rounded-lg text-yellow-400">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-white">Development Mode</h3>
+                </div>
+                <ul class="text-gray-400 text-sm space-y-2">
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        Full stack traces
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        Interactive REPL for debugging
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        Request details (params, body, headers)
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        Source code preview
+                    </li>
+                </ul>
+                <div class="mt-4 pt-4 border-t border-white/5">
+                    <code class="text-xs text-gray-500 block bg-gray-900 p-2 rounded">soli serve</code>
+                </div>
+            </div>
+
+            <div class="bg-white/5 rounded-xl p-6 border border-white/5">
+                <div class="flex items-center gap-2 mb-4">
+                    <div class="p-2 bg-green-500/20 rounded-lg text-green-400">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-white">Production Mode</h3>
+                </div>
+                <ul class="text-gray-400 text-sm space-y-2">
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        Clean, branded error pages
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        No stack traces or internal details
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        Error ID for support reference
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        Customizable templates
+                    </li>
+                </ul>
+                <div class="mt-4 pt-4 border-t border-white/5">
+                    <code class="text-xs text-gray-500 block bg-gray-900 p-2 rounded">soli serve --no-dev</code>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Default Error Pages -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 text-sm border border-blue-500/30">2</span>
+            Default Error Pages
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            Soli includes built-in error pages for common HTTP status codes:
+        </p>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-3 px-4 text-gray-400 font-medium">Status</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-medium">Description</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-yellow-400 font-mono">400</td>
+                        <td class="py-3 px-4 text-gray-300">Bad Request</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-yellow-400 font-mono">403</td>
+                        <td class="py-3 px-4 text-gray-300">Forbidden</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-yellow-400 font-mono">404</td>
+                        <td class="py-3 px-4 text-gray-300">Not Found</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-yellow-400 font-mono">405</td>
+                        <td class="py-3 px-4 text-gray-300">Method Not Allowed</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-red-400 font-mono">500</td>
+                        <td class="py-3 px-4 text-gray-300">Internal Server Error</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-red-400 font-mono">502</td>
+                        <td class="py-3 px-4 text-gray-300">Bad Gateway</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-red-400 font-mono">503</td>
+                        <td class="py-3 px-4 text-gray-300">Service Unavailable</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Custom Error Pages -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-purple-500/20 text-purple-400 text-sm border border-purple-500/30">3</span>
+            Custom Error Pages
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            Create custom error pages by placing templates in <code class="text-cyan-300">app/views/errors/</code>.
+        </p>
+
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl mb-8">
+            <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
+                <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                <span class="ml-2 text-xs text-gray-500 font-mono">Directory Structure</span>
+            </div>
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-bash text-sm">app/
+  views/
+    errors/
+      400.html.erb    # Custom 400 Bad Request page
+      403.html.erb    # Custom 403 Forbidden page
+      404.html.erb    # Custom 404 Not Found page
+      500.html.erb    # Custom 500 Internal Server Error page
+      502.html.erb    # Custom 502 Bad Gateway page
+      503.html.erb    # Custom 503 Service Unavailable page</code></pre>
+            </div>
+        </div>
+
+        <!-- Template Variables -->
+        <h3 class="text-xl font-semibold text-white mb-4">Template Variables</h3>
+        <div class="overflow-x-auto mb-8">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-3 px-4 text-gray-400 font-medium">Variable</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-medium">Type</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-medium">Description</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-cyan-300 font-mono">status</td>
+                        <td class="py-3 px-4 text-gray-300">Number</td>
+                        <td class="py-3 px-4 text-gray-400">HTTP status code (e.g., 500)</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-cyan-300 font-mono">message</td>
+                        <td class="py-3 px-4 text-gray-300">String</td>
+                        <td class="py-3 px-4 text-gray-400">Error message</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-cyan-300 font-mono">request_id</td>
+                        <td class="py-3 px-4 text-gray-300">String</td>
+                        <td class="py-3 px-4 text-gray-400">Unique identifier for support</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Example 404 -->
+        <h3 class="text-xl font-semibold text-white mb-4">Example: Custom 404 Page</h3>
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl mb-8">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #f8f9fa;"&gt;
+    &lt;div style="text-align: center;"&gt;
+        &lt;h1 style="font-size: 6rem; font-weight: bold; color: #343a40; margin-bottom: 1rem;"&gt;&lt;%= status %&gt;&lt;/h1&gt;
+        &lt;h2 style="font-size: 1.5rem; font-weight: 600; color: #6c757d; margin-bottom: 1rem;"&gt;Page Not Found&lt;/h2&gt;
+        &lt;p style="color: #6c757d; margin-bottom: 2rem;"&gt;&lt;%= message %&gt;&lt;/p&gt;
+        &lt;a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #007bff; color: white; border-radius: 0.375rem;"&gt;Go Home&lt;/a&gt;
+        &lt;p style="margin-top: 2rem; font-size: 0.75rem; color: #adb5bd;"&gt;Error ID: &lt;%= request_id %&gt;&lt;/p&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+            </div>
+        </div>
+
+        <!-- Example 500 -->
+        <h3 class="text-xl font-semibold text-white mb-4">Example: Custom 500 Page</h3>
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #fff5f5;"&gt;
+    &lt;div style="text-align: center; max-width: 400px;"&gt;
+        &lt;h1 style="font-size: 3rem; font-weight: bold; color: #c53030; margin-bottom: 1rem;"&gt;&lt;%= status %&gt;&lt;/h1&gt;
+        &lt;h2 style="font-size: 1.25rem; font-weight: 600; color: #1a202c; margin-bottom: 1rem;"&gt;Something went wrong&lt;/h2&gt;
+        &lt;p style="color: #4a5568; margin-bottom: 2rem;"&gt;We're sorry, but something unexpected happened.&lt;/p&gt;
+        &lt;a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #c53030; color: white; border-radius: 0.375rem;"&gt;Return to Homepage&lt;/a&gt;
+        &lt;p style="margin-top: 2rem; font-size: 0.75rem; color: #718096;"&gt;Reference ID: &lt;%= request_id %&gt;&lt;/p&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+            </div>
+        </div>
+
+        <!-- Tailwind Note -->
+        <div class="mt-6 bg-blue-900/20 rounded-xl p-6 border border-blue-500/30">
+            <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-blue-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <span class="font-semibold text-blue-300">Using Tailwind CSS</span>
+                    <p class="text-blue-200/80 text-sm mt-1">
+                        If your application already uses Tailwind CSS, you can use Tailwind classes instead of inline styles for cleaner templates.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Important Notes -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-teal-500/20 text-teal-400 text-sm border border-teal-500/30">4</span>
+            Important Notes
+        </h2>
+
+        <div class="bg-white/5 rounded-xl p-6 border border-white/10">
+            <ul class="space-y-4">
+                <li class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-orange-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                        <span class="font-semibold text-white">No Layouts</span>
+                        <p class="text-gray-400 text-sm mt-1">Error pages render without application layouts to avoid potential cascading errors.</p>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                        <span class="font-semibold text-white">Optional</span>
+                        <p class="text-gray-400 text-sm mt-1">Custom error pages are optional. If a template doesn't exist, Soli uses the default error page.</p>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                        <span class="font-semibold text-white">Full Template Features</span>
+                        <p class="text-gray-400 text-sm mt-1">Error templates support all template features including conditionals, loops, and partials.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Production Deployment -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">5</span>
+            Production Deployment
+        </h2>
+
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Using soli CLI
+soli serve --no-dev
+
+# Or set environment variable
+SOLI_ENV=production soli serve</code></pre>
+            </div>
+        </div>
+
+        <div class="mt-6 bg-white/5 rounded-xl p-6 border border-white/10">
+            <h3 class="font-semibold text-white mb-3">Production Mode Ensures:</h3>
+            <ul class="text-gray-400 text-sm space-y-2">
+                <li class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                    Custom error pages are used
+                </li>
+                <li class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                    No sensitive information is leaked
+                </li>
+                <li class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                    Error IDs are generated for support reference
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+        <h2 class="text-2xl font-bold text-white mb-6">Best Practices</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-white/5 rounded-xl p-6 border border-white/5">
+                <h3 class="font-semibold text-white mb-2">Keep it Simple</h3>
+                <p class="text-gray-400 text-sm">Error pages should be clean and focused on helping users return to working pages.</p>
+            </div>
+            <div class="bg-white/5 rounded-xl p-6 border border-white/5">
+                <h3 class="font-semibold text-white mb-2">Provide Navigation</h3>
+                <p class="text-gray-400 text-sm">Include links to help users return to working pages (home, back, etc.).</p>
+            </div>
+            <div class="bg-white/5 rounded-xl p-6 border border-white/5">
+                <h3 class="font-semibold text-white mb-2">Log Error IDs</h3>
+                <p class="text-gray-400 text-sm">Store error IDs in your logs to correlate user reports with server errors.</p>
+            </div>
+            <div class="bg-white/5 rounded-xl p-6 border border-white/5">
+                <h3 class="font-semibold text-white mb-2">Test Error Flows</h3>
+                <p class="text-gray-400 text-sm">Regularly test custom error pages to ensure they render correctly.</p>
+            </div>
+        </div>
+    </section>
+</div>

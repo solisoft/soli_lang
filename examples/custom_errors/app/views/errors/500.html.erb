@@ -1,14 +1,14 @@
-<div class="min-h-screen flex items-center justify-center bg-red-50">
-    <div class="text-center max-w-md">
-        <div class="mb-6">
-            <svg class="w-20 h-20 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #fff5f5;">
+    <div style="text-align: center; max-width: 400px;">
+        <div style="margin-bottom: 1.5rem;">
+            <svg style="width: 5rem; height: 5rem; margin: 0 auto; color: #e53e3e;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
         </div>
-        <h1 class="text-5xl font-bold text-red-600 mb-4"><%= status %></h1>
-        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Something went wrong</h2>
-        <p class="text-gray-600 mb-8">We're sorry, but something unexpected happened. Our team has been notified.</p>
-        <a href="/" class="inline-block px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700">Return to Homepage</a>
-        <p class="mt-8 text-xs text-gray-500">Reference ID: <%= request_id %></p>
+        <h1 style="font-size: 3rem; font-weight: bold; color: #c53030; margin-bottom: 1rem;"><%= status %></h1>
+        <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a202c; margin-bottom: 1rem;">Something went wrong</h2>
+        <p style="color: #4a5568; margin-bottom: 2rem;">We're sorry, but something unexpected happened. Our team has been notified.</p>
+        <a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #c53030; color: white; text-decoration: none; border-radius: 0.375rem;">Return to Homepage</a>
+        <p style="margin-top: 2rem; font-size: 0.75rem; color: #718096;">Reference ID: <%= request_id %></p>
     </div>
 </div>
