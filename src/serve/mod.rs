@@ -171,6 +171,9 @@ pub fn serve_folder_with_options_and_mode(
     println!("Starting MVC server from {}", folder.display());
     println!("Execution mode: {:?}", mode);
 
+    // Set the app root for LiveView template resolution
+    crate::live::component::set_app_root(folder.to_path_buf());
+
     // Create interpreter or bytecode compiler based on mode
     let mut interpreter = Interpreter::new();
 

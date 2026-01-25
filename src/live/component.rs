@@ -2,11 +2,30 @@
 
 use serde_json::json;
 use serde_json::Value as JsonValue;
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 use crate::interpreter::value::{json_to_value, Value};
 use crate::template::parser::parse_template;
 use crate::template::renderer::render_nodes;
 use uuid::Uuid;
+
+lazy_static::lazy_static! {
+    /// Global app root directory for LiveView template resolution.
+    pub static ref APP_ROOT: Mutex<PathBuf> = Mutex::new(PathBuf::from("."));
+}
+
+/// Set the app root directory for LiveView templates.
+pub fn set_app_root(path: PathBuf) {
+    if let Ok(mut root) = APP_ROOT.lock() {
+        *root = path;
+    }
+}
+
+/// Get the app root directory.
+pub fn get_app_root() -> PathBuf {
+    APP_ROOT.lock().map(|r| r.clone()).unwrap_or_else(|_| PathBuf::from("."))
+}
 
 /// Component state wrapper.
 #[derive(Clone, Default)]
@@ -107,18 +126,20 @@ pub fn get_counter_component() -> Result<ComponentInstance, String> {
 /// Render a component and return its HTML.
 /// Supports both .sliv and .html.erb extensions.
 pub fn render_component(component_name: &str, state: &JsonValue) -> Result<String, String> {
-    // Try .html.erb first, then fall back to .sliv
-    let erb_path = format!("app/views/live/{}.html.erb", component_name);
-    let sliv_path = format!("app/views/live/{}.sliv", component_name);
+    let app_root = get_app_root();
 
-    let template_path = if std::path::Path::new(&erb_path).exists() {
+    // Try .html.erb first, then fall back to .sliv
+    let erb_path = app_root.join(format!("app/views/live/{}.html.erb", component_name));
+    let sliv_path = app_root.join(format!("app/views/live/{}.sliv", component_name));
+
+    let template_path = if erb_path.exists() {
         erb_path
-    } else if std::path::Path::new(&sliv_path).exists() {
+    } else if sliv_path.exists() {
         sliv_path
     } else {
         return Err(format!(
             "Template not found: {} or {}",
-            erb_path, sliv_path
+            erb_path.display(), sliv_path.display()
         ));
     };
 
