@@ -47,6 +47,11 @@
                 "path": "/docs/core-concepts/websockets"
             },
             {
+                "id": "liveview",
+                "title": "Live View",
+                "path": "/docs/core-concepts/liveview"
+            },
+            {
                 "id": "i18n",
                 "title": "Internationalization",
                 "path": "/docs/core-concepts/i18n"

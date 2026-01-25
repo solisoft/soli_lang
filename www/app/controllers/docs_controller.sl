@@ -61,6 +61,10 @@ fn core_concepts_websockets(req: Any) -> Any {
     return render_docs("docs/core-concepts/websockets", "WebSockets", "core_concepts", "websockets");
 }
 
+fn core_concepts_liveview(req: Any) -> Any {
+    return render_docs("docs/core-concepts/liveview", "Live View", "core_concepts", "liveview");
+}
+
 fn core_concepts_i18n(req: Any) -> Any {
     return render_docs("docs/core-concepts/i18n", "Internationalization", "core_concepts", "i18n");
 }
@@ -255,6 +259,10 @@ fn redirect_views(req: Any) -> Any {
 
 fn redirect_websockets(req: Any) -> Any {
     return redirect("/docs/core-concepts/websockets");
+}
+
+fn redirect_liveview(req: Any) -> Any {
+    return redirect("/docs/core-concepts/liveview");
 }
 
 fn redirect_i18n(req: Any) -> Any {

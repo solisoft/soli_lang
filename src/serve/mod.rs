@@ -80,6 +80,7 @@ fn set_tokio_handle(handle: tokio::runtime::Handle) {
 use crate::interpreter::builtins::session::{
     create_session_cookie, ensure_session, extract_session_id_from_cookie, set_current_session_id,
 };
+use crate::live::socket::{extract_session_id as extract_live_session_id, handle_live_connection};
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
@@ -1526,7 +1527,7 @@ async fn parse_multipart_body(
 
 /// Handle a hyper request
 async fn handle_hyper_request(
-    req: Request<Incoming>,
+    mut req: Request<Incoming>,
     request_tx: WorkerSender,
     reload_tx: Option<broadcast::Sender<()>>,
     public_dir: Arc<PathBuf>,
@@ -1550,6 +1551,119 @@ async fn handle_hyper_request(
                     .body(Full::new(Bytes::from("Live reload is disabled")))
                     .unwrap());
             }
+        }
+
+        // Handle LiveView WebSocket endpoint
+        if path == "/live/socket" || path.starts_with("/live/socket/") {
+            // Extract component name from path
+            let component = if path == "/live/socket" {
+                "counter".to_string()
+            } else {
+                path.trim_start_matches("/live/socket/")
+                    .trim_end_matches("/socket")
+                    .to_string()
+            };
+
+            // Extract session ID from cookies
+            let cookies = req.headers().get("cookie").map(|v| v.to_str().unwrap_or(""));
+            let session_id = extract_live_session_id(cookies);
+
+            // Perform the WebSocket upgrade
+            let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, None) {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("[LiveView] Upgrade error: {}", e);
+                    return Ok(Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body(Full::new(Bytes::from(format!("WebSocket upgrade error: {}", e))))
+                        .unwrap());
+                }
+            };
+
+            // Spawn a task to handle the LiveView WebSocket connection
+            let component = component.clone();
+            let session_id = session_id.clone();
+
+            tokio::spawn(async move {
+                let stream = match websocket.await {
+                    Ok(ws) => ws,
+                    Err(e) => {
+                        eprintln!("[LiveView] WebSocket handshake error: {}", e);
+                        return;
+                    }
+                };
+
+                // Create async channel for LiveView messages
+                let (tx, rx) = async_channel::bounded::<Result<tungstenite::Message, tungstenite::Error>>(32);
+                let tx_arc = Arc::new(tx);
+
+                // Initialize the LiveView connection
+                handle_live_connection(component, session_id, tx_arc.clone());
+
+                // Split the WebSocket stream
+                let (mut ws_write, mut ws_read) = stream.split();
+
+                // Spawn task to forward messages from channel to WebSocket
+                let write_task = tokio::spawn(async move {
+                    while let Ok(msg_result) = rx.recv().await {
+                        match msg_result {
+                            Ok(msg) => {
+                                if ws_write.send(msg).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                });
+
+                // Handle incoming messages (events from client)
+                while let Some(msg_result) = ws_read.next().await {
+                    match msg_result {
+                        Ok(msg) => {
+                            if msg.is_close() {
+                                break;
+                            }
+                            if msg.is_text() {
+                                if let Ok(text) = msg.to_text() {
+                                    // Parse the event message
+                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text) {
+                                        let event_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                                        let liveview_id = parsed.get("liveview_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                        let event_name = parsed.get("event").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                        let params = parsed.get("params").cloned().unwrap_or(serde_json::json!({}));
+
+                                        if event_type == "event" {
+                                            if let Some(id) = liveview_id {
+                                                if let Some(event) = event_name {
+                                                    // Handle the event
+                                                    let result = crate::live::socket::handle_event(&id, event, params);
+                                                    if let Err(e) = result {
+                                                        eprintln!("[LiveView] Event error: {}", e);
+                                                    }
+                                                }
+                                            }
+                                        } else if event_type == "heartbeat" {
+                                            // Send heartbeat acknowledgment
+                                            let ack = serde_json::json!({
+                                                "type": "heartbeat_ack"
+                                            });
+                                            let _ = tx_arc.send(Ok(tungstenite::Message::Text(ack.to_string())));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            break;
+                        }
+                    }
+                }
+
+                write_task.abort();
+            });
+
+            return Ok(response);
         }
 
         // Check if there's a WebSocket route for this path

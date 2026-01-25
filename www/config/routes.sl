@@ -29,6 +29,7 @@ get("/docs/core-concepts/controllers", "docs#core_concepts_controllers");
 get("/docs/core-concepts/middleware", "docs#core_concepts_middleware");
 get("/docs/core-concepts/views", "docs#core_concepts_views");
 get("/docs/core-concepts/websockets", "docs#core_concepts_websockets");
+get("/docs/core-concepts/liveview", "docs#core_concepts_liveview");
 get("/docs/core-concepts/i18n", "docs#core_concepts_i18n");
 get("/docs/core-concepts/request-params", "docs#core_concepts_request_params");
 
@@ -87,6 +88,7 @@ get("/docs/controllers", "docs#redirect_controllers");
 get("/docs/middleware", "docs#redirect_middleware");
 get("/docs/views", "docs#redirect_views");
 get("/docs/websockets", "docs#redirect_websockets");
+get("/docs/liveview", "docs#redirect_liveview");
 get("/docs/i18n", "docs#redirect_i18n");
 get("/docs/request-params", "docs#redirect_request_params");
 get("/docs/database", "docs#redirect_database");

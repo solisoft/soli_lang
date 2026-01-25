@@ -1,0 +1,22 @@
+<div class="liveview-counter" data-liveview-id="<%= @id %>">
+  <h2>LiveView Counter</h2>
+  <div class="counter-display">
+    <p>Count: <span class="count-value"><%= @count %></span></p>
+  </div>
+  <div class="counter-controls">
+    <button
+      class="decrement-btn"
+      soli-click="decrement"
+      soli-value-count="<%= @count %>"
+      soli-target="counter">
+      -
+    </button>
+    <button
+      class="increment-btn"
+      soli-click="increment"
+      soli-value-count="<%= @count %>"
+      soli-target="counter">
+      +
+    </button>
+  </div>
+</div>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= @title %></title>
+  <script src="/js/live.js"></script>
+  <style>
+    .liveview-counter {
+      font-family: system-ui, sans-serif;
+      max-width: 400px;
+      margin: 2rem auto;
+      padding: 1.5rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .liveview-counter h2 {
+      margin-top: 0;
+      color: #333;
+    }
+    .counter-display {
+      font-size: 1.5rem;
+      margin: 1rem 0;
+    }
+    .count-value {
+      font-weight: bold;
+      color: #0066cc;
+    }
+    .counter-controls {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+    .counter-controls button {
+      padding: 0.5rem 1.5rem;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .increment-btn {
+      background-color: #28a745;
+      color: white;
+    }
+    .increment-btn:hover {
+      background-color: #218838;
+    }
+    .decrement-btn {
+      background-color: #dc3545;
+      color: white;
+    }
+    .decrement-btn:hover {
+      background-color: #c82333;
+    }
+  </style>
+</head>
+<body>
+  <h1 style="text-align: center; font-family: system-ui;">LiveView Counter Demo</h1>
+
+  <!-- LiveView Counter Component -->
+  <div id="counter-component"
+       class="liveview-counter"
+       data-liveview-url="ws://localhost:3000/live/socket/counter">
+    <h2>LiveView Counter</h2>
+    <div class="counter-display">
+      <p>Loading...</p>
+    </div>
+  </div>
+
+  <script>
+    // Initialize LiveView when DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+      // Find the LiveView element and connect
+      const liveviewEl = document.getElementById('counter-component');
+      if (liveviewEl) {
+        const url = liveviewEl.getAttribute('data-liveview-url');
+        // Convert http to ws for WebSocket connection
+        const wsUrl = url.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+        if (url && window.live) {
+          window.live(wsUrl);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

@@ -57,6 +57,10 @@ jsonwebtoken = "9"
 # Database
 solidb-client = "0.5.0"
 
+# LiveView support
+diff = "0.1.13"
+async-channel = "2.3"
+
 # Daemonize (Unix only)
 daemonize = "0.5"
 nix = { version = "0.29", features = ["signal", "process"] }
