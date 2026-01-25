@@ -2,7 +2,11 @@
 
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use std::collections::HashMap;
+
+use crate::interpreter::value::{json_to_value, Value};
+use crate::template::parser::parse_template;
+use crate::template::renderer::render_nodes;
+use uuid::Uuid;
 
 /// Component state wrapper.
 #[derive(Clone, Default)]
@@ -32,6 +36,7 @@ impl ComponentState {
 
 /// Component instance with state.
 pub struct ComponentInstance {
+    #[allow(dead_code)]
     name: String,
     state: JsonValue,
 }
@@ -41,7 +46,7 @@ impl ComponentInstance {
         Self { name, state }
     }
 
-    pub fn mount(session: JsonValue, params: JsonValue) -> Result<Self, String> {
+    pub fn mount(_session: JsonValue, params: JsonValue) -> Result<Self, String> {
         let id = params
             .get("id")
             .and_then(|v| v.as_str())
@@ -88,9 +93,6 @@ impl ComponentInstance {
     }
 }
 
-use std::sync::{Mutex, OnceLock};
-use uuid::Uuid;
-
 /// Get the counter component instance.
 pub fn get_counter_component() -> Result<ComponentInstance, String> {
     Ok(ComponentInstance::new(
@@ -103,59 +105,31 @@ pub fn get_counter_component() -> Result<ComponentInstance, String> {
 }
 
 /// Render a component and return its HTML.
+/// Supports both .sliv and .html.erb extensions.
 pub fn render_component(component_name: &str, state: &JsonValue) -> Result<String, String> {
-    let template_path = format!("app/views/live/{}.sliv", component_name);
-    let template_path = std::path::Path::new(&template_path);
+    // Try .html.erb first, then fall back to .sliv
+    let erb_path = format!("app/views/live/{}.html.erb", component_name);
+    let sliv_path = format!("app/views/live/{}.sliv", component_name);
 
-    if !template_path.exists() {
-        return Err(format!("Template not found: {}", template_path.display()));
-    }
+    let template_path = if std::path::Path::new(&erb_path).exists() {
+        erb_path
+    } else if std::path::Path::new(&sliv_path).exists() {
+        sliv_path
+    } else {
+        return Err(format!(
+            "Template not found: {} or {}",
+            erb_path, sliv_path
+        ));
+    };
 
-    let content = std::fs::read_to_string(template_path).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
 
-    let mut html = String::new();
-    let mut i = 0;
-    let chars: Vec<char> = content.chars().collect();
+    // Convert JSON state to interpreter Value
+    let data = json_to_value(state)?;
 
-    while i < chars.len() {
-        if chars[i] == '<' && i + 1 < chars.len() {
-            if i + 4 < chars.len()
-                && chars[i + 1] == '%'
-                && chars[i + 2] == '='
-                && chars[i + 3] == ' '
-            {
-                let start = i + 4;
-                let mut end = start;
-                while end < chars.len() {
-                    if end >= 2
-                        && chars[end - 2] == ' '
-                        && chars[end - 1] == '%'
-                        && chars[end] == '>'
-                    {
-                        break;
-                    }
-                    end += 1;
-                }
-                let expr = chars[start..end - 3].iter().collect::<String>();
-                let value = evaluate_expression(expr.trim(), state);
-                html.push_str(&value);
-                i = end + 1;
-                continue;
-            }
-        }
-        html.push(chars[i]);
-        i += 1;
-    }
+    // Parse the template using the existing ERB parser
+    let nodes = parse_template(&content)?;
 
-    Ok(html)
-}
-
-fn evaluate_expression(expr: &str, state: &JsonValue) -> String {
-    if expr.starts_with("@") {
-        let key = &expr[1..];
-        if let Some(value) = state.get(key) {
-            return value.to_string();
-        }
-    }
-    expr.to_string()
+    // Render using the existing template renderer
+    render_nodes(&nodes, &data, None)
 }

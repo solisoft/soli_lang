@@ -134,6 +134,11 @@ impl LiveRegistry {
             Err(tungstenite::Error::ConnectionClosed)
         }
     }
+
+    pub fn update(&self, instance: LiveViewInstance) {
+        let mut views = self.views.lock().unwrap();
+        views.insert(instance.id.clone(), instance);
+    }
 }
 
 /// Global LiveView registry.

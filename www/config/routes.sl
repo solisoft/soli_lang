@@ -111,6 +111,14 @@ get("/websocket", "websocket#demo");
 router_websocket("/ws/chat", "websocket#chat_handler");
 
 // ============================================================================
+// LiveView Routes
+// ============================================================================
+
+// Register LiveView components with their controller handlers
+router_live("counter", "live#counter");
+router_live("metrics", "live#metrics");
+
+// ============================================================================
 // Users Controller - Authentication, Sessions, and Validation Demo
 // ============================================================================
 

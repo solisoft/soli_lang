@@ -66,7 +66,7 @@ fn parse_datetime_string(s: &str) -> Result<i64, String> {
             })
     };
     match datetime {
-        Ok(dt) => Ok(dt.timestamp()),
+        Ok(dt) => Ok(dt.timestamp_nanos()),
         Err(_) => Err(format!("Invalid datetime format: {}", s)),
     }
 }
@@ -386,9 +386,12 @@ fn call_datetime_method(inst: &VMInstance, method_name: &str) -> Result<VMValue,
         })
         .ok_or_else(|| format!("DateTime/Duration instance missing timestamp field"))?;
 
-    // Use chrono to parse the timestamp
-    let datetime = chrono::DateTime::from_timestamp(timestamp, 0)
-        .ok_or_else(|| format!("Invalid timestamp: {}", timestamp))?;
+    // Use chrono to parse the timestamp (timestamp is in nanoseconds)
+    let datetime = chrono::DateTime::from_timestamp(
+        timestamp / 1_000_000_000,
+        (timestamp % 1_000_000_000) as u32,
+    )
+    .ok_or_else(|| format!("Invalid timestamp: {}", timestamp))?;
 
     match method_name {
         "year" => Ok(VMValue::Int(datetime.year() as i64)),
@@ -397,6 +400,7 @@ fn call_datetime_method(inst: &VMInstance, method_name: &str) -> Result<VMValue,
         "hour" => Ok(VMValue::Int(datetime.hour() as i64)),
         "minute" => Ok(VMValue::Int(datetime.minute() as i64)),
         "second" => Ok(VMValue::Int(datetime.second() as i64)),
+        "millisecond" => Ok(VMValue::Int(datetime.timestamp_subsec_millis() as i64)),
         "weekday" => Ok(VMValue::String(Rc::new(match datetime.weekday() {
             chrono::Weekday::Mon => "monday".to_string(),
             chrono::Weekday::Tue => "tuesday".to_string(),
@@ -2107,7 +2111,7 @@ impl VM {
             // DateTime functions
             NativeId::DateTimeNow => {
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-                let timestamp = now.as_secs() as i64;
+                let timestamp = now.as_nanos() as i64;
                 let class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
                 let instance =
                     VMInstance::with_field(class, "timestamp".to_string(), VMValue::Int(timestamp));
@@ -2132,7 +2136,7 @@ impl VM {
             }
             NativeId::DateTimeUtc => {
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-                let timestamp = now.as_secs() as i64;
+                let timestamp = now.as_nanos() as i64;
                 let class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
                 let instance =
                     VMInstance::with_field(class, "timestamp".to_string(), VMValue::Int(timestamp));
@@ -3745,7 +3749,7 @@ impl VM {
     /// Handle datetime_utc() static method call
     fn handle_datetime_utc(&mut self, _arg_count: usize) -> VMResult<()> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let timestamp = now.as_secs() as i64;
+        let timestamp = now.as_nanos() as i64;
         let class = Rc::new(RefCell::new(VMClass::new("DateTime".to_string())));
         let instance =
             VMInstance::with_field(class, "timestamp".to_string(), VMValue::Int(timestamp));
@@ -4248,8 +4252,11 @@ impl VM {
                     vm_get_locale()
                 };
 
-                let dt = chrono::DateTime::from_timestamp(ts, 0)
-                    .ok_or_else(|| RuntimeError::new("Invalid timestamp", Span::default()))?;
+                let dt = chrono::DateTime::from_timestamp(
+                    ts / 1_000_000_000,
+                    (ts % 1_000_000_000) as u32,
+                )
+                .ok_or_else(|| RuntimeError::new("Invalid timestamp", Span::default()))?;
                 let local = dt.with_timezone(&chrono::Local);
 
                 let formatted = match locale.as_str() {

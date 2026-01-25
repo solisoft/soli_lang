@@ -75,37 +75,49 @@
         </div>
     </div>
 
-    <h3 class="text-lg font-semibold text-white mb-4">Step 2: Add Event Handlers</h3>
-    <p class="text-gray-400 mb-4">Use <code>soli-*</code> directives to bind events. The directive value is the event name sent to the server.</p>
+    <h3 class="text-lg font-semibold text-white mb-4">Step 2: Register the Route</h3>
+    <p class="text-gray-400 mb-4">Register your Live View component in <code>config/routes.sl</code> using the <code>router_live</code> function.</p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
+        </div>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Register LiveView components
+router_live("counter", "live#counter");
+router_live("metrics", "live#metrics");</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Step 3: Create the Controller</h3>
+    <p class="text-gray-400 mb-4">Create a controller that handles events. The handler receives an event hash with <code>event</code> (name), <code>params</code>, and <code>state</code>. Return the new state as a hash.</p>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
             <span class="text-xs text-gray-400 font-mono">app/controllers/live_controller.sl</span>
         </div>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn counter(event: Any) -> Any {
-    let type = event["type"];
-    let state = event["state"];
+<pre><code class="language-soli text-sm">// Counter component handler
+fn counter(event_data: Any) -> Any {
+    let event = event_data["event"];   // Event name (e.g., "increment")
+    let params = event_data["params"]; // Event parameters
+    let state = event_data["state"];   // Current component state
+    let count = state["count"];
 
-    // Initialize state on connect
-    if (type == "connect") {
-        return { "state": { "count": 0 } };
+    if (count == null) {
+        count = 0;
     }
 
-    // Handle events
-    if (type == "event") {
-        let name = event["event"];
-        let count = state["count"];
-
-        if (name == "increment") {
-            return { "state": { "count": count + 1 } };
-        }
-        if (name == "decrement") {
-            return { "state": { "count": count - 1 } };
-        }
+    if (event == "increment") {
+        return { "count": count + 1 };
     }
 
-    return {};
+    if (event == "decrement") {
+        return { "count": count - 1 };
+    }
+
+    // Return unchanged state for unknown events
+    return state;
 }</code></pre>
         </div>
     </div>

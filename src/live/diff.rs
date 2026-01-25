@@ -15,42 +15,12 @@ pub struct Patch {
 }
 
 pub fn compute_patch(old_html: &str, new_html: &str) -> String {
-    let old_lines: Vec<&str> = old_html.lines().collect();
-    let new_lines: Vec<&str> = new_html.lines().collect();
-
-    let changes = diff::slice(&old_lines, &new_lines);
-
-    let mut patches = Vec::new();
-    let mut unchanged_count = 0;
-    let total_changes = changes.len();
-
-    for change in changes {
-        match change {
-            diff::Result::Both(_, _) => {
-                unchanged_count += 1;
-            }
-            diff::Result::Left(line) => {
-                patches.push(Patch {
-                    change_type: "remove".to_string(),
-                    old: Some(line.to_string()),
-                    new: None,
-                });
-            }
-            diff::Result::Right(line) => {
-                patches.push(Patch {
-                    change_type: "add".to_string(),
-                    old: None,
-                    new: Some(line.to_string()),
-                });
-            }
-        }
+    // For now, always do full replacement for reliability
+    // Line-based diffing can be added back once client-side patching is more robust
+    if old_html == new_html {
+        return "[]".to_string();
     }
-
-    if total_changes > 0 && (unchanged_count == 0 || patches.len() > 50) {
-        return compute_full_patch(new_html);
-    }
-
-    serde_json::to_string(&patches).unwrap_or_else(|_| compute_full_patch(new_html))
+    compute_full_patch(new_html)
 }
 
 fn compute_full_patch(html: &str) -> String {

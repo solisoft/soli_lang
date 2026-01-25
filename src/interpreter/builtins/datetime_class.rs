@@ -56,7 +56,7 @@ fn parse_datetime_string(s: &str) -> Result<i64, String> {
     };
 
     match datetime {
-        Ok(dt) => Ok(dt.timestamp()),
+        Ok(dt) => Ok(dt.timestamp_nanos()),
         Err(_) => Err(format!("Invalid datetime format: {}", s)),
     }
 }
@@ -78,7 +78,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 native_methods: HashMap::new(),
                 constructor: None,
             }));
-            inst.set("timestamp".to_string(), Value::Int(now.timestamp()));
+            inst.set("timestamp".to_string(), Value::Int(now.timestamp_nanos()));
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
         })),
     );
@@ -96,8 +96,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
                     Ok(Value::Int(local.year() as i64))
                 }
@@ -116,8 +119,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
                     Ok(Value::Int(local.month() as i64))
                 }
@@ -136,8 +142,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
                     Ok(Value::Int(local.day() as i64))
                 }
@@ -156,8 +165,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
                     Ok(Value::Int(local.hour() as i64))
                 }
@@ -176,8 +188,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
                     Ok(Value::Int(local.minute() as i64))
                 }
@@ -196,14 +211,44 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
                     Ok(Value::Int(local.second() as i64))
                 }
                 _ => Err("DateTime missing timestamp".to_string()),
             }
         })),
+    );
+
+    dt_native_methods.insert(
+        "millisecond".to_string(),
+        Rc::new(NativeFunction::new(
+            "DateTime.millisecond",
+            Some(0),
+            |args| {
+                let this = match args.get(0) {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("DateTime.millisecond() called on non-DateTime".to_string()),
+                };
+                let ts = this.borrow().fields.get("timestamp").cloned();
+                match ts {
+                    Some(Value::Int(t)) => {
+                        let dt = chrono::DateTime::from_timestamp(
+                            t / 1_000_000_000,
+                            (t % 1_000_000_000) as u32,
+                        )
+                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                        let local = dt.with_timezone(&Local);
+                        Ok(Value::Int(local.timestamp_subsec_millis() as i64))
+                    }
+                    _ => Err("DateTime missing timestamp".to_string()),
+                }
+            },
+        )),
     );
 
     dt_native_methods.insert(
@@ -216,8 +261,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
                     Ok(Value::String(weekday_name(local.weekday())))
                 }
@@ -251,8 +299,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     Ok(Value::String(dt.to_rfc3339()))
                 }
                 _ => Err("DateTime missing timestamp".to_string()),
@@ -270,8 +321,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let ts = this.borrow().fields.get("timestamp").cloned();
             match ts {
                 Some(Value::Int(t)) => {
-                    let dt = chrono::DateTime::from_timestamp(t, 0)
-                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                    let dt = chrono::DateTime::from_timestamp(
+                        t / 1_000_000_000,
+                        (t % 1_000_000_000) as u32,
+                    )
+                    .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
                     Ok(Value::String(local.format("%Y-%m-%d %H:%M:%S").to_string()))
                 }
@@ -400,7 +454,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 native_methods: dt_methods_for_utc.clone(),
                 constructor: None,
             }));
-            inst.set("timestamp".to_string(), Value::Int(now.timestamp()));
+            inst.set("timestamp".to_string(), Value::Int(now.timestamp_nanos_opt().unwrap_or(0)));
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
         })),
     );

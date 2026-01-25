@@ -806,6 +806,8 @@ fn run_hyper_server_worker_pool(
     // Bounded channels for backpressure
     let capacity_per_worker = 64;
     let (ws_event_tx, ws_event_rx) = channel::bounded(num_workers * capacity_per_worker);
+    // LiveView event channel
+    let (lv_event_tx, lv_event_rx): (channel::Sender<LiveViewEventData>, channel::Receiver<LiveViewEventData>) = channel::bounded(num_workers * capacity_per_worker);
     // crossbeam Sender is cheap to clone - no need for Arc<Mutex<Option<>>>
     // Use AtomicBool for shutdown signaling (lock-free check)
     let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -860,6 +862,7 @@ fn run_hyper_server_worker_pool(
                 let public_dir = public_dir_arc.clone(); // Arc clone is cheap
                 let _ws_registry = ws_registry_for_tokio.clone();
                 let ws_event_tx = ws_event_tx.clone(); // crossbeam Sender is cheap to clone
+                let lv_event_tx = lv_event_tx.clone(); // LiveView event sender
                 let shutdown_flag = shutdown_flag_for_tokio.clone();
                 let dev_mode = dev_mode_for_tokio;
 
@@ -869,6 +872,7 @@ fn run_hyper_server_worker_pool(
                         let reload_tx = reload_tx.clone();
                         let public_dir = public_dir.clone(); // Arc clone is cheap
                         let ws_event_tx = ws_event_tx.clone();
+                        let lv_event_tx = lv_event_tx.clone();
                         let shutdown_flag = shutdown_flag.clone();
 
                         async move {
@@ -885,6 +889,7 @@ fn run_hyper_server_worker_pool(
                                 reload_tx,
                                 public_dir,
                                 ws_event_tx,
+                                lv_event_tx,
                                 dev_mode,
                             )
                             .await
@@ -1097,6 +1102,7 @@ fn run_hyper_server_worker_pool(
         let middleware_dir = middleware_dir.clone();
         let helpers_dir = helpers_dir.clone();
         let ws_event_rx = ws_event_rx.clone();
+        let lv_event_rx = lv_event_rx.clone();
         let ws_registry = ws_registry.clone();
         let reload_tx = reload_tx.clone();
         let worker_routes = worker_routes.clone();
@@ -1115,7 +1121,7 @@ fn run_hyper_server_worker_pool(
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut interpreter = Interpreter::new();
 
-                worker_loop(i, work_rx, models_dir, middleware_dir, helpers_dir, ws_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle, routes_file, dev_mode);
+                worker_loop(i, work_rx, models_dir, middleware_dir, helpers_dir, ws_event_rx, lv_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle, routes_file, dev_mode);
             }));
 
             if result.is_err() {
@@ -1149,6 +1155,7 @@ fn worker_loop(
     middleware_dir: PathBuf,
     helpers_dir: PathBuf,
     ws_event_rx: channel::Receiver<WebSocketEventData>,
+    lv_event_rx: channel::Receiver<LiveViewEventData>,
     ws_registry: Arc<WebSocketRegistry>,
     _reload_tx: Option<broadcast::Sender<()>>,
     interpreter: &mut Interpreter,
@@ -1191,6 +1198,7 @@ fn worker_loop(
     let check_interval = Duration::from_millis(100);
     let mut ws_event_rx_inner = Some(ws_event_rx);
     let ws_registry_inner = Some(ws_registry);
+    let mut lv_event_rx_inner = Some(lv_event_rx);
 
     // Track last seen hot reload versions
     let mut last_controllers_version = hot_reload_versions.controllers.load(Ordering::Acquire);
@@ -1277,6 +1285,20 @@ fn worker_loop(
                 Err(channel::TryRecvError::Empty) => {}
                 Err(channel::TryRecvError::Disconnected) => {
                     ws_event_rx_inner = None;
+                }
+            }
+        }
+
+        // Process LiveView events (quick non-blocking check)
+        if let Some(ref mut rx) = lv_event_rx_inner {
+            match rx.try_recv() {
+                Ok(data) => {
+                    let result = handle_liveview_event(interpreter, &data);
+                    let _ = data.response_tx.send(result);
+                }
+                Err(channel::TryRecvError::Empty) => {}
+                Err(channel::TryRecvError::Disconnected) => {
+                    lv_event_rx_inner = None;
                 }
             }
         }
@@ -1468,6 +1490,20 @@ struct WebSocketActionData {
     close: Option<String>,
 }
 
+/// Data for LiveView events sent to the interpreter thread.
+pub struct LiveViewEventData {
+    /// LiveView instance ID (session_id:component)
+    pub liveview_id: String,
+    /// Component name (e.g., "counter")
+    pub component: String,
+    /// Event name (e.g., "increment", "decrement")
+    pub event: String,
+    /// Event parameters
+    pub params: serde_json::Value,
+    /// Response channel - sends back result
+    pub response_tx: oneshot::Sender<Result<(), String>>,
+}
+
 /// Parse multipart form data into form fields and files.
 async fn parse_multipart_body(
     body_bytes: &[u8],
@@ -1532,6 +1568,7 @@ async fn handle_hyper_request(
     reload_tx: Option<broadcast::Sender<()>>,
     public_dir: Arc<PathBuf>,
     ws_event_tx: channel::Sender<WebSocketEventData>,
+    lv_event_tx: channel::Sender<LiveViewEventData>,
     dev_mode: bool,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let method = req.method().to_string().to_uppercase();
@@ -1583,6 +1620,7 @@ async fn handle_hyper_request(
             // Spawn a task to handle the LiveView WebSocket connection
             let component = component.clone();
             let session_id = session_id.clone();
+            let lv_event_tx = lv_event_tx.clone();
 
             tokio::spawn(async move {
                 let stream = match websocket.await {
@@ -1598,7 +1636,7 @@ async fn handle_hyper_request(
                 let tx_arc = Arc::new(tx);
 
                 // Initialize the LiveView connection
-                handle_live_connection(component, session_id, tx_arc.clone());
+                handle_live_connection(component.clone(), session_id, tx_arc.clone());
 
                 // Split the WebSocket stream
                 let (mut ws_write, mut ws_read) = stream.split();
@@ -1636,10 +1674,35 @@ async fn handle_hyper_request(
                                         if event_type == "event" {
                                             if let Some(id) = liveview_id {
                                                 if let Some(event) = event_name {
-                                                    // Handle the event
-                                                    let result = crate::live::socket::handle_event(&id, event, params);
-                                                    if let Err(e) = result {
-                                                        eprintln!("[LiveView] Event error: {}", e);
+                                                    // Send event to worker thread for controller dispatch
+                                                    let (response_tx, response_rx) = oneshot::channel();
+                                                    let event_data = LiveViewEventData {
+                                                        liveview_id: id.clone(),
+                                                        component: component.clone(),
+                                                        event: event.clone(),
+                                                        params,
+                                                        response_tx,
+                                                    };
+
+                                                    if lv_event_tx.send(event_data).is_ok() {
+                                                        // Wait for response (with timeout)
+                                                        match tokio::time::timeout(
+                                                            std::time::Duration::from_secs(5),
+                                                            response_rx
+                                                        ).await {
+                                                            Ok(Ok(Ok(()))) => {
+                                                                // Event handled successfully
+                                                            }
+                                                            Ok(Ok(Err(e))) => {
+                                                                eprintln!("[LiveView] Event error: {}", e);
+                                                            }
+                                                            Ok(Err(_)) => {
+                                                                eprintln!("[LiveView] Response channel closed");
+                                                            }
+                                                            Err(_) => {
+                                                                eprintln!("[LiveView] Event handling timed out");
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -2261,6 +2324,216 @@ fn handle_websocket_event(interpreter: &mut Interpreter, data: &WebSocketEventDa
         Err(e) => {
             eprintln!("[WS] Handler error: {}", e);
         }
+    }
+}
+
+/// Handle a LiveView event by calling the controller handler.
+fn handle_liveview_event(interpreter: &mut Interpreter, data: &LiveViewEventData) -> Result<(), String> {
+    use crate::interpreter::value::Value;
+    use crate::live::view::LIVE_REGISTRY;
+    use crate::live::view::ServerMessage;
+
+    // Get the LiveView instance
+    let mut instance = LIVE_REGISTRY
+        .get(&data.liveview_id)
+        .ok_or_else(|| format!("LiveView not found: {}", data.liveview_id))?;
+
+    let component = instance.component.clone();
+
+    // Try to find a registered handler for this component
+    let handler_name = crate::live::socket::get_liveview_handler(&component);
+
+    // Build event hash for the controller: {event, params, state}
+    let state_value = json_to_value(&instance.state);
+    let params_value = json_to_value(&data.params);
+
+    let event_pairs: Vec<(Value, Value)> = vec![
+        (
+            Value::String("event".to_string()),
+            Value::String(data.event.clone()),
+        ),
+        (Value::String("params".to_string()), params_value),
+        (Value::String("state".to_string()), state_value),
+    ];
+    let event_value = Value::Hash(Rc::new(RefCell::new(event_pairs)));
+
+    // If we have a registered handler, call it
+    if let Some(handler_name) = handler_name {
+        // Try to resolve the handler from the controller registry
+        let handler = match crate::interpreter::builtins::router::resolve_handler(&handler_name, None) {
+            Ok(h) => h,
+            Err(_) => {
+                // Try to look up the function directly in the environment
+                let action_name = handler_name.split('#').last().unwrap_or(&handler_name);
+                match interpreter.environment.borrow().get(action_name) {
+                    Some(h) => h,
+                    None => {
+                        // Fall back to hardcoded handler
+                        return handle_liveview_event_fallback(data, &mut instance);
+                    }
+                }
+            }
+        };
+
+        // Call the handler function
+        match interpreter.call_value(handler, vec![event_value], Span::default()) {
+            Ok(result) => {
+                // Handler should return new state as a hash
+                // If it returns null, fall back to built-in handler
+                match &result {
+                    Value::Null => {
+                        return handle_liveview_event_fallback(data, &mut instance);
+                    }
+                    Value::Hash(_) => {
+                        // Convert Value hash to JSON state
+                        let new_state = value_to_json(&result);
+
+                        // Preserve the id
+                        let mut state = new_state.clone();
+                        if let (serde_json::Value::Object(old), serde_json::Value::Object(ref mut new_obj)) =
+                            (&instance.state, &mut state)
+                        {
+                            if let Some(id) = old.get("id") {
+                                new_obj.insert("id".to_string(), id.clone());
+                            }
+                        }
+
+                        instance.state = state;
+                    }
+                    _ => {
+                        // Unexpected return type, fall back
+                        return handle_liveview_event_fallback(data, &mut instance);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[LiveView] Handler error: {}", e);
+                // Fall back to hardcoded handler
+                return handle_liveview_event_fallback(data, &mut instance);
+            }
+        }
+    } else {
+        // No registered handler, use fallback
+        return handle_liveview_event_fallback(data, &mut instance);
+    }
+
+    // Render new HTML and send patch
+    render_and_send_patch(&component, &mut instance)
+}
+
+/// Fallback handler for LiveView events (for backwards compatibility)
+fn handle_liveview_event_fallback(
+    data: &LiveViewEventData,
+    instance: &mut crate::live::view::LiveViewInstance,
+) -> Result<(), String> {
+    use serde_json::json;
+
+    let component = instance.component.clone();
+
+    // Update state based on event (hardcoded logic for backwards compatibility)
+    // Note: Most handlers should be in .sl controller files via router_live()
+    match (component.as_str(), data.event.as_str()) {
+        ("counter", "increment") => {
+            if let Some(count) = instance.state["count"].as_i64() {
+                instance.state["count"] = json!(count + 1);
+            }
+        }
+        ("counter", "decrement") => {
+            if let Some(count) = instance.state["count"].as_i64() {
+                instance.state["count"] = json!(count - 1);
+            }
+        }
+        _ => return Err(format!("Unknown event: {} for component {}", data.event, component)),
+    }
+
+    // Render new HTML and send patch
+    render_and_send_patch(&component, instance)
+}
+
+/// Render new HTML for a LiveView component and send the patch to the client.
+fn render_and_send_patch(
+    component: &str,
+    instance: &mut crate::live::view::LiveViewInstance,
+) -> Result<(), String> {
+    use crate::live::component::render_component;
+    use crate::live::view::{ServerMessage, LIVE_REGISTRY};
+
+    // Render new HTML
+    let new_html = render_component(component, &instance.state)?;
+    let old_html = instance.last_html.clone();
+
+    // Compute patch
+    let patch = crate::live::diff::compute_patch(&old_html, &new_html);
+
+    // Update last_html and save instance back to registry
+    let liveview_id = instance.id.clone();
+    instance.last_html = new_html;
+    instance.touch();
+    LIVE_REGISTRY.update(instance.clone());
+
+    // Send patch to client
+    let _ = LIVE_REGISTRY.send(
+        &liveview_id,
+        ServerMessage::Patch {
+            liveview_id: liveview_id.to_string(),
+            diff: patch,
+        },
+    );
+
+    Ok(())
+}
+
+/// Convert serde_json::Value to interpreter Value
+fn json_to_value(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
+            } else {
+                Value::Null
+            }
+        }
+        serde_json::Value::String(s) => Value::String(s.clone()),
+        serde_json::Value::Array(arr) => {
+            let values: Vec<Value> = arr.iter().map(json_to_value).collect();
+            Value::Array(Rc::new(RefCell::new(values)))
+        }
+        serde_json::Value::Object(obj) => {
+            let pairs: Vec<(Value, Value)> = obj
+                .iter()
+                .map(|(k, v)| (Value::String(k.clone()), json_to_value(v)))
+                .collect();
+            Value::Hash(Rc::new(RefCell::new(pairs)))
+        }
+    }
+}
+
+/// Convert interpreter Value to serde_json::Value
+fn value_to_json(value: &Value) -> serde_json::Value {
+    match value {
+        Value::Null => serde_json::Value::Null,
+        Value::Bool(b) => serde_json::Value::Bool(*b),
+        Value::Int(i) => serde_json::json!(*i),
+        Value::Float(f) => serde_json::json!(*f),
+        Value::String(s) => serde_json::Value::String(s.clone()),
+        Value::Array(arr) => {
+            let values: Vec<serde_json::Value> = arr.borrow().iter().map(value_to_json).collect();
+            serde_json::Value::Array(values)
+        }
+        Value::Hash(hash) => {
+            let mut obj = serde_json::Map::new();
+            for (k, v) in hash.borrow().iter() {
+                if let Value::String(key) = k {
+                    obj.insert(key.clone(), value_to_json(v));
+                }
+            }
+            serde_json::Value::Object(obj)
+        }
+        _ => serde_json::Value::Null,
     }
 }
 

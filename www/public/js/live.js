@@ -521,10 +521,14 @@
 
     // Export
     global.SoliLiveView = SoliLiveView;
+    
+    // Track all LiveView instances
+    global.SoliLiveView.instances = [];
 
     // Convenience function to create and connect
     global.live = function(socketUrl, params) {
         const lv = new SoliLiveView(socketUrl, params);
+        global.SoliLiveView.instances.push(lv);
         lv.connect();
         return lv;
     };
@@ -532,16 +536,19 @@
     // Auto-connect for elements with data-liveview-url attribute
     if (typeof document !== 'undefined') {
         document.addEventListener('DOMContentLoaded', function() {
-            const liveviewEl = document.querySelector('[data-liveview-url]');
-            if (liveviewEl && !liveviewEl.hasAttribute('data-liveview-manual')) {
-                let url = liveviewEl.getAttribute('data-liveview-url');
+            const elements = document.querySelectorAll('[data-liveview-url]');
+            console.log('Found', elements.length, 'LiveView elements');
+            elements.forEach(function(el) {
+                if (el.hasAttribute('data-liveview-manual')) return;
+                let url = el.getAttribute('data-liveview-url');
                 // Build proper WebSocket URL if relative path
                 if (url.startsWith('/')) {
                     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                     url = protocol + '//' + location.host + url;
                 }
-                global.live(url);
-            }
+                console.log('Auto-connecting LiveView:', url);
+                global.live(url, { rootElement: el });
+            });
         });
     }
 

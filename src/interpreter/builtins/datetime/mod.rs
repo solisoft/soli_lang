@@ -156,6 +156,10 @@ mod datetime_inner {
                         Value::Int(local.second() as i64),
                     ),
                     (
+                        Value::String("millisecond".to_string()),
+                        Value::Int(local.timestamp_subsec_millis() as i64),
+                    ),
+                    (
                         Value::String("nanosecond".to_string()),
                         Value::Int(local.nanosecond() as i64),
                     ),

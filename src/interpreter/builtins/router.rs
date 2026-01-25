@@ -532,4 +532,19 @@ pub fn register_router_builtins(env: &mut Environment) {
             })
         })),
     );
+
+    // router_live(component, action) - Register LiveView route
+    // component: name of the component (e.g., "counter")
+    // action: controller#action string (e.g., "live#counter")
+    env.define(
+        "router_live".to_string(),
+        Value::NativeFunction(NativeFunction::new("router_live", Some(2), |args| {
+            let component = args[0].to_string();
+            let action = args[1].to_string();
+
+            // Register the LiveView route
+            crate::live::socket::register_liveview_route(&component, &action);
+            Ok(Value::Null)
+        })),
+    );
 }
