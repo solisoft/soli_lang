@@ -234,6 +234,29 @@ for (shape in shapes) {
 
         <p class="text-gray-400 mb-4 text-sm"><strong class="text-yellow-400">Note:</strong> Visibility modifiers are currently parsed for documentation purposes but not enforced at runtime.</p>
 
+        <section id="private-method-convention" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Private Method Convention</h3>
+                <p class="text-gray-400 mb-3">In addition to the <code>private</code> keyword, Soli follows a naming convention where methods starting with an underscore (<code>_</code>) are considered internal/private helpers:</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">class PostsController extends Controller {
+    // Underscore prefix marks internal helper methods
+    fn _permit_params(params: Any) -> Any {
+        return {
+            "title": params["title"],
+            "content": params["content"]
+        };
+    }
+
+    fn create(req: Any) -> Any {
+        // Using the private helper
+        let permitted = this._permit_params(req["params"]);
+        return Posts.create(permitted);
+    }
+}</code></pre>
+                <p class="text-gray-400 mt-3 text-sm"><strong class="text-yellow-400">Recommendation:</strong> Use either <code>private fn</code> keyword OR underscore prefix (<code>_</code>) for internal helper methods. The underscore convention is used throughout the codebase (e.g., <code>_authenticate</code>, <code>_build_post_params</code> in examples).</p>
+            </div>
+        </section>
+
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class BankAccount {

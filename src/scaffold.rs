@@ -192,7 +192,7 @@ pub fn create_scaffold_with_fields(
     create_model(app_path, name, &parsed_fields)?;
 
     // Create controller
-    create_controller(app_path, name)?;
+    create_controller(app_path, name, &parsed_fields)?;
 
     // Create views (index, show, new, edit)
     create_views(app_path, name, &parsed_fields)?;
@@ -584,10 +584,7 @@ fn pluralize_simple(count: Int, word: String) -> String {
     return str(count) + " " + word + "s";
 }
 "#;
-    write_file(
-        &app_path.join("app/helpers/application_helper.sl"),
-        content,
-    )
+    write_file(&app_path.join("app/helpers/application_helper.sl"), content)
 }
 
 fn create_sample_middleware(app_path: &Path) -> Result<(), String> {
@@ -617,10 +614,7 @@ fn add_cors_headers(req: Any) -> Any {
     };
 }
 "#;
-    write_file(
-        &app_path.join("app/middleware/cors.sl"),
-        cors_content,
-    )?;
+    write_file(&app_path.join("app/middleware/cors.sl"), cors_content)?;
 
     // Create auth middleware (scope-only)
     let auth_content = r#"// ============================================================================
@@ -679,10 +673,7 @@ fn authenticate(req: Any) -> Any {
     };
 }
 "#;
-    write_file(
-        &app_path.join("app/middleware/auth.sl"),
-        auth_content,
-    )
+    write_file(&app_path.join("app/middleware/auth.sl"), auth_content)
 }
 
 fn create_tailwind_config(app_path: &Path) -> Result<(), String> {
@@ -833,16 +824,22 @@ pub fn print_success_message(name: &str) {
     );
     println!();
     println!("  \x1b[2m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("  \x1b[2m│\x1b[0m  \x1b[1mGet started:\x1b[0m                          \x1b[2m│\x1b[0m");
+    println!(
+        "  \x1b[2m│\x1b[0m  \x1b[1mGet started:\x1b[0m                          \x1b[2m│\x1b[0m"
+    );
     println!("  \x1b[2m│\x1b[0m                                         \x1b[2m│\x1b[0m");
     println!(
         "  \x1b[2m│\x1b[0m    \x1b[36mcd {}\x1b[0m{}  \x1b[2m│\x1b[0m",
         name,
         " ".repeat(32 - name.len().min(32))
     );
-    println!("  \x1b[2m│\x1b[0m    \x1b[36msoli serve . --dev\x1b[0m                  \x1b[2m│\x1b[0m");
+    println!(
+        "  \x1b[2m│\x1b[0m    \x1b[36msoli serve . --dev\x1b[0m                  \x1b[2m│\x1b[0m"
+    );
     println!("  \x1b[2m│\x1b[0m                                         \x1b[2m│\x1b[0m");
-    println!("  \x1b[2m│\x1b[0m  Then open \x1b[4mhttp://localhost:3000\x1b[0m       \x1b[2m│\x1b[0m");
+    println!(
+        "  \x1b[2m│\x1b[0m  Then open \x1b[4mhttp://localhost:3000\x1b[0m       \x1b[2m│\x1b[0m"
+    );
     println!("  \x1b[2m└─────────────────────────────────────────┘\x1b[0m");
     println!();
 }
@@ -921,15 +918,25 @@ pub fn create_app(name: &str) -> Result<(), String> {
     println!("  \x1b[2m│\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[36m{}/\x1b[0m", name);
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m app/");
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m controllers/    \x1b[2m# Request handlers\x1b[0m");
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m helpers/        \x1b[2m# View helpers\x1b[0m");
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m middleware/     \x1b[2m# Request filters\x1b[0m");
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m models/         \x1b[2m# Data models\x1b[0m");
+    println!(
+        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m controllers/    \x1b[2m# Request handlers\x1b[0m"
+    );
+    println!(
+        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m helpers/        \x1b[2m# View helpers\x1b[0m"
+    );
+    println!(
+        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m middleware/     \x1b[2m# Request filters\x1b[0m"
+    );
+    println!(
+        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m models/         \x1b[2m# Data models\x1b[0m"
+    );
     println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m views/          \x1b[2m# Templates\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m config/");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m routes.sl     \x1b[2m# URL routing\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m db/migrations/      \x1b[2m# Database migrations\x1b[0m");
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m public/             \x1b[2m# Static assets\x1b[0m");
+    println!(
+        "  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m public/             \x1b[2m# Static assets\x1b[0m"
+    );
     println!("  \x1b[2m│\x1b[0m  \x1b[2m└──\x1b[0m tests/              \x1b[2m# Test files\x1b[0m");
     println!("  \x1b[2m│\x1b[0m");
 
@@ -1142,10 +1149,28 @@ class {model_name} extends Model {{
     Ok(())
 }
 
-fn create_controller(app_path: &Path, name: &str) -> Result<(), String> {
+fn create_controller(
+    app_path: &Path,
+    name: &str,
+    fields: &[FieldDefinition],
+) -> Result<(), String> {
     let controller_name = to_pascal_case(name) + "Controller";
     let resource_name = to_snake_case_plural(name);
     let model_name = to_pascal_case(name);
+    let model_var = to_snake_case(name);
+
+    // Generate the list of permitted parameters for mass assignment protection
+    let permitted_params = fields
+        .iter()
+        .map(|f| {
+            format!(
+                r#"            "{}": params["{}"]"#,
+                f.to_snake_case(),
+                f.to_snake_case()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
 
     let content = format!(
         r#"// {} controller - auto-generated scaffold
@@ -1200,7 +1225,8 @@ class {controller_name} extends Controller {{
 
     // POST /{resource}
     fn create(req: Any) -> Any {{
-        let result = {model_name}.create(req.params);
+        let permitted = this._permit_params(req.params);
+        let result = {model_name}.create(permitted);
         if result["valid"] == true {{
             return redirect("/{resource}");
         }}
@@ -1213,7 +1239,8 @@ class {controller_name} extends Controller {{
     // PATCH/PUT /{resource}/:id
     fn update(req: Any) -> Any {{
         let id = req.params["id"];
-        {model_name}.update(id, req.params);
+        let permitted = this._permit_params(req.params);
+        {model_name}.update(id, permitted);
         return redirect("/{resource}");
     }}
 
@@ -1223,12 +1250,24 @@ class {controller_name} extends Controller {{
         {model_name}.delete(id);
         return redirect("/{resource}");
     }}
+
+    // Mass assignment protection: whitelist allowed parameters
+    fn _permit_params(params: Any) -> Any {{
+        return {{
+{permitted_params}
+        }};
+    }}
 }}
 "#,
         controller_name = controller_name,
         resource = resource_name,
         model_name = model_name,
-        model_var = to_singular(name)
+        model_var = model_var,
+        permitted_params = if permitted_params.is_empty() {
+            "            // (no fields defined)".to_string()
+        } else {
+            permitted_params
+        }
     );
 
     let controller_path = app_path

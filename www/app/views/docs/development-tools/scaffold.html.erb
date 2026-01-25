@@ -205,7 +205,8 @@
     }
 
     <span class="text-purple-400">fn</span> <span class="text-blue-400">create</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
-        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(req[<span class="text-green-400">"params"</span>]);
+        <span class="text-purple-400">let</span> permitted = <span class="text-purple-400">this</span>._permit_params(req[<span class="text-green-400">"params"</span>]);
+        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(permitted);
         <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>] == <span class="text-purple-400">true</span> {
             <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>);
         }
@@ -217,7 +218,8 @@
 
     <span class="text-purple-400">fn</span> <span class="text-blue-400">update</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         <span class="text-purple-400">let</span> id = req[<span class="text-green-400">"params"</span>][<span class="text-green-400">"id"</span>];
-        <span class="text-yellow-200">Users</span>.<span class="text-blue-400">update</span>(id, req[<span class="text-green-400">"params"</span>]);
+        <span class="text-purple-400">let</span> permitted = <span class="text-purple-400">this</span>._permit_params(req[<span class="text-green-400">"params"</span>]);
+        <span class="text-yellow-200">Users</span>.<span class="text-blue-400">update</span>(id, permitted);
         <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>);
     }
 
@@ -225,6 +227,14 @@
         <span class="text-purple-400">let</span> id = req[<span class="text-green-400">"params"</span>][<span class="text-green-400">"id"</span>];
         <span class="text-yellow-200">Users</span>.<span class="text-blue-400">delete</span>(id);
         <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>);
+    }
+
+    <span class="text-gray-500">// Mass assignment protection: whitelist allowed parameters</span>
+    <span class="text-purple-400">fn</span> <span class="text-blue-400">_permit_params</span>(params: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+        <span class="text-purple-400">return</span> {
+            <span class="text-green-400">"name"</span>: params[<span class="text-green-400">"name"</span>],
+            <span class="text-green-400">"email"</span>: params[<span class="text-green-400">"email"</span>]
+        };
     }
 }</code></pre>
         </div>
@@ -423,6 +433,58 @@
     <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)
 }</code></pre>
         </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Mass Assignment Protection</h2>
+    <p class="text-gray-400 mb-6">Scaffolded controllers include built-in mass assignment protection to prevent security vulnerabilities. The <code>_permit_params</code> method whitelists only the allowed fields:</p>
+
+    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">Security Pattern</span>
+        </div>
+        <div class="p-6">
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">UsersController</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Controller</span> {
+    <span class="text-gray-500">// POST /users</span>
+    <span class="text-purple-400">fn</span> <span class="text-blue-400">create</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+        <span class="text-gray-500">// Only permit whitelisted fields</span>
+        <span class="text-purple-400">let</span> permitted = <span class="text-purple-400">this</span>._permit_params(req[<span class="text-green-400">"params"</span>]);
+        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(permitted);
+        <span class="text-gray-500">// ...</span>
+    }
+
+    <span class="text-gray-500">// Mass assignment protection</span>
+    <span class="text-purple-400">fn</span> <span class="text-blue-400">_permit_params</span>(params: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+        <span class="text-purple-400">return</span> {
+            <span class="text-green-400">"name"</span>: params[<span class="text-green-400">"name"</span>],
+            <span class="text-green-400">"email"</span>: params[<span class="text-green-400">"email"</span>]
+        };
+    }
+}</code></pre>
+        </div>
+    </div>
+
+    <div class="p-6 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <h3 class="text-lg font-semibold text-yellow-400 mb-2">Security Best Practice</h3>
+        <ul class="space-y-2 text-gray-300">
+            <li class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Never pass raw <code class="mx-1 text-yellow-300">req.params</code> directly to model operations
+            </li>
+            <li class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Always use <code class="mx-1 text-yellow-300">_permit_params()</code> to filter input
+            </li>
+            <li class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Add sensitive fields (is_admin, role, permissions) to the blacklist if needed
+            </li>
+        </ul>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Generated Routes</h2>
