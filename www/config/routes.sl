@@ -70,6 +70,7 @@ get("/docs/builtins/jwt", "docs#builtins_jwt");
 get("/docs/builtins/regex", "docs#builtins_regex");
 get("/docs/builtins/env", "docs#builtins_env");
 get("/docs/builtins/datetime", "docs#builtins_datetime");
+get("/docs/builtins/duration", "docs#builtins_duration");
 get("/docs/builtins/validation", "docs#builtins_validation");
 get("/docs/builtins/session", "docs#builtins_session");
 get("/docs/builtins/testing", "docs#builtins_testing");

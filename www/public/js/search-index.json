@@ -604,85 +604,229 @@
       "keywords": ["env", "dotenv", "config", "file"]
     },
     {
-      "title": "__datetime_now_local",
-      "type": "function",
+      "title": "DateTime.now",
+      "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-now-local",
-      "signature": "__datetime_now_local()",
-      "description": "Get the current local time as a Unix timestamp",
-      "keywords": ["datetime", "time", "now", "local"]
+      "path": "/docs/builtins/datetime#fn-datetime-now",
+      "signature": "DateTime.now()",
+      "description": "Get the current local date and time",
+      "keywords": ["datetime", "time", "now", "local", "current"]
     },
     {
-      "title": "__datetime_now_utc",
-      "type": "function",
+      "title": "DateTime.utc",
+      "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-now-utc",
-      "signature": "__datetime_now_utc()",
-      "description": "Get the current UTC time as a Unix timestamp",
-      "keywords": ["datetime", "time", "now", "utc"]
+      "path": "/docs/builtins/datetime#fn-datetime-utc",
+      "signature": "DateTime.utc()",
+      "description": "Get the current UTC date and time",
+      "keywords": ["datetime", "time", "now", "utc", "current"]
     },
     {
-      "title": "__datetime_parse",
-      "type": "function",
+      "title": "DateTime.parse",
+      "type": "method",
       "category": "DateTime",
       "path": "/docs/builtins/datetime#fn-datetime-parse",
-      "signature": "__datetime_parse(string)",
-      "description": "Parse an ISO 8601 or RFC date string to a Unix timestamp",
-      "keywords": ["datetime", "parse", "iso8601"]
+      "signature": "DateTime.parse(string)",
+      "description": "Parse an ISO 8601 or RFC date string",
+      "keywords": ["datetime", "parse", "iso8601", "convert"]
     },
     {
-      "title": "__datetime_format",
-      "type": "function",
+      "title": ".year()",
+      "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-format",
-      "signature": "__datetime_format(timestamp, format)",
-      "description": "Format a timestamp using strftime format specifiers",
-      "keywords": ["datetime", "format", "strftime"]
+      "path": "/docs/builtins/datetime#fn-year",
+      "signature": "datetime.year()",
+      "description": "Get the year component from a DateTime",
+      "keywords": ["datetime", "year", "component", "extract"]
     },
     {
-      "title": "__datetime_to_iso",
-      "type": "function",
+      "title": ".month()",
+      "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-to-iso",
-      "signature": "__datetime_to_iso(timestamp)",
-      "description": "Convert a timestamp to ISO 8601 format",
-      "keywords": ["datetime", "iso8601", "format"]
+      "path": "/docs/builtins/datetime#fn-month",
+      "signature": "datetime.month()",
+      "description": "Get the month component (1-12) from a DateTime",
+      "keywords": ["datetime", "month", "component", "extract"]
     },
     {
-      "title": "__datetime_components",
-      "type": "function",
+      "title": ".day()",
+      "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-components",
-      "signature": "__datetime_components(timestamp)",
-      "description": "Get individual date/time components from a timestamp",
-      "keywords": ["datetime", "year", "month", "day", "hour"]
+      "path": "/docs/builtins/datetime#fn-day",
+      "signature": "datetime.day()",
+      "description": "Get the day of month (1-31) from a DateTime",
+      "keywords": ["datetime", "day", "component", "extract"]
     },
     {
-      "title": "__datetime_add",
-      "type": "function",
+      "title": ".hour()",
+      "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-add",
-      "signature": "__datetime_add(timestamp, seconds)",
-      "description": "Add seconds to a timestamp",
-      "keywords": ["datetime", "add", "arithmetic"]
+      "path": "/docs/builtins/datetime#fn-hour",
+      "signature": "datetime.hour()",
+      "description": "Get the hour component (0-23) from a DateTime",
+      "keywords": ["datetime", "hour", "component", "extract"]
     },
     {
-      "title": "__datetime_sub",
-      "type": "function",
+      "title": ".minute()",
+      "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-sub",
-      "signature": "__datetime_sub(timestamp, seconds)",
-      "description": "Subtract seconds from a timestamp",
-      "keywords": ["datetime", "subtract", "arithmetic"]
+      "path": "/docs/builtins/datetime#fn-minute",
+      "signature": "datetime.minute()",
+      "description": "Get the minute component (0-59) from a DateTime",
+      "keywords": ["datetime", "minute", "component", "extract"]
     },
     {
-      "title": "__datetime_diff",
-      "type": "function",
+      "title": ".second()",
+      "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-diff",
-      "signature": "__datetime_diff(timestamp1, timestamp2)",
-      "description": "Get the difference between two timestamps in seconds",
-      "keywords": ["datetime", "diff", "difference"]
+      "path": "/docs/builtins/datetime#fn-second",
+      "signature": "datetime.second()",
+      "description": "Get the second component (0-59) from a DateTime",
+      "keywords": ["datetime", "second", "component", "extract"]
+    },
+    {
+      "title": ".weekday()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-weekday",
+      "signature": "datetime.weekday()",
+      "description": "Get the day of the week as a string",
+      "keywords": ["datetime", "weekday", "day", "name"]
+    },
+    {
+      "title": ".to_unix()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-to-unix",
+      "signature": "datetime.to_unix()",
+      "description": "Get the Unix timestamp (seconds since epoch)",
+      "keywords": ["datetime", "unix", "timestamp", "epoch"]
+    },
+    {
+      "title": ".to_iso()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-to-iso",
+      "signature": "datetime.to_iso()",
+      "description": "Get the date/time as an ISO 8601 string",
+      "keywords": ["datetime", "iso8601", "format", "string"]
+    },
+    {
+      "title": ".format()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-format",
+      "signature": "datetime.format(pattern)",
+      "description": "Format the date/time using strftime pattern specifiers",
+      "keywords": ["datetime", "format", "strftime", "pattern"]
+    },
+    {
+      "title": ".add_days()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-add-days",
+      "signature": "datetime.add_days(n)",
+      "description": "Add days to the date (use negative to subtract)",
+      "keywords": ["datetime", "add", "days", "arithmetic"]
+    },
+    {
+      "title": ".add_hours()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-add-hours",
+      "signature": "datetime.add_hours(n)",
+      "description": "Add hours to the date/time (use negative to subtract)",
+      "keywords": ["datetime", "add", "hours", "arithmetic"]
+    },
+    {
+      "title": ".add_weeks()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-add-weeks",
+      "signature": "datetime.add_weeks(n)",
+      "description": "Add weeks to the date (use negative to subtract)",
+      "keywords": ["datetime", "add", "weeks", "arithmetic"]
+    },
+    {
+      "title": ".add_months()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-add-months",
+      "signature": "datetime.add_months(n)",
+      "description": "Add months to the date (use negative to subtract)",
+      "keywords": ["datetime", "add", "months", "arithmetic"]
+    },
+    {
+      "title": ".add_years()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#fn-add-years",
+      "signature": "datetime.add_years(n)",
+      "description": "Add years to the date (use negative to subtract)",
+      "keywords": ["datetime", "add", "years", "arithmetic"]
+    },
+    {
+      "title": "Duration.seconds",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#fn-duration-seconds",
+      "signature": "Duration.seconds(n)",
+      "description": "Create a duration from a number of seconds",
+      "keywords": ["duration", "seconds", "time", "create"]
+    },
+    {
+      "title": "Duration.minutes",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#fn-duration-minutes",
+      "signature": "Duration.minutes(n)",
+      "description": "Create a duration from a number of minutes",
+      "keywords": ["duration", "minutes", "time", "create"]
+    },
+    {
+      "title": "Duration.hours",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#fn-duration-hours",
+      "signature": "Duration.hours(n)",
+      "description": "Create a duration from a number of hours",
+      "keywords": ["duration", "hours", "time", "create"]
+    },
+    {
+      "title": "Duration.days",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#fn-duration-days",
+      "signature": "Duration.days(n)",
+      "description": "Create a duration from a number of days",
+      "keywords": ["duration", "days", "time", "create"]
+    },
+    {
+      "title": ".to_seconds()",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#fn-to-seconds",
+      "signature": "duration.to_seconds()",
+      "description": "Get the total duration in seconds",
+      "keywords": ["duration", "seconds", "convert", "total"]
+    },
+    {
+      "title": ".to_minutes()",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#fn-to-minutes",
+      "signature": "duration.to_minutes()",
+      "description": "Get the total duration in minutes",
+      "keywords": ["duration", "minutes", "convert", "total"]
+    },
+    {
+      "title": ".to_hours()",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#fn-to-hours",
+      "signature": "duration.to_hours()",
+      "description": "Get the total duration in hours",
+      "keywords": ["duration", "hours", "convert", "total"]
     },
     {
       "title": "V.string",

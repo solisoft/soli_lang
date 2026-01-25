@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "structure": [
+    {
+      "name": "Getting Started",
+      "pages": [
+        {"title": "Introduction", "file": "intro.md"},
+        {"title": "Installation", "file": "install.md"},
+        {"title": "Quick Start", "file": "quickstart.md"}
+      ]
+    },
+    {
+      "name": "Core Concepts",
+      "pages": [
+        {"title": "Variables", "file": "variables.md"},
+        {"title": "Functions", "file": "functions.md"},
+        {"title": "Control Flow", "file": "controlflow.md"}
+      ]
+    },
+    {
+      "name": "Web Development",
+      "pages": [
+        {"title": "Controllers", "file": "controllers.md"},
+        {"title": "Views", "file": "views.md"},
+        {"title": "Models", "file": "models.md"},
+        {"title": "Routes", "file": "routes.md"}
+      ]
+    }
+  ]
+}

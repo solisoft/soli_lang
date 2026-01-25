@@ -1,0 +1,225 @@
+<div class="max-w-3xl mx-auto">
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Duration</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">Duration</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Represent and manipulate time durations with a fluent API.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-12">
+        <p class="text-gray-400">
+            The <code class="text-indigo-400">Duration</code> class represents a span of time.
+            Create durations using static factory methods, then convert them to different units as needed.
+        </p>
+    </div>
+
+    <!-- Static Methods -->
+    <section id="section-static-methods" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Creating Durations
+        </h2>
+
+        <section id="fn-duration-seconds" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-duration-seconds" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Duration.seconds(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Create a duration from a number of seconds.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of seconds
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Duration</code> - A Duration instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let timeout = Duration.seconds(30)
+let one_minute = Duration.seconds(60)</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-duration-minutes" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-duration-minutes" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Duration.minutes(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Create a duration from a number of minutes.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of minutes
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Duration</code> - A Duration instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let break_time = Duration.minutes(15)
+let hour = Duration.minutes(60)</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-duration-hours" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-duration-hours" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Duration.hours(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Create a duration from a number of hours.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of hours
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Duration</code> - A Duration instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let work_day = Duration.hours(8)
+let session_timeout = Duration.hours(1)</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-duration-days" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-duration-days" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Duration.days(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Create a duration from a number of days.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of days
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Duration</code> - A Duration instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let week = Duration.days(7)
+let trial_period = Duration.days(30)</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Conversion Methods -->
+    <section id="section-conversion" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Converting Durations</h2>
+
+        <section id="fn-to-seconds" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-to-seconds" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.to_seconds()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the total duration in seconds.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - Total seconds
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.hours(2)
+println(duration.to_seconds())  // 7200</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-to-minutes" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-to-minutes" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.to_minutes()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the total duration in minutes.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - Total minutes
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.hours(2)
+println(duration.to_minutes())  // 120</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-to-hours" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-to-hours" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.to_hours()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the total duration in hours.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - Total hours
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.days(1)
+println(duration.to_hours())  // 24</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Complete Example -->
+    <section id="section-example" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="Duration Example"><code class="language-soli text-sm">// Create durations
+let timeout = Duration.seconds(30)
+let break_time = Duration.minutes(15)
+let work_day = Duration.hours(8)
+let trial = Duration.days(7)
+
+// Convert to different units
+println("Timeout: " + timeout.to_seconds() + " seconds")
+println("Break: " + break_time.to_minutes() + " minutes")
+println("Work day: " + work_day.to_hours() + " hours")
+println("Trial: " + trial.to_hours() + " hours")
+
+// Practical example: session expiry
+let session_duration = Duration.hours(1)
+let expiry_seconds = session_duration.to_seconds()
+println("Session expires in " + expiry_seconds + " seconds")</code></pre>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/datetime" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            DateTime
+        </a>
+        <a href="/docs/builtins/validation" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Validation Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

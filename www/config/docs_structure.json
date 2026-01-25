@@ -237,6 +237,11 @@
                 "path": "/docs/builtins/datetime"
             },
             {
+                "id": "duration",
+                "title": "Duration",
+                "path": "/docs/builtins/duration"
+            },
+            {
                 "id": "validation",
                 "title": "Validation",
                 "path": "/docs/builtins/validation"

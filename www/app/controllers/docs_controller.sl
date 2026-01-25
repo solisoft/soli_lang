@@ -202,7 +202,11 @@ fn builtins_env(req: Any) -> Any {
 }
 
 fn builtins_datetime(req: Any) -> Any {
-    return render_docs("docs/builtins/datetime", "DateTime Functions", "builtins", "datetime");
+    return render_docs("docs/builtins/datetime", "DateTime", "builtins", "datetime");
+}
+
+fn builtins_duration(req: Any) -> Any {
+    return render_docs("docs/builtins/duration", "Duration", "builtins", "duration");
 }
 
 fn builtins_validation(req: Any) -> Any {

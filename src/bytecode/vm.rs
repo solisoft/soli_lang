@@ -183,10 +183,99 @@ enum NativeId {
 
 impl NativeId {
     fn from_u16(val: u16) -> Option<Self> {
-        if val <= NativeId::Await as u16 {
-            Some(unsafe { std::mem::transmute(val) })
-        } else {
-            None
+        // Safe conversion using match instead of transmute
+        // This ensures type safety by explicitly listing all valid variants
+        match val {
+            0 => Some(NativeId::Print),
+            1 => Some(NativeId::Println),
+            2 => Some(NativeId::Input),
+            3 => Some(NativeId::Len),
+            4 => Some(NativeId::Push),
+            5 => Some(NativeId::Pop),
+            6 => Some(NativeId::Shift),
+            7 => Some(NativeId::Unshift),
+            8 => Some(NativeId::Slice),
+            9 => Some(NativeId::ToString),
+            10 => Some(NativeId::Str),
+            11 => Some(NativeId::ToInt),
+            12 => Some(NativeId::ToFloat),
+            13 => Some(NativeId::Upcase),
+            14 => Some(NativeId::Downcase),
+            15 => Some(NativeId::Trim),
+            16 => Some(NativeId::Split),
+            17 => Some(NativeId::Join),
+            18 => Some(NativeId::Contains),
+            19 => Some(NativeId::IndexOf),
+            20 => Some(NativeId::Substring),
+            21 => Some(NativeId::Map),
+            22 => Some(NativeId::Filter),
+            23 => Some(NativeId::Fold),
+            24 => Some(NativeId::Reverse),
+            25 => Some(NativeId::Sort),
+            26 => Some(NativeId::TypeOf),
+            27 => Some(NativeId::IsNull),
+            28 => Some(NativeId::Now),
+            29 => Some(NativeId::Clock),
+            30 => Some(NativeId::Range),
+            31 => Some(NativeId::Abs),
+            32 => Some(NativeId::Min),
+            33 => Some(NativeId::Max),
+            34 => Some(NativeId::Floor),
+            35 => Some(NativeId::Ceil),
+            36 => Some(NativeId::Round),
+            37 => Some(NativeId::Sqrt),
+            38 => Some(NativeId::Pow),
+            39 => Some(NativeId::Keys),
+            40 => Some(NativeId::Values),
+            41 => Some(NativeId::Entries),
+            42 => Some(NativeId::FromEntries),
+            43 => Some(NativeId::HasKey),
+            44 => Some(NativeId::Delete),
+            45 => Some(NativeId::Merge),
+            46 => Some(NativeId::Clear),
+            // HTTP functions
+            47 => Some(NativeId::HttpGet),
+            48 => Some(NativeId::HttpPost),
+            49 => Some(NativeId::HttpGetJson),
+            50 => Some(NativeId::HttpPostJson),
+            51 => Some(NativeId::HttpRequest),
+            52 => Some(NativeId::JsonParse),
+            53 => Some(NativeId::JsonStringify),
+            54 => Some(NativeId::HttpOk),
+            55 => Some(NativeId::HttpSuccess),
+            56 => Some(NativeId::HttpRedirect),
+            57 => Some(NativeId::HttpClientError),
+            58 => Some(NativeId::HttpServerError),
+            // File I/O functions
+            59 => Some(NativeId::Barf),
+            60 => Some(NativeId::Slurp),
+            // HTML functions
+            61 => Some(NativeId::HtmlEscape),
+            62 => Some(NativeId::HtmlUnescape),
+            63 => Some(NativeId::SanitizeHtml),
+            64 => Some(NativeId::StripHtml),
+            // Regex functions
+            65 => Some(NativeId::RegexMatch),
+            66 => Some(NativeId::RegexFind),
+            67 => Some(NativeId::RegexFindAll),
+            68 => Some(NativeId::RegexReplace),
+            69 => Some(NativeId::RegexReplaceAll),
+            70 => Some(NativeId::RegexSplit),
+            71 => Some(NativeId::RegexCapture),
+            72 => Some(NativeId::RegexEscape),
+            // DateTime functions
+            73 => Some(NativeId::DateTimeNow),
+            74 => Some(NativeId::DateTimeParse),
+            75 => Some(NativeId::DateTimeUtc),
+            76 => Some(NativeId::DurationBetween),
+            77 => Some(NativeId::DurationSeconds),
+            78 => Some(NativeId::DurationMinutes),
+            79 => Some(NativeId::DurationHours),
+            80 => Some(NativeId::DurationDays),
+            81 => Some(NativeId::DurationWeeks),
+            // Async functions
+            82 => Some(NativeId::Await),
+            _ => None,
         }
     }
 
@@ -950,77 +1039,83 @@ impl VM {
                     .unwrap_or_default();
                 Ok(VMValue::Float(duration.as_secs_f64()))
             }
-            NativeId::Range => {
-                match (&args[0], &args[1]) {
-                    (VMValue::Int(start), VMValue::Int(end)) => {
-                        let arr: Vec<VMValue> = (*start..*end).map(VMValue::Int).collect();
-                        Ok(VMValue::Array(Rc::new(RefCell::new(arr))))
-                    }
-                    _ => Err(RuntimeError::new("range() expects two integers", Span::default())),
+            NativeId::Range => match (&args[0], &args[1]) {
+                (VMValue::Int(start), VMValue::Int(end)) => {
+                    let arr: Vec<VMValue> = (*start..*end).map(VMValue::Int).collect();
+                    Ok(VMValue::Array(Rc::new(RefCell::new(arr))))
                 }
-            }
-            NativeId::Abs => {
-                match &args[0] {
-                    VMValue::Int(n) => Ok(VMValue::Int(n.abs())),
-                    VMValue::Float(n) => Ok(VMValue::Float(n.abs())),
-                    _ => Err(RuntimeError::new("abs() expects a number", Span::default())),
-                }
-            }
-            NativeId::Min => {
-                match (&args[0], &args[1]) {
-                    (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(*a.min(b))),
-                    (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.min(*b))),
-                    (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).min(*b))),
-                    (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.min(*b as f64))),
-                    _ => Err(RuntimeError::new("min() expects two numbers", Span::default())),
-                }
-            }
-            NativeId::Max => {
-                match (&args[0], &args[1]) {
-                    (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(*a.max(b))),
-                    (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.max(*b))),
-                    (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).max(*b))),
-                    (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.max(*b as f64))),
-                    _ => Err(RuntimeError::new("max() expects two numbers", Span::default())),
-                }
-            }
-            NativeId::Floor => {
-                match &args[0] {
-                    VMValue::Int(n) => Ok(VMValue::Int(*n)),
-                    VMValue::Float(n) => Ok(VMValue::Float(n.floor())),
-                    _ => Err(RuntimeError::new("floor() expects a number", Span::default())),
-                }
-            }
-            NativeId::Ceil => {
-                match &args[0] {
-                    VMValue::Int(n) => Ok(VMValue::Int(*n)),
-                    VMValue::Float(n) => Ok(VMValue::Float(n.ceil())),
-                    _ => Err(RuntimeError::new("ceil() expects a number", Span::default())),
-                }
-            }
-            NativeId::Round => {
-                match &args[0] {
-                    VMValue::Int(n) => Ok(VMValue::Int(*n)),
-                    VMValue::Float(n) => Ok(VMValue::Float(n.round())),
-                    _ => Err(RuntimeError::new("round() expects a number", Span::default())),
-                }
-            }
-            NativeId::Sqrt => {
-                match &args[0] {
-                    VMValue::Int(n) => Ok(VMValue::Float((*n as f64).sqrt())),
-                    VMValue::Float(n) => Ok(VMValue::Float(n.sqrt())),
-                    _ => Err(RuntimeError::new("sqrt() expects a number", Span::default())),
-                }
-            }
-            NativeId::Pow => {
-                match (&args[0], &args[1]) {
-                    (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(a.pow(*b as u32))),
-                    (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.powf(*b))),
-                    (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).powf(*b))),
-                    (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.powf(*b as f64))),
-                    _ => Err(RuntimeError::new("pow() expects two numbers", Span::default())),
-                }
-            }
+                _ => Err(RuntimeError::new(
+                    "range() expects two integers",
+                    Span::default(),
+                )),
+            },
+            NativeId::Abs => match &args[0] {
+                VMValue::Int(n) => Ok(VMValue::Int(n.abs())),
+                VMValue::Float(n) => Ok(VMValue::Float(n.abs())),
+                _ => Err(RuntimeError::new("abs() expects a number", Span::default())),
+            },
+            NativeId::Min => match (&args[0], &args[1]) {
+                (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(*a.min(b))),
+                (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.min(*b))),
+                (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).min(*b))),
+                (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.min(*b as f64))),
+                _ => Err(RuntimeError::new(
+                    "min() expects two numbers",
+                    Span::default(),
+                )),
+            },
+            NativeId::Max => match (&args[0], &args[1]) {
+                (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(*a.max(b))),
+                (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.max(*b))),
+                (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).max(*b))),
+                (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.max(*b as f64))),
+                _ => Err(RuntimeError::new(
+                    "max() expects two numbers",
+                    Span::default(),
+                )),
+            },
+            NativeId::Floor => match &args[0] {
+                VMValue::Int(n) => Ok(VMValue::Int(*n)),
+                VMValue::Float(n) => Ok(VMValue::Float(n.floor())),
+                _ => Err(RuntimeError::new(
+                    "floor() expects a number",
+                    Span::default(),
+                )),
+            },
+            NativeId::Ceil => match &args[0] {
+                VMValue::Int(n) => Ok(VMValue::Int(*n)),
+                VMValue::Float(n) => Ok(VMValue::Float(n.ceil())),
+                _ => Err(RuntimeError::new(
+                    "ceil() expects a number",
+                    Span::default(),
+                )),
+            },
+            NativeId::Round => match &args[0] {
+                VMValue::Int(n) => Ok(VMValue::Int(*n)),
+                VMValue::Float(n) => Ok(VMValue::Float(n.round())),
+                _ => Err(RuntimeError::new(
+                    "round() expects a number",
+                    Span::default(),
+                )),
+            },
+            NativeId::Sqrt => match &args[0] {
+                VMValue::Int(n) => Ok(VMValue::Float((*n as f64).sqrt())),
+                VMValue::Float(n) => Ok(VMValue::Float(n.sqrt())),
+                _ => Err(RuntimeError::new(
+                    "sqrt() expects a number",
+                    Span::default(),
+                )),
+            },
+            NativeId::Pow => match (&args[0], &args[1]) {
+                (VMValue::Int(a), VMValue::Int(b)) => Ok(VMValue::Int(a.pow(*b as u32))),
+                (VMValue::Float(a), VMValue::Float(b)) => Ok(VMValue::Float(a.powf(*b))),
+                (VMValue::Int(a), VMValue::Float(b)) => Ok(VMValue::Float((*a as f64).powf(*b))),
+                (VMValue::Float(a), VMValue::Int(b)) => Ok(VMValue::Float(a.powf(*b as f64))),
+                _ => Err(RuntimeError::new(
+                    "pow() expects two numbers",
+                    Span::default(),
+                )),
+            },
             NativeId::Keys => {
                 if let VMValue::Hash(hash) = &args[0] {
                     let keys: Vec<VMValue> = hash.borrow().iter().map(|(k, _)| k.clone()).collect();
@@ -3803,7 +3898,10 @@ impl VM {
                     Some(VMValue::String(s)) => s.as_str().to_string(),
                     Some(other) => {
                         return Err(RuntimeError::new(
-                            format!("I18n.set_locale expects a string, got {}", other.type_name()),
+                            format!(
+                                "I18n.set_locale expects a string, got {}",
+                                other.type_name()
+                            ),
                             Span::default(),
                         ))
                     }

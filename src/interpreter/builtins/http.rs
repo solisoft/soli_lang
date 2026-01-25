@@ -1,6 +1,9 @@
 //! HTTP client built-in functions.
+//!
+//! Provides HTTP client functions with SSRF protection.
 
 use std::cell::RefCell;
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::rc::Rc;
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
@@ -10,6 +13,161 @@ use reqwest::Client;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{FutureState, HttpFutureKind, NativeFunction, Value};
 use crate::serve::get_tokio_handle;
+
+/// Blocked URL schemes that could be used for SSRF attacks.
+const BLOCKED_SCHEMES: &[&str] = &["javascript", "file", "ftp", "ssh", "telnet", "gopher"];
+
+/// Validate a URL to prevent Server-Side Request Forgery (SSRF) attacks.
+///
+/// Returns Ok(()) if the URL is safe, or an error message if it's potentially dangerous.
+fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
+    let url = url.trim();
+
+    if url.is_empty() {
+        return Err("URL cannot be empty".to_string());
+    }
+
+    // Extract scheme from URL
+    let (scheme, rest) = match url.split_once("://") {
+        Some((s, r)) => (s.to_lowercase(), r),
+        None => {
+            return Err("URL must have a scheme (e.g., http:// or https://)".to_string());
+        }
+    };
+
+    if scheme.is_empty() {
+        return Err("URL scheme cannot be empty".to_string());
+    }
+
+    if BLOCKED_SCHEMES.contains(&scheme.as_str()) {
+        return Err(format!("URL scheme '{}:' is not allowed for security reasons", scheme));
+    }
+
+    if scheme != "http" && scheme != "https" {
+        return Err("Only HTTP and HTTPS URLs are allowed".to_string());
+    }
+
+    // Extract host from URL (everything before the first /, : or @)
+    let host = if let Some((h, _)) = rest.split_once('/') {
+        // Check for user:pass@host format
+        if let Some((_, h2)) = h.split_once('@') {
+            h2
+        } else {
+            h
+        }
+    } else {
+        // No path, check for user:pass@host format
+        if let Some((_, h)) = rest.split_once('@') {
+            h
+        } else {
+            &rest
+        }
+    };
+
+    // Remove port if present (host:port)
+    let host = if let Some((h, _)) = host.split_once(':') {
+        h
+    } else {
+        host
+    };
+
+    if host.is_empty() {
+        return Err("URL host cannot be empty".to_string());
+    }
+
+    // Check if the host resolves to a private IP or localhost
+    if is_blocked_host(host) {
+        return Err("Access to private/localhost addresses is not allowed".to_string());
+    }
+
+    Ok(())
+}
+
+/// Check if a hostname resolves to a blocked IP address.
+/// Blocks: localhost, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
+fn is_blocked_host(host: &str) -> bool {
+    // Check for literal IP addresses first
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return is_blocked_ip(ip);
+    }
+
+    // Check for localhost variations
+    let lower_host = host.to_lowercase();
+    if lower_host == "localhost"
+        || lower_host == "localhost."
+        || lower_host.starts_with("localhost.")
+    {
+        return true;
+    }
+
+    // Try to resolve the hostname and check the resulting IPs
+    if let Ok(addrs) = (host, 0u16).to_socket_addrs() {
+        for addr in addrs {
+            if is_blocked_ip(addr.ip()) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Check if an IP address is in a blocked private range.
+fn is_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
+        // IPv4
+        IpAddr::V4(ipv4) => {
+            let octets = ipv4.octets();
+            // 127.0.0.0/8 (loopback)
+            if octets[0] == 127 {
+                return true;
+            }
+            // 10.0.0.0/8 (private class A)
+            if octets[0] == 10 {
+                return true;
+            }
+            // 172.16.0.0/12 (private class B)
+            if octets[0] == 172 && (octets[1] & 0xf0) == 16 {
+                return true;
+            }
+            // 192.168.0.0/16 (private class C)
+            if octets[0] == 192 && octets[1] == 168 {
+                return true;
+            }
+            // 169.254.0.0/16 (link-local)
+            if octets[0] == 169 && octets[1] == 254 {
+                return true;
+            }
+            // 0.0.0.0/8 (current network)
+            if octets[0] == 0 {
+                return true;
+            }
+            false
+        }
+        // IPv6
+        IpAddr::V6(ipv6) => {
+            if ip.is_loopback() {
+                return true;
+            }
+            let octets = ipv6.octets();
+            // fd00::/8 (ULA - unique local addresses)
+            if octets[0] & 0xfe == 0xfc {
+                return true;
+            }
+            // fe80:: (link-local)
+            if octets[0] == 0xfe && octets[1] == 0x80 {
+                return true;
+            }
+            false
+        }
+    }
+}
+
+/// Centralized URL validation for HTTP functions.
+/// Returns Ok(()) if URL is safe, or an error message.
+fn validate_http_url(url: &str) -> Result<(), String> {
+    validate_url_for_ssrf(url)
+}
 
 // Global reqwest client with connection pooling
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
@@ -56,6 +214,9 @@ pub fn register_http_builtins(env: &mut Environment) {
                     ))
                 }
             };
+
+            // Validate URL to prevent SSRF attacks
+            validate_http_url(&url)?;
 
             // Try async path if we have a tokio runtime handle (server context)
             if let Some(rt) = get_tokio_handle() {
@@ -106,6 +267,9 @@ pub fn register_http_builtins(env: &mut Environment) {
                     ))
                 }
             };
+
+            // Validate URL to prevent SSRF attacks
+            validate_http_url(&url)?;
 
             let body = match &args[1] {
                 Value::String(s) => s.clone(),
@@ -186,6 +350,9 @@ pub fn register_http_builtins(env: &mut Environment) {
                 }
             };
 
+            // Validate URL to prevent SSRF attacks
+            validate_http_url(&url)?;
+
             let json_body = value_to_json(&args[1])?;
 
             // Try async path if we have a tokio runtime handle (server context)
@@ -253,6 +420,9 @@ pub fn register_http_builtins(env: &mut Environment) {
                     ))
                 }
             };
+
+            // Validate URL to prevent SSRF attacks
+            validate_http_url(&url)?;
 
             // Try async path if we have a tokio runtime handle (server context)
             if let Some(rt) = get_tokio_handle() {
@@ -329,6 +499,9 @@ pub fn register_http_builtins(env: &mut Environment) {
                     ))
                 }
             };
+
+            // Validate URL to prevent SSRF attacks
+            validate_http_url(&url)?;
 
             // Extract headers into thread-safe Vec
             let mut headers_vec: Vec<(String, String)> = Vec::new();

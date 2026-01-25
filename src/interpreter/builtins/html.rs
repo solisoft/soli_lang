@@ -10,45 +10,65 @@ pub fn register_html_builtins(env: &mut Environment) {
     // html_escape(string) - Escape HTML special characters
     env.define(
         "html_escape".to_string(),
-        Value::NativeFunction(NativeFunction::new("html_escape", Some(1), |args| {
-            match &args[0] {
+        Value::NativeFunction(NativeFunction::new(
+            "html_escape",
+            Some(1),
+            |args| match &args[0] {
                 Value::String(s) => Ok(Value::String(html_escape(s))),
-                other => Err(format!("html_escape expects string, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "html_escape expects string, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // html_unescape(string) - Unescape HTML entities
     env.define(
         "html_unescape".to_string(),
-        Value::NativeFunction(NativeFunction::new("html_unescape", Some(1), |args| {
-            match &args[0] {
+        Value::NativeFunction(NativeFunction::new(
+            "html_unescape",
+            Some(1),
+            |args| match &args[0] {
                 Value::String(s) => Ok(Value::String(html_unescape(s))),
-                other => Err(format!("html_unescape expects string, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "html_unescape expects string, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // sanitize_html(string) - Remove dangerous HTML tags and attributes
     env.define(
         "sanitize_html".to_string(),
-        Value::NativeFunction(NativeFunction::new("sanitize_html", Some(1), |args| {
-            match &args[0] {
+        Value::NativeFunction(NativeFunction::new(
+            "sanitize_html",
+            Some(1),
+            |args| match &args[0] {
                 Value::String(s) => Ok(Value::String(sanitize_html(s))),
-                other => Err(format!("sanitize_html expects string, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "sanitize_html expects string, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // strip_html(string) -> string - removes all HTML tags
     env.define(
         "strip_html".to_string(),
-        Value::NativeFunction(NativeFunction::new("strip_html", Some(1), |args| {
-            match &args[0] {
+        Value::NativeFunction(NativeFunction::new(
+            "strip_html",
+            Some(1),
+            |args| match &args[0] {
                 Value::String(s) => Ok(Value::String(strip_html(s))),
-                other => Err(format!("strip_html expects string, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "strip_html expects string, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 }
 
@@ -128,17 +148,112 @@ pub fn sanitize_html(s: &str) -> String {
                         .next()
                         .unwrap_or("")
                 };
+
+                // Only allow these safe tags
                 let allowed_tags = [
-                    "p", "br", "b", "i", "u", "em", "strong", "a", "ul", "ol", "li",
-                    "blockquote", "code", "pre", "h1", "h2", "h3", "h4", "h5", "h6",
-                    "span", "div", "img",
+                    "p",
+                    "br",
+                    "b",
+                    "i",
+                    "u",
+                    "em",
+                    "strong",
+                    "a",
+                    "ul",
+                    "ol",
+                    "li",
+                    "blockquote",
+                    "code",
+                    "pre",
+                    "h1",
+                    "h2",
+                    "h3",
+                    "h4",
+                    "h5",
+                    "h6",
+                    "span",
+                    "div",
                 ];
                 let is_allowed = allowed_tags.contains(&tag_name);
-                let is_dangerous_attr = tag.contains("javascript:")
-                    || tag.contains("onload=")
-                    || tag.contains("onerror=")
-                    || tag.contains("onclick=");
-                if is_allowed && !is_dangerous_attr {
+
+                // Check for dangerous event handlers (comprehensive list)
+                let dangerous_patterns = [
+                    "javascript:",
+                    "vbscript:",
+                    "data:",
+                    "onload",
+                    "onerror",
+                    "onclick",
+                    "onmouseover",
+                    "onmouseout",
+                    "onfocus",
+                    "onblur",
+                    "onchange",
+                    "onsubmit",
+                    "onreset",
+                    "onkeydown",
+                    "onkeyup",
+                    "onkeypress",
+                    "onmousedown",
+                    "onmouseup",
+                    "onabort",
+                    "onresize",
+                    "onscroll",
+                    "onwheel",
+                    "ontouchstart",
+                    "ontouchend",
+                    "ontouchmove",
+                    "ontouchcancel",
+                    "oncontextmenu",
+                    "ondragstart",
+                    "ondrag",
+                    "ondragend",
+                    "ondrop",
+                    "onplay",
+                    "onpause",
+                    "onended",
+                    "onvolumechange",
+                    "onwaiting",
+                    "expression(",
+                    "url(",
+                    "@import",
+                    "<style",
+                    "<link",
+                    "<object",
+                    "<embed",
+                    "<iframe",
+                    "<script",
+                    "<form",
+                    "<input",
+                    "<button",
+                    "<meta",
+                    "<svg",
+                    "<foreignobject",
+                ];
+
+                let mut is_dangerous = false;
+                for pattern in &dangerous_patterns {
+                    if tag.contains(pattern) {
+                        is_dangerous = true;
+                        break;
+                    }
+                }
+
+                // Also check for attribute values containing dangerous content
+                let tag_lower = tag.to_lowercase();
+                if tag_lower.contains("href=\"javascript:")
+                    || tag_lower.contains("href='javascript:")
+                    || tag_lower.contains("src=\"javascript:")
+                    || tag_lower.contains("src='javascript:")
+                    || tag_lower.contains("href=\"data:")
+                    || tag_lower.contains("href='data:")
+                    || tag_lower.contains("src=\"data:")
+                    || tag_lower.contains("src='data:")
+                {
+                    is_dangerous = true;
+                }
+
+                if is_allowed && !is_dangerous {
                     let cleaned_tag = if is_closing {
                         format!("</{}>", tag_name)
                     } else if is_self_closing {
@@ -151,7 +266,8 @@ pub fn sanitize_html(s: &str) -> String {
                             .split_whitespace()
                             .skip(1)
                             .collect();
-                        let safe_attrs = ["href", "src", "title", "alt", "class", "id", "style"];
+                        // Only these safe attributes
+                        let safe_attrs = ["href", "title", "alt", "class", "id", "style"];
                         let safe_attrs_result: Vec<String> = attrs
                             .iter()
                             .filter_map(|&attr| {
@@ -159,8 +275,11 @@ pub fn sanitize_html(s: &str) -> String {
                                 if parts.len() == 2 {
                                     let attr_name = parts[0].to_lowercase();
                                     let attr_value = parts[1].trim_matches('"').trim_matches('\'');
+                                    // Only allow specific safe attributes with safe values
                                     if safe_attrs.contains(&attr_name.as_str())
                                         && !attr_value.to_lowercase().contains("javascript:")
+                                        && !attr_value.to_lowercase().contains("vbscript:")
+                                        && !attr_value.to_lowercase().contains("data:")
                                     {
                                         Some(format!("{}={}", attr_name, parts[1]))
                                     } else {

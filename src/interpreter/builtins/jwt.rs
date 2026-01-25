@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Algorithm, Validation};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -62,6 +62,16 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                     ))
                 }
             };
+
+            // Enforce minimum secret length for security
+            const MIN_SECRET_LENGTH: usize = 16;
+            if secret.len() < MIN_SECRET_LENGTH {
+                return Err(format!(
+                    "jwt_sign() secret must be at least {} characters for security (got {})",
+                    MIN_SECRET_LENGTH,
+                    secret.len()
+                ));
+            }
 
             // Parse options
             let mut expires_in: Option<u64> = None;
@@ -122,8 +132,12 @@ pub fn register_jwt_builtins(env: &mut Environment) {
 
             // Create token
             let header = Header::new(algorithm);
-            let token = encode(&header, &claims, &EncodingKey::from_secret(secret.as_bytes()))
-                .map_err(|e| format!("Failed to create JWT: {}", e))?;
+            let token = encode(
+                &header,
+                &claims,
+                &EncodingKey::from_secret(secret.as_bytes()),
+            )
+            .map_err(|e| format!("Failed to create JWT: {}", e))?;
 
             Ok(Value::String(token))
         })),

@@ -1191,56 +1191,42 @@ Same as `dotenv()` - loads environment variables from a .env file.
 
 ---
 
-## DateTime Functions
+## DateTime Class
 
-Soli uses Unix timestamps (integers) for datetime operations. All datetime functions use the `__datetime_` prefix in Soli code.
+The `DateTime` class provides a convenient way to work with dates and times. Create instances using static methods, then use instance methods to extract components or perform arithmetic.
 
-### __datetime_now_local()
+### Static Methods
 
-Gets the current local time as a Unix timestamp.
+#### DateTime.now()
 
-**Returns:** Int - Unix timestamp
+Gets the current local date and time.
 
-**Example:**
-```soli
-let now = __datetime_now_local()
-```
-
-### __datetime_now_utc()
-
-Gets the current UTC time as a Unix timestamp.
-
-**Returns:** Int - Unix timestamp
+**Returns:** DateTime - A DateTime instance
 
 **Example:**
 ```soli
-let now = __datetime_now_utc()
+let now = DateTime.now()
+println(now.to_iso())  // "2024-01-15T10:30:00"
 ```
 
-### __datetime_from_unix(timestamp)
+#### DateTime.utc()
 
-Creates a datetime from a Unix timestamp.
+Gets the current UTC date and time.
 
-**Parameters:**
-- `timestamp` (Int) - Unix timestamp
+**Returns:** DateTime - A DateTime instance
 
-**Returns:** Int - The same timestamp (for consistency)
+**Example:**
+```soli
+let utc = DateTime.utc()
+println(utc.to_iso())  // "2024-01-15T15:30:00Z"
+```
 
-### __datetime_to_unix(timestamp)
+#### DateTime.parse(string)
 
-Converts a datetime to a Unix timestamp.
-
-**Parameters:**
-- `timestamp` (Int) - Unix timestamp
-
-**Returns:** Int - Unix timestamp
-
-### __datetime_parse(string)
-
-Parses a datetime string to a Unix timestamp.
+Parses a datetime string in ISO 8601 or RFC format.
 
 **Parameters:**
-- `string` (String) - Date string in ISO 8601 or RFC formats
+- `string` (String) - Date string to parse
 
 Supported formats:
 - RFC 3339: `"2024-01-15T10:30:00Z"`
@@ -1248,21 +1234,96 @@ Supported formats:
 - ISO datetime: `"2024-01-15T10:30:00"` or `"2024-01-15 10:30:00"`
 - ISO date only: `"2024-01-15"`
 
-**Returns:** Int|null - Unix timestamp or null if parsing fails
+**Returns:** DateTime - A DateTime instance
 
 **Example:**
 ```soli
-let ts = __datetime_parse("2024-01-15T10:30:00Z")
-let ts2 = __datetime_parse("2024-01-15")
+let dt = DateTime.parse("2024-01-15T10:30:00Z")
+let date_only = DateTime.parse("2024-01-15")
 ```
 
-### __datetime_format(timestamp, format)
+### Instance Methods - Components
 
-Formats a timestamp as a string using strftime format specifiers.
+#### .year()
+
+Gets the year component (e.g., 2024).
+
+**Returns:** Int
+
+#### .month()
+
+Gets the month component (1-12).
+
+**Returns:** Int - 1 = January, 12 = December
+
+#### .day()
+
+Gets the day of month (1-31).
+
+**Returns:** Int
+
+#### .hour()
+
+Gets the hour component (0-23).
+
+**Returns:** Int
+
+#### .minute()
+
+Gets the minute component (0-59).
+
+**Returns:** Int
+
+#### .second()
+
+Gets the second component (0-59).
+
+**Returns:** Int
+
+#### .weekday()
+
+Gets the day of the week as a string.
+
+**Returns:** String - Lowercase weekday name (e.g., "monday", "tuesday")
+
+**Example:**
+```soli
+let dt = DateTime.parse("2024-01-15")
+println(dt.weekday())  // "monday"
+```
+
+### Instance Methods - Formatting
+
+#### .to_unix()
+
+Gets the Unix timestamp (seconds since epoch).
+
+**Returns:** Int
+
+**Example:**
+```soli
+let dt = DateTime.now()
+println(dt.to_unix())  // 1705315800
+```
+
+#### .to_iso()
+
+Gets the date/time as an ISO 8601 string.
+
+**Returns:** String
+
+**Example:**
+```soli
+let dt = DateTime.now()
+println(dt.to_iso())  // "2024-01-15T10:30:00"
+```
+
+#### .format(pattern)
+
+Formats the date/time using strftime pattern specifiers.
 
 **Parameters:**
-- `timestamp` (Int) - Unix timestamp
-- `format` (String) - Format string (strftime format)
+- `pattern` (String) - strftime format pattern
 
 Common format specifiers:
 - `%Y` - 4-digit year (2024)
@@ -1278,172 +1339,216 @@ Common format specifiers:
 
 **Example:**
 ```soli
-let ts = __datetime_now_utc()
-__datetime_format(ts, "%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
-__datetime_format(ts, "%B %d, %Y")           // "January 15, 2024"
-__datetime_format(ts, "%A")                  // "Monday"
+let dt = DateTime.parse("2024-01-15T10:30:00")
+dt.format("%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
+dt.format("%B %d, %Y")           // "January 15, 2024"
+dt.format("%A")                  // "Monday"
 ```
 
-### __datetime_components(timestamp)
+### Instance Methods - Arithmetic
 
-Gets datetime components as a hash.
+#### .add_days(n)
+
+Adds days to the date. Use negative values to subtract.
 
 **Parameters:**
-- `timestamp` (Int) - Unix timestamp
+- `n` (Int) - Number of days to add
 
-**Returns:** Hash - `{ "year", "month", "day", "hour", "minute", "second", "nanosecond", "weekday", "ordinal", "is_dst" }`
+**Returns:** DateTime - A new DateTime instance
 
 **Example:**
 ```soli
-let parts = __datetime_components(ts)
-println(parts["year"])     // 2024
-println(parts["month"])    // 1
-println(parts["day"])      // 15
-println(parts["weekday"])  // "monday"
+let today = DateTime.now()
+let tomorrow = today.add_days(1)
+let yesterday = today.add_days(-1)
 ```
 
-### __datetime_add(timestamp, seconds)
+#### .add_hours(n)
 
-Adds seconds to a timestamp.
+Adds hours to the date/time. Use negative values to subtract.
 
 **Parameters:**
-- `timestamp` (Int) - Unix timestamp
-- `seconds` (Int) - Seconds to add (can be negative)
+- `n` (Int) - Number of hours to add
 
-**Returns:** Int - New timestamp
+**Returns:** DateTime - A new DateTime instance
+
+#### .add_weeks(n)
+
+Adds weeks to the date. Use negative values to subtract.
+
+**Parameters:**
+- `n` (Int) - Number of weeks to add
+
+**Returns:** DateTime - A new DateTime instance
+
+#### .add_months(n)
+
+Adds months to the date. Use negative values to subtract.
+
+**Parameters:**
+- `n` (Int) - Number of months to add
+
+**Returns:** DateTime - A new DateTime instance
+
+#### .add_years(n)
+
+Adds years to the date. Use negative values to subtract.
+
+**Parameters:**
+- `n` (Int) - Number of years to add
+
+**Returns:** DateTime - A new DateTime instance
+
+### Complete Example
+
+```soli
+// Get current date/time
+let now = DateTime.now()
+println("Current time: " + now.to_iso())
+
+// Extract components
+println("Year: " + now.year())
+println("Month: " + now.month())
+println("Day: " + now.day())
+println("Weekday: " + now.weekday())
+
+// Format output
+println(now.format("%B %d, %Y at %H:%M"))
+
+// Date arithmetic
+let next_week = now.add_weeks(1)
+let last_month = now.add_months(-1)
+
+// Parse a date string
+let birthday = DateTime.parse("1990-06-15")
+println("Birthday was on a " + birthday.weekday())
+```
+
+---
+
+## Duration Class
+
+The `Duration` class represents a span of time. Create durations using static factory methods, then convert them to different units as needed.
+
+### Static Methods
+
+#### Duration.seconds(n)
+
+Creates a duration from a number of seconds.
+
+**Parameters:**
+- `n` (Int) - Number of seconds
+
+**Returns:** Duration
 
 **Example:**
 ```soli
-let ts = __datetime_now_utc()
-let in_one_hour = __datetime_add(ts, 3600)
-let yesterday = __datetime_add(ts, -86400)
+let timeout = Duration.seconds(30)
+let one_minute = Duration.seconds(60)
 ```
 
-### __datetime_add_days(timestamp)
+#### Duration.minutes(n)
 
-Adds one day to a timestamp.
-
-**Parameters:**
-- `timestamp` (Int) - Unix timestamp
-
-**Returns:** Int - New timestamp
-
-### __datetime_add_hours(timestamp)
-
-Adds one hour to a timestamp.
+Creates a duration from a number of minutes.
 
 **Parameters:**
-- `timestamp` (Int) - Unix timestamp
+- `n` (Int) - Number of minutes
 
-**Returns:** Int - New timestamp
-
-### __datetime_add_weeks(timestamp)
-
-Adds one week to a timestamp.
-
-**Parameters:**
-- `timestamp` (Int) - Unix timestamp
-
-**Returns:** Int - New timestamp
-
-### __datetime_add_months(timestamp)
-
-Adds one month to a timestamp.
-
-**Parameters:**
-- `timestamp` (Int) - Unix timestamp
-
-**Returns:** Int - New timestamp
-
-### __datetime_add_years(timestamp)
-
-Adds one year to a timestamp.
-
-**Parameters:**
-- `timestamp` (Int) - Unix timestamp
-
-**Returns:** Int - New timestamp
-
-### __datetime_sub(timestamp, seconds)
-
-Subtracts seconds from a timestamp.
-
-**Parameters:**
-- `timestamp` (Int) - Unix timestamp
-- `seconds` (Int) - Seconds to subtract
-
-**Returns:** Int - New timestamp
-
-### __datetime_diff(timestamp1, timestamp2)
-
-Calculates the difference between two timestamps in seconds.
-
-**Parameters:**
-- `timestamp1` (Int) - First timestamp
-- `timestamp2` (Int) - Second timestamp
-
-**Returns:** Int - Difference (timestamp2 - timestamp1)
+**Returns:** Duration
 
 **Example:**
 ```soli
-let start = __datetime_parse("2024-01-01")
-let end = __datetime_parse("2024-01-15")
-let diff = __datetime_diff(start, end)  // 1209600 seconds (14 days)
+let break_time = Duration.minutes(15)
 ```
 
-### __datetime_is_before(timestamp1, timestamp2)
+#### Duration.hours(n)
 
-Checks if timestamp1 is before timestamp2.
-
-**Parameters:**
-- `timestamp1` (Int) - First timestamp
-- `timestamp2` (Int) - Second timestamp
-
-**Returns:** Bool
-
-### __datetime_is_after(timestamp1, timestamp2)
-
-Checks if timestamp1 is after timestamp2.
+Creates a duration from a number of hours.
 
 **Parameters:**
-- `timestamp1` (Int) - First timestamp
-- `timestamp2` (Int) - Second timestamp
+- `n` (Int) - Number of hours
 
-**Returns:** Bool
-
-### __datetime_is_same(timestamp1, timestamp2)
-
-Checks if two timestamps are equal.
-
-**Parameters:**
-- `timestamp1` (Int) - First timestamp
-- `timestamp2` (Int) - Second timestamp
-
-**Returns:** Bool
-
-### __datetime_to_iso(timestamp)
-
-Converts a timestamp to ISO 8601 (RFC 3339) format.
-
-**Parameters:**
-- `timestamp` (Int) - Unix timestamp
-
-**Returns:** String - ISO 8601 formatted string
+**Returns:** Duration
 
 **Example:**
 ```soli
-let ts = __datetime_now_utc()
-__datetime_to_iso(ts)  // "2024-01-15T10:30:00+00:00"
+let work_day = Duration.hours(8)
+let session_timeout = Duration.hours(1)
 ```
 
-### __datetime_weekday(timestamp)
+#### Duration.days(n)
 
-Gets the weekday name for a timestamp.
+Creates a duration from a number of days.
 
 **Parameters:**
-- `timestamp` (Int) - Unix timestamp
+- `n` (Int) - Number of days
 
-**Returns:** String - Lowercase weekday name (e.g., "monday", "tuesday")
+**Returns:** Duration
+
+**Example:**
+```soli
+let week = Duration.days(7)
+let trial_period = Duration.days(30)
+```
+
+### Instance Methods
+
+#### .to_seconds()
+
+Gets the total duration in seconds.
+
+**Returns:** Int
+
+**Example:**
+```soli
+let duration = Duration.hours(2)
+println(duration.to_seconds())  // 7200
+```
+
+#### .to_minutes()
+
+Gets the total duration in minutes.
+
+**Returns:** Int
+
+**Example:**
+```soli
+let duration = Duration.hours(2)
+println(duration.to_minutes())  // 120
+```
+
+#### .to_hours()
+
+Gets the total duration in hours.
+
+**Returns:** Int
+
+**Example:**
+```soli
+let duration = Duration.days(1)
+println(duration.to_hours())  // 24
+```
+
+### Complete Example
+
+```soli
+// Create durations
+let timeout = Duration.seconds(30)
+let break_time = Duration.minutes(15)
+let work_day = Duration.hours(8)
+let trial = Duration.days(7)
+
+// Convert to different units
+println("Timeout: " + timeout.to_seconds() + " seconds")
+println("Break: " + break_time.to_minutes() + " minutes")
+println("Work day: " + work_day.to_hours() + " hours")
+println("Trial: " + trial.to_hours() + " hours")
+
+// Practical example: session expiry
+let session_duration = Duration.hours(1)
+let expiry_seconds = session_duration.to_seconds()
+println("Session expires in " + expiry_seconds + " seconds")
+```
 
 ---
 

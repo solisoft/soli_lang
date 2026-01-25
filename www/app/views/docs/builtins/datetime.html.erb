@@ -9,91 +9,263 @@
             <span class="text-white">DateTime</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent">DateTime Functions</span>
+            <span class="bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent">DateTime</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Date/time parsing, formatting, arithmetic, and comparison using Unix timestamps.
+            Date and time manipulation with a clean, object-oriented API.
         </p>
     </div>
 
     <!-- Overview -->
     <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-12">
         <p class="text-gray-400">
-            Soli uses Unix timestamps (integers) for datetime operations. These are low-level functions prefixed with <code class="text-indigo-400">__datetime_</code>. For higher-level operations, use the <code class="text-indigo-400">DateTime</code> class.
+            The <code class="text-indigo-400">DateTime</code> class provides a convenient way to work with dates and times.
+            Create instances using static methods, then use instance methods to extract components or perform arithmetic.
         </p>
     </div>
 
-    <!-- Current Time -->
-    <section id="section-current-time" class="scroll-mt-20 mb-12">
+    <!-- Static Methods -->
+    <section id="section-static-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
             <span class="w-8 h-8 rounded-lg bg-teal-500/20 flex items-center justify-center">
                 <svg class="w-4 h-4 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
             </span>
-            Current Time
+            Static Methods
         </h2>
 
-        <section id="fn-datetime-now-local" class="scroll-mt-20 mb-6">
+        <section id="fn-datetime-now" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-now-local" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_now_local()</code>
+                <a href="#fn-datetime-now" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">DateTime.now()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get the current local time as a Unix timestamp.</p>
+                <p class="text-gray-400 mb-3">Get the current local date and time.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Int</code> - Unix timestamp in seconds
+                    <code class="text-purple-400">DateTime</code> - A DateTime instance representing the current local time
                 </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now()
+println(now.to_iso())  // "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
 
-        <section id="fn-datetime-now-utc" class="scroll-mt-20 mb-6">
+        <section id="fn-datetime-utc" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-now-utc" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_now_utc()</code>
+                <a href="#fn-datetime-utc" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">DateTime.utc()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get the current UTC time as a Unix timestamp.</p>
+                <p class="text-gray-400 mb-3">Get the current UTC date and time.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Int</code> - Unix timestamp in seconds (UTC)
+                    <code class="text-purple-400">DateTime</code> - A DateTime instance representing the current UTC time
                 </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let utc = DateTime.utc()
+println(utc.to_iso())  // "2024-01-15T15:30:00Z"</code></pre>
             </div>
         </section>
-    </section>
-
-    <!-- Parsing & Formatting -->
-    <section id="section-parsing-formatting" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Parsing & Formatting</h2>
 
         <section id="fn-datetime-parse" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-datetime-parse" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_parse(string)</code>
+                    <code class="text-lg font-mono text-indigo-400">DateTime.parse(string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Parse an ISO 8601 or RFC date string to a Unix timestamp.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let ts = __datetime_parse("2024-01-15T10:30:00Z")
-let ts2 = __datetime_parse("2024-01-15")</code></pre>
+                <p class="text-gray-400 mb-3">Parse a date/time string in ISO 8601 or RFC format.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">string</code> : <code class="text-purple-400">String</code> - The date string to parse
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A DateTime instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15T10:30:00Z")
+let date_only = DateTime.parse("2024-01-15")</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Component Methods -->
+    <section id="section-components" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Date Components</h2>
+
+        <section id="fn-year" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-year" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.year()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the year component (e.g., 2024).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - The year
+                </div>
             </div>
         </section>
 
-        <section id="fn-datetime-format" class="scroll-mt-20 mb-6">
+        <section id="fn-month" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-format" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_format(timestamp, format)</code>
+                <a href="#fn-month" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.month()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Format a timestamp using strftime format specifiers.</p>
+                <p class="text-gray-400 mb-3">Get the month component (1-12).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - The month (1 = January, 12 = December)
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-day" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-day" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.day()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the day of month (1-31).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - The day of the month
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-hour" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-hour" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.hour()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the hour component (0-23).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - The hour in 24-hour format
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-minute" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-minute" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.minute()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the minute component (0-59).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - The minute
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-second" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-second" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.second()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the second component (0-59).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - The second
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-weekday" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-weekday" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.weekday()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the day of the week as a string.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - The weekday name (e.g., "monday", "tuesday")
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15")
+println(dt.weekday())  // "monday"</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Formatting Methods -->
+    <section id="section-formatting" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Formatting</h2>
+
+        <section id="fn-to-unix" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-to-unix" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.to_unix()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the Unix timestamp (seconds since epoch).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Int</code> - Unix timestamp in seconds
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now()
+println(dt.to_unix())  // 1705315800</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-to-iso" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-to-iso" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.to_iso()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the date/time as an ISO 8601 string.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - ISO 8601 formatted string
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now()
+println(dt.to_iso())  // "2024-01-15T10:30:00"</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-format" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-format" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.format(pattern)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Format the date/time using strftime pattern specifiers.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">pattern</code> : <code class="text-purple-400">String</code> - strftime format pattern
+                </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Common Format Specifiers</h4>
                 <div class="text-sm text-gray-400 grid grid-cols-2 gap-2 mb-4">
                     <div><code class="text-amber-400">%Y</code> - Year (4 digits)</div>
@@ -105,103 +277,156 @@ let ts2 = __datetime_parse("2024-01-15")</code></pre>
                     <div><code class="text-amber-400">%B</code> - Month name</div>
                     <div><code class="text-amber-400">%A</code> - Weekday name</div>
                 </div>
-<pre data-filename="Example"><code class="language-soli text-sm">__datetime_format(ts, "%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
-__datetime_format(ts, "%B %d, %Y")           // "January 15, 2024"
-__datetime_format(ts, "%A")                  // "Monday"</code></pre>
-            </div>
-        </section>
-
-        <section id="fn-datetime-to-iso" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-to-iso" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_to_iso(timestamp)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Convert a timestamp to ISO 8601 format.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">__datetime_to_iso(ts)  // "2024-01-15T10:30:00Z"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15T10:30:00")
+dt.format("%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
+dt.format("%B %d, %Y")           // "January 15, 2024"
+dt.format("%A")                  // "Monday"</code></pre>
             </div>
         </section>
     </section>
 
-    <!-- Components -->
-    <section id="section-components" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Date Components</h2>
+    <!-- Arithmetic Methods -->
+    <section id="section-arithmetic" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Arithmetic</h2>
 
-        <section id="fn-datetime-components" class="scroll-mt-20 mb-6">
+        <section id="fn-add-days" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-components" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_components(timestamp)</code>
+                <a href="#fn-add-days" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.add_days(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get individual date/time components from a timestamp.</p>
+                <p class="text-gray-400 mb-3">Add days to the date. Use negative values to subtract.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of days to add
+                </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> with keys: year, month, day, hour, minute, second, weekday
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let parts = __datetime_components(ts)
-println(parts["year"])     // 2024
-println(parts["month"])    // 1
-println(parts["day"])      // 15
-println(parts["weekday"])  // "monday"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now()
+let tomorrow = today.add_days(1)
+let yesterday = today.add_days(-1)</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-add-hours" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-add-hours" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.add_hours(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Add hours to the date/time. Use negative values to subtract.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of hours to add
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now()
+let in_two_hours = now.add_hours(2)</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-add-weeks" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-add-weeks" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.add_weeks(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Add weeks to the date. Use negative values to subtract.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of weeks to add
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now()
+let next_week = today.add_weeks(1)</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-add-months" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-add-months" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.add_months(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Add months to the date. Use negative values to subtract.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of months to add
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now()
+let next_month = today.add_months(1)
+let last_quarter = today.add_months(-3)</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-add-years" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-add-years" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.add_years(n)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Add years to the date. Use negative values to subtract.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Number of years to add
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now()
+let next_year = today.add_years(1)</code></pre>
             </div>
         </section>
     </section>
 
-    <!-- Arithmetic -->
-    <section id="section-arithmetic" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Arithmetic & Comparison</h2>
+    <!-- Complete Example -->
+    <section id="section-example" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
 
-        <section id="fn-datetime-add" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-add" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_add(timestamp, seconds)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Add seconds to a timestamp.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let tomorrow = __datetime_add(ts, 86400)      // Add 1 day
-let next_hour = __datetime_add(ts, 3600)      // Add 1 hour</code></pre>
-            </div>
-        </section>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="DateTime Example"><code class="language-soli text-sm">// Get current date/time
+let now = DateTime.now()
+println("Current time: " + now.to_iso())
 
-        <section id="fn-datetime-sub" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-sub" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_sub(timestamp, seconds)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Subtract seconds from a timestamp.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let yesterday = __datetime_sub(ts, 86400)  // Subtract 1 day</code></pre>
-            </div>
-        </section>
+// Extract components
+println("Year: " + now.year())
+println("Month: " + now.month())
+println("Day: " + now.day())
+println("Weekday: " + now.weekday())
 
-        <section id="fn-datetime-diff" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-diff" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">__datetime_diff(timestamp1, timestamp2)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Get the difference between two timestamps in seconds.</p>
-            </div>
-        </section>
+// Format output
+println(now.format("%B %d, %Y at %H:%M"))
 
+// Date arithmetic
+let next_week = now.add_weeks(1)
+let last_month = now.add_months(-1)
 
-                <section id="fn-datetime-is-after" class="scroll-mt-20">
-                    <a href="#fn-datetime-is-after" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">__datetime_is_after(ts1, ts2)</code>
-                    </a>
-                    <p class="text-gray-400 text-sm mt-1">Check if ts1 is after ts2</p>
-                </section>
-            </div>
+// Parse a date string
+let birthday = DateTime.parse("1990-06-15")
+println("Birthday was on a " + birthday.weekday())</code></pre>
         </div>
     </section>
 
@@ -213,8 +438,8 @@ let next_hour = __datetime_add(ts, 3600)      // Add 1 hour</code></pre>
             </svg>
             Env Functions
         </a>
-        <a href="/docs/builtins/validation" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
-            Validation Functions
+        <a href="/docs/builtins/duration" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Duration
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
