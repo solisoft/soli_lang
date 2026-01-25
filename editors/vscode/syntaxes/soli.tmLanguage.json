@@ -1,0 +1,179 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Soli",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.soli",
+          "begin": "//",
+          "end": "$"
+        },
+        {
+          "name": "comment.block.soli",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.soli",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.soli",
+              "match": "\\\\[\\\\\"'nrt0]|\\\\u[0-9a-fA-F]{4}|\\\\U[0-9a-fA-F]{8}"
+            },
+            {
+              "name": "variable.interpolation.soli",
+              "match": "\\{[^}]*\\}"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.soli",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.soli",
+              "match": "\\\\[\\\\\"'nrt0]"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.triple.soli",
+          "begin": "\\[\\[",
+          "end": "\\]\\]"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.soli",
+          "match": "\\b[0-9][0-9_]*\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.soli",
+          "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*\\b"
+        },
+        {
+          "name": "constant.numeric.hex.soli",
+          "match": "\\b0x[0-9a-fA-F][0-9a-fA-F_]*\\b"
+        },
+        {
+          "name": "constant.numeric.binary.soli",
+          "match": "\\b0b[01][01_]*\\b"
+        },
+        {
+          "name": "constant.numeric.octal.soli",
+          "match": "\\b0o[0-7][0-7_]*\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.soli",
+          "match": "\\b(if|else|elsif|while|for|in|match|case|when|end|unless|try|catch|finally|throw|return)\\b"
+        },
+        {
+          "name": "keyword.other.soli",
+          "match": "\\b(new|this|super|class|extends|implements|interface|async|await|import|export|from|as|static|public|private|protected|let|fn)\\b"
+        },
+        {
+          "name": "constant.language.soli",
+          "match": "\\b(true|false|null)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.soli",
+          "match": "\\b(Int|Float|Bool|String|Void|Any)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.soli",
+          "match": "\\+|\\-|\\*|\\/|%|\\*\\*"
+        },
+        {
+          "name": "keyword.operator.comparison.soli",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.soli",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.pipe.soli",
+          "match": "\\|>"
+        },
+        {
+          "name": "keyword.operator.assignment.soli",
+          "match": "=|\\+=|\\-=|\\*=|\\/=|%="
+        },
+        {
+          "name": "keyword.operator.arrow.soli",
+          "match": "->|=>"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.soli",
+          "match": "[,;]"
+        },
+        {
+          "name": "punctuation.brackets.soli",
+          "match": "[\\[\\]\\(\\)\\{\\}]"
+        },
+        {
+          "name": "punctuation.accessor.soli",
+          "match": "\\."
+        },
+        {
+          "name": "punctuation.separator.key-value.soli",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.separator.range.soli",
+          "match": "\\.\\."
+        }
+      ]
+    }
+  },
+  "scopeName": "source.soli"
+}

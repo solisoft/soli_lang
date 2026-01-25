@@ -1,0 +1,30 @@
+{
+  "name": "soli-language",
+  "displayName": "Soli Language",
+  "description": "Syntax highlighting for the Soli programming language",
+  "version": "0.1.0",
+  "publisher": "solilang",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "soli",
+        "aliases": ["Soli", "soli"],
+        "extensions": [".sl"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "soli",
+        "scopeName": "source.soli",
+        "path": "./syntaxes/soli.tmLanguage.json"
+      }
+    ]
+  }
+}
