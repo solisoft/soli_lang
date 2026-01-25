@@ -519,7 +519,7 @@
                         const startTicking = () => {
                             setInterval(() => {
                                 lv.send({ type: 'event', event: 'tick', liveview_id: lv.liveviewId, params: {}, target: 'metrics' });
-                            }, 10);
+                            }, 50); // 20 updates/sec
                         };
 
                         if (lv.state === 2) {
