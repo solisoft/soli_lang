@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>duration_spec.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>duration_spec.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Duration Test Suite</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Duration Static Methods", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration.of_seconds() creates duration", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_seconds(120);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(dur);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(type(dur), "Duration");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration.of_minutes() creates duration", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_minutes(5);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(dur);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration.of_hours() creates duration", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_hours(2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(dur);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration.of_days() creates duration", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_days(1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(dur);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration.between() calculates difference", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dt1 = DateTime.parse("2024-01-15T10:00:00Z");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dt2 = DateTime.parse("2024-01-15T11:30:00Z");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.between(dt1, dt2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(dur);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(type(dur), "Duration");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Duration Instance Methods", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("total_seconds() returns total seconds", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_seconds(120);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.total_seconds(), 120);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("total_minutes() returns total minutes", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_minutes(5);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.total_minutes(), 5);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("total_hours() returns total hours", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_hours(2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.total_hours(), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("total_days() returns total days", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_days(1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.total_days(), 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("seconds() returns seconds component", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_seconds(125);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.seconds(), 5);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("minutes() returns minutes component", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_minutes(65);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.minutes(), 5);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hours() returns hours component", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_hours(26);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.hours(), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("in_seconds() converts to seconds", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_minutes(2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.in_seconds(), 120);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("in_minutes() converts to minutes", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_hours(1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.in_minutes(), 60);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("in_hours() converts to hours", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_days(2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(dur.in_hours(), 48);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Duration Arithmetic", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration addition", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur1 = Duration.of_seconds(60);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur2 = Duration.of_seconds(60);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let combined = dur1.plus(Duration.of_seconds(60));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(combined.total_seconds(), 180);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration subtraction", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">97</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur1 = Duration.of_seconds(120);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">98</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur2 = Duration.of_seconds(60);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">99</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = dur1.minus(Duration.of_seconds(60));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">100</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result.total_seconds(), 60);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">101</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">102</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">103</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration multiplication", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">104</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_seconds(10);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">105</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = dur.multiplied_by(3);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">106</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result.total_seconds(), 30);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">107</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">108</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">109</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Duration division", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">110</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let dur = Duration.of_seconds(60);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">111</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = dur.divided_by(2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">112</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result.total_seconds(), 30);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">113</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">114</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

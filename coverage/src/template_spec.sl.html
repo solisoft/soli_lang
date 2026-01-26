@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>template_spec.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>template_spec.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Template Functions Test Suite</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Tests for template rendering functions</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Template Render Functions", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("render() renders template with data", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "&lt;h1&gt;{{ name }}&lt;/h1&gt;";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["name"] = "World";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result, "World");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("render() with layout", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "&lt;h1&gt;{{ title }}&lt;/h1&gt;";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let layout = "&lt;html&gt;&lt;body&gt;{{ content }}&lt;/body&gt;&lt;/html&gt;";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["title"] = "Hello";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let options = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        options["layout"] = layout;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data, options);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result, "&lt;html&gt;");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result, "&lt;body&gt;");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("render() with partials", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "{{&gt; header }}&lt;p&gt;Content&lt;/p&gt;";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let partials = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        partials["header"] = "&lt;header&gt;Header&lt;/header&gt;";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let options = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        options["partials"] = partials;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, hash(), options);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result, "&lt;header&gt;Header&lt;/header&gt;");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("render_partial() renders without layout", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "&lt;p&gt;{{ message }}&lt;/p&gt;";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["message"] = "Hello";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render_partial(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result, "Hello");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Template Helpers", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("h() is alias for html_escape()", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let escaped = h("&lt;script&gt;alert('xss')&lt;/script&gt;");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_contains(escaped, "&lt;script&gt;");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("public_path() adds version hash", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let path = public_path("/assets/app.js");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(path, "/assets/app.js");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("redirect() creates redirect response", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let response = redirect("/new-location");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(response, "Location: /new-location");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("render_json() creates JSON response", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["status"] = "ok";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["value"] = 42;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let response = render_json(data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(response, "status");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(response, "ok");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("render_text() creates text response", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let response = render_text("Plain text");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(response, "Plain text");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Template Conditionals", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("{{#if}} renders conditionally", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "{{#if show}}Visible{{/if}}";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data1 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data1["show"] = true;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result1 = render(template, data1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data2 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data2["show"] = false;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result2 = render(template, data2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result1, "Visible");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_contains(result2, "Visible");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">97</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">98</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Template Loops", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">99</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("{{#each}} iterates array", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">100</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "{{#each items}}&lt;li&gt;{{ this }}&lt;/li&gt;{{/each}}";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">101</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">102</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["items"] = ["A", "B", "C"];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">103</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">104</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">105</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result, "&lt;li&gt;A&lt;/li&gt;");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">106</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result, "&lt;li&gt;B&lt;/li&gt;");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">107</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(result, "&lt;li&gt;C&lt;/li&gt;");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">108</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">109</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">110</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">111</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Template Variables", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">112</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("simple variable interpolation", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">113</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "Hello, {{ name }}!";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">114</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">115</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["name"] = "Alice";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">116</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">117</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">118</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, "Hello, Alice!");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">119</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">120</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">121</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("nested variable access", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">122</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "{{ user.profile.name }}";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">123</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">124</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let user = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">125</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let profile = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">126</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        profile["name"] = "Bob";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">127</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        user["profile"] = profile;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">128</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["user"] = user;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">129</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">130</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">131</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, "Bob");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">132</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">133</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">134</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("missing variable renders empty", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">135</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "{{ missing }}";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">136</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">137</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">138</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">139</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, "");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">140</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">141</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">142</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">143</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Template Filters", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">144</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("uppercase filter", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">145</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "{{ name | uppercase }}";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">146</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">147</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["name"] = "hello";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">148</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">149</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">150</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, "HELLO");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">151</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">152</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">153</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("lowercase filter", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">154</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "{{ name | lowercase }}";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">155</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">156</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["name"] = "HELLO";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">157</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">158</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">159</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, "hello");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">160</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">161</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">162</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("length filter", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">163</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let template = "{{ items | length }}";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">164</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">165</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["items"] = [1, 2, 3];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">166</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">167</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = render(template, data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">168</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, "3");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">169</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">170</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

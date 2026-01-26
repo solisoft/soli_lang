@@ -158,6 +158,82 @@ pub fn run_with_path(
     Ok(())
 }
 
+/// Run a Solilang program with optional coverage tracking.
+pub fn run_with_path_and_coverage(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    mode: ExecutionMode,
+    type_check: bool,
+    disassemble: bool,
+    coverage_tracker: Option<&std::rc::Rc<std::cell::RefCell<coverage::CoverageTracker>>>,
+    source_file_path: Option<&std::path::Path>,
+) -> Result<(), SolilangError> {
+    // Lexing
+    let tokens = lexer::Scanner::new(source).scan_tokens()?;
+
+    // Parsing
+    let mut program = parser::Parser::new(tokens).parse()?;
+
+    // Module resolution (if we have imports and a source path)
+    if let Some(path) = source_path.filter(|_| has_imports(&program)) {
+        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let mut resolver = module::ModuleResolver::new(base_dir);
+        program = resolver
+            .resolve(program, path)
+            .map_err(|e| error::RuntimeError::General {
+                message: format!("Module resolution error: {}", e),
+                span: span::Span::new(0, 0, 1, 1),
+            })?;
+    }
+
+    // Type checking (optional)
+    if type_check {
+        let mut checker = types::TypeChecker::new();
+        if let Err(errors) = checker.check(&program) {
+            return Err(errors.into_iter().next().unwrap().into());
+        }
+    }
+
+    // Execution based on mode
+    match mode {
+        ExecutionMode::TreeWalk => {
+            let mut interpreter = interpreter::Interpreter::new();
+            if let (Some(tracker), Some(path)) = (coverage_tracker, source_file_path) {
+                interpreter.set_coverage_tracker(tracker.clone());
+                interpreter.set_source_path(path.to_path_buf());
+            }
+            interpreter.interpret(&program)?;
+        }
+        ExecutionMode::Bytecode => {
+            // Compile to bytecode
+            let mut compiler = bytecode::Compiler::new();
+            let function = compiler.compile(&program)?;
+
+            // Optionally print disassembly
+            if disassemble {
+                bytecode::print_disassembly(&function);
+                println!("---");
+            }
+
+            // Execute on VM
+            let mut vm = bytecode::VM::new();
+            vm.run(function)?;
+        }
+        #[cfg(feature = "jit")]
+        ExecutionMode::Jit => {
+            // JIT compilation path
+            let mut compiler = bytecode::Compiler::new();
+            let function = compiler.compile(&program)?;
+
+            // Run with JIT
+            let mut vm = jit::JitVM::new();
+            vm.run(function)?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Check if a program has any import statements.
 fn has_imports(program: &ast::Program) -> bool {
     program

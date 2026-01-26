@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>hashes_builtin_spec.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>hashes_builtin_spec.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Hash Functions Test Suite</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Hash Functions", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hash() creates empty hash", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(type(h), "hash");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(h), 0);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("len() returns hash size", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["a"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["b"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(h), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("keys() returns all keys", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["a"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["b"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let k = keys(h);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(k), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(k, "a");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(k, "b");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("values() returns all values", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["a"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["b"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let v = values(h);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(v), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(v, 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(v, 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("has_key() checks for key existence", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["a"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(has_key(h, "a"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not(has_key(h, "b"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("delete() removes key from hash", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["a"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["b"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let deleted = delete(h, "a");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(deleted, 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not(has_key(h, "a"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(h), 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("merge() combines two hashes", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h1 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h1["a"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h2 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h2["b"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let merged = merge(h1, h2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(merged), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(merged["a"], 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(merged["b"], 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("entries() returns key-value pairs", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["a"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let e = entries(h);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(e), 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(e[0][0], "a");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(e[0][1], 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("from_entries() creates hash from pairs", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let pairs = [["a", 1], ["b", 2]];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = from_entries(pairs);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(h["a"], 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(h["b"], 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("clear() removes all entries", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["a"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["b"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        clear(h);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(h), 0);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("assert_hash_has_key works", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let h = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        h["key"] = "value";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_hash_has_key(h, "key");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

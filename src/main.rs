@@ -1021,21 +1021,19 @@ fn run_test(
                     .unwrap_or_else(|| "unknown".to_string());
 
                 if let Some(ref tr) = tracker {
+                    tr.borrow_mut()
+                        .register_executable_lines_from_source(test_file, &source);
                     tr.borrow_mut().start_test(&test_name);
                 }
 
-                let mut interpreter = solilang::interpreter::Interpreter::new();
-                if let Some(ref tr) = tracker {
-                    interpreter.set_coverage_tracker(tr.clone());
-                    interpreter.set_source_path(test_file.clone());
-                }
-
-                match solilang::run_with_path(
+                match solilang::run_with_path_and_coverage(
                     &source,
                     Some(test_file),
                     solilang::ExecutionMode::TreeWalk,
                     false,
                     false,
+                    tracker.as_ref(),
+                    Some(test_file),
                 ) {
                     Ok(_) => {
                         passed += 1;

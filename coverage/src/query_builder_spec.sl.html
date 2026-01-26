@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>query_builder_spec.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>query_builder_spec.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// QueryBuilder Test Suite</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Tests for QueryBuilder methods</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("QueryBuilder Basic Methods", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.where() adds filter condition", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let filters = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filters"] = filters;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let filter = "status = 'published'";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        filters.push(filter);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(qb["filters"]), 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.where() with bind variables", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filter"] = "";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["bind_vars"] = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filter"] = "title LIKE ?";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["bind_vars"].push("%test%");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["filter"], "title LIKE ?");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["bind_vars"][0], "%test%");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.where() can be chained", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filters"] = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["bind_vars"] = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filters"].push("status = ?");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["bind_vars"].push("published");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filters"].push("author = ?");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["bind_vars"].push("admin");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(qb["filters"]), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(qb["bind_vars"]), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("QueryBuilder Order Methods", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.order() sets ordering", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_field"] = "created_at";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_direction"] = "desc";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["order_field"], "created_at");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["order_direction"], "desc");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.order() accepts direction string", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order"] = "title ASC";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["order"], "title ASC");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.order() handles multiple fields", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_clauses"] = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_clauses"].push("name ASC");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_clauses"].push("created_at DESC");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(qb["order_clauses"]), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("QueryBuilder Limit Methods", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.limit() sets limit", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["limit"] = 10;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["limit"], 10);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.limit() can be changed", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["limit"] = 10;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["limit"] = 20;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["limit"], 20);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("QueryBuilder Offset Methods", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.offset() sets offset", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["offset"] = 5;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["offset"], 5);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">97</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">98</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">99</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("QueryBuilder Execute Methods", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">100</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.all() returns all results", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">101</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">102</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let results = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">103</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let r1 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">104</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r1["id"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">105</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r1["name"] = "A";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">106</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        results.push(r1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">107</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let r2 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">108</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r2["id"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">109</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r2["name"] = "B";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">110</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        results.push(r2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">111</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["results"] = results;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">112</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">113</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(qb["results"]), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">114</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">115</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">116</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.first() returns first result", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">117</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">118</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let results = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">119</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let r1 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">120</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r1["id"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">121</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r1["name"] = "First";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">122</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        results.push(r1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">123</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let r2 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">124</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r2["id"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">125</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r2["name"] = "Second";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">126</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        results.push(r2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">127</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["results"] = results;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">128</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">129</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let first = results[0];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">130</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(first["name"], "First");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">131</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">132</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">133</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.first() returns null for empty", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">134</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">135</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["results"] = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">136</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">137</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let results = qb["results"];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">138</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let first = null;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">139</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        if (len(results) &gt; 0) {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">140</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>            first = results[0];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">141</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">142</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_null(first);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">143</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">144</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">145</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("QueryBuilder.count() returns count", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">146</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">147</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["results"] = [1, 2, 3, 4, 5];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">148</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">149</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let results = qb["results"];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">150</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(results), 5);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">151</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">152</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">153</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">154</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("QueryBuilder Chaining", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">155</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("multiple methods can be chained", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">156</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let qb = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">157</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filters"] = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">158</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["bind_vars"] = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">159</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_field"] = "";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">160</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_direction"] = "asc";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">161</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["limit_val"] = 10;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">162</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["offset_val"] = 0;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">163</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">164</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filters"].push("status = ?");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">165</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["bind_vars"].push("published");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">166</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["filters"].push("author = ?");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">167</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["bind_vars"].push("admin");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">168</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_field"] = "created_at";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">169</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["order_direction"] = "desc";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">170</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["limit_val"] = 20;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">171</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        qb["offset_val"] = 10;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">172</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">173</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(qb["filters"]), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">174</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["order_field"], "created_at");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">175</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["limit_val"], 20);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">176</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(qb["offset_val"], 10);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">177</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">178</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

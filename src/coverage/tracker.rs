@@ -1,4 +1,6 @@
 use crate::coverage::data::*;
+use crate::lexer::Scanner;
+use crate::parser::Parser;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -76,15 +78,17 @@ impl CoverageTracker {
                             });
 
                         aggregated_line.hits += line_cov.hits;
+                    }
 
-                        if aggregated_line.hits > 0 {
-                            if aggregated_line.hits == 1 && line_cov.hits == 1 {
-                                aggregated_file.covered_lines += 1;
+                    // Count covered lines and total executable lines
+                    if let Some(executable) = self.executable_lines.get(&file_cov.path) {
+                        aggregated_file.total_lines = executable.len() as u32;
+                        for (line_num, _) in executable.iter() {
+                            if let Some(line_cov) = aggregated_file.lines.get(line_num) {
+                                if line_cov.hits > 0 {
+                                    aggregated_file.covered_lines += 1;
+                                }
                             }
-                        }
-
-                        if is_executable {
-                            aggregated_file.total_lines += 1;
                         }
                     }
 
@@ -291,4 +295,256 @@ where
     F: FnOnce(Option<&TestCoverage>) -> R,
 {
     CURRENT_COVERAGE.with(|cov| f(cov.borrow().as_ref()))
+}
+
+impl CoverageTracker {
+    pub fn register_executable_lines_from_source(&mut self, path: &PathBuf, source: &str) {
+        let tokens = Scanner::new(source).scan_tokens();
+        if tokens.is_err() {
+            return;
+        }
+
+        let parse_result = Parser::new(tokens.unwrap()).parse();
+        if parse_result.is_err() {
+            return;
+        }
+
+        let program = parse_result.unwrap();
+        self.collect_lines_from_program(path, source, &program);
+    }
+
+    fn collect_lines_from_program(
+        &mut self,
+        path: &PathBuf,
+        source: &str,
+        program: &crate::ast::Program,
+    ) {
+        let lines: Vec<&str> = source.lines().collect();
+        for stmt in &program.statements {
+            self.collect_lines_from_stmt(path, &lines, stmt);
+        }
+    }
+
+    fn collect_lines_from_stmt(&mut self, path: &PathBuf, lines: &[&str], stmt: &crate::ast::Stmt) {
+        let line_num = stmt.span.line;
+        if line_num > 0 && line_num <= lines.len() {
+            let source_line = lines[line_num - 1].to_string();
+            self.register_executable_line(path, line_num, source_line);
+        }
+
+        use crate::ast::StmtKind::*;
+        match &stmt.kind {
+            Expression(expr) => self.collect_lines_from_expr(path, lines, expr),
+            Let { initializer, .. } => {
+                if let Some(expr) = initializer {
+                    self.collect_lines_from_expr(path, lines, expr);
+                }
+            }
+            Block(stmts) => {
+                for s in stmts {
+                    self.collect_lines_from_stmt(path, lines, s);
+                }
+            }
+            If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.collect_lines_from_expr(path, lines, condition);
+                self.collect_lines_from_stmt(path, lines, then_branch);
+                if let Some(else_stmt) = else_branch {
+                    self.collect_lines_from_stmt(path, lines, else_stmt);
+                }
+            }
+            While { condition, body } => {
+                self.collect_lines_from_expr(path, lines, condition);
+                self.collect_lines_from_stmt(path, lines, body);
+            }
+            For {
+                variable: _,
+                iterable,
+                body,
+            } => {
+                self.collect_lines_from_expr(path, lines, iterable);
+                self.collect_lines_from_stmt(path, lines, body);
+            }
+            Return(expr) => {
+                if let Some(e) = expr {
+                    self.collect_lines_from_expr(path, lines, e);
+                }
+            }
+            Throw(expr) => {
+                self.collect_lines_from_expr(path, lines, expr);
+            }
+            Try {
+                try_block,
+                catch_block,
+                finally_block,
+                ..
+            } => {
+                self.collect_lines_from_stmt(path, lines, try_block);
+                if let Some(catch) = catch_block {
+                    self.collect_lines_from_stmt(path, lines, catch);
+                }
+                if let Some(finally) = finally_block {
+                    self.collect_lines_from_stmt(path, lines, finally);
+                }
+            }
+            Function(decl) => {
+                for stmt in &decl.body {
+                    self.collect_lines_from_stmt(path, lines, stmt);
+                }
+            }
+            Class(decl) => {
+                for stmt in &decl.class_statements {
+                    self.collect_lines_from_stmt(path, lines, stmt);
+                }
+                if let Some(ctor) = &decl.constructor {
+                    for stmt in &ctor.body {
+                        self.collect_lines_from_stmt(path, lines, stmt);
+                    }
+                }
+                for method in &decl.methods {
+                    for stmt in &method.body {
+                        self.collect_lines_from_stmt(path, lines, stmt);
+                    }
+                }
+                for field in &decl.fields {
+                    if let Some(init) = &field.initializer {
+                        self.collect_lines_from_expr(path, lines, init);
+                    }
+                }
+            }
+            Interface(_) | Import(_) | Export(_) => {}
+        }
+    }
+
+    fn collect_lines_from_expr(&mut self, path: &PathBuf, lines: &[&str], expr: &crate::ast::Expr) {
+        let line_num = expr.span.line;
+        if line_num > 0 && line_num <= lines.len() {
+            let source_line = lines[line_num - 1].to_string();
+            self.register_executable_line(path, line_num, source_line);
+        }
+
+        use crate::ast::ExprKind::*;
+        match &expr.kind {
+            Binary { left, right, .. } => {
+                self.collect_lines_from_expr(path, lines, left);
+                self.collect_lines_from_expr(path, lines, right);
+            }
+            Unary { operand, .. } => {
+                self.collect_lines_from_expr(path, lines, operand);
+            }
+            IntLiteral(_) | FloatLiteral(_) | StringLiteral(_) | BoolLiteral(_) | Null => {}
+            Variable(_) => {}
+            Assign { value, .. } => {
+                self.collect_lines_from_expr(path, lines, value);
+            }
+            Call { arguments, .. } => {
+                for arg in arguments {
+                    self.collect_lines_from_expr(path, lines, arg);
+                }
+            }
+            Member { object, .. } => {
+                self.collect_lines_from_expr(path, lines, object);
+            }
+            Index { object, index, .. } => {
+                self.collect_lines_from_expr(path, lines, object);
+                self.collect_lines_from_expr(path, lines, index);
+            }
+            This | Super => {}
+            New { arguments, .. } => {
+                for arg in arguments {
+                    self.collect_lines_from_expr(path, lines, arg);
+                }
+            }
+            Array(elements) => {
+                for elem in elements {
+                    self.collect_lines_from_expr(path, lines, elem);
+                }
+            }
+            Hash(pairs) => {
+                for (_, value) in pairs {
+                    self.collect_lines_from_expr(path, lines, value);
+                }
+            }
+            LogicalAnd { left, right } | LogicalOr { left, right } => {
+                self.collect_lines_from_expr(path, lines, left);
+                self.collect_lines_from_expr(path, lines, right);
+            }
+            Lambda { body, .. } => {
+                for stmt in body {
+                    self.collect_lines_from_stmt(path, lines, stmt);
+                }
+            }
+            Grouping(expr) => {
+                self.collect_lines_from_expr(path, lines, expr);
+            }
+            If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.collect_lines_from_expr(path, lines, condition);
+                self.collect_lines_from_expr(path, lines, then_branch);
+                if let Some(else_expr) = else_branch {
+                    self.collect_lines_from_expr(path, lines, else_expr);
+                }
+            }
+            Match {
+                expression, arms, ..
+            } => {
+                self.collect_lines_from_expr(path, lines, expression);
+                for arm in arms {
+                    self.collect_lines_from_expr(path, lines, &arm.body);
+                }
+            }
+            Pipeline { left, right, .. } => {
+                self.collect_lines_from_expr(path, lines, left);
+                self.collect_lines_from_expr(path, lines, right);
+            }
+            ListComprehension {
+                element,
+                iterable,
+                condition,
+                ..
+            } => {
+                self.collect_lines_from_expr(path, lines, element);
+                self.collect_lines_from_expr(path, lines, iterable);
+                if let Some(cond) = condition {
+                    self.collect_lines_from_expr(path, lines, cond);
+                }
+            }
+            HashComprehension {
+                key,
+                value,
+                iterable,
+                condition,
+                ..
+            } => {
+                self.collect_lines_from_expr(path, lines, key);
+                self.collect_lines_from_expr(path, lines, value);
+                self.collect_lines_from_expr(path, lines, iterable);
+                if let Some(cond) = condition {
+                    self.collect_lines_from_expr(path, lines, cond);
+                }
+            }
+            Await(expr) => {
+                self.collect_lines_from_expr(path, lines, expr);
+            }
+            Spread(expr) => {
+                self.collect_lines_from_expr(path, lines, expr);
+            }
+            Throw(expr) => {
+                self.collect_lines_from_expr(path, lines, expr);
+            }
+            InterpolatedString(parts) => {
+                for part in parts {
+                    if let crate::ast::expr::InterpolatedPart::Expression(expr) = part {
+                        self.collect_lines_from_expr(path, lines, expr);
+                    }
+                }
+            }
+        }
+    }
 }

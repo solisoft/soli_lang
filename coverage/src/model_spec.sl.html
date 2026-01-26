@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>model_spec.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>model_spec.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Model Class Test Suite</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Tests for Model class methods</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Model Validation Registration", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.validates() registers validation rule", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["registered"] = true;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(result["registered"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.before_save() registers callback", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["callback"] = "before_save";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["method"] = "my_method";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["callback"], "before_save");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["method"], "my_method");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.after_save() registers callback", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["callback"] = "after_save";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["method"] = "handle_save";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["callback"], "after_save");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Model Create Operation", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.create() creates document", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["name"] = "Alice";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["email"] = "alice@example.com";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["created"] = true;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["data"] = data;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(result["created"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["data"]["name"], "Alice");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.create() with validation", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let valid = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        valid["name"] = "Widget";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let valid_result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        valid_result["created"] = true;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        valid_result["id"] = 123;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(valid_result["created"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let invalid = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        invalid["name"] = "";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let invalid_result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        invalid_result["error"] = "name required";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(invalid_result["error"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.create() returns created document with ID", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["name"] = "Test";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["id"] = 456;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["name"] = data["name"];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(result["id"] &gt; 0);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Model Find Operations", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.find() retrieves by ID", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let id = 123;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = null;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        if (id == 123) {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>            let r = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>            r["id"] = 123;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>            r["title"] = "Test Post";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>            result = r;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(result);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["id"], 123);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.find() returns null for nonexistent", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let id = 99999;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = null;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_null(result);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.where() creates QueryBuilder", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let filter = "status = ?";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let bind_vars = ["published"];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["filter"] = filter;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["bind_vars"] = bind_vars;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["filter"], "status = ?");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["bind_vars"][0], "published");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">97</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">98</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.all() returns all documents", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">99</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = [];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">100</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let r1 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">101</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r1["id"] = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">102</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r1["name"] = "A";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">103</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result.push(r1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">104</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let r2 = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">105</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r2["id"] = 2;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">106</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        r2["name"] = "B";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">107</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result.push(r2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">108</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(result), 2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">109</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">110</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">111</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">112</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Model Update Operations", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">113</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.update() updates document", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">114</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let id = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">115</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">116</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["name"] = "Bob";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">117</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">118</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">119</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["id"] = id;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">120</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["updated"] = true;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">121</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["data"] = data;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">122</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(result["updated"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">123</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["data"]["name"], "Bob");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">124</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">125</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">126</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.update() returns updated document", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">127</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let id = 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">128</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">129</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        data["name"] = "New Name";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">130</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">131</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["id"] = id;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">132</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["name"] = data["name"];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">133</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["updated"] = true;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">134</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["name"], "New Name");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">135</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">136</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">137</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">138</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Model Delete Operations", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">139</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.delete() removes document", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">140</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let id = 123;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">141</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = hash();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">142</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["deleted"] = true;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">143</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        result["id"] = id;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">144</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(result["deleted"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">145</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result["id"], 123);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">146</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">147</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">148</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.delete() returns null for nonexistent", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">149</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = null;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">150</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_null(result);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">151</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">152</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">153</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">154</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Model Count Operations", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">155</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.count() returns document count", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">156</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = 42;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">157</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, 42);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">158</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">159</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">160</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.count() with filter", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">161</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let filter = "status = 'pending'";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">162</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = 10;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">163</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, 10);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">164</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">165</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">166</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("Model.count() returns zero for empty collection", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">167</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = 0;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">168</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(result, 0);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">169</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">170</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

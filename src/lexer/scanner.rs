@@ -216,6 +216,11 @@ impl<'a> Scanner<'a> {
         let start_position = self.current_pos;
         let start_line = self.line;
         let _start_column = self.column;
+        let quote_char = if self.current_pos > 0 {
+            self.source[self.current_pos - 1..].chars().next().unwrap()
+        } else {
+            '"'
+        };
         let mut value = String::new();
         let mut has_interpolation = false;
         let mut paren_depth = 0; // Track depth when inside interpolation
@@ -231,10 +236,14 @@ impl<'a> Scanner<'a> {
                         // Inside interpolation expression - " is just a character
                         self.advance();
                         value.push('"');
-                    } else {
+                    } else if quote_char == '"' {
                         // Not inside interpolation or paren_depth is 0 - this is the closing "
                         self.advance();
                         break;
+                    } else {
+                        // This is a " inside a single-quoted string - just a character
+                        self.advance();
+                        value.push('"');
                     }
                 }
                 Some('\'') => {
@@ -243,10 +252,14 @@ impl<'a> Scanner<'a> {
                         // Inside interpolation expression - ' is just a character
                         self.advance();
                         value.push('\'');
-                    } else {
+                    } else if quote_char == '\'' {
                         // Not inside interpolation or paren_depth is 0 - this is the closing '
                         self.advance();
                         break;
+                    } else {
+                        // This is a ' inside a double-quoted string - just a character
+                        self.advance();
+                        value.push('\'');
                     }
                 }
                 Some('\\') => {

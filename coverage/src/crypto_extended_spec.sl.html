@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>crypto_extended_spec.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>crypto_extended_spec.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Crypto Extended Test Suite</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Additional tests for cryptographic functions</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("X25519 Key Exchange", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("x25519_keypair() generates valid key pair", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let keypair = x25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_hash_has_key(keypair, "public");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_hash_has_key(keypair, "private");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(keypair["public"]) == 64);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(keypair["private"]) == 128);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("x25519_shared_secret() computes shared secret", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let alice = x25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let bob = x25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let secret1 = x25519_shared_secret(alice["private"], bob["public"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let secret2 = x25519_shared_secret(bob["private"], alice["public"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(secret1, secret2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(secret1) == 64);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("x25519_public_key() derives from private", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let keypair = x25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let pub_key = x25519_public_key(keypair["private"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(pub_key, keypair["public"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("x25519() performs scalar multiplication", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let keypair = x25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let basepoint = "0900000000000000000000000000000000000000000000000000000000000000";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = x25519(basepoint, keypair["private"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(result) == 64);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("x25519_shared_secret() fails with invalid key", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = x25519_shared_secret("invalid", "invalid");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_null(result);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Ed25519 Digital Signatures", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("ed25519_keypair() generates key pair", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let keypair = ed25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_hash_has_key(keypair, "public");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_hash_has_key(keypair, "private");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(keypair["public"]) == 64);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(keypair["private"]) == 128);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("ed25519_sign() creates signature", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let keypair = ed25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let message = "Test message for signing";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let signature = ed25519_sign(message, keypair["private"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(signature);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(signature) == 128);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("ed25519_verify() validates signature", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let keypair = ed25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let message = "Test message";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let signature = ed25519_sign(message, keypair["private"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = ed25519_verify(message, signature, keypair["public"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(result);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("ed25519_verify() rejects invalid signature", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let keypair = ed25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let message = "Original message";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let wrong_message = "Tampered message";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let signature = ed25519_sign(message, keypair["private"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let result = ed25519_verify(wrong_message, signature, keypair["public"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not(result);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("ed25519_sign() with empty message", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let keypair = ed25519_keypair();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let signature = ed25519_sign("", keypair["private"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(signature);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Additional Hash Functions", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("sha256() produces correct hash length", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash = sha256("hello");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(hash) == 64);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">97</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">98</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("sha512() produces correct hash length", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">99</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash = sha512("hello");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">100</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(hash) == 128);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">101</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">102</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">103</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("sha256() is deterministic", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">104</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash1 = sha256("test");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">105</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash2 = sha256("test");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">106</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(hash1, hash2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">107</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">108</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">109</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("sha256() produces different hashes for different inputs", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">110</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash1 = sha256("hello");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">111</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash2 = sha256("world");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">112</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_ne(hash1, hash2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">113</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">114</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">115</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("md5() produces correct hash length", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">116</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash = md5("hello");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">117</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(hash) == 32);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">118</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">119</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">120</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">121</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("HMAC Functions", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">122</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hmac() produces valid MAC", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">123</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let mac = hmac("message", "secret");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">124</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(mac) == 64);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">125</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">126</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">127</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hmac_sha256() produces MAC", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">128</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let mac = hmac_sha256("message", "secret");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">129</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(mac) == 64);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">130</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">131</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">132</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hmac_sha512() produces MAC", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">133</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let mac = hmac_sha512("message", "secret");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">134</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(len(mac) == 128);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">135</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">136</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">137</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hmac() is deterministic", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">138</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let mac1 = hmac("msg", "key");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">139</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let mac2 = hmac("msg", "key");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">140</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(mac1, mac2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">141</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">142</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">143</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hmac() different keys produce different results", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">144</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let mac1 = hmac("message", "key1");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">145</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let mac2 = hmac("message", "key2");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">146</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_ne(mac1, mac2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">147</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">148</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">149</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">150</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Base Encoding Functions", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">151</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("base64_encode() encodes correctly", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">152</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let encoded = base64_encode("hello world");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">153</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(encoded);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">154</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">155</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">156</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("base64_decode() decodes correctly", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">157</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let original = "Hello, World!";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">158</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let encoded = base64_encode(original);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">159</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let decoded = base64_decode(encoded);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">160</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(decoded, original);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">161</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">162</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">163</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("base64_encode() handles binary data", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">164</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let data = [0, 1, 2, 255, 254, 253];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">165</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let encoded = base64_encode(data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">166</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let decoded = base64_decode(encoded);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">167</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(decoded), len(data));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">168</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">169</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">170</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("base64url_encode() produces URL-safe output", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">171</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let encoded = base64url_encode("hello+world/test");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">172</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_contains(encoded, "+");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">173</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_contains(encoded, "/");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">174</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">175</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">176</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hex_encode() encodes to hex", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">177</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let encoded = hex_encode("hello");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">178</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not_null(encoded);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">179</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">180</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">181</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("hex_decode() decodes from hex", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">182</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let original = "hello";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">183</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let encoded = hex_encode(original);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">184</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let decoded = hex_decode(encoded);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">185</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(decoded, original);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">186</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">187</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">188</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">189</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Cryptographic Randomness", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">190</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("random_bytes() produces bytes", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">191</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let bytes = random_bytes(32);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">192</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(bytes), 32);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">193</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">194</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">195</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("random_bytes() different each time", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">196</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let bytes1 = random_bytes(16);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">197</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let bytes2 = random_bytes(16);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">198</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_ne(bytes1, bytes2);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">199</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">200</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">201</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("random_string() produces random string", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">202</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let str = random_string(32);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">203</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_eq(len(str), 32);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">204</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">205</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">206</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("random_int() within range", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">207</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let n = random_int(1, 100);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">208</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(n &gt;= 1);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">209</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(n &lt;= 100);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">210</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">211</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">212</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">213</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Key Derivation", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">214</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("bcrypt() hashes password", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">215</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash = bcrypt("password");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">216</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_contains(hash, "$2b$");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">217</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">218</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">219</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("bcrypt_verify() verifies password", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">220</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        let hash = bcrypt("secret");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">221</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(bcrypt_verify("secret", hash));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">222</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not(bcrypt_verify("wrong", hash));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">223</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">224</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">225</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line covered">
+                    <td class="line-num">226</td>
+                    <td class="line-indicator">✓</td>
+                    <td class="code-content"><pre>describe("Cryptographic Utility Functions", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">227</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("constant_time_eq() compares in constant time", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">228</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(constant_time_eq("abc", "abc"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">229</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not(constant_time_eq("abc", "def"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">230</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">231</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">232</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    test("secure_compare() compares securely", fn() {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">233</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert(secure_compare("test", "test"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">234</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        assert_not(secure_compare("test", "TEST"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">235</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    });</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">236</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>
