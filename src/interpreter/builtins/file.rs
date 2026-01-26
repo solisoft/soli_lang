@@ -7,7 +7,7 @@ use std::fs;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{json_to_value, NativeFunction, Value};
 
 /// Register all file I/O built-in functions.
 pub fn register_file_builtins(env: &mut Environment) {
@@ -42,9 +42,11 @@ pub fn register_file_builtins(env: &mut Environment) {
     env.define(
         "slurp".to_string(),
         Value::NativeFunction(NativeFunction::new("slurp", None, |args| match &args[..] {
-            [Value::String(path)] => fs::read_to_string(path)
-                .map(Value::String)
-                .map_err(|e| format!("slurp failed to read {}: {}", path, e)),
+            [Value::String(path)] => {
+                fs::read_to_string(path)
+                    .map(Value::String)
+                    .map_err(|e| format!("slurp failed to read {}: {}", path, e))
+            }
             [Value::String(path), Value::String(mode)] => {
                 if mode == "binary" {
                     let bytes = fs::read(path)
@@ -59,6 +61,22 @@ pub fn register_file_builtins(env: &mut Environment) {
                 }
             }
             _ => Err("slurp expects path or (path, mode)".to_string()),
+        })),
+    );
+
+    // slurp_json(path) - Read and parse JSON file
+    env.define(
+        "slurp_json".to_string(),
+        Value::NativeFunction(NativeFunction::new("slurp_json", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("slurp_json expects a string path".to_string()),
+            };
+            let content = fs::read_to_string(&path)
+                .map_err(|e| format!("slurp_json failed to read {}: {}", path, e))?;
+            let json: serde_json::Value = serde_json::from_str(&content)
+                .map_err(|e| format!("slurp_json failed to parse {}: {}", path, e))?;
+            json_to_value(&json)
         })),
     );
 }

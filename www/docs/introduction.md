@@ -47,6 +47,7 @@ mvc_app/
 ├── config/
 │   └── routes.sl     # Route definitions
 ├── public/             # Static assets
+├── tests/              # BDD tests
 └── views/
     └── layouts/        # Page layouts
 ```

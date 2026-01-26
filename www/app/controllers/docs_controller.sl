@@ -5,28 +5,17 @@ fn index(req: Any) -> Any {
     return redirect("/docs/getting-started/introduction");
 }
 
-// Helper to load navigation structure
-fn get_docs_structure() -> Any {
-    let content = slurp("config/docs_structure.json");
-    if (content == null) {
-        return [];
-    }
-    let parsed = json_parse(content);
-    if (parsed == null) {
-        return [];
-    }
-    return parsed;
-}
-
-// Helper to render docs pages with consistent context
+// Helper to render docs pages with consistent context and caching
 fn render_docs(view: String, title: String, section: String, subsection: String) -> Any {
-    return render(view, {
+    let response = render(view, {
         "title": title,
         "section": section,
         "subsection": subsection,
-        "layout": "layouts/docs",
-        "docs_structure": get_docs_structure()
+        "layout": "layouts/docs"
     });
+    // Add cache headers - browsers will cache for 1 hour, revalidate after
+    response["headers"]["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400";
+    return response;
 }
 
 // ============================================================================

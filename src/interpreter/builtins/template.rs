@@ -884,6 +884,59 @@ fn inject_template_helpers(data: &Value) -> Value {
                 new_hash.push((l_key, l_func));
             }
 
+            // Add render_partial() function if not present
+            let render_partial_key = Value::String("render_partial".to_string());
+            let has_render_partial = hash
+                .borrow()
+                .iter()
+                .any(|(k, _)| k.hash_eq(&render_partial_key));
+
+            if !has_render_partial {
+                let render_partial_func = Value::NativeFunction(NativeFunction::new(
+                    "render_partial",
+                    None,
+                    |args| {
+                        if args.is_empty() {
+                            return Err(
+                                "render_partial() requires at least 1 argument (partial name)"
+                                    .to_string(),
+                            );
+                        }
+
+                        // Get partial name
+                        let partial_name = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "render_partial() expects string partial name, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+
+                        // Get optional data context (default to empty hash)
+                        let data = if args.len() > 1 {
+                            args[1].clone()
+                        } else {
+                            Value::Hash(Rc::new(RefCell::new(vec![])))
+                        };
+
+                        // Resolve any futures in the data before rendering
+                        let data = resolve_futures_in_value(data);
+
+                        // Get template cache and render partial
+                        let cache = get_template_cache()?;
+
+                        // Inject helpers into the data context for nested partials
+                        let data_with_helpers = inject_template_helpers(&data);
+
+                        cache.render_partial(&partial_name, &data_with_helpers)
+                            .map(Value::String)
+                    },
+                ));
+                new_hash.push((render_partial_key, render_partial_func));
+            }
+
             Value::Hash(Rc::new(RefCell::new(new_hash)))
         }
         _ => data.clone(),

@@ -251,21 +251,7 @@
     <aside id="mobileSidebar" class="mobile-menu lg:hidden fixed top-0 left-0 bottom-0 w-72 z-50 bg-gray-950 border-r border-white/5 overflow-y-auto">
         <div class="p-6 pt-20">
             <nav class="space-y-6">
-                <% for nav_section in docs_structure %>
-                <div>
-                    <h5 class="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                        <svg class="w-4 h-4 <%= get_section_color(nav_section["id"]) %>" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <%= get_icon_path(nav_section["icon"]) %>
-                        </svg>
-                        <%= nav_section["title"] %>
-                    </h5>
-                    <ul class="space-y-1">
-                        <% for page in nav_section["pages"] %>
-                            <li><a href="<%= page["path"] %>" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= section == nav_section["id"] && subsection == page["id"] ? 'active bg-indigo-500/10 text-indigo-400 font-medium' : 'text-gray-400 hover:bg-white/5 hover:text-white' %>"><%= page["title"] %></a></li>
-                        <% end %>
-                    </ul>
-                </div>
-                <% end %>
+                <%- render_partial("layouts/docs_nav") %>
             </nav>
         </div>
     </aside>
@@ -295,21 +281,7 @@
             <!-- Navigation -->
             <nav id="desktopNav" class="flex-1 overflow-y-auto py-6 px-4">
                 <div class="space-y-6">
-                    <% for nav_section in docs_structure %>
-                    <div>
-                        <h5 class="flex items-center gap-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                            <svg class="w-4 h-4 <%= get_section_color(nav_section["id"]) %>" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <%== get_icon_path(nav_section["icon"]) %>
-                            </svg>
-                            <%= nav_section["title"] %>
-                        </h5>
-                        <ul class="space-y-1">
-                            <% for page in nav_section["pages"] %>
-                                <li><a href="<%= page["path"] %>" class="sidebar-link block px-4 py-2.5 text-sm rounded-lg transition-all <%= section == nav_section["id"] && subsection == page["id"] ? 'active bg-indigo-500/10 text-indigo-400 font-medium' : 'text-gray-400 hover:bg-white/5 hover:text-white' %>"><%= page["title"] %></a></li>
-                            <% end %>
-                        </ul>
-                    </div>
-                    <% end %>
+                    <%- render_partial("layouts/docs_nav") %>
                 </div>
             </nav>
 
