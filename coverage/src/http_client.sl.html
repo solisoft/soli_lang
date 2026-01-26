@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>http_client.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>http_client.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// HTTP Client Example</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Demonstrates the built-in HTTP functions</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Simple GET request</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Simple GET request ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let response = http_get("https://httpbin.org/get");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Response:", response);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// GET request with JSON parsing</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== GET JSON ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let data = http_get_json("https://httpbin.org/json");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Parsed JSON:", data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// POST request with string body</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== POST with string body ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let post_response = http_post("https://httpbin.org/post", "Hello, World!");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Response:", post_response);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// POST request with JSON body (hash automatically serialized)</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Note: Both colon (:) and fat arrow (=&gt;) syntax are supported for hashes</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== POST JSON ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let payload = {"name": "Alice", "age": 30, "active": true};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let json_response = http_post_json("https://httpbin.org/post", payload);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Response:", json_response);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Generic HTTP request with custom headers</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== Generic HTTP request ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let headers = {"Authorization": "Bearer token123", "X-Custom-Header": "custom-value"};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let result = http_request("GET", "https://httpbin.org/headers", headers);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Status:", result["status"]);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Headers:", result["headers"]);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Body:", result["body"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// JSON utilities</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== JSON utilities ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let obj = {"items" =&gt; [1, 2, 3], "nested" =&gt; {"key" =&gt; "value"}};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let json_str = json_stringify(obj);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Stringified:", json_str);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let parsed = json_parse(json_str);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Parsed back:", parsed);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Nested key:", parsed["nested"]["key"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Response status checks</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== Response status checks ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let response = http_request("GET", "https://httpbin.org/status/200");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Status:", response["status"]);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Is OK (2xx)?", http_ok(response));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Is Success?", http_success(response));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Is Redirect (3xx)?", http_redirect(response));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Is Client Error (4xx)?", http_client_error(response));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Is Server Error (5xx)?", http_server_error(response));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Test with a 404 response</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== 404 Response ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let not_found = http_request("GET", "https://httpbin.org/status/404");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Status:", not_found["status"]);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Is OK?", http_ok(not_found));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Is Client Error?", http_client_error(not_found));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Async/Parallel HTTP requests</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// All HTTP functions automatically run in background threads</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// and auto-resolve when the value is used</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== Parallel HTTP Requests ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let start = clock();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// These requests start immediately and run in parallel</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let r1 = http_get("https://httpbin.org/delay/1");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let r2 = http_get("https://httpbin.org/delay/1");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let r3 = http_get("https://httpbin.org/delay/1");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Check the type before using - it's a Future</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Type of r1 (before use):", type(r1));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Values auto-resolve when used (e.g., passed to len(), print(), or indexed)</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Response lengths:", len(r1), len(r2), len(r3));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let elapsed = clock() - start;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Total time:", elapsed, "seconds");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("(3 parallel 1-second requests complete in ~1-2 seconds, not 3)");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// You can also use await() to explicitly wait for a Future</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== Explicit await() ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let future = http_get_json("https://httpbin.org/json");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Created future:", type(future));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let result = await(future);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Slideshow title:", result["slideshow"]["title"]);</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

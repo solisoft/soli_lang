@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>utils.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>utils.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Utility module - provides helper functions</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>export fn greet(name: String) -&gt; String {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    return "Hello, " + name + "!";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>export fn max(a: Int, b: Int) -&gt; Int {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    if (a &gt; b) {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        return a;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    return b;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>export fn min(a: Int, b: Int) -&gt; Int {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    if (a &lt; b) {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        return a;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    return b;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>export fn clamp(value: Int, low: Int, high: Int) -&gt; Int {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    if (value &lt; low) {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        return low;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    if (value &gt; high) {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        return high;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    return value;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

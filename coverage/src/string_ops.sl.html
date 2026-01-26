@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>string_ops.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>string_ops.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// String operations - tests string concatenation and manipulation</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn build_string(n: Int) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let s = "";</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let i = 0;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    while (i &lt; n) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        s = s + "x";</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        i = i + 1;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return s;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn count_chars(s: String) -&gt; Int {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return len(s);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let s = build_string(500);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let result = count_chars(s);</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

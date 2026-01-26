@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>default_params.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>default_params.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line uncovered">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>// Test default parameters</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn greet(name: String = "World") -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return "Hello \(name)!";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Testing default parameters:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(greet());           // Hello World!</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(greet("Alice"));    // Hello Alice!</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn add(a: Int, b: Int = 10) -&gt; Int {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return a + b;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(add(5));     // 15</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(add(5, 3));  // 8</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn configure(debug: Bool = false, port: Int = 3000, host: String = "localhost") -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return "debug=\(debug), port=\(port), host=\(host)";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(configure());                    // debug=false, port=3000, host=localhost</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(configure(true));                // debug=true, port=3000, host=localhost</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(configure(true, 8080));          // debug=true, port=8080, host=localhost</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(configure(false, 9000, "0.0.0.0")); // debug=false, port=9000, host=0.0.0.0</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Default parameters tests passed!");</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

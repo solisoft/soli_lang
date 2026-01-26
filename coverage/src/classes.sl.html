@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>classes.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>classes.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Object-Oriented Programming in Solilang</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Define an interface</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>interface Drawable {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    fn draw() -&gt; String;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Base class</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>class Shape {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    x: Float;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    y: Float;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    new(x: Float, y: Float) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.x = x;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.y = y;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    fn getPosition() -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return "(" + str(this.x) + ", " + str(this.y) + ")";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Derived class with interface implementation</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>class Circle extends Shape implements Drawable {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    radius: Float;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    new(x: Float, y: Float, radius: Float) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.x = x;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.y = y;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.radius = radius;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    fn getArea() -&gt; Float {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return 3.14159 * this.radius * this.radius;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    fn draw() -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return "Circle at " + this.getPosition() + " with radius " + str(this.radius);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>class Rectangle extends Shape implements Drawable {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    width: Float;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    height: Float;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    new(x: Float, y: Float, width: Float, height: Float) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.x = x;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.y = y;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.width = width;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        this.height = height;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    fn getArea() -&gt; Float {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return this.width * this.height;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    fn draw() -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return "Rectangle at " + this.getPosition() + " (" + str(this.width) + "x" + str(this.height) + ")";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Create instances</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let circle = new Circle(10.0, 20.0, 5.0);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let rect = new Rectangle(0.0, 0.0, 10.0, 5.0);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Shapes Demo:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(circle.draw());</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Area:", circle.getArea());</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(rect.draw());</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Area:", rect.getArea());</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

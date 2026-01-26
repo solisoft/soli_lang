@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>comprehensions.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>comprehensions.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Test list comprehensions</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let squares = [x * x for x in [1, 2, 3, 4, 5]];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("List comprehension (squares):");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(squares);  // [1, 4, 9, 16, 25]</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Note: range syntax 1..10 needs to be implemented separately</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// For now, use an array</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let evens = [x for x in nums if x % 2 == 0];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("List comprehension (evens):");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(evens);  // [2, 4, 6, 8]</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Test hash comprehensions</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let squares_map = {x: x * x for x in [1, 2, 3]};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Hash comprehension (squares):");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(squares_map);  // {1 =&gt; 1, 2 =&gt; 4, 3 =&gt; 9}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let users = [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let names = {u["name"]: u["age"] for u in users};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Hash comprehension (name -&gt; age):");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print(names);  // {"Alice" =&gt; 30, "Bob" =&gt; 25}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Comprehension tests passed!");</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

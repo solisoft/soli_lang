@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>example.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>example.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Example: Internationalization (i18n) usage</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// This example demonstrates how to use i18n for translations and formatting</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ===== i18n Module =====</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let i18n_locale = "en";</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let i18n_translations = {};</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_set_locale(locale) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    i18n_locale = locale;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_get_locale() -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return i18n_locale;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_load_translations(locale, dict) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let pairs = entries(dict);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    for (pair in pairs) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let key = pair[0];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let value = pair[1];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let locale_key = locale + "." + key;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        i18n_translations[locale_key] = value;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_t(key) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let locale_key = i18n_locale + "." + key;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    if (has_key(i18n_translations, locale_key)) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return i18n_translations[locale_key];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let en_key = "en." + key;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    if (has_key(i18n_translations, en_key)) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return i18n_translations[en_key];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return key;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_tn(singular, plural, count) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let key = count == 1 ? singular : plural;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return i18n_t(key);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_format_number(n, locale) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let n_float = float(n);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let int_part = int(n_float);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let frac_part = int((n_float - float(int_part)) * 100.0);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let int_str = str(int_part);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let sep = locale == "fr" || locale == "de" ? "," : ".";</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    if (frac_part &gt; 0) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return int_str + sep + str(frac_part);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return int_str;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_format_currency(amount, currency, locale) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let num_str = i18n_format_number(amount, locale);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let symbol = currency == "USD" ? "$" :</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                 currency == "EUR" ? "€" :</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                 currency == "GBP" ? "£" :</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                 currency == "JPY" ? "¥" : currency;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return num_str + " " + symbol;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_format_date_simple(day, month, year, locale) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let date_str = locale == "fr" ? str(day) + "/" + str(month) + "/" + str(year) :</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                   locale == "de" ? str(day) + "." + str(month) + "." + str(year) :</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                   str(month) + "/" + str(day) + "/" + str(year);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return date_str;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ===== End i18n Module =====</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Load translations for English (default)</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_load_translations("en", {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "welcome" =&gt; "Welcome to our website!",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "hello" =&gt; "Hello",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "goodbye" =&gt; "Goodbye",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "apple" =&gt; "apple",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "apples" =&gt; "apples",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "price" =&gt; "Price",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "date" =&gt; "Date",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "items_count" =&gt; "You have {0} items in your cart",</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Load translations for French</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_load_translations("fr", {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "welcome" =&gt; "Bienvenue sur notre site!",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "hello" =&gt; "Bonjour",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "goodbye" =&gt; "Au revoir",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "apple" =&gt; "pomme",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "apples" =&gt; "pommes",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "price" =&gt; "Prix",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "date" =&gt; "Date",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "items_count" =&gt; "Vous avez {0} articles dans votre panier",</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">97</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">98</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Load translations for German</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">99</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_load_translations("de", {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">100</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "welcome" =&gt; "Willkommen auf unserer Website!",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">101</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "hello" =&gt; "Hallo",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">102</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "goodbye" =&gt; "Auf Wiedersehen",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">103</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "apple" =&gt; "Apfel",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">104</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "apples" =&gt; "Äpfel",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">105</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "price" =&gt; "Preis",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">106</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "date" =&gt; "Datum",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">107</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "items_count" =&gt; "Sie haben {0} Artikel in Ihrem Warenkorb",</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">108</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">109</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">110</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== i18n Example ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">111</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">112</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">113</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Basic translation</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">114</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Basic translation:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">115</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  English: " + i18n_t("welcome"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">116</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_set_locale("fr");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">117</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  French: " + i18n_t("welcome"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">118</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_set_locale("de");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">119</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  German: " + i18n_t("welcome"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">120</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_set_locale("en");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">121</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">122</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">123</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Pluralization</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">124</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Pluralization:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">125</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let apple_count = 1;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">126</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  " + str(apple_count) + " " + i18n_tn("apple", "apples", apple_count));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">127</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>apple_count = 5;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">128</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  " + str(apple_count) + " " + i18n_tn("apple", "apples", apple_count));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">129</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">130</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">131</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Number formatting</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">132</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Number formatting:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">133</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let price = 1234.56;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">134</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  English: " + i18n_format_number(price, "en"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">135</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  French: " + i18n_format_number(price, "fr"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">136</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  German: " + i18n_format_number(price, "de"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">137</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">138</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">139</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Currency formatting</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">140</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Currency formatting:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">141</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  USD (en): " + i18n_format_currency(price, "USD", "en"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">142</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  EUR (fr): " + i18n_format_currency(price, "EUR", "fr"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">143</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  EUR (de): " + i18n_format_currency(price, "EUR", "de"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">144</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">145</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">146</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Date formatting</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">147</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Date formatting:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">148</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  US format: " + i18n_format_date_simple(20, 1, 2025, "en"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">149</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  French format: " + i18n_format_date_simple(20, 1, 2025, "fr"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">150</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  German format: " + i18n_format_date_simple(20, 1, 2025, "de"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">151</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">152</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">153</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Locale-aware UI example</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">154</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Locale-aware UI ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">155</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">156</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Simulated product data</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">157</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let products = [</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">158</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    {"name" =&gt; "Apple", "price" =&gt; 1.99, "category" =&gt; "fruit"},</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">159</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    {"name" =&gt; "Banana", "price" =&gt; 0.99, "category" =&gt; "fruit"},</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">160</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    {"name" =&gt; "Bread", "price" =&gt; 2.49, "category" =&gt; "bakery"},</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">161</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">162</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">163</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn display_product_list(products, locale) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">164</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    i18n_set_locale(locale);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">165</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    print("Products (" + i18n_get_locale() + "):");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">166</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    for (product in products) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">167</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let price_str = i18n_format_currency(product["price"], "USD", locale);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">168</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let line = "  - " + product["name"] + ": " + price_str;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">169</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        print(line);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">170</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">171</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">172</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">173</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>display_product_list(products, "en");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">174</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>display_product_list(products, "fr");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">175</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>display_product_list(products, "de");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">176</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">177</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">178</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Complete ===");</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

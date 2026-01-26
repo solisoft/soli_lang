@@ -3,7 +3,7 @@
 //! Provides HTTP client functions with SSRF protection.
 
 use std::cell::RefCell;
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::rc::Rc;
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;

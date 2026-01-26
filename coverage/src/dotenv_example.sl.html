@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dotenv_example.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>dotenv_example.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Dotenv Example</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// This example demonstrates loading environment variables from a .env file</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Load environment variables from .env file (defaults to ".env")</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let count = dotenv();</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>println("Loaded", count, "environment variables from .env");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Access environment variables</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let database_url = getenv("DATABASE_URL");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let api_key = getenv("API_KEY");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>if database_url != null {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    println("Database URL:", database_url);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>} else {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    println("DATABASE_URL not set");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>if api_key != null {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    println("API Key is configured");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>} else {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    println("API_KEY not set (create a .env file to configure)");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Check if specific variables exist</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>if hasenv("DEBUG") {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let debug = getenv("DEBUG");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    println("Debug mode:", debug);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Set environment variables programmatically</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>setenv("MY_APP_VAR", "my_value");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>println("Set MY_APP_VAR:", getenv("MY_APP_VAR"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Check system environment variables</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let home = getenv("HOME");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let path = getenv("PATH");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>if home != null {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    println("Home directory:", home);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>println("Path length:", len(path));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Example .env file format:</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// DATABASE_URL=postgres://user:pass@localhost:5432/mydb</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// API_KEY=your-api-key-here</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// DEBUG=true</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// PORT=8080</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>println("\nDone!");</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

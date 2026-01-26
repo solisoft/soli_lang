@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>arrays.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>arrays.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Array operations in Solilang</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Create an array</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let numbers = [1, 2, 3, 4, 5];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Original array:", numbers);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Length:", len(numbers));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Access elements</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("First element:", numbers[0]);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Last element:", numbers[4]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Modify elements</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>numbers[2] = 30;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("After modification:", numbers);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Array with push and pop</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let stack = [10, 20];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>push(stack, 30);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>push(stack, 40);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Stack after pushes:", stack);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let top = pop(stack);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Popped:", top);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Stack after pop:", stack);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Iterate with for loop</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Iterating:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>for (num in numbers) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    print("  -", num);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Using range</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Range 0 to 5:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>for (i in range(0, 5)) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    print("  ", i);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

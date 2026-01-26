@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>cors.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>cors.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// CORS (Cross-Origin Resource Sharing) Middleware</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>//</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// This is a GLOBAL-ONLY middleware.</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>//</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// CHARACTERISTICS:</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ---------------</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// - Marked with `// global_only: true`</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// - Cannot be scoped to specific routes</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// - Always runs for ALL requests</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// - Adds CORS headers to responses</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>//</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// CONFIGURATION:</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// -------------</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// - `// order: N` - Execution order (lower runs first, default: 100)</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// - `// global_only: true` - Required for global-only middleware</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>//</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// ============================================================================</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// order: 5</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// global_only: false - This middleware cannot be scoped</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn add_cors_headers(req: Any) -&gt; Any {</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    // For OPTIONS preflight requests, return immediately with CORS headers</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    if (req["method"] == "OPTIONS") {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>            "continue": false,</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>            "response": {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                "status": 204,</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                "headers": {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                    "Access-Control-Allow-Origin": "*",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                    "Access-Control-Allow-Headers": "Content-Type, X-Api-Key",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                    "Access-Control-Max-Age": "86400"</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>                },</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                "body": ""</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>            }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        };</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    // For other requests, just continue (CORS headers will be added by the response)</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        "continue": true,</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        "request": req</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    };</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

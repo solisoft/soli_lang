@@ -80,18 +80,6 @@ impl CoverageTracker {
                         aggregated_line.hits += line_cov.hits;
                     }
 
-                    // Count covered lines and total executable lines
-                    if let Some(executable) = self.executable_lines.get(&file_cov.path) {
-                        aggregated_file.total_lines = executable.len() as u32;
-                        for (line_num, _) in executable.iter() {
-                            if let Some(line_cov) = aggregated_file.lines.get(line_num) {
-                                if line_cov.hits > 0 {
-                                    aggregated_file.covered_lines += 1;
-                                }
-                            }
-                        }
-                    }
-
                     for (line_num, branch_cov) in &file_cov.branches {
                         let aggregated_branch = aggregated_file
                             .branches
@@ -115,6 +103,43 @@ impl CoverageTracker {
                         }
 
                         aggregated_file.total_branches += 1;
+                    }
+                }
+
+                for (path, executable) in &self.executable_lines {
+                    let aggregated_file = aggregated
+                        .file_coverages
+                        .entry(path.clone())
+                        .or_insert_with(|| FileCoverage {
+                            path: path.clone(),
+                            lines: HashMap::new(),
+                            branches: HashMap::new(),
+                            total_lines: 0,
+                            covered_lines: 0,
+                            total_branches: 0,
+                            covered_branches: 0,
+                        });
+
+                    aggregated_file.total_lines = executable.len() as u32;
+                    for (line_num, source) in executable.iter() {
+                        let hits = aggregated_file
+                            .lines
+                            .get(line_num)
+                            .map(|l| l.hits)
+                            .unwrap_or(0);
+                        let is_executable = true;
+                        aggregated_file
+                            .lines
+                            .entry(*line_num)
+                            .or_insert_with(|| LineCoverage {
+                                line_number: *line_num,
+                                hits,
+                                source_code: source.clone(),
+                                is_executable,
+                            });
+                        if hits > 0 {
+                            aggregated_file.covered_lines += 1;
+                        }
                     }
                 }
 

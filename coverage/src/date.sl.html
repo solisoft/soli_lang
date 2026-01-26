@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>date.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>date.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Date/time formatting helpers</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn format_date(timestamp: Int, format: String) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return datetime_format(timestamp, format);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn format_datetime(timestamp: Int) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return datetime_format(timestamp, "%Y-%m-%d %H:%M:%S");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn format_relative(timestamp: Int) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return time_ago(timestamp);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn is_today(timestamp: Int) -&gt; Bool {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let now = datetime_now();</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let day_start = datetime_add_days(timestamp, 0);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let day_end = datetime_add_days(timestamp, 86400);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return now &gt;= day_start &amp;&amp; now &lt; day_end;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

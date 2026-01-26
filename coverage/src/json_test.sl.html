@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>json_test.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>json_test.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// JSON Functions Test</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Tests json_parse and json_stringify</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Test json_stringify</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Testing json_stringify ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let obj = {"name" =&gt; "Alice", "age" =&gt; 30, "active" =&gt; true};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let json = json_stringify(obj);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Hash to JSON:", json);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let arr = [1, 2, 3, "four", true, null];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let json_arr = json_stringify(arr);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Array to JSON:", json_arr);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let nested = {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "user" =&gt; {"name" =&gt; "Bob", "id" =&gt; 123},</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "tags" =&gt; ["admin", "user"],</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "metadata" =&gt; {"version" =&gt; 1.5}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let json_nested = json_stringify(nested);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Nested to JSON:", json_nested);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Test json_parse</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== Testing json_parse ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let parsed = json_parse(json);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Parsed hash:", parsed);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Name:", parsed["name"]);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Age:", parsed["age"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let parsed_arr = json_parse(json_arr);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Parsed array:", parsed_arr);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("First element:", parsed_arr[0]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let parsed_nested = json_parse(json_nested);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Parsed nested:", parsed_nested);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("User name:", parsed_nested["user"]["name"]);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("First tag:", parsed_nested["tags"][0]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Round-trip test</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== Round-trip test ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let original = {"x" =&gt; 1, "y" =&gt; [2, 3], "z" =&gt; {"a" =&gt; "b"}};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let round_tripped = json_parse(json_stringify(original));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Original:", original);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Round-tripped:", round_tripped);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("\n=== All JSON tests passed! ===");</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

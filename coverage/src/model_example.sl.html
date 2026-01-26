@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>model_example.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>model_example.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Model/ORM Example</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// This example demonstrates how to use the Model/ORM system</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Define field types</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let nameField = Field.string("name").required();</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let ageField = Field.int("age").min(0).max(150);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let emailField = Field.string("email").unique().index();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Create a new user</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let user = model_create("User", "users", {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "name": "Alice",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "email": "alice@example.com",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "age": 30</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Query users with filters</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let adults = model_where("User", "users", "database", "age", "&gt;=", 18);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>adults.order_by("name", "asc");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>adults.limit(10);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let results = adults.find();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Get a specific user by key</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let user = model_get("User", "users", "user001");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Update a user</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>model_update("User", "users", "user001", {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "age": 31</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>});</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Delete a user</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>model_delete("User", "users", "user001");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Count users</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let count = model_count("User", "users");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Define a migration</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let migration = Migration("CreateUsersTable", "001", "Create users table");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Run migrations</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>model_migrate();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Rollback last migration</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>model_rollback();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Check migration status</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>model_status();</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>println("Model example completed!");</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

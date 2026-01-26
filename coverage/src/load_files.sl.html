@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>load_files.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>load_files.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// i18n Example: Loading Translation Files from Disk</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// This example demonstrates loading JSON translation files and using them</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let i18n_locale = "en";</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let i18n_translations = {};</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_set_locale(locale) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    i18n_locale = locale;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_get_locale() -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return i18n_locale;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Flatten nested hash into dot notation keys</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn flatten_dict(dict, prefix) -&gt; Hash {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let result = {};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let pairs = entries(dict);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    for (pair in pairs) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let key = pair[0];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let value = pair[1];</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let full_key = prefix + "." + key;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        // Check if value is a nested hash</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        let is_hash = type(value) == "Hash";</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        if (is_hash) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>            let nested = flatten_dict(value, full_key);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>            let nested_pairs = entries(nested);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>            for (np in nested_pairs) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>                result[np[0]] = np[1];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>            }</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        } else {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>            result[full_key] = value;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>        }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return result;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_load_translations(locale, dict) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let flat = flatten_dict(dict, locale);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let pairs = entries(flat);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    for (pair in pairs) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        i18n_translations[pair[0]] = pair[1];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn i18n_t(key) -&gt; String {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let locale_key = i18n_locale + "." + key;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    if (has_key(i18n_translations, locale_key)) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return i18n_translations[locale_key];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    let en_key = "en." + key;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    if (has_key(i18n_translations, en_key)) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>        return i18n_translations[en_key];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>    }</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return key;</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Load translation files</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let en_data = json_parse(slurp("examples/i18n/locales/en.json"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let fr_data = json_parse(slurp("examples/i18n/locales/fr.json"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let de_data = json_parse(slurp("examples/i18n/locales/de.json"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_load_translations("en", en_data);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_load_translations("fr", fr_data);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_load_translations("de", de_data);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== i18n File Loading Example ===");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Loading translations from JSON files...");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Show translations for different locales</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("ENGLISH:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Title: " + i18n_t("app.title"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Welcome: " + i18n_t("app.welcome"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Home: " + i18n_t("nav.home"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  OK: " + i18n_t("common.ok"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_set_locale("fr");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("FRENCH:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Title: " + i18n_t("app.title"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Welcome: " + i18n_t("app.welcome"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Home: " + i18n_t("nav.home"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  OK: " + i18n_t("common.ok"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_set_locale("de");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("GERMAN:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Title: " + i18n_t("app.title"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Welcome: " + i18n_t("app.welcome"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  Home: " + i18n_t("nav.home"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("  OK: " + i18n_t("common.ok"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Switch back to English</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>i18n_set_locale("en");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">97</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">98</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Complete ===");</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

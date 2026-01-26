@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>hash.sl - Coverage</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>hash.sl</h1>
+            <a href="../index.html" class="back-link">← Back to Dashboard</a>
+        </header>
+        <section class="source-view">
+            <table>
+                <tbody>
+                    <tr class="code-line">
+                    <td class="line-num">1</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Hash Example - Ruby-style hashes in Solilang</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">2</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">3</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Hash Basics ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">4</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">5</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Create a hash with hash rocket syntax</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">6</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let person = {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">7</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "name" =&gt; "Alice",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">8</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "age" =&gt; 30,</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">9</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "city" =&gt; "New York"</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">10</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>};</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">11</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">12</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Person:", person);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">13</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Name:", person["name"]);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">14</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Age:", person["age"]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">15</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">16</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Empty hash</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">17</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let empty = {};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">18</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Empty hash:", empty);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">19</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Empty hash length:", len(empty));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">20</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">21</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Modify hash</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">22</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>person["email"] = "alice@example.com";</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">23</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("After adding email:", person);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">24</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">25</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>// Update existing key</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">26</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>person["age"] = 31;</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">27</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("After birthday:", person);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">28</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">29</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">30</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Hash Functions ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">31</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">32</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let scores = {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">33</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "Alice" =&gt; 95,</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">34</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "Bob" =&gt; 87,</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">35</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    "Charlie" =&gt; 92</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">36</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>};</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">37</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">38</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Scores:", scores);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">39</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Keys:", keys(scores));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">40</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Values:", values(scores));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">41</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Length:", len(scores));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">42</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">43</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">44</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== has_key and delete ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">45</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">46</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Has Alice?", has_key(scores, "Alice"));</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">47</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Has David?", has_key(scores, "David"));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">48</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">49</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let deleted = delete(scores, "Bob");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">50</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Deleted Bob's score:", deleted);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">51</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("After delete:", scores);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">52</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">53</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">54</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== merge ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">55</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">56</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let hash1 = {"a" =&gt; 1, "b" =&gt; 2};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">57</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let hash2 = {"b" =&gt; 3, "c" =&gt; 4};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">58</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let merged = merge(hash1, hash2);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">59</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Hash1:", hash1);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">60</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Hash2:", hash2);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">61</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Merged:", merged);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">62</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">63</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">64</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== entries ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">65</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">66</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let colors = {"red" =&gt; "#FF0000", "green" =&gt; "#00FF00", "blue" =&gt; "#0000FF"};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">67</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Colors:", colors);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">68</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Entries:", entries(colors));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">69</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">70</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">71</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Iteration ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">72</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">73</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let items = {"apple" =&gt; 1.50, "banana" =&gt; 0.75, "orange" =&gt; 2.00};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">74</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Shopping list:");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">75</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>for (pair in entries(items)) {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">76</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    print("  -", pair[0], "costs $" + str(pair[1]));</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">77</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">78</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">79</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">80</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Numeric Keys ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">81</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">82</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let lookup = {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">83</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    1 =&gt; "one",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">84</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    2 =&gt; "two",</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">85</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    3 =&gt; "three"</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">86</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">87</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Lookup:", lookup);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">88</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("lookup[2] =", lookup[2]);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">89</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">90</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">91</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== clear ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">92</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">93</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let temp = {"x" =&gt; 1, "y" =&gt; 2};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">94</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Before clear:", temp);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">95</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>clear(temp);</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">96</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("After clear:", temp);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">97</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">98</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">99</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("=== Pipeline with Hash ===");</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">100</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">101</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn get_keys(h: Any) -&gt; Any {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">102</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return keys(h);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">103</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">104</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">105</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>fn first(arr: Any) -&gt; Any {</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">106</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>    return arr[0];</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">107</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre>}</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">108</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">109</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let data = {"first" =&gt; 100, "second" =&gt; 200};</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">110</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>let first_key = data |&gt; get_keys() |&gt; first();</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">111</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("First key:", first_key);</pre></td>
+                </tr><tr class="code-line">
+                    <td class="line-num">112</td>
+                    <td class="line-indicator"></td>
+                    <td class="code-content"><pre></pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">113</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("");</pre></td>
+                </tr><tr class="code-line uncovered">
+                    <td class="line-num">114</td>
+                    <td class="line-indicator">✗</td>
+                    <td class="code-content"><pre>print("Hash examples complete!");</pre></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</body>
+</html>

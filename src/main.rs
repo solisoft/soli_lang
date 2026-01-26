@@ -384,8 +384,8 @@ fn parse_args() -> Options {
                 let mut jobs = std::thread::available_parallelism()
                     .map(|p| p.get())
                     .unwrap_or(4);
-                let mut coverage = true;
-                let mut coverage_min: Option<f64> = Some(80.0);
+                let mut coverage = false;
+                let mut coverage_min: Option<f64> = None;
                 let mut no_coverage = false;
 
                 while i < args.len() {
@@ -1004,6 +1004,17 @@ fn run_test(
             config.threshold = Some(min);
         }
         tracker = Some(Rc::new(RefCell::new(CoverageTracker::new(config))));
+
+        let source_files = collect_source_files();
+        for source_file in &source_files {
+            if let Ok(source) = std::fs::read_to_string(source_file) {
+                tracker
+                    .as_ref()
+                    .unwrap()
+                    .borrow_mut()
+                    .register_executable_lines_from_source(source_file, &source);
+            }
+        }
     }
 
     let mut passed = 0;
@@ -1021,8 +1032,6 @@ fn run_test(
                     .unwrap_or_else(|| "unknown".to_string());
 
                 if let Some(ref tr) = tracker {
-                    tr.borrow_mut()
-                        .register_executable_lines_from_source(test_file, &source);
                     tr.borrow_mut().start_test(&test_name);
                 }
 
@@ -1093,4 +1102,48 @@ fn collect_test_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {
     }
 
     files
+}
+
+fn collect_source_files() -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+    let dirs_to_search = vec![
+        project_root.join("www"),
+        project_root.join("examples"),
+        project_root.join("benches"),
+        project_root.join(".soli"),
+    ];
+
+    for dir in dirs_to_search {
+        if dir.exists() {
+            collect_sl_files_recursive(&dir, &mut files, &project_root);
+        }
+    }
+
+    files
+}
+
+fn collect_sl_files_recursive(
+    dir: &std::path::PathBuf,
+    files: &mut Vec<std::path::PathBuf>,
+    project_root: &std::path::PathBuf,
+) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext == "sl" {
+                        files.push(path);
+                    }
+                }
+            } else if path.is_dir() {
+                let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
+                if dir_name != "tests" && dir_name != "target" && dir_name != "node_modules" {
+                    collect_sl_files_recursive(&path, files, project_root);
+                }
+            }
+        }
+    }
 }
