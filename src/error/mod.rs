@@ -269,6 +269,8 @@ pub enum RuntimeError {
         span: Span,
         /// JSON-serialized environment variables for debugging
         env_json: String,
+        /// Stack trace captured at the moment of the error
+        stack_trace: Vec<String>,
     },
 }
 
@@ -337,12 +339,13 @@ impl RuntimeError {
         }
     }
 
-    /// Create a WithEnv error with captured environment
-    pub fn with_env(message: impl Into<String>, span: Span, env_json: impl Into<String>) -> Self {
+    /// Create a WithEnv error with captured environment and stack trace
+    pub fn with_env(message: impl Into<String>, span: Span, env_json: impl Into<String>, stack_trace: Vec<String>) -> Self {
         Self::WithEnv {
             message: message.into(),
             span,
             env_json: env_json.into(),
+            stack_trace,
         }
     }
 
@@ -351,10 +354,11 @@ impl RuntimeError {
         matches!(self, Self::WithEnv { .. })
     }
 
-    /// Get the stack trace from a breakpoint error.
+    /// Get the stack trace from a breakpoint or WithEnv error.
     pub fn breakpoint_stack_trace(&self) -> Option<&[String]> {
         match self {
             Self::Breakpoint { stack_trace, .. } => Some(stack_trace),
+            Self::WithEnv { stack_trace, .. } => Some(stack_trace),
             _ => None,
         }
     }

@@ -290,10 +290,10 @@ impl Interpreter {
     }
 
     /// Get the current call stack as formatted strings.
+    /// Returns frames from outermost (entry point) to innermost (most recent call).
     pub fn get_stack_trace(&self) -> Vec<String> {
         self.call_stack
             .iter()
-            .rev()
             .map(|frame| {
                 let file = frame
                     .file_path
@@ -330,6 +330,38 @@ impl Interpreter {
                 Ok(ControlFlow::Normal) => {}
             }
         }
+
+        // Capture environment and stack trace BEFORE restoring if there's an error
+        // This preserves local variables for debugging
+        let result = match result {
+            Err(e) if !e.is_breakpoint() && e.breakpoint_env_json().is_none() => {
+                let captured_env = self.environment.borrow().get_all_variables();
+                let env_json = self.serialize_environment(&captured_env);
+
+                // Get current file path for error location
+                let file_path = self.current_source_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                // Capture stack trace and update the last frame with actual error line
+                let mut stack_trace = self.get_stack_trace();
+
+                // Get the current function name from the last stack frame
+                let func_name = self.call_stack.last()
+                    .map(|f| f.function_name.clone())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                // Replace the last frame with one that has the actual error line number
+                if !stack_trace.is_empty() {
+                    stack_trace.pop();
+                }
+                stack_trace.push(format!("{} at {}:{}", func_name, file_path, e.span().line));
+
+                Err(RuntimeError::with_env(e.to_string(), e.span(), env_json, stack_trace))
+            }
+            other => other,
+        };
 
         self.environment = previous;
         result
@@ -368,8 +400,8 @@ impl Interpreter {
                 span: Span::default(),
             }),
             Err(e) => {
-                // Preserve breakpoint errors as-is (they contain captured environment)
-                if e.is_breakpoint() {
+                // Preserve errors that already have captured environment (breakpoint or WithEnv)
+                if e.is_breakpoint() || e.breakpoint_env_json().is_some() {
                     Err(e)
                 } else {
                     // Capture the local environment before it's lost
@@ -377,24 +409,9 @@ impl Interpreter {
                     let env_json = self.serialize_environment(&captured_env);
 
                     // Capture stack trace before popping frame
-                    let stack_trace = self
-                        .call_stack
-                        .iter()
-                        .rev()
-                        .map(|frame| {
-                            let file = frame
-                                .file_path
-                                .as_ref()
-                                .cloned()
-                                .unwrap_or_else(|| "unknown".to_string());
-                            format!("{} at {}:{}", frame.function_name, file, frame.line)
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    let stack_trace = self.get_stack_trace();
 
-                    // Create a new error with stack trace and captured environment
-                    let error_with_stack = format!("{}\nStack trace:\n{}", e, stack_trace);
-                    Err(RuntimeError::with_env(error_with_stack, e.span(), env_json))
+                    Err(RuntimeError::with_env(e.to_string(), e.span(), env_json, stack_trace))
                 }
             }
         };

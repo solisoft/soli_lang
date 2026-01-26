@@ -137,7 +137,14 @@ pub fn serve_folder_with_options(
     let num_workers = std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(4); // Fallback to 4 if unable to detect
-    serve_folder_with_options_and_mode(folder, port, dev_mode, ExecutionMode::Bytecode, num_workers)
+    // Use TreeWalk in dev mode for better debugging (variable inspection on errors)
+    // Use Bytecode in production for better performance
+    let mode = if dev_mode {
+        ExecutionMode::TreeWalk
+    } else {
+        ExecutionMode::Bytecode
+    };
+    serve_folder_with_options_and_mode(folder, port, dev_mode, mode, num_workers)
 }
 
 /// Serve an MVC application from a folder with configurable options and execution mode.
@@ -2569,11 +2576,20 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
                     }
                 }
                 Err(e) => {
+                    // Capture environment BEFORE popping frame so we can see local variables
+                    let captured_env = if dev_mode && e.breakpoint_env_json().is_none() {
+                        Some(interpreter.serialize_environment_for_debug())
+                    } else {
+                        None
+                    };
                     interpreter.pop_frame();
                     if dev_mode {
-                        let stack_trace = interpreter.get_stack_trace();
-                        let breakpoint_env = e.breakpoint_env_json();
-                        let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, breakpoint_env);
+                        // Use captured stack trace from error if available, otherwise get from interpreter
+                        let stack_trace: Vec<String> = e.breakpoint_stack_trace()
+                            .map(|st| st.to_vec())
+                            .unwrap_or_else(|| interpreter.get_stack_trace());
+                        let breakpoint_env = e.breakpoint_env_json().map(|s| s.to_string()).or(captured_env);
+                        let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, breakpoint_env.as_deref());
                         ResponseData {
                             status: if e.is_breakpoint() { 200 } else { 500 },
                             headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2591,10 +2607,17 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
             }
         }
         Err(e) => {
+            // Capture environment BEFORE popping frame so we can see local variables
+            let captured_env = if dev_mode {
+                Some(interpreter.serialize_environment_for_debug())
+            } else {
+                None
+            };
             interpreter.pop_frame();
             if dev_mode {
+                // This error is a String from resolve_handler, no captured stack trace
                 let stack_trace = interpreter.get_stack_trace();
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, None);
+                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, captured_env.as_deref());
                 ResponseData {
                     status: 500,
                     headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
@@ -2735,7 +2758,27 @@ fn call_class_method(
         let method_span = method.span.unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1));
         interpreter.push_frame(&format!("{}#{}", class.name, method_name), method_span, method.source_path.clone());
 
+        // Set current source path for proper error location tracking
+        if let Some(ref source_path) = method.source_path {
+            interpreter.set_source_path(std::path::PathBuf::from(source_path));
+        }
+
         let result = interpreter.call_value(Value::Function(method.clone()), vec![request_hash.clone()], method_span);
+
+        // Capture environment BEFORE popping frame so we preserve local variables for debugging
+        let result = match result {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                // If error already has env (breakpoint or WithEnv), keep it; otherwise capture
+                if e.breakpoint_env_json().is_some() {
+                    Err(e)
+                } else {
+                    let env_json = interpreter.serialize_environment_for_debug();
+                    let stack_trace = interpreter.get_stack_trace();
+                    Err(RuntimeError::with_env(e.to_string(), e.span(), env_json, stack_trace))
+                }
+            }
+        };
 
         interpreter.pop_frame();
 
@@ -3150,7 +3193,10 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             },
             Err(e) => {
                 if dev_mode {
-                    let stack_trace = interpreter.get_stack_trace();
+                    // Use captured stack trace from error if available
+                    let stack_trace: Vec<String> = e.breakpoint_stack_trace()
+                        .map(|st| st.to_vec())
+                        .unwrap_or_else(|| interpreter.get_stack_trace());
                     let breakpoint_env = e.breakpoint_env_json();
                     let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace, breakpoint_env);
                     return finalize_response(ResponseData {
@@ -3217,7 +3263,10 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             },
             Err(e) => {
                 if dev_mode {
-                    let stack_trace = interpreter.get_stack_trace();
+                    // Use captured stack trace from error if available
+                    let stack_trace: Vec<String> = e.breakpoint_stack_trace()
+                        .map(|st| st.to_vec())
+                        .unwrap_or_else(|| interpreter.get_stack_trace());
                     let breakpoint_env = e.breakpoint_env_json();
                     let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace, breakpoint_env);
                     return finalize_response(ResponseData {
