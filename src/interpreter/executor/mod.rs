@@ -120,13 +120,18 @@ impl Interpreter {
         // Only add view context variables if they don't already exist in the environment
         if let Some(view_data) = crate::interpreter::builtins::template::get_view_debug_context() {
             // Collect existing variable names to avoid duplicates
-            let existing_names: std::collections::HashSet<String> = json_parts.iter()
+            let existing_names: std::collections::HashSet<String> = json_parts
+                .iter()
                 .filter_map(|part| {
                     // Extract key name from "\"key\": value" format
                     if part.starts_with('"') {
                         part.split(':').next().and_then(|k| {
                             let k = k.trim().trim_matches('"');
-                            if !k.is_empty() { Some(k.to_string()) } else { None }
+                            if !k.is_empty() {
+                                Some(k.to_string())
+                            } else {
+                                None
+                            }
                         })
                     } else {
                         None
@@ -151,7 +156,9 @@ impl Interpreter {
                         }
                         // Skip functions and classes
                         match value {
-                            Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => continue,
+                            Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => {
+                                continue
+                            }
                             _ => {}
                         }
                         let value_json = self.value_to_json(value);
@@ -159,6 +166,34 @@ impl Interpreter {
                     }
                 }
             }
+        }
+
+        format!("{{{}}}", json_parts.join(", "))
+    }
+
+    /// Serialize a HashMap of variables to JSON string.
+    pub fn serialize_environment(&self, vars: &std::collections::HashMap<String, Value>) -> String {
+        let mut json_parts = Vec::new();
+
+        for (name, value) in vars {
+            // Skip functions and classes
+            match value {
+                Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => continue,
+                _ => {}
+            }
+
+            // Resolve futures before serialization
+            let resolved_value = if value.is_future() {
+                match value.clone().resolve() {
+                    Ok(v) => v,
+                    Err(e) => Value::String(format!("<future error: {}>", e)),
+                }
+            } else {
+                value.clone()
+            };
+
+            let json_value = self.value_to_json(&resolved_value);
+            json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }
 
         format!("{{{}}}", json_parts.join(", "))
@@ -182,11 +217,8 @@ impl Interpreter {
                 format!("\"{}\"", escaped)
             }
             Value::Array(arr) => {
-                let items: Vec<String> = arr
-                    .borrow()
-                    .iter()
-                    .map(|v| self.value_to_json(v))
-                    .collect();
+                let items: Vec<String> =
+                    arr.borrow().iter().map(|v| self.value_to_json(v)).collect();
                 format!("[{}]", items.join(", "))
             }
             Value::Hash(hash) => {
@@ -198,9 +230,7 @@ impl Interpreter {
                             Value::String(s) => s.clone(),
                             other => format!("{}", other),
                         };
-                        let escaped_key = key
-                            .replace('\\', "\\\\")
-                            .replace('"', "\\\"");
+                        let escaped_key = key.replace('\\', "\\\\").replace('"', "\\\"");
                         format!(r#""{}": {}"#, escaped_key, self.value_to_json(v))
                     })
                     .collect();
@@ -216,7 +246,11 @@ impl Interpreter {
                 if fields.is_empty() {
                     format!(r#"{{"__class__": "{}"}}"#, inst.class.name)
                 } else {
-                    format!(r#"{{"__class__": "{}", {}}}"#, inst.class.name, fields.join(", "))
+                    format!(
+                        r#"{{"__class__": "{}", {}}}"#,
+                        inst.class.name,
+                        fields.join(", ")
+                    )
                 }
             }
             Value::Function(_) => "\"<function>\"".to_string(),
@@ -231,7 +265,12 @@ impl Interpreter {
 
     /// Push a frame onto the call stack.
     /// If `source_path` is provided, it takes precedence over `current_source_path`.
-    pub(crate) fn push_frame(&mut self, function_name: &str, span: Span, source_path: Option<String>) {
+    pub(crate) fn push_frame(
+        &mut self,
+        function_name: &str,
+        span: Span,
+        source_path: Option<String>,
+    ) {
         let file_path = source_path.or_else(|| {
             self.current_source_path
                 .as_ref()
@@ -307,13 +346,21 @@ impl Interpreter {
         self.push_frame(&func.name, span, func.source_path.clone());
 
         let call_env = Environment::with_enclosing(func.closure.clone());
-        let mut call_env = call_env;
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        let mut call_env_inner = call_env_rc.borrow_mut();
 
         for (param, value) in func.params.iter().zip(arguments) {
-            call_env.define(param.name.clone(), value);
+            call_env_inner.define(param.name.clone(), value);
         }
 
-        let result = match self.execute_block(&func.body, call_env) {
+        // Store reference to capture environment on error
+        let env_for_capture = call_env_rc.clone();
+
+        // Drop mutable borrow before executing block
+        drop(call_env_inner);
+
+        // Execute the function body
+        let result = match self.execute_block(&func.body, call_env_rc.borrow().clone()) {
             Ok(ControlFlow::Normal) => Ok(Value::Null),
             Ok(ControlFlow::Return(return_value)) => Ok(return_value),
             Ok(ControlFlow::Throw(e)) => Err(RuntimeError::General {
@@ -325,6 +372,10 @@ impl Interpreter {
                 if e.is_breakpoint() {
                     Err(e)
                 } else {
+                    // Capture the local environment before it's lost
+                    let captured_env = env_for_capture.borrow().get_all_variables();
+                    let env_json = self.serialize_environment(&captured_env);
+
                     // Capture stack trace before popping frame
                     let stack_trace = self
                         .call_stack
@@ -341,12 +392,9 @@ impl Interpreter {
                         .collect::<Vec<_>>()
                         .join("\n");
 
-                    // Create a new error with stack trace
+                    // Create a new error with stack trace and captured environment
                     let error_with_stack = format!("{}\nStack trace:\n{}", e, stack_trace);
-                    Err(RuntimeError::General {
-                        message: error_with_stack,
-                        span: e.span(),
-                    })
+                    Err(RuntimeError::with_env(error_with_stack, e.span(), env_json))
                 }
             }
         };

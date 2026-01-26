@@ -260,6 +260,16 @@ pub enum RuntimeError {
         /// Stack trace captured at the moment of the breakpoint
         stack_trace: Vec<String>,
     },
+
+    /// Error with captured environment for debugging
+    /// This allows accessing local variables in the dev error page REPL
+    #[error("{message} at {span}")]
+    WithEnv {
+        message: String,
+        span: Span,
+        /// JSON-serialized environment variables for debugging
+        env_json: String,
+    },
 }
 
 impl RuntimeError {
@@ -309,6 +319,7 @@ impl RuntimeError {
             Self::NotAClass(_, span) => *span,
             Self::General { span, .. } => *span,
             Self::Breakpoint { span, .. } => *span,
+            Self::WithEnv { span, .. } => *span,
         }
     }
 
@@ -317,12 +328,27 @@ impl RuntimeError {
         matches!(self, Self::Breakpoint { .. })
     }
 
-    /// Get the environment JSON from a breakpoint error.
+    /// Get the environment JSON from a breakpoint or WithEnv error.
     pub fn breakpoint_env_json(&self) -> Option<&str> {
         match self {
             Self::Breakpoint { env_json, .. } => Some(env_json),
+            Self::WithEnv { env_json, .. } => Some(env_json),
             _ => None,
         }
+    }
+
+    /// Create a WithEnv error with captured environment
+    pub fn with_env(message: impl Into<String>, span: Span, env_json: impl Into<String>) -> Self {
+        Self::WithEnv {
+            message: message.into(),
+            span,
+            env_json: env_json.into(),
+        }
+    }
+
+    /// Check if this error has captured environment
+    pub fn has_captured_env(&self) -> bool {
+        matches!(self, Self::WithEnv { .. })
     }
 
     /// Get the stack trace from a breakpoint error.

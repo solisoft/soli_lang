@@ -23,7 +23,8 @@ impl Interpreter {
                     let env_json = self.serialize_environment_for_debug();
                     let mut stack_trace = self.get_stack_trace();
                     // Add the breakpoint location as the first entry
-                    let file = self.current_source_path
+                    let file = self
+                        .current_source_path
                         .as_ref()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|| "unknown".to_string());
@@ -279,7 +280,11 @@ impl Interpreter {
 
         // Check if this class extends Model (directly or indirectly)
         let extends_model = superclass.as_ref().map_or(false, |sc| {
-            sc.name == "Model" || sc.superclass.as_ref().map_or(false, |ssc| ssc.name == "Model")
+            sc.name == "Model"
+                || sc
+                    .superclass
+                    .as_ref()
+                    .map_or(false, |ssc| ssc.name == "Model")
         });
 
         // Create environment for methods (with potential super binding)
