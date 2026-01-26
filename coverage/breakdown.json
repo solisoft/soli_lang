@@ -6,18 +6,256 @@
       "covered_branches": 0,
       "covered_lines": 0,
       "line_coverage": {
-        "119": 5,
-        "158": 5,
-        "201": 5,
-        "227": 5,
-        "264": 5,
-        "306": 5,
-        "42": 5,
-        "7": 5,
-        "79": 5
+        "5": 5,
+        "56": 5,
+        "82": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/i18n_extended_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/datetime_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/hashes_builtin_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "108": 5,
+        "134": 5,
+        "151": 5,
+        "188": 5,
+        "213": 5,
+        "235": 5,
+        "42": 5,
+        "7": 5,
+        "75": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/file_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/regex_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/i18n_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "103": 5,
+        "110": 5,
+        "117": 5,
+        "140": 5,
+        "24": 5,
+        "45": 5,
+        "58": 5,
+        "7": 5,
+        "71": 5,
+        "90": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/router_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/arrays_builtin_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/factory_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/env_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "33": 5,
+        "45": 5,
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/dsl/test_dsl_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/hashes_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "143": 5,
+        "5": 5,
+        "68": 5,
+        "96": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/control_flow_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/validation_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/comprehensions_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/pattern_matching_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/literals_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5,
+        "89": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/functions_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/crypto_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -49,36 +287,7 @@
         "5": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/literals_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/i18n_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "117": 5,
-        "56": 5,
-        "7": 5,
-        "81": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/session_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/string_interpolation_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -129,7 +338,68 @@
         "5": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/hashes_builtin_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/scope_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/json_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/math_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "119": 5,
+        "24": 5,
+        "45": 5,
+        "7": 5,
+        "77": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/http_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "154": 5,
+        "46": 5,
+        "7": 5,
+        "73": 5,
+        "90": 5,
+        "99": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/query_builder_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -155,103 +425,7 @@
         "5": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/arrays_builtin_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5,
-        "56": 5,
-        "82": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/datetime_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "35": 5,
-        "5": 5,
-        "91": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/lambdas_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5,
-        "91": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/interfaces_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "130": 5,
-        "5": 5,
-        "53": 5,
-        "91": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/operators_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "108": 5,
-        "134": 5,
-        "151": 5,
-        "188": 5,
-        "213": 5,
-        "235": 5,
-        "42": 5,
-        "7": 5,
-        "75": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/file_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "36": 5,
-        "5": 5,
-        "88": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/duration_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/pipeline_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -264,7 +438,7 @@
         "5": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/clock_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/variables_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -296,10 +470,18 @@
       "covered_branches": 0,
       "covered_lines": 0,
       "line_coverage": {
-        "5": 5
+        "119": 5,
+        "158": 5,
+        "201": 5,
+        "227": 5,
+        "264": 5,
+        "306": 5,
+        "42": 5,
+        "7": 5,
+        "79": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/env_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/i18n_extended_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -312,7 +494,21 @@
         "5": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/json_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/clock_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5,
+        "91": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/interfaces_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -325,7 +521,35 @@
         "5": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/hashes_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/type_conversion_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "35": 5,
+        "5": 5,
+        "91": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/lambdas_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "5": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/multiline_strings_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -355,37 +579,6 @@
       "covered_branches": 0,
       "covered_lines": 0,
       "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/pattern_matching_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "111": 5,
-        "143": 5,
-        "51": 5,
-        "7": 5,
-        "82": 5,
-        "98": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/template_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
         "49": 5,
         "5": 5
       },
@@ -403,195 +596,7 @@
         "5": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/variables_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "143": 5,
-        "5": 5,
-        "68": 5,
-        "96": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/control_flow_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/pipeline_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/math_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/type_conversion_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/multiline_strings_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "119": 5,
-        "24": 5,
-        "45": 5,
-        "7": 5,
-        "77": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/http_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5,
-        "89": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/functions_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/string_interpolation_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "33": 5,
-        "45": 5,
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/dsl/test_dsl_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "103": 5,
-        "110": 5,
-        "117": 5,
-        "140": 5,
-        "24": 5,
-        "45": 5,
-        "58": 5,
-        "7": 5,
-        "71": 5,
-        "90": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/router_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/crypto_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/regex_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/comprehensions_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/edge_cases_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -631,14 +636,13 @@
       "covered_branches": 0,
       "covered_lines": 0,
       "line_coverage": {
-        "219": 5,
-        "315": 5,
-        "385": 5,
+        "130": 5,
         "5": 5,
+        "53": 5,
         "91": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/inheritance_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/operators_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -661,15 +665,46 @@
       "covered_branches": 0,
       "covered_lines": 0,
       "line_coverage": {
-        "154": 5,
-        "46": 5,
+        "117": 5,
+        "56": 5,
         "7": 5,
-        "73": 5,
-        "90": 5,
-        "99": 5
+        "81": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/query_builder_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/session_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "36": 5,
+        "5": 5,
+        "88": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/duration_spec.sl",
+      "total_branches": 0,
+      "total_lines": 0
+    },
+    {
+      "branch_coverage_percent": 100.0,
+      "coverage_percent": 100.0,
+      "covered_branches": 0,
+      "covered_lines": 0,
+      "line_coverage": {
+        "111": 5,
+        "143": 5,
+        "51": 5,
+        "7": 5,
+        "82": 5,
+        "98": 5
+      },
+      "line_coverage_percent": 100.0,
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/template_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     },
@@ -697,49 +732,14 @@
       "covered_branches": 0,
       "covered_lines": 0,
       "line_coverage": {
-        "5": 5
+        "219": 5,
+        "315": 5,
+        "385": 5,
+        "5": 5,
+        "91": 5
       },
       "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/validation_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/edge_cases_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/builtins/factory_spec.sl",
-      "total_branches": 0,
-      "total_lines": 0
-    },
-    {
-      "branch_coverage_percent": 100.0,
-      "coverage_percent": 100.0,
-      "covered_branches": 0,
-      "covered_lines": 0,
-      "line_coverage": {
-        "5": 5
-      },
-      "line_coverage_percent": 100.0,
-      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/scope_spec.sl",
+      "path": "/home/olivier.bonnaure@delupay.com/workspace/solilang/tests/language/inheritance_spec.sl",
       "total_branches": 0,
       "total_lines": 0
     }
@@ -754,6 +754,6 @@
     "total_files": 49,
     "total_lines": 0
   },
-  "timestamp": "2026-01-26T10:51:42.998468798+00:00",
+  "timestamp": "2026-01-26T12:14:52.370074798+00:00",
   "version": "0.1.0"
 }

@@ -381,9 +381,7 @@ fn parse_args() -> Options {
                 // Parse test command
                 i += 1;
                 let mut path: Option<String> = None;
-                let mut jobs = std::thread::available_parallelism()
-                    .map(|p| p.get())
-                    .unwrap_or(4);
+                let mut jobs: usize = 1;
                 let mut coverage = false;
                 let mut coverage_min: Option<f64> = None;
                 let mut no_coverage = false;
@@ -973,14 +971,13 @@ fn format_duration(duration: std::time::Duration) -> String {
 
 fn run_test(
     path: Option<&str>,
-    _jobs: usize,
+    jobs: usize,
     coverage: bool,
     coverage_min: Option<f64>,
     _no_coverage: bool,
 ) {
-    use solilang::coverage::{CoverageConfig, CoverageReporter, CoverageTracker, OutputFormat};
-    use std::cell::RefCell;
-    use std::rc::Rc;
+    use std::sync::mpsc;
+    use std::thread;
 
     let test_path = match path {
         Some(p) => std::path::PathBuf::from(p),
@@ -1005,81 +1002,13 @@ fn run_test(
         return;
     }
 
-    println!("Running {} test(s)...", test_files.len());
+    let num_workers = jobs.max(1);
+    println!(
+        "Running {} test(s) with {} worker(s)...",
+        test_files.len(),
+        num_workers
+    );
     println!();
-
-    let mut tracker: Option<Rc<RefCell<CoverageTracker>>> = None;
-    if coverage {
-        let mut config = CoverageConfig::new();
-        config.formats = vec![OutputFormat::Console];
-        if let Some(min) = coverage_min {
-            config.threshold = Some(min);
-        }
-        tracker = Some(Rc::new(RefCell::new(CoverageTracker::new(config))));
-
-        let source_files = collect_source_files();
-        for source_file in &source_files {
-            if let Ok(source) = std::fs::read_to_string(source_file) {
-                tracker
-                    .as_ref()
-                    .unwrap()
-                    .borrow_mut()
-                    .register_executable_lines_from_source(source_file, &source);
-            }
-        }
-    }
-
-    let mut passed = 0;
-    let mut failed = 0;
-    let pending = 0;
-
-    let mut test_results: Vec<(std::path::PathBuf, bool, String, std::time::Duration)> = Vec::new();
-
-    for test_file in &test_files {
-        match std::fs::read_to_string(test_file) {
-            Ok(source) => {
-                let test_name = test_file
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-
-                if let Some(ref tr) = tracker {
-                    tr.borrow_mut().start_test(&test_name);
-                }
-
-                let start = std::time::Instant::now();
-                let result = solilang::run_with_path_and_coverage(
-                    &source,
-                    Some(test_file),
-                    solilang::ExecutionMode::TreeWalk,
-                    false,
-                    false,
-                    tracker.as_ref(),
-                    Some(test_file),
-                );
-                let duration = start.elapsed();
-
-                match result {
-                    Ok(_) => {
-                        passed += 1;
-                        test_results.push((test_file.clone(), true, String::new(), duration));
-                    }
-                    Err(e) => {
-                        failed += 1;
-                        test_results.push((test_file.clone(), false, e.to_string(), duration));
-                    }
-                }
-
-                if let Some(ref mut tr) = tracker {
-                    tr.borrow_mut().end_test();
-                }
-            }
-            Err(e) => {
-                eprintln!("Error reading {}: {}", test_file.display(), e);
-                failed += 1;
-            }
-        }
-    }
 
     let test_dir = if test_path.is_file() {
         test_path.parent().unwrap_or(&test_path).to_path_buf()
@@ -1087,8 +1016,67 @@ fn run_test(
         test_path.clone()
     };
 
+    let (tx, rx) = mpsc::channel();
+
+    std::thread::scope(|s| {
+        let mut handles = Vec::new();
+
+        let chunk_size = (test_files.len() + num_workers - 1) / num_workers;
+        for chunk in test_files.chunks(chunk_size) {
+            let tx = tx.clone();
+            let chunk: Vec<std::path::PathBuf> = chunk.to_vec();
+
+            handles.push(s.spawn(move || {
+                let mut results: Vec<(std::path::PathBuf, bool, String, std::time::Duration)> =
+                    Vec::new();
+
+                for file in chunk {
+                    let start = std::time::Instant::now();
+                    let result = std::fs::read_to_string(&file).map_err(|e| e.to_string());
+
+                    let (passed, error) = match result {
+                        Ok(source) => {
+                            match solilang::run_with_path_and_coverage(
+                                &source,
+                                Some(&file),
+                                solilang::ExecutionMode::TreeWalk,
+                                false,
+                                false,
+                                None,
+                                Some(&file),
+                            ) {
+                                Ok(_) => (true, String::new()),
+                                Err(e) => (false, e.to_string()),
+                            }
+                        }
+                        Err(e) => (false, e),
+                    };
+
+                    let duration = start.elapsed();
+                    results.push((file, passed, error, duration));
+                }
+
+                let _ = tx.send(results);
+            }));
+        }
+
+        drop(tx);
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    });
+
+    let mut all_results: Vec<(std::path::PathBuf, bool, String, std::time::Duration)> = Vec::new();
+    for received in rx {
+        all_results.extend(received);
+    }
+
+    let mut passed = 0;
+    let mut failed = 0;
+
     let mut current_dir: Option<std::path::PathBuf> = None;
-    for (path, passed_test, error, duration) in &test_results {
+    for (path, passed_test, error, duration) in &all_results {
         let parent = path.parent().unwrap_or(&path).to_path_buf();
         let relative_to_test_dir = path.strip_prefix(&test_dir).unwrap_or(path);
         let parent_str = relative_to_test_dir
@@ -1115,25 +1103,22 @@ fn run_test(
 
         let duration_str = format_duration(*duration);
         if *passed_test {
+            passed += 1;
             println!("  {:40} {:>8} ✓", display_path, duration_str);
         } else {
+            failed += 1;
             println!("  {:40} {:>8} ✗ {}", display_path, duration_str, error);
         }
     }
 
+    println!();
     println!("{}", if failed > 0 { "❌ " } else { "✓ " });
     println!(
         "  {} passed, {} failed ({} total)",
         passed,
         failed,
-        passed + failed + pending
+        passed + failed
     );
-
-    if let Some(ref tr) = tracker {
-        let coverage_data = tr.borrow().get_aggregated_coverage();
-        let reporter = CoverageReporter::new(CoverageConfig::new());
-        reporter.generate_reports(&coverage_data);
-    }
 
     if failed > 0 {
         process::exit(1);
