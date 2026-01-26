@@ -185,6 +185,82 @@ resources("users", null);
 
 ## 🧪 Testing
 
+### E2E Controller Testing
+
+Solilang provides a Rails-like E2E testing framework for testing your controllers with real HTTP requests:
+
+```soli
+describe("PostsController", fn() {
+    before_each(fn() {
+        as_guest();
+    });
+    
+    test("creates post", fn() {
+        login("user@example.com", "password");
+        
+        let response = post("/posts", {
+            "title": "New Post",
+            "body": "Content"
+        });
+        
+        assert_eq(res_status(response), 201);
+        let data = res_json(response);
+        assert_eq(data["title"], "New Post");
+    });
+});
+```
+
+#### Request Helpers
+
+| Function | Description |
+|----------|-------------|
+| `get(path)` | GET request |
+| `post(path, data)` | POST with body |
+| `put(path, data)` | PUT replacement |
+| `patch(path, data)` | PATCH partial update |
+| `delete(path)` | DELETE resource |
+| `head(path)`, `options(path)` | Other methods |
+| `set_header(name, value)` | Custom headers |
+| `set_authorization(token)` | Bearer token auth |
+| `set_cookie(name, value)` | Session cookies |
+
+#### Response Helpers
+
+| Function | Description |
+|----------|-------------|
+| `res_status(response)` | HTTP status code |
+| `res_body(response)` | Response body string |
+| `res_json(response)` | Parsed JSON response |
+| `res_header(response, name)` | Specific header |
+| `res_redirect(response)` | Is redirect? |
+| `res_ok(response)` | 2xx status? |
+| `res_client_error(response)` | 4xx status? |
+| `res_server_error(response)` | 5xx status? |
+
+#### Session Helpers
+
+| Function | Description |
+|----------|-------------|
+| `as_guest()`, `as_user(id)`, `as_admin()` | Set auth state |
+| `login(email, password)`, `logout()` | Session management |
+| `signed_in()`, `signed_out()` | Auth check |
+| `with_token(token)` | JWT authentication |
+
+#### Running Tests
+
+```bash
+# Run E2E tests
+soli test tests/builtins/controller_integration_spec.sl
+
+# Run all tests
+soli test tests/builtins
+
+# With coverage
+soli test tests/builtins --coverage
+```
+
+**Documentation:** See [docs/testing-guide.md](docs/testing-guide.md) for comprehensive testing documentation.
+
 ### Public Routes
 
 ```bash

@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Middleware</span>
@@ -11,10 +11,8 @@
     <h2 class="text-2xl font-bold text-white mb-6">Request Logging</h2>
     <p class="text-gray-400 mb-6">Soli includes built-in request logging at the server level with timing information:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Server Output</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Server Output</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm">[LOG] GET /users - 200 (1.234ms)
 [LOG] POST /login - 302 (12.876ms)
@@ -24,7 +22,7 @@
 
     <p class="text-gray-400 mb-6">To disable request logging, set the environment variable:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Disable request logging
 SOLI_REQUEST_LOG=false soli serve myapp
@@ -65,10 +63,8 @@ SOLI_REQUEST_LOG=0 soli serve myapp</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Creating Middleware</h2>
     <p class="text-gray-400 mb-6">Middleware functions receive a request hash and return a result hash:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/middleware/cors.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/cors.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// order: 5
 // global_only: true
@@ -83,10 +79,8 @@ fn add_cors_headers(req: Any) -> Any {
         </div>
     </div>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/middleware/auth.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/auth.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// order: 20
 // scope_only: true
@@ -127,9 +121,9 @@ fn authenticate(req: Any) -> Any {
     <p class="text-gray-400 mb-6">Middleware must return a hash with one of these formats:</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-            <div class="px-4 py-2 border-b border-white/5 bg-green-500/10">
-                <span class="text-xs text-green-400 font-mono">Continue Processing</span>
+        <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <label class="block px-4 py-2 bg-green-500/10 text-xs text-green-400 font-mono border-b border-white/5">Continue Processing</label>
+            <div class="p-4 overflow-x-auto">
             </div>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">{
@@ -138,9 +132,9 @@ fn authenticate(req: Any) -> Any {
 }</code></pre>
             </div>
         </div>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-            <div class="px-4 py-2 border-b border-white/5 bg-red-500/10">
-                <span class="text-xs text-red-400 font-mono">Short-circuit Response</span>
+        <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <label class="block px-4 py-2 bg-red-500/10 text-xs text-red-400 font-mono border-b border-white/5">Short-circuit Response</label>
+            <div class="p-4 overflow-x-auto">
             </div>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">{
@@ -210,10 +204,8 @@ fn authenticate(req: Any) -> Any {
     <h2 class="text-2xl font-bold text-white mb-6">Scoping Middleware to Routes</h2>
     <p class="text-gray-400 mb-6">Use the <code class="text-indigo-400">middleware()</code> function in routes to apply scope-only middleware:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Public routes (no auth required)
 get("/", "home#index");

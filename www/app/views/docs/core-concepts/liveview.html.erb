@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Live View</span>
@@ -61,10 +61,8 @@
     <h3 class="text-lg font-semibold text-white mb-4">Step 1: Create the Template</h3>
     <p class="text-gray-400 mb-4">Create a <code>.sliv</code> file in <code>app/views/live/</code>. Use <code>@variable</code> syntax for reactive state.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/views/live/counter.sliv</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/counter.sliv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;div class="counter-component"&gt;
     &lt;h2&gt;Count: @count&lt;/h2&gt;
@@ -78,10 +76,8 @@
     <h3 class="text-lg font-semibold text-white mb-4">Step 2: Register the Route</h3>
     <p class="text-gray-400 mb-4">Register your Live View component in <code>config/routes.sl</code> using the <code>router_live</code> function.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Register LiveView components
 router_live("counter", "live#counter");
@@ -92,10 +88,8 @@ router_live("metrics", "live#metrics");</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">Step 3: Create the Controller</h3>
     <p class="text-gray-400 mb-4">Create a controller that handles events. The handler receives an event hash with <code>event</code> (name), <code>params</code>, and <code>state</code>. Return the new state as a hash.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/controllers/live_controller.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Counter component handler
 fn counter(event_data: Any) -> Any {
@@ -169,10 +163,8 @@ fn counter(event_data: Any) -> Any {
     <h2 class="text-2xl font-bold text-white mb-6">State Management</h2>
     <p class="text-gray-400 mb-6">State is stored on the server and accessed in templates using <code>@variable</code> syntax. The server maintains state between events.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Template Variables</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Template Variables</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;!-- Simple variable --&gt;
 &lt;span&gt;Hello, @username&lt;/span&gt;
@@ -194,10 +186,8 @@ fn counter(event_data: Any) -> Any {
     <h2 class="text-2xl font-bold text-white mb-6">Client Setup</h2>
     <p class="text-gray-400 mb-6">Include the Live View client library and mount your component.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">HTML</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;!-- Include the Live View client (~2KB gzipped) --&gt;
 &lt;script src="/js/live.js"&gt;&lt;/script&gt;
@@ -215,10 +205,8 @@ fn counter(event_data: Any) -> Any {
     <h2 class="text-2xl font-bold text-white mb-6">Route Configuration</h2>
     <p class="text-gray-400 mb-6">Register the Live View WebSocket endpoint in your routes.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Live View WebSocket endpoint
 router_live("/live/counter", "live#counter");</code></pre>
@@ -231,10 +219,8 @@ router_live("/live/counter", "live#counter");</code></pre>
         Use the <code>tick</code> event type to push updates at high frequencies (up to 60 updates/second).
     </p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/controllers/live_controller.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn metrics_dashboard(event: Any) -> Any {
     let type = event["type"];
@@ -264,10 +250,8 @@ router_live("/live/counter", "live#counter");</code></pre>
         </div>
     </div>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/views/live/metrics.sliv</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/metrics.sliv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;div class="dashboard"&gt;
     &lt;div class="metric"&gt;

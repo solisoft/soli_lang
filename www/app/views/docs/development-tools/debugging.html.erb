@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <!-- Hero Section -->
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
@@ -53,7 +53,7 @@
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Setting Breakpoints</h3>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn process_user(user_id: Int) -> Hash {
     let user = database.find(user_id);
@@ -126,7 +126,7 @@
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Debug Page Features</h3>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Interactive REPL - Execute soli code in breakpoint context
 // Stack Trace - Navigate through call stack frames
@@ -140,7 +140,7 @@
         <p class="text-gray-400 mb-4">
             Click on any stack frame to view the source code at that location. The source viewer shows the relevant code with the error line highlighted.
         </p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-text text-sm">Stack Trace:
   0. process_user at ./src/users.sl:15
@@ -179,7 +179,7 @@ Click on any frame to see the source code.</code></pre>
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Available Variables</h3>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Request object - access all request data
 req              // Full request object
@@ -197,7 +197,7 @@ breakpoint_env   // Local variables at breakpoint</code></pre>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">REPL Features</h3>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Use @ to reference the last result
 req["params"]["id"]  // Returns: "123"
@@ -217,7 +217,7 @@ config["database"];  // View configuration</code></pre>
         <p class="text-gray-400 mb-4">
             Click the quick inspect buttons to instantly view common data:
         </p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Available quick inspect buttons:
 req        // View full request object
@@ -246,7 +246,7 @@ headers    // View HTTP headers</code></pre>
             Start the development server with hot reload to enable all debugging features:
         </p>
 
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Start development server with hot reload
 soli serve

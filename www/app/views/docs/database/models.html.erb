@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Models & ORM</span>
@@ -19,10 +19,8 @@
         <li><code>UserProfile</code> &rarr; <code>"user_profiles"</code></li>
     </ul>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5">
-            <span class="text-xs text-gray-400 font-mono">app/models/user.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User extends Model { }</code></pre>
         </div>
@@ -42,17 +40,13 @@
                 <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">CREATE</span>
                 Creating Records
             </h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let result = User.create({
+            <pre><code class="language-soli text-sm">let result = User.create({
     "email": "alice@example.com",
     "name": "Alice",
     "age": 30
 });
 // Returns: { "valid": true, "record": { "id": "...", ... } }
 // Or: { "valid": false, "errors": [...] }</code></pre>
-                </div>
-            </div>
         </div>
 
         <div>
@@ -60,9 +54,7 @@
                 <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">READ</span>
                 Finding Records
             </h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Find by ID
+            <pre><code class="language-soli text-sm">// Find by ID
 let user = User.find("user123");
 
 // Find all
@@ -77,8 +69,6 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
     "min": 21,
     "role": "admin"
 }).all();</code></pre>
-                </div>
-            </div>
         </div>
 
         <div>
@@ -86,14 +76,10 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
                 <span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs font-mono">UPDATE</span>
                 Updating Records
             </h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">User.update("user123", {
+            <pre><code class="language-soli text-sm">User.update("user123", {
     "name": "Alice Smith",
     "age": 31
 });</code></pre>
-                </div>
-            </div>
         </div>
 
         <div>
@@ -101,11 +87,7 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
                 <span class="px-2 py-1 rounded bg-red-500/20 text-red-400 text-xs font-mono">DELETE</span>
                 Deleting Records
             </h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">User.delete("user123");</code></pre>
-                </div>
-            </div>
+            <pre><code class="language-soli text-sm">User.delete("user123");</code></pre>
         </div>
 
         <div>
@@ -113,20 +95,14 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
                 <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">COUNT</span>
                 Counting Records
             </h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let total = User.count();</code></pre>
-                </div>
-            </div>
+            <pre><code class="language-soli text-sm">let total = User.count();</code></pre>
         </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Query Builder Chaining</h2>
     <p class="text-gray-400 mb-6">Chain methods to build complex queries:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let results = User
+    <pre><code class="language-soli text-sm">let results = User
     .where("doc.age >= @age", { "age": 18 })
     .where("doc.active == @active", { "active": true })
     .order("created_at", "desc")
@@ -139,8 +115,6 @@ let first = User.where("doc.email == @email", { "email": "alice@example.com" }).
 
 // Count with conditions
 let count = User.where("doc.role == @role", { "role": "admin" }).count();</code></pre>
-        </div>
-    </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Static Methods Reference</h2>
     <div class="overflow-x-auto mb-12">
@@ -229,7 +203,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
     <h2 class="text-2xl font-bold text-white mb-6">Validations</h2>
     <p class="text-gray-400 mb-6">Define validation rules in your model class:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User extends Model {
     validates("email", { "presence": true, "uniqueness": true })
@@ -291,7 +265,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
     </div>
 
     <h3 class="text-lg font-semibold text-white mb-4">Validation Results</h3>
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let result = User.create({ "email": "" });
 
@@ -309,7 +283,7 @@ if result["valid"] {
     <h2 class="text-2xl font-bold text-white mb-6">Callbacks</h2>
     <p class="text-gray-400 mb-6">Define lifecycle callbacks to run code at specific points:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User extends Model {
     before_save("normalize_email")
@@ -367,7 +341,7 @@ if result["valid"] {
     <h2 class="text-2xl font-bold text-white mb-6">Relationships</h2>
     <p class="text-gray-400 mb-6">Implement relationships using model methods:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class Post extends Model {
     fn author() -> Any {
@@ -397,7 +371,7 @@ let recent_posts = user.posts().order("created_at", "desc").limit(5).all();</cod
     <h2 class="text-2xl font-bold text-white mb-6">Custom Methods</h2>
     <p class="text-gray-400 mb-6">Add custom methods to your models:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User extends Model {
     fn is_admin() -> Bool {
@@ -465,7 +439,7 @@ if user.is_admin() {
 
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// app/models/user.sl
 class User extends Model {

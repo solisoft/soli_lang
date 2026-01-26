@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <!-- Hero Section -->
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
@@ -77,29 +77,13 @@
 
         <section id="section-hello-world" class="scroll-mt-20 mb-8">
             <h3 class="text-xl font-semibold text-white mb-4">Hello World</h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                    <span class="text-xs text-gray-400 font-mono">hello.sl</span>
-                    <div class="flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                        <span class="text-xs text-gray-500">Runnable</span>
-                    </div>
-                </div>
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// The classic first program
+            <pre data-filename="hello.sl"><code class="language-soli text-sm">// The classic first program
 print("Hello, World!");</code></pre>
-                </div>
-            </div>
         </section>
 
         <section id="section-first-program" class="scroll-mt-20 mb-8">
             <h3 class="text-xl font-semibold text-white mb-4">Your First Soli Program</h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                    <span class="text-xs text-gray-400 font-mono">area.sl</span>
-                </div>
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// A simple program that calculates the area of a circle
+            <pre data-filename="area.sl"><code class="language-soli text-sm">// A simple program that calculates the area of a circle
 fn calculate_area(radius: Float) -> Float {
     return 3.14159 * radius * radius;
 }
@@ -108,15 +92,11 @@ let radius = 5.0;
 let area = calculate_area(radius);
 print("The area of a circle with radius " + str(radius) + " is " + str(area));
 // Output: The area of a circle with radius 5.0 is 78.53975</code></pre>
-                </div>
-            </div>
         </section>
 
         <section id="section-running-soli" class="scroll-mt-20 mb-8">
             <h3 class="text-xl font-semibold text-white mb-4">Running Soli Code</h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Run a single file
+            <pre data-filename="Terminal"><code class="language-bash text-sm"># Run a single file
 soli run hello.sl
 
 # Run with hot reload (development)
@@ -127,8 +107,6 @@ soli test
 
 # Build for production
 soli build --release</code></pre>
-                </div>
-            </div>
         </section>
     </section>
 
@@ -144,12 +122,7 @@ soli build --release</code></pre>
         </h2>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="px-4 py-2 border-b border-white/5 bg-white/5">
-                    <span class="text-xs text-gray-400 font-mono">Variables & Functions</span>
-                </div>
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Variables
+            <pre data-filename="Variables & Functions"><code class="language-soli text-sm">// Variables
 let name = "Alice";
 let age: Int = 30;
 const PI = 3.14159;
@@ -158,15 +131,8 @@ const PI = 3.14159;
 fn add(a: Int, b: Int) -> Int {
     return a + b;
 }</code></pre>
-                </div>
-            </div>
 
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="px-4 py-2 border-b border-white/5 bg-white/5">
-                    <span class="text-xs text-gray-400 font-mono">Class</span>
-                </div>
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class Person {
+            <pre data-filename="Class"><code class="language-soli text-sm">class Person {
     name: String;
     new(name: String) {
         this.name = name;
@@ -175,15 +141,8 @@ fn add(a: Int, b: Int) -> Int {
         return "Hello, " + this.name;
     }
 }</code></pre>
-                </div>
-            </div>
 
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="px-4 py-2 border-b border-white/5 bg-white/5">
-                    <span class="text-xs text-gray-400 font-mono">Control Flow</span>
-                </div>
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// If/Else
+            <pre data-filename="Control Flow"><code class="language-soli text-sm">// If/Else
 if (condition) {
     // code
 } else {
@@ -200,22 +159,13 @@ match value {
     pattern => result,
     _ => default,
 }</code></pre>
-                </div>
-            </div>
 
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
-                <div class="px-4 py-2 border-b border-white/5 bg-white/5">
-                    <span class="text-xs text-gray-400 font-mono">Pipeline & Collections</span>
-                </div>
-                <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Pipeline
+            <pre data-filename="Pipeline & Collections"><code class="language-soli text-sm">// Pipeline
 value |> fn1() |> fn2();
 
 // Collections
 arr.map(fn(x) x * 2);
 hash.filter(fn(p) p[1] > 0);</code></pre>
-                </div>
-            </div>
         </div>
     </section>
 

@@ -10,6 +10,7 @@ use crate::interpreter::value::{NativeFunction, Value};
 
 // Re-export submodules
 pub mod assertions;
+pub mod assigns_helpers;
 pub mod controller;
 pub mod crypto;
 pub mod datetime;
@@ -26,13 +27,17 @@ pub mod jwt;
 pub mod math;
 pub mod model;
 pub mod regex;
+pub mod request_helpers;
+pub mod response_helpers;
 pub mod router;
 pub mod server;
 pub mod session;
+pub mod session_helpers;
 pub mod solidb;
 pub mod strings;
 pub mod template;
 pub mod test_dsl;
+pub mod test_server;
 pub mod types;
 pub mod validation;
 
@@ -238,6 +243,21 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register test DSL builtins
     test_dsl::register_test_builtins(env);
+
+    // Register test server builtins
+    test_server::register_test_server_builtins(env);
+
+    // Register request helper builtins
+    request_helpers::register_request_helpers(env);
+
+    // Register response helper builtins
+    response_helpers::register_response_helpers(env);
+
+    // Register session helper builtins (disabled due to type complexity)
+    // session_helpers::register_session_helpers(env);
+
+    // Register assigns helper builtins (disabled due to type complexity)
+    // assigns_helpers::register_assigns_helpers(env);
 
     // Register Error class and error types
     register_error_classes(env);

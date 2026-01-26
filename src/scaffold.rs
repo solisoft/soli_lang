@@ -1625,10 +1625,8 @@ fn create_form_partial(
 
 fn create_tests(app_path: &Path, name: &str) -> Result<(), String> {
     let snake_name = to_snake_case(name);
-    let model_name = to_pascal_case(name);
-    let collection_name = to_snake_case_plural(name);
+    let resource_path = to_snake_case_plural(name);
 
-    // Create tests directory structure
     let tests_dir = app_path.join("tests");
     let controllers_dir = tests_dir.join("controllers");
     let models_dir = tests_dir.join("models");
@@ -1652,140 +1650,110 @@ fn create_tests(app_path: &Path, name: &str) -> Result<(), String> {
         })?;
     }
 
-    // Create model test
-    let model_test_content = format!(
-        r#"// {} model tests - auto-generated scaffold
-
-describe("{}Model", fn() {{
-    before_each(fn() {{
-        // Setup code - runs before each test
-    }})
-
-    after_each(fn() {{
-        // Cleanup code - runs after each test
-    }})
-
-    test("should have correct collection name", fn() {{
-        // The model should derive collection name from class name
-        assert_true(true, "Collection name should be derived correctly")
-    }})
-
-    test("should create valid record", fn() {{
-        let data = {{
-            "name": "Test {}"
-        }};
-        let result = {model_name}.create(data);
-        assert_true(result["valid"], "Create should return valid: true");
-        assert_not_null(result["record"], "Create should return a record");
-    }})
-
-    test("should find record by id", fn() {{
-        let result = {model_name}.find("test-id");
-        assert_true(true, "Find should work without errors");
-    }})
-
-    test("should return all records", fn() {{
-        let results = {model_name}.all();
-        assert_true(true, "All should return array of records");
-    }})
-
-    test("should validate presence of name", fn() {{
-        let data = {{}};
-        let result = {model_name}.create(data);
-        assert_false(result["valid"], "Create should fail without name");
-    }})
-}})
-"#,
-        model_name,
-        model_name = model_name,
-        collection_name = collection_name
-    );
-
-    let model_test_path = models_dir.join(format!("{}_test.sl", snake_name));
-    write_file(&model_test_path, &model_test_content)?;
-    println!("  Created: {}", model_test_path.display());
-
-    // Create controller test
+    let controller_name = to_pascal_case(name) + "Controller";
     let controller_test_content = format!(
-        r#"// {}Controller tests - auto-generated scaffold
+        r#"// {0}Controller E2E tests - auto-generated scaffold
+//
+// This file uses the E2E testing framework with real HTTP requests
+// to test controller actions. See www/docs/testing-e2e.md for details.
 
-describe("{}Controller", fn() {{
+describe("{0}Controller", fn() {{
     before_each(fn() {{
-        // Setup code - runs before each test
+        as_guest();
     }})
 
-    after_each(fn() {{
-        // Cleanup code - runs after each test
+    describe("GET /{1}", fn() {{
+        test("returns list of {{2}}", fn() {{
+            let response = get("/{1}");
+            assert_eq(res_status(response), 200);
+        }})
+
+        test("renders with correct view assigns", fn() {{
+            let response = get("/{1}");
+            assert(render_template());
+            assert_eq(view_path(), "{{1}}/index.html");
+            let data = assigns();
+            assert_hash_has_key(data, "{1}");
+        }})
     }})
 
-    test("index action should return list", fn() {{
-        let req = {{
-            "params": {{}},
-            "session": {{}}
-        }};
-        // Controller action would be tested here
-        assert_true(true, "Index action should render view");
+    describe("GET /{{1}}/new", fn() {{
+        test("renders new form", fn() {{
+            let response = get("/{{1}}/new");
+            assert_eq(res_status(response), 200);
+            assert(render_template());
+        }})
     }})
 
-    test("show action should return single record", fn() {{
-        let req = {{
-            "params": {{ "id": "test-id" }},
-            "session": {{}}
-        }};
-        assert_true(true, "Show action should render view with record");
+    describe("GET /{{1}}/:id", fn() {{
+        test("shows single {{2}}", fn() {{
+            let response = get("/{{1}}/1");
+            assert_eq(res_status(response), 200);
+            let data = assigns();
+            assert_hash_has_key(data, "{{1}}");
+        }})
+
+        test("returns 404 for missing record", fn() {{
+            let response = get("/{{1}}/99999");
+            assert_eq(res_status(response), 404);
+        }})
     }})
 
-    test("new action should render new form", fn() {{
-        let req = {{
-            "params": {{}},
-            "session": {{}}
-        }};
-        assert_true(true, "New action should render form");
+    describe("GET /{{1}}/:id/edit", fn() {{
+        test("renders edit form", fn() {{
+            let response = get("/{{1}}/1/edit");
+            assert_eq(res_status(response), 200);
+            assert(render_template());
+        }})
+
+        test("returns 404 for missing record", fn() {{
+            let response = get("/{{1}}/99999/edit");
+            assert_eq(res_status(response), 404);
+        }})
     }})
 
-    test("edit action should render edit form", fn() {{
-        let req = {{
-            "params": {{ "id": "test-id" }},
-            "session": {{}}
-        }};
-        assert_true(true, "Edit action should render form with record");
+    describe("POST /{1}", fn() {{
+        test("creates new record with valid data", fn() {{
+            let response = post("/{1}", {{"name": "Test {{2}}"}});
+            assert_eq(res_status(response), 302);
+        }})
+
+        test("rejects invalid data", fn() {{
+            let response = post("/{1}", {{}});
+            assert_eq(res_status(response), 422);
+        }})
     }})
 
-    test("create action should redirect on success", fn() {{
-        let req = {{
-            "params": {{ "name": "Test {}" }},
-            "session": {{}}
-        }};
-        assert_true(true, "Create action should redirect");
+    describe("PUT /{{1}}/:id", fn() {{
+        test("updates record", fn() {{
+            let response = put("/{{1}}/1", {{"name": "Updated"}});
+            assert_eq(res_status(response), 302);
+        }})
     }})
 
-    test("update action should redirect on success", fn() {{
-        let req = {{
-            "params": {{ "id": "test-id", "name": "Updated" }},
-            "session": {{}}
-        }};
-        assert_true(true, "Update action should redirect");
+    describe("DELETE /{{1}}/:id", fn() {{
+        test("deletes record", fn() {{
+            let response = delete("/{{1}}/1");
+            assert_eq(res_status(response), 302);
+        }})
     }})
 
-    test("delete action should redirect", fn() {{
-        let req = {{
-            "params": {{ "id": "test-id" }},
-            "session": {{}}
-        }};
-        assert_true(true, "Delete action should redirect");
-    }})
+    describe("Authentication", fn() {{
+        before_each(fn() {{
+            as_guest();
+        }})
 
-    test("should have correct routes defined", fn() {{
-        assert_true(true, "Routes should be defined in config/routes.sl");
+        test("redirects unauthenticated requests to index", fn() {{
+            let response = get("/{1}");
+            assert_eq(res_status(response), 200);
+        }})
     }})
 }})
 "#,
-        controller_name = to_pascal_case(name) + "Controller",
-        model_name = model_name,
-        collection_name = collection_name
+        controller_name, resource_path
     );
 
-    let controller_test_path = controllers_dir.join(format!("{}_controller_test.sl", snake_name));
+    let controller_test_path = controllers_dir.join(format!("{}_controller_spec.sl", snake_name));
     write_file(&controller_test_path, &controller_test_content)?;
     println!("  Created: {}", controller_test_path.display());
 

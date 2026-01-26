@@ -1,0 +1,371 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-teal-400 via-cyan-400 to-emerald-400 bg-clip-text text-transparent">Testing Quick Reference</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Quick lookup for E2E controller testing helpers.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Request Functions</h2>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Function</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Description</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Example</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">get(path)</code></td>
+                    <td class="py-3 px-4 text-gray-400">GET request</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">get("/posts")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">post(path, data)</code></td>
+                    <td class="py-3 px-4 text-gray-400">POST with body</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">post("/posts", {"title": "Test"})</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">put(path, data)</code></td>
+                    <td class="py-3 px-4 text-gray-400">PUT replacement</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">put("/posts/1", {...})</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">patch(path, data)</code></td>
+                    <td class="py-3 px-4 text-gray-400">PATCH partial</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">patch("/posts/1", {"title": "New"})</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">delete(path)</code></td>
+                    <td class="py-3 px-4 text-gray-400">DELETE resource</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">delete("/posts/1")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">head(path)</code></td>
+                    <td class="py-3 px-4 text-gray-400">HEAD request</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">head("/api/status")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">options(path)</code></td>
+                    <td class="py-3 px-4 text-gray-400">OPTIONS request</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">options("/api/methods")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">request(method, path, body?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Custom method</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">request("TRACE", "/path")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Header Functions</h2>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Function</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Description</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Example</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">set_header(name, value)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Add header</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">set_header("X-Id", "123")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">clear_headers()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Remove headers</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">clear_headers()</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">set_authorization(token)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set Bearer token</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">set_authorization("jwt-token")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">clear_authorization()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Clear auth header</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">clear_authorization()</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">set_cookie(name, value)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set cookie</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">set_cookie("sid", "abc")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">clear_cookies()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Remove cookies</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">clear_cookies()</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Response Functions</h2>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Function</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Description</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Returns</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_status(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Status code</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">200</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_body(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Raw body string</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">"hello"</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_json(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Parsed JSON</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">{...}</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_header(response, name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Header value</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">"application/json"</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_headers(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">All headers</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">{...}</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_redirect(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Is redirect?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_location(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Location header</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">"/login"</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_ok(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">2xx status?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_client_error(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">4xx status?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_server_error(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">5xx status?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_not_found(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">404?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_unauthorized(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">401?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_forbidden(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">403?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">res_unprocessable(response)</code></td>
+                    <td class="py-3 px-4 text-gray-400">422?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Session Functions</h2>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Function</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Description</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Example</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">as_guest()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Clear auth</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_guest()</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">as_user(id)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Simulate user</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_user(42)</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">as_admin()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Simulate admin</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_admin()</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">with_session(hash)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set session data</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">with_session({...})</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">with_token(token)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set JWT auth</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">with_token("jwt...")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">login(email, password)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Perform login</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">login("user@test.com", "pass")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">logout()</code></td>
+                    <td class="py-3 px-4 text-gray-400">End session</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">logout()</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">current_user()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Get user data</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">current_user()</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">signed_in()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Is authenticated?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">signed_in()</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">signed_out()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Not authenticated?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">signed_out()</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">create_session(id)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Create session</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">create_session(1)</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">destroy_session()</code></td>
+                    <td class="py-3 px-4 text-gray-400">End session</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">destroy_session()</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Assigns Functions</h2>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Function</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Description</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Returns</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">assigns()</code></td>
+                    <td class="py-3 px-4 text-gray-400">All assigns</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">{...}</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">assign(key)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Specific assign</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">value or null</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">view_path()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Template path</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">"users/show.html"</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">render_template()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Template rendered?</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">flash()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Flash messages</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">{...}</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">flash(key)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Flash message</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">value or null</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/posts_controller_spec.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">describe("PostsController", fn() {
+    before_each(fn() {
+        as_guest();
+    });
+    
+    test("creates post", fn() {
+        login("user@example.com", "password");
+        
+        let response = post("/posts", {
+            "title": "New Post",
+            "body": "Content"
+        });
+        
+        assert_eq(res_status(response), 201);
+        let data = res_json(response);
+        assert_eq(data["title"], "New Post");
+    });
+});</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Running Tests</h2>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Terminal</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Run single test file
+soli test tests/builtins/controller_integration_spec.sl
+
+# Run all builtins tests
+soli test tests/builtins
+
+# Run with coverage
+soli test tests/builtins --coverage</code></pre>
+        </div>
+    </div>
+
+    <div class="mt-16 pt-8 border-t border-white/5">
+        <a href="/docs/testing" class="inline-flex items-center gap-2 text-teal-400 hover:text-teal-300 transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Testing Guide
+        </a>
+    </div>
+</div>

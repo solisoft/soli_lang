@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Internationalization</span>
@@ -23,10 +23,8 @@
     <h2 class="text-2xl font-bold text-white mb-6">Setting the Locale</h2>
     <p class="text-gray-400 mb-6">Use <code>I18n.locale()</code> to get the current locale and <code>I18n.set_locale()</code> to change it.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Locale Management</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Locale Management</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Get the current locale (defaults to "en")
 let current = I18n.locale();
@@ -44,10 +42,8 @@ I18n.set_locale("de");</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Basic Translation</h2>
     <p class="text-gray-400 mb-6">Translate strings using <code>I18n.translate(key, locale?, translations?)</code>. The function looks up the key in your translations hash.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">String Translation</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">String Translation</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Define translations
 let translations = {
@@ -77,10 +73,8 @@ print(missing);  // "unknown_key"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Pluralization</h2>
     <p class="text-gray-400 mb-6">Handle singular and plural forms with <code>I18n.plural(key, n, locale?, translations?)</code>. Use <code>_zero</code> suffix for zero, <code>_one</code> for singular, and <code>_other</code> for plural.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Pluralization</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Pluralization</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let translations = {
     "en.item_zero" => "No items",
@@ -114,10 +108,8 @@ print(fr_plural);  // "{count} articles"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Number Formatting</h2>
     <p class="text-gray-400 mb-6">Format numbers according to locale conventions using <code>I18n.format_number(n, locale?)</code>.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Number Formatting</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Number Formatting</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let value = 1234.56;
 
@@ -138,10 +130,8 @@ print(de_num);  // "1234,56"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Currency Formatting</h2>
     <p class="text-gray-400 mb-6">Format monetary amounts with <code>I18n.format_currency(amount, currency, locale?)</code>. Supports common currency codes.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Currency Formatting</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Currency Formatting</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let price = 1999.99;
 
@@ -166,10 +156,8 @@ print(jpy);  // "¥2,500"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Date Formatting</h2>
     <p class="text-gray-400 mb-6">Format dates using <code>I18n.format_date(timestamp, locale?)</code>. Different locales use different date formats.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Date Formatting</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Date Formatting</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Unix timestamp for January 15, 2026
 let timestamp = 1768521600;
@@ -195,10 +183,8 @@ print(iso_date);  // "2026-01-15"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Translation Files</h2>
     <p class="text-gray-400 mb-6">Organize translations in JSON files and load them at startup.</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">config/locales/en.json</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/locales/en.json</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-json text-sm">{
     "en.app_name": "My Application",
@@ -214,10 +200,8 @@ print(iso_date);  // "2026-01-15"</code></pre>
         </div>
     </div>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">Loading Translations</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Loading Translations</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Load translations from JSON file
 let en_json = file_read("config/locales/en.json");

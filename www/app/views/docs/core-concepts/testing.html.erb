@@ -1,0 +1,473 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-teal-400 via-cyan-400 to-emerald-400 bg-clip-text text-transparent">Testing</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Comprehensive testing guide for Soli MVC applications. Includes unit testing and end-to-end controller testing.
+        </p>
+    </div>
+
+    <nav class="not-prose mb-12">
+        <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            Testing Topics
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <a href="#section-e2e-testing" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-teal-500/20 flex items-center justify-center text-teal-400 text-sm font-mono">E2E</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">E2E Controller Testing</span>
+            </a>
+            <a href="#section-test-dsl" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-indigo-500/20 flex items-center justify-center text-indigo-400 text-sm font-mono">DSL</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Test DSL & Assertions</span>
+            </a>
+            <a href="#section-database-testing" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">DB</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Database Testing</span>
+            </a>
+            <a href="#section-coverage" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">%</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Coverage & Parallel</span>
+            </a>
+        </div>
+    </nav>
+
+    <section id="section-e2e-testing" class="scroll-mt-20 mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-teal-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            E2E Controller Testing
+        </h2>
+
+        <p class="text-gray-400 mb-4">Rails-like end-to-end testing framework for Soli MVC applications. Test your controllers with real HTTP requests.</p>
+        <p class="text-gray-400 mb-4">The E2E testing framework provides a comprehensive set of helpers for testing your Soli controllers with real HTTP requests. Built on a test server that runs alongside your test suite, it enables you to write integration tests that simulate actual browser requests and verify controller responses, sessions, and view data.</p>
+        <p class="text-gray-400 mb-8">This framework follows conventions inspired by RSpec Rails testing patterns, making it familiar to developers coming from Ruby on Rails backgrounds while providing the safety and expressiveness of Soli's type system.</p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Basic Test Structure</h3>
+        <p class="text-gray-400 mb-4">Every E2E test file follows the same structure using Soli's test DSL. The framework provides functions for grouping tests, setting up test data, making HTTP requests, and asserting expected outcomes.</p>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/controller_example.sl</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">describe("HomeController", fn() {
+    test("GET /up returns UP status", fn() {
+        let response = get("/up");
+        assert_eq(res_status(response), 200);
+        assert_eq(res_body(response), "UP");
+    });
+});</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Running Tests</h3>
+        <p class="text-gray-400 mb-4">Execute your E2E tests using the Soli test runner:</p>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Terminal</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli test tests/builtins/controller_integration_spec.sl
+soli test tests/builtins</code></pre>
+            </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-white mb-6">Request Helpers</h2>
+        <p class="text-gray-400 mb-4">Request helpers enable you to make HTTP requests to your controllers from within tests. These functions interact with the test server running on a random available port.</p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">HTTP Method Functions</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">get(path)</code>
+                <p class="text-sm text-gray-400 mt-1">GET request without modifying server state</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">post(path, data)</code>
+                <p class="text-sm text-gray-400 mt-1">POST with body to create resources</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">put(path, data)</code>
+                <p class="text-sm text-gray-400 mt-1">PUT replacement of existing resources</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">patch(path, data)</code>
+                <p class="text-sm text-gray-400 mt-1">PATCH partial updates</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">delete(path)</code>
+                <p class="text-sm text-gray-400 mt-1">DELETE resources</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">head(path)</code>
+                <p class="text-sm text-gray-400 mt-1">HEAD request without body</p>
+            </div>
+        </div>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Example</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let response = get("/posts");
+assert_eq(res_status(response), 200);
+let posts = res_json(response);
+assert_gt(len(posts), 0);
+
+let response = post("/posts", {
+    "title": "New Post",
+    "content": "Hello World"
+});
+assert_eq(res_status(response), 201);</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Custom Headers</h3>
+        <p class="text-gray-400 mb-4">Add custom headers to your requests:</p>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Headers</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">set_header("X-Request-ID", "test-123");
+set_header("X-Custom-Header", "custom-value");
+
+let response = get("/api/data");
+clear_headers();</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Authentication Headers</h3>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Token Auth</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">with_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...");
+let response = get("/api/protected");
+clear_authorization();</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Cookie Management</h3>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Cookies</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">set_cookie("session_id", "abc123session");
+let response = get("/dashboard");
+clear_cookies();</code></pre>
+            </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-white mb-6">Response Helpers</h2>
+        <p class="text-gray-400 mb-4">Response helpers inspect HTTP responses returned by your controllers.</p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Status Codes</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">res_status(response)</code>
+                <p class="text-sm text-gray-400 mt-1">Returns HTTP status code as integer</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">res_ok(response)</code>
+                <p class="text-sm text-gray-400 mt-1">Checks for 2xx status codes</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">res_client_error(response)</code>
+                <p class="text-sm text-gray-400 mt-1">Checks for 4xx status codes</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">res_server_error(response)</code>
+                <p class="text-sm text-gray-400 mt-1">Checks for 5xx status codes</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">res_not_found(response)</code>
+                <p class="text-sm text-gray-400 mt-1">Checks for 404 status</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">res_unauthorized(response)</code>
+                <p class="text-sm text-gray-400 mt-1">Checks for 401 status</p>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Response Body</h3>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Response Helpers</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let body = res_body(response);
+assert_contains(body, "expected text");
+
+let response = post("/users", {"name": "John"});
+let user = res_json(response);
+assert_eq(user["name"], "John");</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Response Headers</h3>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Headers</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let content_type = res_header(response, "Content-Type");
+assert_contains(content_type, "application/json");
+
+let headers = res_headers(response);
+assert_hash_has_key(headers, "Content-Type");</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Redirects</h3>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Redirects</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">assert(res_redirect(response));
+
+let location = res_location(response);
+assert_eq(location, "/expected/path");</code></pre>
+            </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-white mb-6">Session Helpers</h2>
+        <p class="text-gray-400 mb-4">Session helpers manage authentication state and session data during tests.</p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Authentication State</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">as_guest()</code>
+                <p class="text-sm text-gray-400 mt-1">Clears all authentication state</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">as_user(user_id)</code>
+                <p class="text-sm text-gray-400 mt-1">Simulates logged-in user</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">as_admin()</code>
+                <p class="text-sm text-gray-400 mt-1">Simulates authenticated admin</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">login(email, password)</code>
+                <p class="text-sm text-gray-400 mt-1">Performs login request</p>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Session Inspection</h3>
+
+        <div class="grid-cols-1 md:grid-cols-2 gap-4 mb-12" style="display: grid;">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">signed_in()</code>
+                <p class="text-sm text-gray-400 mt-1">Returns true if authenticated</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">signed_out()</code>
+                <p class="text-sm text-gray-400 mt-1">Returns true if not authenticated</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">current_user()</code>
+                <p class="text-sm text-gray-400 mt-1">Returns authenticated user data</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">logout()</code>
+                <p class="text-sm text-gray-400 mt-1">Destroys current session</p>
+            </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-white mb-6">Assigns Helpers</h2>
+        <p class="text-gray-400 mb-4">Assigns helpers inspect data passed to views during template rendering.</p>
+
+        <div class="grid-cols-1 md:grid-cols-2 gap-4 mb-12" style="display: grid;">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">assigns()</code>
+                <p class="text-sm text-gray-400 mt-1">Returns all assigns as a hash</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">assign(key)</code>
+                <p class="text-sm text-gray-400 mt-1">Retrieves specific assign value</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">view_path()</code>
+                <p class="text-sm text-gray-400 mt-1">Returns rendered template path</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">flash()</code>
+                <p class="text-sm text-gray-400 mt-1">Returns flash messages</p>
+            </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/posts_controller_spec.sl</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">describe("PostsController", fn() {
+    before_each(fn() {
+        as_guest();
+    });
+
+    test("creates post with valid data", fn() {
+        login("author@example.com", "password123");
+        
+        let response = post("/posts", {
+            "title": "New Post Title",
+            "body": "Post content here"
+        });
+        
+        assert_eq(res_status(response), 201);
+        let result = res_json(response);
+        assert_not_null(result["id"]);
+    });
+
+    test("rejects unauthenticated request", fn() {
+        let response = post("/posts", {"title": "Test"});
+        assert_eq(res_status(response), 302);
+    });
+
+    test("shows single post", fn() {
+        let response = get("/posts/1");
+        assert_eq(res_status(response), 200);
+        let post = res_json(response);
+        assert_eq(post["title"], "First Post");
+    });
+});</code></pre>
+            </div>
+        </div>
+
+        <h2 class="text-2xl font-bold text-white mb-6">Best Practices</h2>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Test Organization</h3>
+        <p class="text-gray-400 mb-4">Structure your tests hierarchically using describe() blocks. Group tests by controller, then by action, then by concern.</p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Before and After Hooks</h3>
+        <p class="text-gray-400 mb-4">Use before_each() and after_each() to set up and clean up test state. Always reset authentication state between tests.</p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Test Isolation</h3>
+        <p class="text-gray-400 mb-4">Each test should be independent and not rely on the state created by other tests.</p>
+
+        <h2 class="text-2xl font-bold text-white mb-6" id="section-test-dsl">Test DSL</h2>
+        <p class="text-gray-400 mb-4">Soli's testing framework provides a BDD-style DSL for organizing and writing tests:</p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Available Functions</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">describe(name, fn)</code>
+                <p class="text-sm text-gray-400 mt-1">Group related tests</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">context(name, fn)</code>
+                <p class="text-sm text-gray-400 mt-1">Group tests with conditions</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">test(name, fn)</code>
+                <p class="text-sm text-gray-400 mt-1">Define a test case</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">before_each(fn)</code>
+                <p class="text-sm text-gray-400 mt-1">Setup before each test</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">after_each(fn)</code>
+                <p class="text-sm text-gray-400 mt-1">Teardown after each test</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">pending()</code>
+                <p class="text-sm text-gray-400 mt-1">Skip a test</p>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Assertions</h3>
+
+        <pre data-filename="Assertions"><code class="language-soli text-sm">expect(value).to_equal(expected);
+expect(value).to_be(expected);
+expect(value).to_not_equal(other);
+expect(value).to_be_null();
+expect(value).to_not_be_null();
+expect(value).to_be_greater_than(10);
+expect(value).to_be_less_than(100);
+expect(value).to_contain("substring");
+expect(value).to_match(regex);
+expect(hash).to_have_key("name");
+expect(json_string).to_be_valid_json();</code></pre>
+
+        <h2 class="text-2xl font-bold text-white mb-6" id="section-database-testing">Database Testing</h2>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Transaction Rollback</h3>
+        <p class="text-gray-400 mb-4">Tests are isolated using database transactions:</p>
+
+        <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", fn() {
+    test("creates user", fn() {
+        with_transaction(fn() {
+            let user = Factory.create("user", hash("name": "Test"));
+            expect(User.count()).to_equal(1);
+            expect(user.name).to_equal("Test");
+        });
+    });
+});</code></pre>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Factory Pattern</h3>
+
+        <pre data-filename="Using Factories"><code class="language-soli text-sm"># Define factories
+Factory.define("user", hash(
+    "email": "user@example.com",
+    "name": "Test User"
+));
+
+Factory.define("post", hash(
+    "title": "Test Post",
+    "content": "Content here"
+));
+
+# Use factories
+let user = Factory.create("user");
+let post = Factory.create("post", hash("title": "Custom Title"));
+let users = Factory.create_list("user", 5);</code></pre>
+
+        <h2 class="text-2xl font-bold text-white mb-6">Parallel Execution</h2>
+        <p class="text-gray-400 mb-4">Tests run in parallel by default:</p>
+
+        <pre data-filename="CLI Options"><code class="language-bash text-sm">soli test                    # Parallel (default)
+soli test --jobs=4           # 4 workers
+soli test --jobs=1           # Sequential (debug)</code></pre>
+
+        <h2 class="text-2xl font-bold text-white mb-6" id="section-coverage">Coverage Reporting</h2>
+        <p class="text-gray-400 mb-4">Generate coverage reports for your tests:</p>
+
+        <pre data-filename="Coverage Output"><code class="language-text text-sm">Coverage: 87.5% (1250/1428 lines) ✓
+
+src/controllers/users.sl     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  94.2%
+src/models/user.sl           ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  91.1%
+src/controllers/posts.sl     ▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░  78.5%</code></pre>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">--coverage</code>
+                <p class="text-sm text-gray-400 mt-1">Generate coverage report</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">--coverage=html</code>
+                <p class="text-sm text-gray-400 mt-1">HTML report</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">--coverage=json</code>
+                <p class="text-sm text-gray-400 mt-1">JSON for CI</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">--coverage-min=80</code>
+                <p class="text-sm text-gray-400 mt-1">Fail if < 80%</p>
+            </div>
+        </div>
+
+        <div class="mt-16 pt-8 border-t border-white/5">
+            <a href="/docs/testing-quick-reference" class="inline-flex items-center gap-2 text-teal-400 hover:text-teal-300 transition-colors">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Quick Reference
+            </a>
+        </div>
+    </section>
+</div>

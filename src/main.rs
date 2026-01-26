@@ -1016,6 +1016,11 @@ fn run_test(
         test_path.clone()
     };
 
+    println!("Starting test server...");
+    let _test_server_port = solilang::interpreter::builtins::test_server::start_test_server();
+    println!("Test server running on port {}", _test_server_port);
+    println!();
+
     let (tx, rx) = mpsc::channel();
 
     std::thread::scope(|s| {
@@ -1123,6 +1128,10 @@ fn run_test(
     if failed > 0 {
         process::exit(1);
     }
+
+    println!();
+    println!("Stopping test server...");
+    solilang::interpreter::builtins::test_server::stop_test_server();
 }
 
 fn collect_test_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {

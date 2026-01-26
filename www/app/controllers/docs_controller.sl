@@ -117,10 +117,6 @@ fn security_validation(req: Any) -> Any {
 // Development Tools
 // ============================================================================
 
-fn development_tools_testing(req: Any) -> Any {
-    return render_docs("docs/development-tools/testing", "Testing", "development_tools", "testing");
-}
-
 fn development_tools_live_reload(req: Any) -> Any {
     return render_docs("docs/development-tools/live-reload", "Live Reload", "development_tools", "live_reload");
 }
@@ -238,6 +234,18 @@ fn builtins_i18n(req: Any) -> Any {
 }
 
 // ============================================================================
+// Testing
+// ============================================================================
+
+fn testing(req: Any) -> Any {
+    return render_docs("docs/core-concepts/testing", "Testing", "testing", "testing");
+}
+
+fn testing_quick_reference(req: Any) -> Any {
+    return render_docs("docs/core-concepts/testing-quick-reference", "Testing Quick Reference", "testing", "testing_quick_reference");
+}
+
+// ============================================================================
 // Backward Compatibility Redirects
 // ============================================================================
 
@@ -307,10 +315,6 @@ fn redirect_sessions(req: Any) -> Any {
 
 fn redirect_validation(req: Any) -> Any {
     return redirect("/docs/security/validation");
-}
-
-fn redirect_testing(req: Any) -> Any {
-    return redirect("/docs/development-tools/testing");
 }
 
 fn redirect_live_reload(req: Any) -> Any {

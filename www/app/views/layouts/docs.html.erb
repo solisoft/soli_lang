@@ -43,47 +43,30 @@
             animation: fadeIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
         }
 
-        /* Premium Code block styling (Terminal Look) */
+        /* Premium Code block styling */
         pre {
-            margin: 2rem 0 !important;
+            margin: 0 !important;
             padding: 0 !important;
             background: #0d1117 !important;
-            border-radius: 0.75rem !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+            border-radius: 0.5rem !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
             position: relative;
             overflow: hidden !important;
         }
-        
-        /* Terminal Header Bar + Filename */
-        pre::before {
+
+        /* Code block filename label */
+        pre[data-filename]::before {
             content: attr(data-filename);
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 44px;
+            height: 36px;
             background: rgba(255, 255, 255, 0.03);
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            
-            /* Typography for filename */
             color: #9ca3af;
             font-family: 'Inter', sans-serif;
             font-size: 0.75rem;
             font-weight: 500;
-            white-space: normal; /* Prevent inheritance from pre */
-        }
-        
-        /* Traffic Lights */
-        pre::after {
-            content: "";
-            position: absolute;
-            top: 16px;
-            left: 16px;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #ff5f56;
-            box-shadow: 20px 0 0 #ffbd2e, 40px 0 0 #27c93f;
         }
 
         pre code, pre .hljs {
@@ -107,20 +90,23 @@
         }
 
 
-        /* Prose customization */
-        .prose { max-width: 65ch; }
-        .prose :where(code):not(:where([class~="not-prose"] *))::before { content: "" !important; }
-        .prose :where(code):not(:where([class~="not-prose"] *))::after { content: "" !important; }
+        /* Prose customization - full width */
+        .prose-docs {
+            max-width: none !important;
+        }
 
-        .prose h1 {
+        .prose-docs :where(code):not(:where([class~="not-prose"] *))::before { content: "" !important; }
+        .prose-docs :where(code):not(:where([class~="not-prose"] *))::after { content: "" !important; }
+
+        .prose-docs h1 {
             color: white;
             font-weight: 800;
             font-size: 2.5rem;
             letter-spacing: -0.025em;
             margin-bottom: 1.5rem;
         }
-        
-        .prose h2 {
+
+        .prose-docs h2 {
             color: white;
             font-weight: 700;
             font-size: 1.75rem;
@@ -129,32 +115,32 @@
             border-bottom: 1px solid rgba(255,255,255,0.08);
             letter-spacing: -0.015em;
         }
-        
-        .prose h3 {
+
+        .prose-docs h3 {
             color: #e5e7eb;
             font-weight: 600;
             font-size: 1.25rem;
             margin-top: 2.5rem;
         }
 
-        .prose p { color: #9ca3af; line-height: 1.8; margin-bottom: 1.5rem; }
-        .prose ul, .prose ol { color: #9ca3af; margin-bottom: 1.5rem; }
-        .prose li { margin-top: 0.5rem; margin-bottom: 0.5rem; }
-        
-        .prose a { 
-            color: #818cf8; 
-            text-decoration: none; 
+        .prose-docs p { color: #9ca3af; line-height: 1.8; margin-bottom: 1.5rem; }
+        .prose-docs ul, .prose-docs ol { color: #9ca3af; margin-bottom: 1.5rem; }
+        .prose-docs li { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+
+        .prose-docs a {
+            color: #818cf8;
+            text-decoration: none;
             border-bottom: 1px solid transparent;
             transition: all 0.2s;
         }
-        .prose a:hover { 
-            color: #a5b4fc; 
+        .prose-docs a:hover {
+            color: #a5b4fc;
             border-bottom-color: #a5b4fc;
         }
 
-        .prose strong { color: white; font-weight: 600; }
+        .prose-docs strong { color: white; font-weight: 600; }
 
-        .prose blockquote {
+        .prose-docs blockquote {
             border-left: 3px solid #6366f1;
             background: linear-gradient(to right, rgba(99, 102, 241, 0.1), transparent);
             padding: 1rem 1.5rem;
@@ -162,19 +148,19 @@
             margin: 2rem 0;
             font-style: normal;
         }
-        .prose blockquote p { color: #c4b5fd; margin: 0; }
+        .prose-docs blockquote p { color: #c4b5fd; margin: 0; }
 
         /* Sidebar animation */
         .sidebar-link {
             position: relative;
             transition: all 0.2s ease;
         }
-        
+
         .sidebar-link:hover {
             background: rgba(255, 255, 255, 0.05);
             color: white;
         }
-        
+
         .sidebar-link.active {
             background: rgba(99, 102, 241, 0.1);
             color: #818cf8;
@@ -206,7 +192,7 @@
             background-color: rgba(31, 41, 55, 0.8) !important;
             color: white !important;
         }
-        
+
         /* Mobile menu */
         .mobile-menu {
             transform: translateX(-100%);
@@ -215,7 +201,7 @@
         .mobile-menu.open {
             transform: translateX(0);
         }
-        
+
         /* Search Modal */
         .search-modal { display: none; }
         .search-modal.open { display: flex; }
@@ -365,8 +351,8 @@
 
             <!-- Content Area -->
             <div class="px-4 py-8 lg:px-8 lg:py-12 pt-20 lg:pt-12">
-                <div class="max-w-4xl mx-auto">
-                    <article class="prose prose-invert max-w-none animate-fade-in">
+                <div class="w-full">
+                    <article class="prose prose-invert max-w-none animate-fade-in prose-docs">
                         <%= yield %>
                     </article>
 

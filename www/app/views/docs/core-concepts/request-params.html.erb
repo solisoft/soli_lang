@@ -171,8 +171,14 @@ fn update_item(req: Any) -> Any {
         </p>
 
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
+            <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
+                <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                <span class="ml-2 text-xs text-gray-500 font-mono">handlers.sl</span>
+            </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm fn handler(req: Any) -> Any {
+<pre><code class="language-soli text-sm">fn handler(req: Any) -> Any {
     // Route parameters only
     let id = req["params"]["id"];
 

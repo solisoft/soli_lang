@@ -1625,22 +1625,6 @@ video {
   max-width: 42rem;
 }
 
-.max-w-3xl {
-  max-width: 48rem;
-}
-
-.max-w-4xl {
-  max-width: 56rem;
-}
-
-.max-w-6xl {
-  max-width: 72rem;
-}
-
-.max-w-7xl {
-  max-width: 80rem;
-}
-
 .max-w-\[200px\] {
   max-width: 200px;
 }
@@ -1649,20 +1633,8 @@ video {
   max-width: 80%;
 }
 
-.max-w-md {
-  max-width: 28rem;
-}
-
 .max-w-none {
   max-width: none;
-}
-
-.max-w-sm {
-  max-width: 24rem;
-}
-
-.max-w-xl {
-  max-width: 36rem;
 }
 
 .flex-1 {
@@ -2108,11 +2080,6 @@ video {
   background-color: rgb(6 182 212 / 0.2);
 }
 
-.bg-emerald-500 {
-  --tw-bg-opacity: 1;
-  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));
-}
-
 .bg-emerald-500\/10 {
   background-color: rgb(16 185 129 / 0.1);
 }
@@ -2552,6 +2519,11 @@ video {
 .via-blue-400 {
   --tw-gradient-to: rgb(96 165 250 / 0)  var(--tw-gradient-to-position);
   --tw-gradient-stops: var(--tw-gradient-from), #60a5fa var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
+.via-cyan-400 {
+  --tw-gradient-to: rgb(34 211 238 / 0)  var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), #22d3ee var(--tw-gradient-via-position), var(--tw-gradient-to);
 }
 
 .via-indigo-500\/50 {
@@ -3037,10 +3009,6 @@ video {
 .text-cyan-400 {
   --tw-text-opacity: 1;
   color: rgb(34 211 238 / var(--tw-text-opacity, 1));
-}
-
-.text-emerald-200\/80 {
-  color: rgb(167 243 208 / 0.8);
 }
 
 .text-emerald-300 {
@@ -3541,10 +3509,6 @@ video {
   border-color: rgb(6 182 212 / 0.5);
 }
 
-.hover\:border-emerald-500\/50:hover {
-  border-color: rgb(16 185 129 / 0.5);
-}
-
 .hover\:border-green-500\/50:hover {
   border-color: rgb(34 197 94 / 0.5);
 }
@@ -3555,6 +3519,10 @@ video {
 
 .hover\:border-purple-500\/50:hover {
   border-color: rgb(168 85 247 / 0.5);
+}
+
+.hover\:border-teal-500\/50:hover {
+  border-color: rgb(20 184 166 / 0.5);
 }
 
 .hover\:border-white\/20:hover {
@@ -3678,6 +3646,11 @@ video {
 .hover\:text-indigo-300:hover {
   --tw-text-opacity: 1;
   color: rgb(165 180 252 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-teal-300:hover {
+  --tw-text-opacity: 1;
+  color: rgb(94 234 212 / var(--tw-text-opacity, 1));
 }
 
 .hover\:text-white:hover {
@@ -3817,11 +3790,6 @@ video {
 .group:hover .group-hover\:text-cyan-400 {
   --tw-text-opacity: 1;
   color: rgb(34 211 238 / var(--tw-text-opacity, 1));
-}
-
-.group:hover .group-hover\:text-emerald-400 {
-  --tw-text-opacity: 1;
-  color: rgb(52 211 153 / var(--tw-text-opacity, 1));
 }
 
 .group:hover .group-hover\:text-indigo-400 {

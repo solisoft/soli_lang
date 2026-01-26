@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Routing</span>
@@ -52,10 +52,8 @@
 
     <h2 class="text-2xl font-bold text-white mb-6">Basic Routes</h2>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Root page
 get("/", "home#index");
@@ -72,10 +70,8 @@ post("/contact", "home#submit_contact");</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Route Parameters</h2>
     <p class="text-gray-400 mb-6">Use <code>:param_name</code> to capture dynamic segments:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">config/routes.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Capture user ID
 get("/users/:id", "users#show");
@@ -90,10 +86,8 @@ get("/users/:id?", "users#show");</code></pre>
 
     <p class="text-gray-400 mb-4">Access parameters in your controller:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/controllers/users_controller.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn show(req: Any) -> Any {
     let user_id = req["params"]["id"];
@@ -110,10 +104,8 @@ get("/users/:id?", "users#show");</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Query Parameters</h2>
     <p class="text-gray-400 mb-6">Query strings are automatically parsed and available in <code>req["query"]</code>:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-mono">app/controllers/search_controller.sl</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/search_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// URL: /search?q=solilang&page=1
 
@@ -132,7 +124,7 @@ fn search(req: Any) -> Any {
     <h2 class="text-2xl font-bold text-white mb-6">RESTful Resources</h2>
     <p class="text-gray-400 mb-6">Generate standard CRUD routes automatically with <code>resources()</code>:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">resources("users", null);</code></pre>
         </div>
@@ -162,7 +154,7 @@ fn search(req: Any) -> Any {
     <h2 class="text-2xl font-bold text-white mb-6">Namespaces</h2>
     <p class="text-gray-400 mb-6">Group routes under a common prefix, like <code>/admin</code>:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">namespace("admin", -> {
     get("/dashboard", "admin#dashboard");
@@ -175,7 +167,7 @@ fn search(req: Any) -> Any {
     <h2 class="text-2xl font-bold text-white mb-6">Scoped Middleware</h2>
     <p class="text-gray-400 mb-6">Apply middleware only to specific route blocks:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Only /admin/* routes require authentication
 middleware("authenticate", -> {
@@ -191,7 +183,7 @@ get("/about", "home#about");</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Nested Resources</h2>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">namespace("api", -> {
     resources("users", -> {

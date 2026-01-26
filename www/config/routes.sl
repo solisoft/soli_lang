@@ -45,7 +45,6 @@ get("/docs/security/sessions", "docs#security_sessions");
 get("/docs/security/validation", "docs#security_validation");
 
 // Development Tools
-get("/docs/development-tools/testing", "docs#development_tools_testing");
 get("/docs/development-tools/live-reload", "docs#development_tools_live_reload");
 get("/docs/development-tools/debugging", "docs#development_tools_debugging");
 get("/docs/development-tools/scaffold", "docs#development_tools_scaffold");
@@ -78,6 +77,10 @@ get("/docs/builtins/session", "docs#builtins_session");
 get("/docs/builtins/testing", "docs#builtins_testing");
 get("/docs/builtins/i18n", "docs#builtins_i18n");
 
+// Testing
+get("/docs/testing", "docs#testing");
+get("/docs/testing-quick-reference", "docs#testing_quick_reference");
+
 // ============================================================================
 // Backward Compatibility Redirects (old flat URLs -> new hierarchical URLs)
 // ============================================================================
@@ -99,7 +102,6 @@ get("/docs/migrations", "docs#redirect_migrations");
 get("/docs/authentication", "docs#redirect_authentication");
 get("/docs/sessions", "docs#redirect_sessions");
 get("/docs/validation", "docs#redirect_validation");
-get("/docs/testing", "docs#redirect_testing");
 get("/docs/live-reload", "docs#redirect_live_reload");
 get("/docs/debugging", "docs#redirect_debugging");
 get("/docs/scaffold", "docs#redirect_scaffold");

@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Database Configuration</span>
@@ -64,10 +64,8 @@
     <h2 class="text-2xl font-bold text-white mb-6">.env File</h2>
     <p class="text-gray-400 mb-6">When you create a new project with <code>soli new myapp</code>, a <code>.env</code> file is automatically generated:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <div class="px-4 py-2 border-b border-white/5 bg-white/5">
-            <span class="text-xs text-gray-400 font-mono">.env</span>
-        </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">.env</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Database Configuration
 SOLIDB_HOST=http://localhost:6745
@@ -102,7 +100,7 @@ SOLIDB_PASSWORD=admin
     <div class="space-y-6 mb-12">
         <div>
             <h3 class="text-lg font-semibold text-white mb-3">Development</h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+            <div class="rounded-lg bg-gray-900 overflow-hidden">
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env
 SOLIDB_HOST=http://localhost:6745
@@ -113,7 +111,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3">Test</h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+            <div class="rounded-lg bg-gray-900 overflow-hidden">
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env.test
 SOLIDB_HOST=http://localhost:6745
@@ -124,7 +122,7 @@ SOLIDB_DATABASE=myapp_test</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3">Production</h3>
-            <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
+            <div class="rounded-lg bg-gray-900 overflow-hidden">
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env.production
 SOLIDB_HOST=https://db.example.com
@@ -149,7 +147,7 @@ SOLIDB_PASSWORD=secure_password_here</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">Option 1: Shell Environment (Recommended for CI/Production)</h3>
     <p class="text-gray-400 mb-4">Set <code>APP_ENV</code> when running commands:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Run migrations in production
 APP_ENV=production soli db:migrate
@@ -165,7 +163,7 @@ soli serve</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">Option 2: In .env File (For Local Development)</h3>
     <p class="text-gray-400 mb-4">Set <code>APP_ENV</code> in your base <code>.env</code> file:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env
 APP_ENV=development
@@ -183,7 +181,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
 
     <p class="text-gray-400 mb-4">Environment-specific values override base values. For example:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env
 SOLIDB_DATABASE=myapp_development
@@ -198,7 +196,7 @@ SOLIDB_DATABASE=myapp_production</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Starting SoliDB</h2>
     <p class="text-gray-400 mb-6">Before running your application, start the SoliDB server:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Start SoliDB (default port 6745)
 solidb
@@ -214,7 +212,7 @@ solidb --data ./data</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Verifying Connection</h2>
     <p class="text-gray-400 mb-6">Test your database connection by running migrations:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm">cd myapp
 soli db:migrate</code></pre>
@@ -223,7 +221,7 @@ soli db:migrate</code></pre>
 
     <p class="text-gray-400 mb-12">If successful, you'll see:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="text-sm text-green-400">Running migrations for database: myapp_development
 All migrations are up to date.</code></pre>
@@ -233,7 +231,7 @@ All migrations are up to date.</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Using Models</h2>
     <p class="text-gray-400 mb-6">Once configured, Models automatically connect to the database:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User extends Model { }
 
@@ -247,7 +245,7 @@ let found = User.find(user["id"]);</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
     <p class="text-gray-400 mb-6">For raw database queries, use SDBQL (SoliDB Query Language):</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// SDBQL query with bind parameters
 let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
@@ -281,7 +279,7 @@ db.query("INSERT { name: @name, email: @email } INTO users", {
     </div>
 
     <h3 class="text-lg font-semibold text-white mb-4">Example .gitignore</h3>
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-gitignore text-sm"># Environment files (contain secrets)
 .env
@@ -292,7 +290,7 @@ db.query("INSERT { name: @name, email: @email } INTO users", {
 
     <h3 class="text-lg font-semibold text-white mb-4">Example .env.example</h3>
     <p class="text-gray-400 mb-4">Create a template for other developers (safe to commit):</p>
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env.example (commit this file)
 SOLIDB_HOST=http://localhost:6745

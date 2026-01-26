@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto">
+<div>
     <!-- Hero Section -->
     <div class="mb-12">
         <nav class="flex items-center gap-2 text-sm mb-4">
@@ -127,7 +127,7 @@ let formatted = utils.format_date(DateTime.utc());</code></pre>
     <!-- Project Structure -->
     <section id="section-structure" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Project Structure</h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-text text-sm">my-project/
 ├── soli.toml
@@ -151,11 +151,9 @@ let formatted = utils.format_date(DateTime.utc());</code></pre>
     <!-- Package Configuration -->
     <section id="section-package-config" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Package Configuration</h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-            <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                <span class="text-xs text-gray-400 font-mono">soli.toml</span>
-            </div>
-            <div class="p-4 overflow-x-auto">
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">soli.toml</label>
+    <div class="p-4 overflow-x-auto">
 <pre><code class="language-toml text-sm">[package]
 name = "my-app"
 version = "1.0.0"
@@ -173,8 +171,8 @@ test-utils = { path = "./tests/test-utils" }
 dev = "soli serve"
 build = "soli build --release"
 test = "soli test"</code></pre>
-            </div>
-        </div>
+    </div>
+</div>
     </section>
 
     <!-- Use Keyword -->

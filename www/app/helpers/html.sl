@@ -24,6 +24,7 @@ fn get_section_color(id: String) -> String {
     elsif (id == "development_tools") return "text-amber-400";
     elsif (id == "language") return "text-emerald-400";
     elsif (id == "builtins") return "text-pink-400";
+    elsif (id == "e2e_testing") return "text-teal-400";
     else return "text-gray-400";
 }
 
@@ -51,7 +52,10 @@ fn get_icon_path(icon: String) -> String {
     elsif (icon == "library") {
         return "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z' />";
     }
-    
+    elsif (icon == "beaker") {
+        return "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5' />";
+    }
+
     // Fallback icon (question mark)
     return "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z' />";
 }

@@ -65,6 +65,16 @@
                 "id": "error_pages",
                 "title": "Error Pages",
                 "path": "/docs/core-concepts/error-pages"
+            },
+            {
+                "id": "testing",
+                "title": "Testing",
+                "path": "/docs/testing"
+            },
+            {
+                "id": "testing_quick_reference",
+                "title": "Testing Quick Reference",
+                "path": "/docs/testing-quick-reference"
             }
         ]
     },
@@ -117,11 +127,6 @@
         "title": "Development Tools",
         "icon": "wrench",
         "pages": [
-            {
-                "id": "testing",
-                "title": "Testing",
-                "path": "/docs/development-tools/testing"
-            },
             {
                 "id": "live_reload",
                 "title": "Live Reload",
@@ -260,11 +265,6 @@
                 "id": "session",
                 "title": "Session",
                 "path": "/docs/builtins/session"
-            },
-            {
-                "id": "testing",
-                "title": "Testing",
-                "path": "/docs/builtins/testing"
             },
             {
                 "id": "i18n",
