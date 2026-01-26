@@ -5,7 +5,7 @@ use serde_json::Value as JsonValue;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use crate::interpreter::value::{json_to_value, Value};
+use crate::interpreter::value::json_to_value;
 use crate::template::parser::parse_template;
 use crate::template::renderer::render_nodes;
 use uuid::Uuid;
@@ -24,7 +24,10 @@ pub fn set_app_root(path: PathBuf) {
 
 /// Get the app root directory.
 pub fn get_app_root() -> PathBuf {
-    APP_ROOT.lock().map(|r| r.clone()).unwrap_or_else(|_| PathBuf::from("."))
+    APP_ROOT
+        .lock()
+        .map(|r| r.clone())
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 /// Component state wrapper.
@@ -139,7 +142,8 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
     } else {
         return Err(format!(
             "Template not found: {} or {}",
-            erb_path.display(), sliv_path.display()
+            erb_path.display(),
+            sliv_path.display()
         ));
     };
 

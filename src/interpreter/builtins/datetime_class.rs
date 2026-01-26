@@ -56,7 +56,10 @@ fn parse_datetime_string(s: &str) -> Result<i64, String> {
     };
 
     match datetime {
-        Ok(dt) => Ok(dt.timestamp_nanos()),
+        Ok(dt) => match dt.timestamp_nanos_opt() {
+            Some(nanos) => Ok(nanos),
+            None => Ok(dt.timestamp() * 1_000_000_000),
+        },
         Err(_) => Err(format!("Invalid datetime format: {}", s)),
     }
 }
@@ -78,7 +81,10 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 native_methods: HashMap::new(),
                 constructor: None,
             }));
-            inst.set("timestamp".to_string(), Value::Int(now.timestamp_nanos()));
+            inst.set(
+                "timestamp".to_string(),
+                Value::Int(now.timestamp() * 1_000_000_000),
+            );
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
         })),
     );
@@ -454,7 +460,10 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 native_methods: dt_methods_for_utc.clone(),
                 constructor: None,
             }));
-            inst.set("timestamp".to_string(), Value::Int(now.timestamp_nanos_opt().unwrap_or(0)));
+            inst.set(
+                "timestamp".to_string(),
+                Value::Int(now.timestamp_nanos_opt().unwrap_or(0)),
+            );
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
         })),
     );

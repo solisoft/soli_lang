@@ -5,7 +5,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::interpreter::environment::Environment;
 use crate::interpreter::value::Value;
 use crate::interpreter::Interpreter;
 use crate::template::parser::{BinaryOp, CompareOp, Expr, TemplateNode};
@@ -71,7 +70,11 @@ pub fn render_nodes_with_path(
                 TemplateNode::Literal(s) => {
                     output.push_str(s);
                 }
-                TemplateNode::Output { expr, escaped, line: _ } => {
+                TemplateNode::Output {
+                    expr,
+                    escaped,
+                    line: _,
+                } => {
                     let value = evaluate_expr(expr, data)?;
                     let s = value_to_string(&value);
                     if *escaped {
@@ -88,9 +91,19 @@ pub fn render_nodes_with_path(
                 } => {
                     let cond_value = evaluate_expr(condition, data)?;
                     if is_truthy(&cond_value) {
-                        output.push_str(&render_nodes_with_path(body, data, partial_renderer, template_path)?);
+                        output.push_str(&render_nodes_with_path(
+                            body,
+                            data,
+                            partial_renderer,
+                            template_path,
+                        )?);
                     } else if let Some(else_nodes) = else_body {
-                        output.push_str(&render_nodes_with_path(else_nodes, data, partial_renderer, template_path)?);
+                        output.push_str(&render_nodes_with_path(
+                            else_nodes,
+                            data,
+                            partial_renderer,
+                            template_path,
+                        )?);
                     }
                 }
                 TemplateNode::For {
@@ -105,7 +118,12 @@ pub fn render_nodes_with_path(
                             for item in arr.borrow().iter() {
                                 // Create new context with loop variable
                                 let loop_data = with_variable(data, var, item.clone())?;
-                                output.push_str(&render_nodes_with_path(body, &loop_data, partial_renderer, template_path)?);
+                                output.push_str(&render_nodes_with_path(
+                                    body,
+                                    &loop_data,
+                                    partial_renderer,
+                                    template_path,
+                                )?);
                             }
                         }
                         Value::Hash(hash) => {
@@ -114,7 +132,12 @@ pub fn render_nodes_with_path(
                                 let pair =
                                     Value::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()])));
                                 let loop_data = with_variable(data, var, pair)?;
-                                output.push_str(&render_nodes_with_path(body, &loop_data, partial_renderer, template_path)?);
+                                output.push_str(&render_nodes_with_path(
+                                    body,
+                                    &loop_data,
+                                    partial_renderer,
+                                    template_path,
+                                )?);
                             }
                         }
                         _ => {
@@ -130,7 +153,11 @@ pub fn render_nodes_with_path(
                     // If we encounter it during normal rendering, it's an error
                     return Err("yield encountered outside of layout context".to_string());
                 }
-                TemplateNode::Partial { name, context, line: _ } => {
+                TemplateNode::Partial {
+                    name,
+                    context,
+                    line: _,
+                } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
                             evaluate_expr(ctx_expr, data)?
@@ -176,10 +203,8 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
         Expr::Null => Ok(Value::Null),
 
         Expr::ArrayLit(elements) => {
-            let values: Result<Vec<Value>, String> = elements
-                .iter()
-                .map(|e| evaluate_expr(e, data))
-                .collect();
+            let values: Result<Vec<Value>, String> =
+                elements.iter().map(|e| evaluate_expr(e, data)).collect();
             Ok(Value::Array(Rc::new(RefCell::new(values?))))
         }
 
@@ -265,8 +290,15 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
                     // Call user-defined function using interpreter
                     call_user_function(&func, evaluated_args)
                 }
-                Value::Null => Err(format!("'{}' is not defined (function not found in template context)", name)),
-                _ => Err(format!("'{}' is not a function, got {}", name, func_value.type_name())),
+                Value::Null => Err(format!(
+                    "'{}' is not defined (function not found in template context)",
+                    name
+                )),
+                _ => Err(format!(
+                    "'{}' is not a function, got {}",
+                    name,
+                    func_value.type_name()
+                )),
             }
         }
     }
@@ -578,7 +610,10 @@ fn evaluate_binary_op(left: &Value, op: BinaryOp, right: &Value) -> Result<Value
 }
 
 /// Call a user-defined function (from helpers) using an interpreter.
-fn call_user_function(func: &crate::interpreter::value::Function, args: Vec<Value>) -> Result<Value, String> {
+fn call_user_function(
+    func: &crate::interpreter::value::Function,
+    args: Vec<Value>,
+) -> Result<Value, String> {
     // Create a new interpreter with builtins
     let mut interpreter = Interpreter::new();
 
@@ -592,7 +627,10 @@ fn call_user_function(func: &crate::interpreter::value::Function, args: Vec<Valu
     // Bind arguments to parameters
     for (i, param) in func.params.iter().enumerate() {
         let arg_value = args.get(i).cloned().unwrap_or(Value::Null);
-        interpreter.environment.borrow_mut().define(param.name.clone(), arg_value);
+        interpreter
+            .environment
+            .borrow_mut()
+            .define(param.name.clone(), arg_value);
     }
 
     // Execute statements and capture return value

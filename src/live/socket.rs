@@ -8,7 +8,7 @@ use uuid::Uuid;
 use serde_json::json;
 
 use crate::live::component::render_component;
-use crate::live::view::{LiveRegistry, LiveViewInstance, ServerMessage, LIVE_REGISTRY};
+use crate::live::view::{LiveViewInstance, ServerMessage, LIVE_REGISTRY};
 
 /// A LiveView route with its handler reference.
 #[derive(Clone, Debug)]
@@ -65,7 +65,8 @@ pub fn extract_session_id(cookies: Option<&str>) -> String {
 }
 
 /// Extract component name from URL path.
-fn extract_component_from_path(path: &str) -> String {
+#[allow(dead_code)]
+fn _extract_component_from_path(path: &str) -> String {
     path.trim_start_matches("/live/")
         .trim_end_matches("/socket")
         .to_string()

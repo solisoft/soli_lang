@@ -91,7 +91,11 @@ pub fn render_layout_nodes_with_path(
                 TemplateNode::Literal(s) => {
                     output.push_str(s);
                 }
-                TemplateNode::Output { expr, escaped, line: _ } => {
+                TemplateNode::Output {
+                    expr,
+                    escaped,
+                    line: _,
+                } => {
                     let value = evaluate_expr(expr, data)?;
                     let s = value_to_string(&value);
                     if *escaped {
@@ -108,7 +112,13 @@ pub fn render_layout_nodes_with_path(
                 } => {
                     let cond_value = evaluate_expr(condition, data)?;
                     if is_truthy(&cond_value) {
-                        output.push_str(&render_layout_nodes_with_path(body, content, data, partial_renderer, layout_path)?);
+                        output.push_str(&render_layout_nodes_with_path(
+                            body,
+                            content,
+                            data,
+                            partial_renderer,
+                            layout_path,
+                        )?);
                     } else if let Some(else_nodes) = else_body {
                         output.push_str(&render_layout_nodes_with_path(
                             else_nodes,
@@ -166,7 +176,11 @@ pub fn render_layout_nodes_with_path(
                     // This is where we insert the rendered content
                     output.push_str(content);
                 }
-                TemplateNode::Partial { name, context, line: _ } => {
+                TemplateNode::Partial {
+                    name,
+                    context,
+                    line: _,
+                } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
                             evaluate_expr(ctx_expr, data)?
@@ -210,10 +224,8 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
         Expr::Null => Ok(Value::Null),
 
         Expr::ArrayLit(elements) => {
-            let values: Result<Vec<Value>, String> = elements
-                .iter()
-                .map(|e| evaluate_expr(e, data))
-                .collect();
+            let values: Result<Vec<Value>, String> =
+                elements.iter().map(|e| evaluate_expr(e, data)).collect();
             Ok(Value::Array(Rc::new(RefCell::new(values?))))
         }
 
@@ -303,7 +315,11 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
                     "'{}' is not defined (function not found in layout context)",
                     name
                 )),
-                _ => Err(format!("'{}' is not a function, got {}", name, func_value.type_name())),
+                _ => Err(format!(
+                    "'{}' is not a function, got {}",
+                    name,
+                    func_value.type_name()
+                )),
             }
         }
     }
@@ -602,7 +618,10 @@ fn call_user_function(
     // Bind arguments to parameters
     for (i, param) in func.params.iter().enumerate() {
         let arg_value = args.get(i).cloned().unwrap_or(Value::Null);
-        interpreter.environment.borrow_mut().define(param.name.clone(), arg_value);
+        interpreter
+            .environment
+            .borrow_mut()
+            .define(param.name.clone(), arg_value);
     }
 
     // Execute statements and capture return value

@@ -66,7 +66,10 @@ fn parse_datetime_string(s: &str) -> Result<i64, String> {
             })
     };
     match datetime {
-        Ok(dt) => Ok(dt.timestamp_nanos()),
+        Ok(dt) => match dt.timestamp_nanos_opt() {
+            Some(nanos) => Ok(nanos),
+            None => Ok(dt.timestamp() * 1_000_000_000),
+        },
         Err(_) => Err(format!("Invalid datetime format: {}", s)),
     }
 }

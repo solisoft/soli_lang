@@ -5,8 +5,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde_json::json;
-
 use async_channel;
 use serde::Serialize;
 use tungstenite::Message;

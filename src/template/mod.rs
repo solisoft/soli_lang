@@ -19,7 +19,7 @@ use std::time::SystemTime;
 
 use crate::interpreter::value::Value;
 use parser::parse_template;
-use renderer::{render_nodes, render_nodes_with_path};
+use renderer::render_nodes_with_path;
 use std::rc::Rc;
 
 /// A cached template with its parsed AST and modification time.
@@ -84,7 +84,12 @@ impl TemplateCache {
             |name: &str, ctx: &Value| -> Result<String, String> { self.render_partial(name, ctx) };
 
         // Render the template content with path for error reporting
-        let content = render_nodes_with_path(&nodes, data, Some(&partial_renderer), Some(&template_path_str))?;
+        let content = render_nodes_with_path(
+            &nodes,
+            data,
+            Some(&partial_renderer),
+            Some(&template_path_str),
+        )?;
 
         // Apply layout if specified
         match layout {
@@ -130,7 +135,12 @@ impl TemplateCache {
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
 
-        render_nodes_with_path(&nodes, data, Some(&partial_renderer), Some(&template_path_str))
+        render_nodes_with_path(
+            &nodes,
+            data,
+            Some(&partial_renderer),
+            Some(&template_path_str),
+        )
     }
 
     /// Render content with a named layout.
@@ -152,7 +162,13 @@ impl TemplateCache {
             Ok(layout_path) => {
                 let layout_path_str = layout_path.to_string_lossy().to_string();
                 let layout_nodes = self.get_or_load_template(&layout_path)?;
-                layout::render_layout_nodes_with_path(&layout_nodes, content, data, Some(partial_renderer), Some(&layout_path_str))
+                layout::render_layout_nodes_with_path(
+                    &layout_nodes,
+                    content,
+                    data,
+                    Some(partial_renderer),
+                    Some(&layout_path_str),
+                )
             }
             Err(_) => {
                 // No layout file, return content as-is

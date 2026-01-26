@@ -2334,7 +2334,6 @@ fn handle_websocket_event(interpreter: &mut Interpreter, data: &WebSocketEventDa
 fn handle_liveview_event(interpreter: &mut Interpreter, data: &LiveViewEventData) -> Result<(), String> {
     use crate::interpreter::value::Value;
     use crate::live::view::LIVE_REGISTRY;
-    use crate::live::view::ServerMessage;
 
     // Get the LiveView instance
     let mut instance = LIVE_REGISTRY
@@ -4484,7 +4483,7 @@ fn render_production_error_page(status_code: u16, message: &str) -> String {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{}</title>
+    <title>{title}</title>
     <style>
         * {{
             margin: 0;

@@ -786,7 +786,7 @@ fn run_file(path: &str, options: &Options) {
     }
 }
 
-fn run_eval(code: &str, options: &Options) {
+fn run_eval(code: &str, _options: &Options) {
     let result = solilang::run(code);
 
     if let Err(e) = result {
@@ -960,6 +960,17 @@ impl ReplState {
     }
 }
 
+fn format_duration(duration: std::time::Duration) -> String {
+    let micros = duration.as_micros();
+    if micros < 1000 {
+        format!("{}µs", micros)
+    } else if micros < 1_000_000 {
+        format!("{}ms", (micros + 500) / 1000)
+    } else {
+        format!("{}.{}s", micros / 1_000_000, (micros % 1_000_000) / 10000)
+    }
+}
+
 fn run_test(
     path: Option<&str>,
     _jobs: usize,
@@ -984,7 +995,7 @@ fn run_test(
     }
 
     let test_files: Vec<std::path::PathBuf> = if test_path.is_file() {
-        vec![test_path]
+        vec![test_path.clone()]
     } else {
         collect_test_files(&test_path)
     };
@@ -994,7 +1005,8 @@ fn run_test(
         return;
     }
 
-    println!("Found {} test file(s)", test_files.len());
+    println!("Running {} test(s)...", test_files.len());
+    println!();
 
     let mut tracker: Option<Rc<RefCell<CoverageTracker>>> = None;
     if coverage {
@@ -1021,11 +1033,11 @@ fn run_test(
     let mut failed = 0;
     let pending = 0;
 
+    let mut test_results: Vec<(std::path::PathBuf, bool, String, std::time::Duration)> = Vec::new();
+
     for test_file in &test_files {
         match std::fs::read_to_string(test_file) {
             Ok(source) => {
-                println!("\nRunning: {}", test_file.display());
-
                 let test_name = test_file
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
@@ -1035,7 +1047,8 @@ fn run_test(
                     tr.borrow_mut().start_test(&test_name);
                 }
 
-                match solilang::run_with_path_and_coverage(
+                let start = std::time::Instant::now();
+                let result = solilang::run_with_path_and_coverage(
                     &source,
                     Some(test_file),
                     solilang::ExecutionMode::TreeWalk,
@@ -1043,14 +1056,17 @@ fn run_test(
                     false,
                     tracker.as_ref(),
                     Some(test_file),
-                ) {
+                );
+                let duration = start.elapsed();
+
+                match result {
                     Ok(_) => {
                         passed += 1;
-                        println!("  ✓ Passed");
+                        test_results.push((test_file.clone(), true, String::new(), duration));
                     }
                     Err(e) => {
                         failed += 1;
-                        println!("  ✗ Failed: {}", e);
+                        test_results.push((test_file.clone(), false, e.to_string(), duration));
                     }
                 }
 
@@ -1065,12 +1081,53 @@ fn run_test(
         }
     }
 
-    println!();
-    println!("Test Results:");
-    println!("  Passed:  {}", passed);
-    println!("  Failed:  {}", failed);
-    println!("  Pending: {}", pending);
-    println!("  Total:   {}", passed + failed + pending);
+    let test_dir = if test_path.is_file() {
+        test_path.parent().unwrap_or(&test_path).to_path_buf()
+    } else {
+        test_path.clone()
+    };
+
+    let mut current_dir: Option<std::path::PathBuf> = None;
+    for (path, passed_test, error, duration) in &test_results {
+        let parent = path.parent().unwrap_or(&path).to_path_buf();
+        let relative_to_test_dir = path.strip_prefix(&test_dir).unwrap_or(path);
+        let parent_str = relative_to_test_dir
+            .parent()
+            .and_then(|p| p.to_str())
+            .unwrap_or(".");
+
+        if current_dir.as_ref().map(|d| d != &parent).unwrap_or(true) {
+            if current_dir.is_some() {
+                println!();
+            }
+            current_dir = Some(parent.clone());
+            if parent_str != "." {
+                println!("{}", parent_str);
+            }
+        }
+
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+        let display_path = if parent_str == "." {
+            file_name.to_string()
+        } else {
+            format!("{}/{}", parent_str, file_name)
+        };
+
+        let duration_str = format_duration(*duration);
+        if *passed_test {
+            println!("  {:40} {:>8} ✓", display_path, duration_str);
+        } else {
+            println!("  {:40} {:>8} ✗ {}", display_path, duration_str, error);
+        }
+    }
+
+    println!("{}", if failed > 0 { "❌ " } else { "✓ " });
+    println!(
+        "  {} passed, {} failed ({} total)",
+        passed,
+        failed,
+        passed + failed + pending
+    );
 
     if let Some(ref tr) = tracker {
         let coverage_data = tr.borrow().get_aggregated_coverage();
@@ -1108,27 +1165,15 @@ fn collect_source_files() -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
     let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    let dirs_to_search = vec![
-        project_root.join("www"),
-        project_root.join("examples"),
-        project_root.join("benches"),
-        project_root.join(".soli"),
-    ];
-
-    for dir in dirs_to_search {
-        if dir.exists() {
-            collect_sl_files_recursive(&dir, &mut files, &project_root);
-        }
+    let app_dir = project_root.join("app");
+    if app_dir.exists() {
+        collect_sl_files_recursive(&app_dir, &mut files);
     }
 
     files
 }
 
-fn collect_sl_files_recursive(
-    dir: &std::path::PathBuf,
-    files: &mut Vec<std::path::PathBuf>,
-    project_root: &std::path::PathBuf,
-) {
+fn collect_sl_files_recursive(dir: &std::path::PathBuf, files: &mut Vec<std::path::PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -1141,7 +1186,7 @@ fn collect_sl_files_recursive(
             } else if path.is_dir() {
                 let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
                 if dir_name != "tests" && dir_name != "target" && dir_name != "node_modules" {
-                    collect_sl_files_recursive(&path, files, project_root);
+                    collect_sl_files_recursive(&path, files);
                 }
             }
         }

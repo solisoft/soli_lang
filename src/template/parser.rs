@@ -71,7 +71,11 @@ pub enum TemplateNode {
     /// Raw HTML/text content
     Literal(String),
     /// Output expression: `<%= expr %>` (escaped), `<%- expr %>` (raw), or `<%== expr %>` (unescape)
-    Output { expr: Expr, escaped: bool, line: usize },
+    Output {
+        expr: Expr,
+        escaped: bool,
+        line: usize,
+    },
     /// If conditional block
     If {
         condition: Expr,
@@ -89,17 +93,21 @@ pub enum TemplateNode {
     /// Layout content insertion point
     Yield,
     /// Render a partial template
-    Partial { name: String, context: Option<Expr>, line: usize },
+    Partial {
+        name: String,
+        context: Option<Expr>,
+        line: usize,
+    },
 }
 
 /// Token types during lexing
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
-    Literal(String, usize),         // content, line
-    OutputEscaped(String, usize),   // <%= ... %>, line
-    OutputRaw(String, usize),       // <%- ... %>, line
-    OutputUnescape(String, usize),  // <%== ... %>, line (html_unescape)
-    Code(String, usize),            // <% ... %>, line
+    Literal(String, usize),        // content, line
+    OutputEscaped(String, usize),  // <%= ... %>, line
+    OutputRaw(String, usize),      // <%- ... %>, line
+    OutputUnescape(String, usize), // <%== ... %>, line (html_unescape)
+    Code(String, usize),           // <% ... %>, line
 }
 
 /// Parse an ERB-style template into an AST.
@@ -124,7 +132,10 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
 
             // Save any accumulated literal
             if !current_literal.is_empty() {
-                tokens.push(Token::Literal(std::mem::take(&mut current_literal), literal_start_line));
+                tokens.push(Token::Literal(
+                    std::mem::take(&mut current_literal),
+                    literal_start_line,
+                ));
             }
 
             // Check for output tag types: <%== (unescape), <%= (escaped), or <%- (raw)
@@ -134,7 +145,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
 
             if is_output {
                 chars.next(); // consume first '='
-                // Check for second '=' (<%==)
+                              // Check for second '=' (<%==)
                 if chars.peek() == Some(&'=') {
                     chars.next(); // consume second '='
                     is_unescape = true;
@@ -258,7 +269,10 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                     i += consumed;
                 } else if code == "end" || code.starts_with("else") || code.starts_with("elsif ") {
                     // These should be handled by their parent block parsers
-                    return Err(format!("Unexpected '{}' outside of block at line {}", code, line));
+                    return Err(format!(
+                        "Unexpected '{}' outside of block at line {}",
+                        code, line
+                    ));
                 } else {
                     // Other code - treat as expression to evaluate (side effect)
                     // We ignore it for now since templates shouldn't have side effects
@@ -273,7 +287,11 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
 
 /// Parse an if block starting at the given position.
 /// Returns the IfNode and the number of tokens consumed.
-fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(TemplateNode, usize), String> {
+fn parse_if_block(
+    tokens: &[Token],
+    condition: Expr,
+    if_line: usize,
+) -> Result<(TemplateNode, usize), String> {
     let mut body = Vec::new();
     let mut else_body = None;
     let mut i = 1; // Skip the initial `if` token
@@ -301,7 +319,8 @@ fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(
                 } else if code.starts_with("elsif ") {
                     // Handle elsif as nested if in else
                     let elsif_condition = compile_expr(code[6..].trim());
-                    let (elsif_node, consumed) = parse_if_block(&tokens[i..], elsif_condition, *line)?;
+                    let (elsif_node, consumed) =
+                        parse_if_block(&tokens[i..], elsif_condition, *line)?;
                     else_body = Some(vec![elsif_node]);
                     // The elsif consumed tokens up to 'end', so we're done
                     return Ok((
@@ -316,7 +335,8 @@ fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(
                 } else if code.starts_with("if ") {
                     // Nested if
                     let nested_condition = compile_expr(code[3..].trim());
-                    let (nested_if, consumed) = parse_if_block(&tokens[i..], nested_condition, *line)?;
+                    let (nested_if, consumed) =
+                        parse_if_block(&tokens[i..], nested_condition, *line)?;
                     if in_else {
                         else_body.as_mut().unwrap().push(nested_if);
                     } else {
@@ -400,7 +420,10 @@ fn parse_if_block(tokens: &[Token], condition: Expr, if_line: usize) -> Result<(
         }
     }
 
-    Err(format!("Unclosed if block at line {} - missing 'end'", if_line))
+    Err(format!(
+        "Unclosed if block at line {} - missing 'end'",
+        if_line
+    ))
 }
 
 /// Parse a for block starting at the given position.
@@ -498,7 +521,10 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
         }
     }
 
-    Err(format!("Unclosed for block at line {} - missing 'end'", for_line))
+    Err(format!(
+        "Unclosed for block at line {} - missing 'end'",
+        for_line
+    ))
 }
 
 /// Parse a for statement like "item in items" or "(item in items)"
@@ -509,7 +535,7 @@ fn parse_for_statement(s: &str) -> Result<(String, Expr), String> {
     // Don't strip if it's something like "item in range(1, 5)"
     let s = if s.starts_with('(') && s.ends_with(')') {
         // Check if these are matching outer parens by verifying paren balance
-        let inner = &s[1..s.len()-1];
+        let inner = &s[1..s.len() - 1];
         let mut depth = 0;
         let mut is_outer_parens = true;
         for c in inner.chars() {
@@ -590,7 +616,11 @@ fn parse_partial_call(expr: &str, line: usize) -> Result<TemplateNode, String> {
         None
     };
 
-    Ok(TemplateNode::Partial { name, context, line })
+    Ok(TemplateNode::Partial {
+        name,
+        context,
+        line,
+    })
 }
 
 /// Compile an expression string into a pre-compiled Expr AST.
@@ -808,7 +838,12 @@ fn find_additive_op(expr: &str) -> Option<(usize, BinaryOp)> {
             }
             '-' if depth == 0 && i > 0 => {
                 // Make sure it's not a unary minus or part of a number
-                if prev_char != 'e' && prev_char != 'E' && prev_char != '(' && prev_char != '[' && prev_char != ',' {
+                if prev_char != 'e'
+                    && prev_char != 'E'
+                    && prev_char != '('
+                    && prev_char != '['
+                    && prev_char != ','
+                {
                     last_found = Some((i, BinaryOp::Subtract));
                 }
             }
@@ -1104,7 +1139,10 @@ mod tests {
     #[test]
     fn test_tokenize_unescape_output() {
         let tokens = tokenize("<%== encoded %>").unwrap();
-        assert_eq!(tokens, vec![Token::OutputUnescape("encoded".to_string(), 1)]);
+        assert_eq!(
+            tokens,
+            vec![Token::OutputUnescape("encoded".to_string(), 1)]
+        );
     }
 
     #[test]
