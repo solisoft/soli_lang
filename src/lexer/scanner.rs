@@ -146,6 +146,7 @@ impl<'a> Scanner<'a> {
 
             // String literals
             '"' => self.scan_string(),
+            '\'' => self.scan_string(),
 
             // Numbers
             c if c.is_ascii_digit() => self.scan_number(c),
@@ -217,6 +218,7 @@ impl<'a> Scanner<'a> {
         let _start_column = self.column;
         let mut value = String::new();
         let mut has_interpolation = false;
+        let mut paren_depth = 0; // Track depth when inside interpolation
 
         loop {
             match self.peek() {
@@ -224,8 +226,28 @@ impl<'a> Scanner<'a> {
                     return Err(LexerError::unterminated_string(self.current_span()));
                 }
                 Some('"') => {
-                    self.advance();
-                    break;
+                    // Only treat " as terminator if we're not inside parentheses in interpolation
+                    if has_interpolation && paren_depth > 0 {
+                        // Inside interpolation expression - " is just a character
+                        self.advance();
+                        value.push('"');
+                    } else {
+                        // Not inside interpolation or paren_depth is 0 - this is the closing "
+                        self.advance();
+                        break;
+                    }
+                }
+                Some('\'') => {
+                    // Only treat ' as terminator if we're not inside parentheses in interpolation
+                    if has_interpolation && paren_depth > 0 {
+                        // Inside interpolation expression - ' is just a character
+                        self.advance();
+                        value.push('\'');
+                    } else {
+                        // Not inside interpolation or paren_depth is 0 - this is the closing '
+                        self.advance();
+                        break;
+                    }
                 }
                 Some('\\') => {
                     self.advance();
@@ -233,6 +255,7 @@ impl<'a> Scanner<'a> {
                         Some('(') => {
                             // Start of interpolation - keep the escape sequence for parser
                             has_interpolation = true;
+                            paren_depth = 1; // Start counting parentheses
                             value.push('\\');
                             value.push('(');
                             self.advance();
@@ -257,6 +280,10 @@ impl<'a> Scanner<'a> {
                             self.advance();
                             value.push('"');
                         }
+                        Some('\'') => {
+                            self.advance();
+                            value.push('\'');
+                        }
                         Some(c) => {
                             return Err(LexerError::invalid_escape(c, self.current_span()));
                         }
@@ -264,6 +291,23 @@ impl<'a> Scanner<'a> {
                             return Err(LexerError::unterminated_string(self.current_span()));
                         }
                     }
+                }
+                Some('(') => {
+                    if has_interpolation {
+                        paren_depth += 1;
+                    }
+                    self.advance();
+                    value.push('(');
+                }
+                Some(')') => {
+                    if has_interpolation {
+                        if paren_depth > 0 {
+                            paren_depth -= 1;
+                        }
+                        // Don't break here - the " will break the loop when we see it
+                    }
+                    self.advance();
+                    value.push(')');
                 }
                 Some(c) => {
                     self.advance();
@@ -639,10 +683,7 @@ mod tests {
     fn test_multiline_string_with_single_bracket() {
         assert_eq!(
             scan("[[a]b]]"),
-            vec![
-                TokenKind::StringLiteral("a]b".to_string()),
-                TokenKind::Eof
-            ]
+            vec![TokenKind::StringLiteral("a]b".to_string()), TokenKind::Eof]
         );
     }
 
@@ -650,10 +691,7 @@ mod tests {
     fn test_empty_multiline_string() {
         assert_eq!(
             scan("[[]]"),
-            vec![
-                TokenKind::StringLiteral("".to_string()),
-                TokenKind::Eof
-            ]
+            vec![TokenKind::StringLiteral("".to_string()), TokenKind::Eof]
         );
     }
 

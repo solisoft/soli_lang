@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "generator": "soli_lang coverage",
+  "summary": {
+    "coverage_percent": 100.0,
+    "covered_lines": 0,
+    "failed_count": 0,
+    "passed_count": 0,
+    "test_count": 0,
+    "total_files": 0,
+    "total_lines": 0
+  },
+  "timestamp": "2026-01-26T08:23:14.372570798+00:00",
+  "version": "0.1.0"
+}

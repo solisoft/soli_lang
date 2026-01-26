@@ -312,7 +312,9 @@ impl Interpreter {
                 if let ExprKind::Variable(name) = &callee.kind {
                     if matches!(name.as_str(), "map" | "filter" | "each") {
                         // Resolve the array from left_val
-                        let resolved = left_val.resolve().map_err(|e| RuntimeError::type_error(e, span))?;
+                        let resolved = left_val
+                            .resolve()
+                            .map_err(|e| RuntimeError::type_error(e, span))?;
                         if let Value::Array(arr) = resolved {
                             let items: Vec<Value> = arr.borrow().clone();
                             // Evaluate the function argument
@@ -1242,20 +1244,33 @@ impl Interpreter {
                 }
                 let filter = match &arguments[0] {
                     Value::String(s) => s.clone(),
-                    _ => return Err(RuntimeError::type_error("where() expects string filter expression", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "where() expects string filter expression",
+                            span,
+                        ))
+                    }
                 };
                 let bind_vars = match &arguments[1] {
                     Value::Hash(hash) => {
                         let mut map = std::collections::HashMap::new();
                         for (k, v) in hash.borrow().iter() {
                             if let Value::String(key) = k {
-                                map.insert(key.clone(), crate::interpreter::builtins::model::value_to_json(v)
-                                    .map_err(|e| RuntimeError::General { message: e, span })?);
+                                map.insert(
+                                    key.clone(),
+                                    crate::interpreter::builtins::model::value_to_json(v)
+                                        .map_err(|e| RuntimeError::General { message: e, span })?,
+                                );
                             }
                         }
                         map
                     }
-                    _ => return Err(RuntimeError::type_error("where() expects hash for bind variables", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "where() expects hash for bind variables",
+                            span,
+                        ))
+                    }
                 };
 
                 // Clone the QueryBuilder and add/merge the filter
@@ -1280,12 +1295,22 @@ impl Interpreter {
                 }
                 let field = match &arguments[0] {
                     Value::String(s) => s.clone(),
-                    _ => return Err(RuntimeError::type_error("order() expects string field", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "order() expects string field",
+                            span,
+                        ))
+                    }
                 };
                 let direction = if arguments.len() == 2 {
                     match &arguments[1] {
                         Value::String(s) => s.clone(),
-                        _ => return Err(RuntimeError::type_error("order() expects string direction", span)),
+                        _ => {
+                            return Err(RuntimeError::type_error(
+                                "order() expects string direction",
+                                span,
+                            ))
+                        }
                     }
                 } else {
                     "asc".to_string()
@@ -1302,7 +1327,12 @@ impl Interpreter {
                 }
                 let limit = match &arguments[0] {
                     Value::Int(n) if *n >= 0 => *n as usize,
-                    _ => return Err(RuntimeError::type_error("limit() expects positive integer", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "limit() expects positive integer",
+                            span,
+                        ))
+                    }
                 };
 
                 let mut new_qb = qb.borrow().clone();
@@ -1316,7 +1346,12 @@ impl Interpreter {
                 }
                 let offset = match &arguments[0] {
                     Value::Int(n) if *n >= 0 => *n as usize,
-                    _ => return Err(RuntimeError::type_error("offset() expects positive integer", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "offset() expects positive integer",
+                            span,
+                        ))
+                    }
                 };
 
                 let mut new_qb = qb.borrow().clone();

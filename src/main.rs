@@ -22,6 +22,8 @@ use nix::unistd::Pid;
 enum Command {
     /// Run a script file
     Run { file: String },
+    /// Evaluate a string
+    Eval { code: String },
     /// Start the REPL
     Repl,
     /// Create a new MVC application
@@ -90,6 +92,7 @@ fn print_usage() {
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("  test [path]          Run tests (default: tests/ directory)");
     eprintln!("  db:migrate           Database migration commands");
+    eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --tree-walk     Use tree-walking interpreter (default)");
@@ -130,6 +133,7 @@ fn print_usage() {
     eprintln!("  soli db:migrate down          Rollback last migration");
     eprintln!("  soli db:migrate status        Show migration status");
     eprintln!("  soli db:migrate generate create_users  Generate new migration");
+    eprintln!("  soli -e 'print(1 + 1)'        Evaluate code directly");
 }
 
 fn parse_args() -> Options {
@@ -447,6 +451,17 @@ fn parse_args() -> Options {
                 print_usage();
                 process::exit(0);
             }
+            "-e" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("-e requires a code argument");
+                    print_usage();
+                    process::exit(64);
+                }
+                options.command = Command::Eval {
+                    code: args[i].clone(),
+                };
+            }
             _ if arg.starts_with('-') => {
                 eprintln!("Unknown option: {}", arg);
                 print_usage();
@@ -473,6 +488,7 @@ fn main() {
     match &options.command {
         Command::Repl => run_repl(options.mode),
         Command::Run { file } => run_file(file, &options),
+        Command::Eval { code } => run_eval(code, &options),
         Command::New { name } => run_new(name),
         Command::Generate {
             scaffold_name,
@@ -763,6 +779,15 @@ fn run_file(path: &str, options: &Options) {
         !options.no_type_check,
         options.disassemble,
     );
+
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        process::exit(70);
+    }
+}
+
+fn run_eval(code: &str, options: &Options) {
+    let result = solilang::run(code);
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);
