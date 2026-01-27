@@ -64,10 +64,10 @@ impl CoverageReporter {
             total_percent,
             covered_lines,
             total_lines,
-            if self.config.threshold.is_some() {
-                format!(", threshold: {:.0}%", self.config.threshold.unwrap())
+            if let Some(threshold) = self.config.threshold {
+                format!(", threshold: {:.0}%", threshold)
             } else {
-                "".to_string()
+                String::new()
             },
             status
         ));
