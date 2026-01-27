@@ -126,12 +126,14 @@ impl DbConfig {
 
         let host =
             std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+        // Strip http:// or https:// prefix for TCP connection
+        let host_for_tcp = host.trim_start_matches("https://").trim_start_matches("http://").to_string();
         let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         let username = std::env::var("SOLIDB_USERNAME").ok();
         let password = std::env::var("SOLIDB_PASSWORD").ok();
 
         Self {
-            host,
+            host: host_for_tcp,
             database,
             username,
             password,

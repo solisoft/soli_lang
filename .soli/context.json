@@ -99,7 +99,7 @@
       "responseTypes": ["html", "json", "redirect", "raw"],
       "layout": "static property this.layout = \"layout_name\""
     },
-    
+
     "middleware": {
       "fileSuffix": ".sl",
       "functionSignature": "fn middleware_name(req: Any) -> Any",
@@ -116,7 +116,7 @@
       "order": "ascending number in // order: N comment",
       "scopeOnly": "marked with // scope_only: true"
     },
-    
+
     "routes": {
       "pattern": "HTTP_METHOD('/path', 'controller#action')",
       "httpMethods": ["get", "post", "put", "delete", "patch"],
@@ -127,7 +127,7 @@
       "websocket": "router_websocket('/path', 'controller#action')",
       "live": "router_live('/path', 'ControllerLive')"
     },
-    
+
     "views": {
       "directory": "app/views/{controller_name}/",
       "fileExtension": ".html.erb",
@@ -142,7 +142,7 @@
         "render_partial()": "include partial template"
       }
     },
-    
+
     "models": {
       "baseClass": "Model",
       "fileSuffix": ".sl",
@@ -152,6 +152,32 @@
       "queryMethods": ["where", "order", "limit", "offset"],
       "callbacks": ["before_save", "after_create", "before_delete", "after_find"],
       "validations": "validates(field_name, { options })"
+    },
+
+    "liveview": {
+      "description": "Real-time reactive UI components without JavaScript",
+      "fileExtension": ".sliv",
+      "directory": "app/views/live/",
+      "controllerFile": "app/controllers/live_controller.sl",
+      "registration": "router_live('component_name', 'ControllerLive')",
+      "stateManagement": "State is managed server-side and synced via WebSocket",
+      "events": {
+        "soli-click": "Handle click events",
+        "soli-change": "Handle input change events",
+        "soli-submit": "Handle form submission",
+        "soli-keyup": "Handle keyboard events"
+      },
+      "eventHandler": {
+        "functionSignature": "fn handler_name(event: Any) -> Any",
+        "eventProperties": ["event", "state", "target", "value"],
+        "returnFormat": "{ \"state\": { \"key\": value }, \"effects\": [...] }"
+      },
+      "templateSyntax": {
+        "stateVariable": "@variable_name",
+        "directives": ["soli-click", "soli-change", "soli-submit", "soli-keyup", "soli-mount", "soli-update"],
+        "conditionals": "<% if condition %> ... <% end %>",
+        "loops": "<% for item in items %> ... <% end %>"
+      }
     }
   },
 
@@ -164,7 +190,10 @@
     "solidbIntegration": "Create a SoliDB/SolidB model for {collection} with SDBQL queries for CRUD operations",
     "solidbQuery": "Write SDBQL query to {operation} from {collection} collection",
     "solidbTransaction": "Implement atomic transaction for {operation} using SoliDB driver",
-    "solidbLuaScript": "Create Lua script for {purpose} in SoliDB scripting module"
+    "solidbLuaScript": "Create Lua script for {purpose} in SoliDB scripting module",
+    "generateLiveView": "Create a LiveView component with state management, event handlers, and reactive template",
+    "generateLiveViewEvents": "Implement event handlers for LiveView component with state updates",
+    "generateLiveViewRoute": "Register LiveView component with router_live() in routes configuration"
   },
 
   "filePaths": {

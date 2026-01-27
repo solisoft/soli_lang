@@ -758,8 +758,9 @@ impl Model {
                         .block_on(async {
                             let host = std::env::var("SOLIDB_HOST")
                                 .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
                             let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(&host)
+                            let mut client = SoliDBClient::connect(host)
                                 .await
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
 
@@ -810,8 +811,9 @@ impl Model {
                         .block_on(async {
                             let host = std::env::var("SOLIDB_HOST")
                                 .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
                             let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(&host)
+                            let mut client = SoliDBClient::connect(host)
                                 .await
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
 
@@ -884,8 +886,9 @@ impl Model {
                         .block_on(async {
                             let host = std::env::var("SOLIDB_HOST")
                                 .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
                             let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(&host)
+                            let mut client = SoliDBClient::connect(host)
                                 .await
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
 
@@ -942,8 +945,9 @@ impl Model {
                         .block_on(async {
                             let host = std::env::var("SOLIDB_HOST")
                                 .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
                             let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(&host)
+                            let mut client = SoliDBClient::connect(host)
                                 .await
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
 
@@ -981,8 +985,9 @@ impl Model {
                         .block_on(async {
                             let host = std::env::var("SOLIDB_HOST")
                                 .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
                             let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(&host)
+                            let mut client = SoliDBClient::connect(host)
                                 .await
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
 
@@ -1009,8 +1014,9 @@ impl Model {
                         .block_on(async {
                             let host = std::env::var("SOLIDB_HOST")
                                 .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
                             let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(&host)
+                            let mut client = SoliDBClient::connect(host)
                                 .await
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
 
@@ -1196,8 +1202,9 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
             .block_on(async {
                 let host = std::env::var("SOLIDB_HOST")
                     .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                let host = host.trim_start_matches("https://").trim_start_matches("http://");
                 let database = "default".to_string();
-                let mut client = SoliDBClient::connect(&host)
+                let mut client = SoliDBClient::connect(host)
                     .await
                     .map_err(|e| format!("Failed to connect: {}", e))?;
 
@@ -1229,8 +1236,9 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
             .block_on(async {
                 let host = std::env::var("SOLIDB_HOST")
                     .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                let host = host.trim_start_matches("https://").trim_start_matches("http://");
                 let database = "default".to_string();
-                let mut client = SoliDBClient::connect(&host)
+                let mut client = SoliDBClient::connect(host)
                     .await
                     .map_err(|e| format!("Failed to connect: {}", e))?;
 
@@ -1286,8 +1294,9 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
             .block_on(async {
                 let host = std::env::var("SOLIDB_HOST")
                     .unwrap_or_else(|_| "http://localhost:6745".to_string());
+                let host = host.trim_start_matches("https://").trim_start_matches("http://");
                 let database = "default".to_string();
-                let mut client = SoliDBClient::connect(&host)
+                let mut client = SoliDBClient::connect(host)
                     .await
                     .map_err(|e| format!("Failed to connect: {}", e))?;
 

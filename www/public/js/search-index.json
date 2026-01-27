@@ -163,6 +163,24 @@
       "keywords": ["string", "combine", "implode"]
     },
     {
+      "title": "contains",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-contains",
+      "signature": "contains(string, substring)",
+      "description": "Check if a string contains a substring",
+      "keywords": ["string", "contains", "search", "find"]
+    },
+    {
+      "title": "substring",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-substring",
+      "signature": "substring(str, start, end?)",
+      "description": "Extract a substring from start to end index",
+      "keywords": ["string", "substring", "slice", "extract"]
+    },
+    {
       "title": "upcase",
       "type": "function",
       "category": "Core",
