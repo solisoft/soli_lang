@@ -1,14 +1,19 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Job 1: Build and run Rust tests
   build:
     runs-on: ubuntu-latest
     steps:
@@ -16,6 +21,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -33,13 +40,15 @@ jobs:
       - name: Run Rust tests
         run: cargo test
 
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
       - name: Upload soli binary
         uses: actions/upload-artifact@v4
         with:
           name: soli-binary
           path: target/release/soli
 
-  # Job 2: Run Soli language tests
   soli-tests:
     needs: build
     runs-on: ubuntu-latest
@@ -58,16 +67,31 @@ jobs:
       - name: Run language tests
         run: ./bin/soli test tests/
 
-  # Job 3: Lint check
-  lint:
+  release:
+    needs: [build, soli-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+    steps:
+      - name: Release Please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: rust
+
+  publish:
+    needs: release
+    if: ${{ needs.release.outputs.release_created }}
+    runs-on: ubuntu-latest
+    environment: main
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
 
-      - name: Clippy
-        run: cargo clippy -- -D warnings
+      - name: Publish to crates.io
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
