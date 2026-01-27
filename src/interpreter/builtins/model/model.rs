@@ -92,6 +92,7 @@ use lazy_static::lazy_static;
 use solidb_client::SoliDBClient;
 
 use crate::interpreter::environment::Environment;
+use crate::interpreter::symbol::SymbolId;
 use crate::interpreter::value::{Class, FutureState, HttpFutureKind, NativeFunction, Value};
 
 // ============================================================================
@@ -262,23 +263,25 @@ pub fn register_callback(class_name: &str, callback_type: &str, method_name: &st
 // ============================================================================
 
 /// A query builder for chainable database queries.
-/// Uses raw SDBQL filter expressions with bind variables.
+/// Uses SDBQL filter expressions with symbol-based bind variables for O(1) lookup.
 #[derive(Debug, Clone)]
 pub struct QueryBuilder {
-    pub class_name: String,
-    pub collection: String,
-    pub filter: Option<String>, // Raw filter expression (e.g., "doc.age >= @age AND doc.active == @active")
-    pub bind_vars: HashMap<String, serde_json::Value>, // Bind variables
-    pub order_by: Option<(String, String)>, // (field, direction)
+    pub class_name: SymbolId,
+    pub collection: SymbolId,
+    pub filter: Option<String>,
+    pub bind_vars: HashMap<SymbolId, serde_json::Value>,
+    pub order_by: Option<(SymbolId, SymbolId)>,
     pub limit_val: Option<usize>,
     pub offset_val: Option<usize>,
 }
 
 impl QueryBuilder {
     pub fn new(class_name: String, collection: String) -> Self {
+        let class_id = crate::interpreter::get_symbol(&class_name);
+        let collection_id = crate::interpreter::get_symbol(&collection);
         Self {
-            class_name,
-            collection,
+            class_name: class_id,
+            collection: collection_id,
             filter: None,
             bind_vars: HashMap::new(),
             order_by: None,
@@ -289,11 +292,16 @@ impl QueryBuilder {
 
     pub fn set_filter(&mut self, filter: String, bind_vars: HashMap<String, serde_json::Value>) {
         self.filter = Some(filter);
-        self.bind_vars = bind_vars;
+        self.bind_vars = bind_vars
+            .into_iter()
+            .map(|(k, v)| (crate::interpreter::get_symbol(&k), v))
+            .collect();
     }
 
     pub fn set_order(&mut self, field: String, direction: String) {
-        self.order_by = Some((field, direction));
+        let field_id = crate::interpreter::get_symbol(&field);
+        let dir_id = crate::interpreter::get_symbol(&direction);
+        self.order_by = Some((field_id, dir_id));
     }
 
     pub fn set_limit(&mut self, limit: usize) {
@@ -306,23 +314,26 @@ impl QueryBuilder {
 
     /// Build the SDBQL query string.
     pub fn build_query(&self) -> (String, HashMap<String, serde_json::Value>) {
-        let mut query = format!("FOR doc IN {}", self.collection);
+        let collection_str =
+            crate::interpreter::symbol_string(self.collection).unwrap_or("unknown");
+        let mut query = format!("FOR doc IN {}", collection_str);
 
         if let Some(filter) = &self.filter {
             query.push_str(&format!(" FILTER {}", filter));
         }
 
         if let Some((field, direction)) = &self.order_by {
-            let dir = match direction.to_lowercase().as_str() {
+            let field_str = crate::interpreter::symbol_string(*field).unwrap_or("unknown");
+            let dir_str = crate::interpreter::symbol_string(*direction).unwrap_or("asc");
+            let dir = match dir_str.to_lowercase().as_str() {
                 "desc" | "descending" => "DESC",
                 _ => "ASC",
             };
-            query.push_str(&format!(" SORT doc.{} {}", field, dir));
+            query.push_str(&format!(" SORT doc.{} {}", field_str, dir));
         }
 
         if let Some(limit) = self.limit_val {
             if let Some(offset) = self.offset_val {
-                // SDBQL LIMIT handles offset: LIMIT offset, count
                 query.push_str(&format!(" LIMIT {}, {}", offset, limit));
             } else {
                 query.push_str(&format!(" LIMIT {}", limit));
@@ -331,7 +342,20 @@ impl QueryBuilder {
 
         query.push_str(" RETURN doc");
 
-        (query, self.bind_vars.clone())
+        let bind_vars_str: HashMap<String, serde_json::Value> = self
+            .bind_vars
+            .iter()
+            .map(|(k, v)| {
+                (
+                    crate::interpreter::symbol_string(*k)
+                        .unwrap_or("")
+                        .to_string(),
+                    v.clone(),
+                )
+            })
+            .collect();
+
+        (query, bind_vars_str)
     }
 }
 
@@ -1233,10 +1257,22 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
 
 /// Execute a QueryBuilder for count.
 pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
-    // Build the count query with filter using SDBQL syntax
-    let collection = qb.collection.clone();
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
     let mut query = format!("FOR doc IN {}", collection);
-    let bind_vars = qb.bind_vars.clone();
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb
+        .bind_vars
+        .iter()
+        .map(|(k, v)| {
+            (
+                crate::interpreter::symbol_string(*k)
+                    .unwrap_or("")
+                    .to_string(),
+                v.clone(),
+            )
+        })
+        .collect();
 
     if let Some(filter) = &qb.filter {
         query.push_str(&format!(" FILTER {}", filter));
@@ -1255,10 +1291,10 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
                     .await
                     .map_err(|e| format!("Failed to connect: {}", e))?;
 
-                let bind_vars_opt = if bind_vars.is_empty() {
+                let bind_vars_opt = if bind_vars_str.is_empty() {
                     None
                 } else {
-                    Some(bind_vars)
+                    Some(bind_vars_str)
                 };
 
                 let results = client

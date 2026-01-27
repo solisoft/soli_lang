@@ -1282,7 +1282,11 @@ impl Interpreter {
                     new_qb.filter = Some(filter);
                 }
                 // Merge bind vars
-                new_qb.bind_vars.extend(bind_vars);
+                for (k, v) in bind_vars {
+                    new_qb
+                        .bind_vars
+                        .insert(crate::interpreter::get_symbol(&k), v);
+                }
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
             }
             "order" => {

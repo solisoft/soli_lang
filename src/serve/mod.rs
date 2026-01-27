@@ -3371,10 +3371,10 @@ fn handle_request(
     let method = &data.method;
     let path = &data.path;
 
-    // Check if request logging is enabled (default: true, disable with SOLI_REQUEST_LOG=false or SOLI_REQUEST_LOG=0)
+    // Check if request logging is enabled (default: false for performance, enable with SOLI_REQUEST_LOG=1)
     let log_requests = std::env::var("SOLI_REQUEST_LOG")
-        .map(|v| v != "false" && v != "0")
-        .unwrap_or(true);
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false);
 
     // Set up session for this request
     let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
