@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 description = "A statically-typed, class-based OOP language with pipeline operators"
 authors = ["Solilang Team"]
+license = "MIT"
+repository = "https://github.com/solisoft/soli_lang"
 
 [[bin]]
 name = "soli"
