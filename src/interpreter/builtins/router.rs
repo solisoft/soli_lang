@@ -52,9 +52,11 @@ fn extract_middleware_from_value(value: &Value) -> Vec<Value> {
 // Global registries
 thread_local! {
     // Map "controller_name" -> "action_name" -> FunctionValue
+    #[allow(clippy::missing_const_for_thread_local)]
     pub static CONTROLLERS: RefCell<HashMap<String, HashMap<String, Value>>> = RefCell::new(HashMap::new());
 
     // Routing context stack
+    #[allow(clippy::missing_const_for_thread_local)]
     static ROUTER_CONTEXT: RefCell<Vec<RouterScope>> = RefCell::new(vec![RouterScope::default()]);
 }
 

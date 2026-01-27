@@ -972,12 +972,11 @@ fn format_duration(duration: std::time::Duration) -> String {
 fn run_test(
     path: Option<&str>,
     jobs: usize,
-    coverage: bool,
-    coverage_min: Option<f64>,
+    _coverage: bool,
+    _coverage_min: Option<f64>,
     _no_coverage: bool,
 ) {
     use std::sync::mpsc;
-    use std::thread;
 
     let test_path = match path {
         Some(p) => std::path::PathBuf::from(p),
@@ -1026,7 +1025,7 @@ fn run_test(
     std::thread::scope(|s| {
         let mut handles = Vec::new();
 
-        let chunk_size = (test_files.len() + num_workers - 1) / num_workers;
+        let chunk_size = test_files.len().div_ceil(num_workers);
         for chunk in test_files.chunks(chunk_size) {
             let tx = tx.clone();
             let chunk: Vec<std::path::PathBuf> = chunk.to_vec();
@@ -1082,7 +1081,7 @@ fn run_test(
 
     let mut current_dir: Option<std::path::PathBuf> = None;
     for (path, passed_test, error, duration) in &all_results {
-        let parent = path.parent().unwrap_or(&path).to_path_buf();
+        let parent = path.parent().unwrap_or(path).to_path_buf();
         let relative_to_test_dir = path.strip_prefix(&test_dir).unwrap_or(path);
         let parent_str = relative_to_test_dir
             .parent()
@@ -1155,6 +1154,7 @@ fn collect_test_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {
     files
 }
 
+#[allow(dead_code)]
 fn collect_source_files() -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
     let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -1167,6 +1167,7 @@ fn collect_source_files() -> Vec<std::path::PathBuf> {
     files
 }
 
+#[allow(dead_code)]
 fn collect_sl_files_recursive(dir: &std::path::PathBuf, files: &mut Vec<std::path::PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {

@@ -35,7 +35,7 @@ pub fn register_assertions(env: &mut Environment) {
             if args[0] == args[1] {
                 Ok(Value::Null)
             } else {
-                Err(format!("values not equal"))
+                Err("values not equal".to_string())
             }
         })),
     );
@@ -46,7 +46,7 @@ pub fn register_assertions(env: &mut Environment) {
             if args[0] != args[1] {
                 Ok(Value::Null)
             } else {
-                Err(format!("values should not be equal"))
+                Err("values should not be equal".to_string())
             }
         })),
     );

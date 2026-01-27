@@ -45,7 +45,10 @@ pub fn register_i18n_class(env: &mut Environment) {
                     set_locale(locale.clone());
                     Ok(Value::String(locale.clone()))
                 }
-                other => Err(format!("I18n.set_locale expects a string, got {}", other.type_name())),
+                other => Err(format!(
+                    "I18n.set_locale expects a string, got {}",
+                    other.type_name()
+                )),
             },
         )),
     );
@@ -200,74 +203,67 @@ pub fn register_i18n_class(env: &mut Environment) {
     // I18n.format_currency(amount, currency, locale?) - Format currency
     i18n_static_methods.insert(
         "format_currency".to_string(),
-        Rc::new(NativeFunction::new(
-            "I18n.format_currency",
-            None,
-            |args| {
-                let amount = match &args[0] {
-                    Value::Int(i) => *i as f64,
-                    Value::Float(f) => *f,
-                    _ => return Err("I18n.format_currency expects a number".to_string()),
-                };
+        Rc::new(NativeFunction::new("I18n.format_currency", None, |args| {
+            let amount = match &args[0] {
+                Value::Int(i) => *i as f64,
+                Value::Float(f) => *f,
+                _ => return Err("I18n.format_currency expects a number".to_string()),
+            };
 
-                let currency = match &args[1] {
+            let currency = match &args[1] {
+                Value::String(s) => s.clone(),
+                _ => return Err("I18n.format_currency expects a currency code".to_string()),
+            };
+
+            let locale = if args.len() > 2 {
+                match &args[2] {
                     Value::String(s) => s.clone(),
-                    _ => return Err("I18n.format_currency expects a currency code".to_string()),
-                };
-
-                let locale = if args.len() > 2 {
-                    match &args[2] {
-                        Value::String(s) => s.clone(),
-                        Value::Null => get_locale(),
-                        _ => {
-                            return Err(
-                                "I18n.format_currency locale must be a string or null".to_string()
-                            )
-                        }
+                    Value::Null => get_locale(),
+                    _ => {
+                        return Err(
+                            "I18n.format_currency locale must be a string or null".to_string()
+                        )
                     }
-                } else {
-                    get_locale()
-                };
+                }
+            } else {
+                get_locale()
+            };
 
-                let symbol = match currency.as_str() {
-                    "USD" => "$",
-                    "EUR" => "€",
-                    "GBP" => "£",
-                    "JPY" => "¥",
-                    _ => &currency,
-                };
+            let symbol = match currency.as_str() {
+                "USD" => "$",
+                "EUR" => "€",
+                "GBP" => "£",
+                "JPY" => "¥",
+                _ => &currency,
+            };
 
-                let (decimal_sep, thousands_sep) = match locale.as_str() {
-                    "fr" | "de" | "es" | "it" => (",", "."),
-                    "en" | _ => (".", ","),
-                };
+            let (decimal_sep, thousands_sep) = match locale.as_str() {
+                "fr" | "de" | "es" | "it" => (",", "."),
+                "en" | _ => (".", ","),
+            };
 
-                let int_part = amount as i64;
-                let frac_part = ((amount - int_part as f64) * 100.0).round() as i64;
-                let int_str = int_part.to_string();
-                let formatted_int: String = int_str
-                    .chars()
-                    .rev()
-                    .collect::<Vec<_>>()
-                    .chunks(3)
-                    .map(|chunk| chunk.iter().collect::<String>())
-                    .collect::<Vec<_>>()
-                    .join(thousands_sep)
-                    .chars()
-                    .rev()
-                    .collect();
+            let int_part = amount as i64;
+            let frac_part = ((amount - int_part as f64) * 100.0).round() as i64;
+            let int_str = int_part.to_string();
+            let formatted_int: String = int_str
+                .chars()
+                .rev()
+                .collect::<Vec<_>>()
+                .chunks(3)
+                .map(|chunk| chunk.iter().collect::<String>())
+                .collect::<Vec<_>>()
+                .join(thousands_sep)
+                .chars()
+                .rev()
+                .collect();
 
-                let result = if frac_part > 0 {
-                    format!(
-                        "{}{}{}{}",
-                        symbol, formatted_int, decimal_sep, format!("{:02}", frac_part)
-                    )
-                } else {
-                    format!("{}{}", symbol, formatted_int)
-                };
-                Ok(Value::String(result))
-            },
-        )),
+            let result = if frac_part > 0 {
+                format!("{}{}{}{:02}", symbol, formatted_int, decimal_sep, frac_part)
+            } else {
+                format!("{}{}", symbol, formatted_int)
+            };
+            Ok(Value::String(result))
+        })),
     );
 
     // I18n.format_date(ts, locale?) - Format date with locale

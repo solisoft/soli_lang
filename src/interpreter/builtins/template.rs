@@ -40,6 +40,7 @@ struct CachedFileMtime {
 const FILE_MTIME_CACHE_MAX_SIZE: usize = 1000;
 
 thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
     static FILE_MTIME_CACHE: RefCell<HashMap<PathBuf, CachedFileMtime>> = RefCell::new(HashMap::new());
 }
 
@@ -62,6 +63,7 @@ pub fn clear_file_mtime_cache() {
 const VIEW_HELPERS_MAX_SIZE: usize = 500;
 
 thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
     static VIEW_HELPERS: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
 }
 
@@ -105,7 +107,7 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
 
-        if path.extension().map_or(false, |ext| ext == "sl") {
+        if path.extension().is_some_and(|ext| ext == "sl") {
             let source = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read helper file '{}': {}", path.display(), e))?;
 
@@ -737,10 +739,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                     |args| {
                         let t1 = match &args[0] {
                             Value::Int(n) => *n,
-                            other => return Err(format!(
+                            other => {
+                                return Err(format!(
                                 "datetime_diff() expects timestamp (int) as first argument, got {}",
                                 other.type_name()
-                            )),
+                            ))
+                            }
                         };
                         let t2 = match &args[1] {
                             Value::Int(n) => *n,
@@ -858,10 +862,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                     let timestamp = match &args[0] {
                         Value::Int(n) => *n,
                         Value::String(s) => datetime_helpers::datetime_parse(s).unwrap_or(0),
-                        other => return Err(format!(
+                        other => {
+                            return Err(format!(
                             "l() expects timestamp (int) or date string as first argument, got {}",
                             other.type_name()
-                        )),
+                        ))
+                        }
                     };
 
                     // Get format (second arg, default "short")
@@ -892,10 +898,8 @@ fn inject_template_helpers(data: &Value) -> Value {
                 .any(|(k, _)| k.hash_eq(&render_partial_key));
 
             if !has_render_partial {
-                let render_partial_func = Value::NativeFunction(NativeFunction::new(
-                    "render_partial",
-                    None,
-                    |args| {
+                let render_partial_func =
+                    Value::NativeFunction(NativeFunction::new("render_partial", None, |args| {
                         if args.is_empty() {
                             return Err(
                                 "render_partial() requires at least 1 argument (partial name)"
@@ -930,10 +934,10 @@ fn inject_template_helpers(data: &Value) -> Value {
                         // Inject helpers into the data context for nested partials
                         let data_with_helpers = inject_template_helpers(&data);
 
-                        cache.render_partial(&partial_name, &data_with_helpers)
+                        cache
+                            .render_partial(&partial_name, &data_with_helpers)
                             .map(Value::String)
-                    },
-                ));
+                    }));
                 new_hash.push((render_partial_key, render_partial_func));
             }
 

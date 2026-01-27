@@ -8,11 +8,12 @@
 
 mod hot_reload;
 pub mod live_reload;
-mod live_reload_ws;  // WebSocket-based live reload
+mod live_reload_ws; // WebSocket-based live reload
 mod middleware;
 mod router;
 pub mod websocket;
 
+pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
 pub use hot_reload::FileTracker;
 pub use middleware::{
     clear_middleware, extract_middleware_functions, extract_middleware_result, get_middleware,
@@ -20,7 +21,6 @@ pub use middleware::{
     scan_middleware_files, with_middleware, Middleware, MiddlewareResult,
 };
 pub use router::{derive_routes_from_controller, ControllerRoute};
-pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
 pub use websocket::{
     clear_websocket_routes, get_websocket_routes, match_websocket_route, register_websocket_route,
     WebSocketConnection, WebSocketEvent, WebSocketHandlerAction, WebSocketRegistry,
@@ -56,8 +56,8 @@ use uuid::Uuid;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
     build_request_hash_with_parsed, extract_response, find_route, get_routes,
-    parse_form_urlencoded_body, parse_json_body, parse_query_string,
-    register_route_with_handler, routes_to_worker_routes, set_worker_routes, ParsedBody, WorkerRoute,
+    parse_form_urlencoded_body, parse_json_body, parse_query_string, register_route_with_handler,
+    routes_to_worker_routes, set_worker_routes, ParsedBody, WorkerRoute,
 };
 
 // Thread-local storage for tokio runtime handle (used by HTTP builtins for async operations)
@@ -77,14 +77,14 @@ pub fn get_tokio_handle() -> Option<tokio::runtime::Handle> {
 fn set_tokio_handle(handle: tokio::runtime::Handle) {
     TOKIO_HANDLE.with(|h| *h.borrow_mut() = Some(handle));
 }
+use crate::interpreter::builtins::controller::controller::ControllerInfo;
+use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
     create_session_cookie, ensure_session, extract_session_id_from_cookie, set_current_session_id,
 };
-use crate::live::socket::{extract_session_id as extract_live_session_id, handle_live_connection};
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
-use crate::interpreter::builtins::controller::controller::ControllerInfo;
-use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::{Interpreter, Value};
+use crate::live::socket::{extract_session_id as extract_live_session_id, handle_live_connection};
 use crate::span::Span;
 use crate::ExecutionMode;
 
@@ -137,8 +137,8 @@ pub fn serve_folder_with_options(
     let num_workers = std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(4); // Fallback to 4 if unable to detect
-    // Use TreeWalk in dev mode for better debugging (variable inspection on errors)
-    // Use Bytecode in production for better performance
+                       // Use TreeWalk in dev mode for better debugging (variable inspection on errors)
+                       // Use Bytecode in production for better performance
     let mode = if dev_mode {
         ExecutionMode::TreeWalk
     } else {
@@ -205,7 +205,11 @@ pub fn serve_folder_with_options_and_mode(
         match crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
             Ok(count) => {
                 if count > 0 {
-                    println!("Loaded {} view helper(s) from {}", count, helpers_dir.display());
+                    println!(
+                        "Loaded {} view helper(s) from {}",
+                        count,
+                        helpers_dir.display()
+                    );
                 }
             }
             Err(e) => {
@@ -213,12 +217,10 @@ pub fn serve_folder_with_options_and_mode(
             }
         }
         // Track helper files for hot reload
-        for entry in std::fs::read_dir(&helpers_dir).unwrap() {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "sl") {
-                    file_tracker.track(&path);
-                }
+        for entry in std::fs::read_dir(&helpers_dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "sl") {
+                file_tracker.track(&path);
             }
         }
     }
@@ -231,15 +233,16 @@ pub fn serve_folder_with_options_and_mode(
 
     // Track model files too
     if models_dir.exists() {
-        for entry in std::fs::read_dir(&models_dir).map_err(|e| RuntimeError::General {
-            message: format!("Failed to read models directory: {}", e),
-            span: Span::default(),
-        })? {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "sl") {
-                    file_tracker.track(&path);
-                }
+        for entry in std::fs::read_dir(&models_dir)
+            .map_err(|e| RuntimeError::General {
+                message: format!("Failed to read models directory: {}", e),
+                span: Span::default(),
+            })?
+            .flatten()
+        {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "sl") {
+                file_tracker.track(&path);
             }
         }
     }
@@ -259,7 +262,6 @@ pub fn serve_folder_with_options_and_mode(
     // Load routes from config/routes.sl if it exists
     let routes_file = folder.join("config").join("routes.sl");
     if routes_file.exists() {
-
         // Define DSL helpers in Soli
         // Note: Using named functions for blocks since lambda expressions are not supported
         // IMPORTANT: Function parameters require type annotations in Soli
@@ -390,7 +392,10 @@ fn spawn_tailwind_watch(folder: &Path) -> Option<std::process::Child> {
         .spawn()
     {
         Ok(child) => {
-            println!("   ✓ Tailwind CSS watch process started (PID: {})", child.id());
+            println!(
+                "   ✓ Tailwind CSS watch process started (PID: {})",
+                child.id()
+            );
             Some(child)
         }
         Err(e) => {
@@ -467,7 +472,7 @@ fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, RuntimeError
         })?;
 
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "sl") {
+        if path.extension().is_some_and(|ext| ext == "sl") {
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 if name.ends_with("_controller.sl") {
                     controllers.push(path);
@@ -481,16 +486,17 @@ fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, RuntimeError
 
 /// Load all model files.
 fn load_models(interpreter: &mut Interpreter, models_dir: &Path) -> Result<(), RuntimeError> {
-    for entry in std::fs::read_dir(models_dir).map_err(|e| RuntimeError::General {
-        message: format!("Failed to read models directory: {}", e),
-        span: Span::default(),
-    })? {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "sl") {
-                println!("Loading model: {}", path.display());
-                execute_file(interpreter, &path)?;
-            }
+    for entry in std::fs::read_dir(models_dir)
+        .map_err(|e| RuntimeError::General {
+            message: format!("Failed to read models directory: {}", e),
+            span: Span::default(),
+        })?
+        .flatten()
+    {
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "sl") {
+            println!("Loading model: {}", path.display());
+            execute_file(interpreter, &path)?;
         }
     }
     Ok(())
@@ -684,17 +690,18 @@ fn track_view_files(views_dir: &Path, file_tracker: &mut FileTracker) -> Result<
             return Ok(());
         }
 
-        for entry in std::fs::read_dir(dir).map_err(|e| RuntimeError::General {
-            message: format!("Failed to read views directory: {}", e),
-            span: Span::default(),
-        })? {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_dir() {
-                    track_recursive(&path, file_tracker)?;
-                } else if path.extension().map_or(false, |ext| ext == "erb") {
-                    file_tracker.track(&path);
-                }
+        for entry in std::fs::read_dir(dir)
+            .map_err(|e| RuntimeError::General {
+                message: format!("Failed to read views directory: {}", e),
+                span: Span::default(),
+            })?
+            .flatten()
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                track_recursive(&path, file_tracker)?;
+            } else if path.extension().is_some_and(|ext| ext == "erb") {
+                file_tracker.track(&path);
             }
         }
         Ok(())
@@ -780,7 +787,9 @@ struct WorkerSender {
 impl WorkerSender {
     fn send(&self, data: RequestData) -> Result<(), channel::SendError<RequestData>> {
         // Round-robin distribution (lock-free)
-        let worker = self.next_worker.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        let worker = self
+            .next_worker
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             % self.senders.len();
         self.senders[worker].send(data)
     }
@@ -817,7 +826,10 @@ fn run_hyper_server_worker_pool(
     let capacity_per_worker = 64;
     let (ws_event_tx, ws_event_rx) = channel::bounded(num_workers * capacity_per_worker);
     // LiveView event channel
-    let (lv_event_tx, lv_event_rx): (channel::Sender<LiveViewEventData>, channel::Receiver<LiveViewEventData>) = channel::bounded(num_workers * capacity_per_worker);
+    let (lv_event_tx, lv_event_rx): (
+        channel::Sender<LiveViewEventData>,
+        channel::Receiver<LiveViewEventData>,
+    ) = channel::bounded(num_workers * capacity_per_worker);
     // crossbeam Sender is cheap to clone - no need for Arc<Mutex<Option<>>>
     // Use AtomicBool for shutdown signaling (lock-free check)
     let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -838,7 +850,10 @@ fn run_hyper_server_worker_pool(
     if public_dir.exists() {
         println!("Static files served from {}", public_dir.display());
     }
-    println!("Using hyper async HTTP server with {} worker threads\n", num_workers);
+    println!(
+        "Using hyper async HTTP server with {} worker threads\n",
+        num_workers
+    );
 
     // Wrap public_dir in Arc for cheap cloning across connections
     let public_dir_arc = Arc::new(public_dir.clone());
@@ -846,7 +861,8 @@ fn run_hyper_server_worker_pool(
     let dev_mode_for_tokio = dev_mode;
 
     // Channel to pass runtime handle from tokio thread to main thread
-    let (runtime_handle_tx, runtime_handle_rx) = std::sync::mpsc::channel::<tokio::runtime::Handle>();
+    let (runtime_handle_tx, runtime_handle_rx) =
+        std::sync::mpsc::channel::<tokio::runtime::Handle>();
 
     // Spawn tokio runtime for HTTP server
     thread::spawn(move || {
@@ -925,173 +941,198 @@ fn run_hyper_server_worker_pool(
 
     // Spawn file watcher thread for hot reload (only in dev mode)
     if dev_mode {
-    let watch_folder = folder.to_path_buf();
-    let watch_controllers_dir = controllers_dir.clone();
-    let watch_views_dir = views_dir.clone();
-    let watch_middleware_dir = middleware_dir.clone();
-    let watch_helpers_dir = helpers_dir.clone();
-    let watch_public_dir = public_dir.clone();
-    let watch_routes_file = routes_file.clone();
-    let browser_reload_tx = reload_tx.clone();
-    let dev_mode_for_watcher = dev_mode;
-    thread::spawn(move || {
-        // Hold onto the Tailwind process - it will be killed when dropped
-        let _tailwind_process = tailwind_process;
+        let watch_folder = folder.to_path_buf();
+        let watch_controllers_dir = controllers_dir.clone();
+        let watch_views_dir = views_dir.clone();
+        let watch_middleware_dir = middleware_dir.clone();
+        let watch_helpers_dir = helpers_dir.clone();
+        let watch_public_dir = public_dir.clone();
+        let watch_routes_file = routes_file.clone();
+        let browser_reload_tx = reload_tx.clone();
+        let dev_mode_for_watcher = dev_mode;
+        thread::spawn(move || {
+            // Hold onto the Tailwind process - it will be killed when dropped
+            let _tailwind_process = tailwind_process;
 
-        let mut file_tracker = FileTracker::new();
+            let mut file_tracker = FileTracker::new();
 
-        // Track all controller files
-        if let Ok(entries) = std::fs::read_dir(&watch_controllers_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "sl") {
-                    file_tracker.track(&path);
-                }
-            }
-        }
-
-        // Track middleware files
-        if let Ok(entries) = std::fs::read_dir(&watch_middleware_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "sl") {
-                    file_tracker.track(&path);
-                }
-            }
-        }
-
-        // Track routes.sl file
-        if watch_routes_file.exists() {
-            file_tracker.track(&watch_routes_file);
-        }
-
-        // Track view files recursively
-        fn track_views_recursive(dir: &Path, tracker: &mut FileTracker) {
-            if let Ok(entries) = std::fs::read_dir(dir) {
+            // Track all controller files
+            if let Ok(entries) = std::fs::read_dir(&watch_controllers_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_dir() {
-                        track_views_recursive(&path, tracker);
-                    } else if path.extension().map_or(false, |ext| ext == "erb") {
-                        tracker.track(&path);
+                    if path.extension().is_some_and(|ext| ext == "sl") {
+                        file_tracker.track(&path);
                     }
                 }
             }
-        }
-        track_views_recursive(&watch_views_dir, &mut file_tracker);
 
-        // Track static files (CSS, JS) in public directory
-        fn track_static_recursive(dir: &Path, tracker: &mut FileTracker) {
-            if let Ok(entries) = std::fs::read_dir(dir) {
+            // Track middleware files
+            if let Ok(entries) = std::fs::read_dir(&watch_middleware_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_dir() {
-                        track_static_recursive(&path, tracker);
-                    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        if ["css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff", "woff2", "ttf"].contains(&ext) {
+                    if path.extension().is_some_and(|ext| ext == "sl") {
+                        file_tracker.track(&path);
+                    }
+                }
+            }
+
+            // Track routes.sl file
+            if watch_routes_file.exists() {
+                file_tracker.track(&watch_routes_file);
+            }
+
+            // Track view files recursively
+            fn track_views_recursive(dir: &Path, tracker: &mut FileTracker) {
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            track_views_recursive(&path, tracker);
+                        } else if path.extension().is_some_and(|ext| ext == "erb") {
                             tracker.track(&path);
                         }
                     }
                 }
             }
-        }
-        if watch_public_dir.exists() {
-            track_static_recursive(&watch_public_dir, &mut file_tracker);
-        }
+            track_views_recursive(&watch_views_dir, &mut file_tracker);
 
-        // Note: We don't track source CSS files (app/assets/css) here
-        // because Tailwind's --watch mode already handles CSS changes.
-        // Tracking them would cause an infinite loop since trigger_tailwind_rebuild
-        // touches the CSS file to force a rebuild.
-
-        println!("Hot reload: Watching {} files", file_tracker.tracked_count());
-
-        loop {
-            thread::sleep(Duration::from_secs(1));
-
-            let changed = file_tracker.get_changed_files();
-            if changed.is_empty() {
-                continue;
-            }
-
-            println!("\n🔄 Hot reload triggered for:");
-            let mut views_changed = false;
-            let mut controllers_changed = false;
-            let mut middleware_changed = false;
-            let mut helpers_changed = false;
-            let mut static_files_changed = false;
-            let mut routes_changed = false;
-
-            for path in &changed {
-                println!("   {}", path.display());
-
-                // Check if it's a static file (CSS, JS, images)
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if ["css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff", "woff2", "ttf"].contains(&ext) {
-                        static_files_changed = true;
+            // Track static files (CSS, JS) in public directory
+            fn track_static_recursive(dir: &Path, tracker: &mut FileTracker) {
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            track_static_recursive(&path, tracker);
+                        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                            if [
+                                "css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff",
+                                "woff2", "ttf",
+                            ]
+                            .contains(&ext)
+                            {
+                                tracker.track(&path);
+                            }
+                        }
                     }
                 }
+            }
+            if watch_public_dir.exists() {
+                track_static_recursive(&watch_public_dir, &mut file_tracker);
+            }
 
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name == "routes.sl" {
-                        routes_changed = true;
-                    } else if name.ends_with("_controller.sl") {
-                        controllers_changed = true;
-                    } else if name.ends_with(".sl") && path.starts_with(&watch_middleware_dir) {
-                        middleware_changed = true;
-                    } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
-                        helpers_changed = true;
-                    } else if name.ends_with(".erb") {
-                        views_changed = true;
+            // Note: We don't track source CSS files (app/assets/css) here
+            // because Tailwind's --watch mode already handles CSS changes.
+            // Tracking them would cause an infinite loop since trigger_tailwind_rebuild
+            // touches the CSS file to force a rebuild.
+
+            println!(
+                "Hot reload: Watching {} files",
+                file_tracker.tracked_count()
+            );
+
+            loop {
+                thread::sleep(Duration::from_secs(1));
+
+                let changed = file_tracker.get_changed_files();
+                if changed.is_empty() {
+                    continue;
+                }
+
+                println!("\n🔄 Hot reload triggered for:");
+                let mut views_changed = false;
+                let mut controllers_changed = false;
+                let mut middleware_changed = false;
+                let mut helpers_changed = false;
+                let mut static_files_changed = false;
+                let mut routes_changed = false;
+
+                for path in &changed {
+                    println!("   {}", path.display());
+
+                    // Check if it's a static file (CSS, JS, images)
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        if [
+                            "css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff",
+                            "woff2", "ttf",
+                        ]
+                        .contains(&ext)
+                        {
+                            static_files_changed = true;
+                        }
+                    }
+
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name == "routes.sl" {
+                            routes_changed = true;
+                        } else if name.ends_with("_controller.sl") {
+                            controllers_changed = true;
+                        } else if name.ends_with(".sl") && path.starts_with(&watch_middleware_dir) {
+                            middleware_changed = true;
+                        } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
+                            helpers_changed = true;
+                        } else if name.ends_with(".erb") {
+                            views_changed = true;
+                        }
+                    }
+
+                    // Track new modification time
+                    file_tracker.track(path);
+                }
+
+                // Increment version counters - workers will pick this up
+                if controllers_changed {
+                    hot_reload_versions_for_watcher
+                        .controllers
+                        .fetch_add(1, Ordering::Release);
+                    println!("   ✓ Signaled controller reload to all workers");
+                }
+                if middleware_changed {
+                    hot_reload_versions_for_watcher
+                        .middleware
+                        .fetch_add(1, Ordering::Release);
+                    println!("   ✓ Signaled middleware reload to all workers");
+                }
+                if helpers_changed {
+                    hot_reload_versions_for_watcher
+                        .helpers
+                        .fetch_add(1, Ordering::Release);
+                    println!("   ✓ Signaled view helpers reload to all workers");
+                }
+                if views_changed {
+                    hot_reload_versions_for_watcher
+                        .views
+                        .fetch_add(1, Ordering::Release);
+                    println!("   ✓ Signaled template cache clear to all workers");
+
+                    // Touch input CSS to trigger Tailwind watch mode rebuild
+                    // (new classes may have been added to templates)
+                    if dev_mode_for_watcher {
+                        trigger_tailwind_rebuild(&watch_folder);
+                        // Note: No need to set static_files_changed here - the file watcher
+                        // will detect when Tailwind updates public/css/application.css
                     }
                 }
-
-                // Track new modification time
-                file_tracker.track(path);
-            }
-
-            // Increment version counters - workers will pick this up
-            if controllers_changed {
-                hot_reload_versions_for_watcher.controllers.fetch_add(1, Ordering::Release);
-                println!("   ✓ Signaled controller reload to all workers");
-            }
-            if middleware_changed {
-                hot_reload_versions_for_watcher.middleware.fetch_add(1, Ordering::Release);
-                println!("   ✓ Signaled middleware reload to all workers");
-            }
-            if helpers_changed {
-                hot_reload_versions_for_watcher.helpers.fetch_add(1, Ordering::Release);
-                println!("   ✓ Signaled view helpers reload to all workers");
-            }
-            if views_changed {
-                hot_reload_versions_for_watcher.views.fetch_add(1, Ordering::Release);
-                println!("   ✓ Signaled template cache clear to all workers");
-
-                // Touch input CSS to trigger Tailwind watch mode rebuild
-                // (new classes may have been added to templates)
-                if dev_mode_for_watcher {
-                    trigger_tailwind_rebuild(&watch_folder);
-                    // Note: No need to set static_files_changed here - the file watcher
-                    // will detect when Tailwind updates public/css/application.css
+                if static_files_changed {
+                    hot_reload_versions_for_watcher
+                        .static_files
+                        .fetch_add(1, Ordering::Release);
+                    println!("   ✓ Signaled static file reload to all workers");
                 }
-            }
-            if static_files_changed {
-                hot_reload_versions_for_watcher.static_files.fetch_add(1, Ordering::Release);
-                println!("   ✓ Signaled static file reload to all workers");
-            }
-            if routes_changed {
-                hot_reload_versions_for_watcher.routes.fetch_add(1, Ordering::Release);
-                println!("   ✓ Signaled routes reload to all workers");
-            }
+                if routes_changed {
+                    hot_reload_versions_for_watcher
+                        .routes
+                        .fetch_add(1, Ordering::Release);
+                    println!("   ✓ Signaled routes reload to all workers");
+                }
 
-            // Notify browser for live reload
-            if let Some(ref tx) = browser_reload_tx {
-                let _ = tx.send(());
-            }
+                // Notify browser for live reload
+                if let Some(ref tx) = browser_reload_tx {
+                    let _ = tx.send(());
+                }
 
-            println!();
-        }
-    });
+                println!();
+            }
+        });
     } // end if dev_mode for hot reload thread
 
     // Spawn worker threads
@@ -1131,7 +1172,25 @@ fn run_hyper_server_worker_pool(
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut interpreter = Interpreter::new();
 
-                worker_loop(i, work_rx, models_dir, middleware_dir, helpers_dir, ws_event_rx, lv_event_rx, ws_registry, reload_tx, &mut interpreter, worker_routes, controllers_dir, views_dir, hot_reload_versions, runtime_handle, routes_file, dev_mode);
+                worker_loop(
+                    i,
+                    work_rx,
+                    models_dir,
+                    middleware_dir,
+                    helpers_dir,
+                    ws_event_rx,
+                    lv_event_rx,
+                    ws_registry,
+                    reload_tx,
+                    &mut interpreter,
+                    worker_routes,
+                    controllers_dir,
+                    views_dir,
+                    hot_reload_versions,
+                    runtime_handle,
+                    routes_file,
+                    dev_mode,
+                );
             }));
 
             if result.is_err() {
@@ -1248,7 +1307,8 @@ fn worker_loop(
             last_helpers_version = current_helpers;
             // Clear and reload view helpers
             crate::interpreter::builtins::template::clear_view_helpers();
-            if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
+            if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir)
+            {
                 eprintln!("Worker {}: Error reloading view helpers: {}", worker_id, e);
             }
         }
@@ -1346,13 +1406,22 @@ fn worker_loop(
 }
 
 /// Load all controllers in a worker thread
-fn load_controllers_in_worker(worker_id: usize, interpreter: &mut Interpreter, controllers_dir: &Path) {
+fn load_controllers_in_worker(
+    worker_id: usize,
+    interpreter: &mut Interpreter,
+    controllers_dir: &Path,
+) {
     if let Ok(entries) = std::fs::read_dir(controllers_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "sl") {
+            if path.extension().is_some_and(|ext| ext == "sl") {
                 if let Err(e) = execute_file(interpreter, &path) {
-                    eprintln!("Worker {}: Error loading {}: {}", worker_id, path.display(), e);
+                    eprintln!(
+                        "Worker {}: Error loading {}: {}",
+                        worker_id,
+                        path.display(),
+                        e
+                    );
                 }
 
                 // Also register controller actions in this worker (only for function-based controllers)
@@ -1373,9 +1442,12 @@ fn load_controllers_in_worker(worker_id: usize, interpreter: &mut Interpreter, c
                         // OOP controllers have their methods resolved at runtime
                         if !is_oop_controller {
                             let source = std::fs::read_to_string(&path).unwrap_or_default();
-                            let routes = derive_routes_from_controller(name, &source).unwrap_or_default();
+                            let routes =
+                                derive_routes_from_controller(name, &source).unwrap_or_default();
                             for route in routes {
-                                if let Some(func_value) = interpreter.environment.borrow().get(&route.function_name) {
+                                if let Some(func_value) =
+                                    interpreter.environment.borrow().get(&route.function_name)
+                                {
                                     crate::interpreter::builtins::router::register_controller_action(
                                         controller_key,
                                         &route.function_name,
@@ -1440,22 +1512,19 @@ fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), RuntimeError> 
             message: format!("DSL Lexer error: {}", e),
             span: Span::default(),
         })?;
-    let program = crate::parser::Parser::new(tokens)
-        .parse()
-        .map_err(|e| RuntimeError::General {
-            message: format!("DSL Parser error: {}", e),
-            span: Span::default(),
-        })?;
+    let program =
+        crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| RuntimeError::General {
+                message: format!("DSL Parser error: {}", e),
+                span: Span::default(),
+            })?;
     interpreter.interpret(&program)
 }
 
 /// Reload routes in a worker thread.
 /// Clears existing routes, resets router context, and re-executes routes.sl.
-fn reload_routes_in_worker(
-    worker_id: usize,
-    interpreter: &mut Interpreter,
-    routes_file: &Path,
-) {
+fn reload_routes_in_worker(worker_id: usize, interpreter: &mut Interpreter, routes_file: &Path) {
     // 1. Clear existing routes
     crate::interpreter::builtins::server::clear_routes();
 
@@ -1523,16 +1592,18 @@ async fn parse_multipart_body(
     let mut files = Vec::new();
 
     // Extract boundary from content-type header
-    let boundary = content_type
-        .split(';')
-        .find_map(|part| {
-            let part = part.trim();
-            if part.starts_with("boundary=") {
-                Some(part.trim_start_matches("boundary=").trim_matches('"').to_string())
-            } else {
-                None
-            }
-        });
+    let boundary = content_type.split(';').find_map(|part| {
+        let part = part.trim();
+        if part.starts_with("boundary=") {
+            Some(
+                part.trim_start_matches("boundary=")
+                    .trim_matches('"')
+                    .to_string(),
+            )
+        } else {
+            None
+        }
+    });
 
     let boundary = match boundary {
         Some(b) => b,
@@ -1549,7 +1620,10 @@ async fn parse_multipart_body(
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().map(|s| s.to_string()).unwrap_or_default();
         let filename = field.file_name().map(|s| s.to_string());
-        let content_type = field.content_type().map(|m| m.to_string()).unwrap_or_default();
+        let content_type = field
+            .content_type()
+            .map(|m| m.to_string())
+            .unwrap_or_default();
 
         if let Ok(data) = field.bytes().await {
             if let Some(fname) = filename {
@@ -1612,7 +1686,10 @@ async fn handle_hyper_request(
             };
 
             // Extract session ID from cookies
-            let cookies = req.headers().get("cookie").map(|v| v.to_str().unwrap_or(""));
+            let cookies = req
+                .headers()
+                .get("cookie")
+                .map(|v| v.to_str().unwrap_or(""));
             let session_id = extract_live_session_id(cookies);
 
             // Perform the WebSocket upgrade
@@ -1622,7 +1699,10 @@ async fn handle_hyper_request(
                     eprintln!("[LiveView] Upgrade error: {}", e);
                     return Ok(Response::builder()
                         .status(StatusCode::BAD_REQUEST)
-                        .body(Full::new(Bytes::from(format!("WebSocket upgrade error: {}", e))))
+                        .body(Full::new(Bytes::from(format!(
+                            "WebSocket upgrade error: {}",
+                            e
+                        ))))
                         .unwrap());
                 }
             };
@@ -1642,7 +1722,8 @@ async fn handle_hyper_request(
                 };
 
                 // Create async channel for LiveView messages
-                let (tx, rx) = async_channel::bounded::<Result<tungstenite::Message, tungstenite::Error>>(32);
+                let (tx, rx) =
+                    async_channel::bounded::<Result<tungstenite::Message, tungstenite::Error>>(32);
                 let tx_arc = Arc::new(tx);
 
                 // Initialize the LiveView connection
@@ -1675,17 +1756,32 @@ async fn handle_hyper_request(
                             if msg.is_text() {
                                 if let Ok(text) = msg.to_text() {
                                     // Parse the event message
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text) {
-                                        let event_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                                        let liveview_id = parsed.get("liveview_id").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                        let event_name = parsed.get("event").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                        let params = parsed.get("params").cloned().unwrap_or(serde_json::json!({}));
+                                    if let Ok(parsed) =
+                                        serde_json::from_str::<serde_json::Value>(text)
+                                    {
+                                        let event_type = parsed
+                                            .get("type")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+                                        let liveview_id = parsed
+                                            .get("liveview_id")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let event_name = parsed
+                                            .get("event")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let params = parsed
+                                            .get("params")
+                                            .cloned()
+                                            .unwrap_or(serde_json::json!({}));
 
                                         if event_type == "event" {
                                             if let Some(id) = liveview_id {
                                                 if let Some(event) = event_name {
                                                     // Send event to worker thread for controller dispatch
-                                                    let (response_tx, response_rx) = oneshot::channel();
+                                                    let (response_tx, response_rx) =
+                                                        oneshot::channel();
                                                     let event_data = LiveViewEventData {
                                                         liveview_id: id.clone(),
                                                         component: component.clone(),
@@ -1698,13 +1794,18 @@ async fn handle_hyper_request(
                                                         // Wait for response (with timeout)
                                                         match tokio::time::timeout(
                                                             std::time::Duration::from_secs(5),
-                                                            response_rx
-                                                        ).await {
+                                                            response_rx,
+                                                        )
+                                                        .await
+                                                        {
                                                             Ok(Ok(Ok(()))) => {
                                                                 // Event handled successfully
                                                             }
                                                             Ok(Ok(Err(e))) => {
-                                                                eprintln!("[LiveView] Event error: {}", e);
+                                                                eprintln!(
+                                                                    "[LiveView] Event error: {}",
+                                                                    e
+                                                                );
                                                             }
                                                             Ok(Err(_)) => {
                                                                 eprintln!("[LiveView] Response channel closed");
@@ -1721,7 +1822,9 @@ async fn handle_hyper_request(
                                             let ack = serde_json::json!({
                                                 "type": "heartbeat_ack"
                                             });
-                                            let _ = tx_arc.send(Ok(tungstenite::Message::Text(ack.to_string())));
+                                            let _ = tx_arc.send(Ok(tungstenite::Message::Text(
+                                                ack.to_string(),
+                                            )));
                                         }
                                     }
                                 }
@@ -1784,10 +1887,13 @@ async fn handle_hyper_request(
                 if !dev_mode {
                     if let Ok(metadata) = std::fs::metadata(&file_path) {
                         if let Ok(modified) = metadata.modified() {
-                            let etag = format!("\"{:x}\"", modified
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs());
+                            let etag = format!(
+                                "\"{:x}\"",
+                                modified
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs()
+                            );
 
                             // Check If-None-Match header
                             if let Some(if_none_match) = req.headers().get("if-none-match") {
@@ -1797,7 +1903,10 @@ async fn handle_hyper_request(
                                         return Ok(Response::builder()
                                             .status(StatusCode::NOT_MODIFIED)
                                             .header("ETag", &etag)
-                                            .header("Cache-Control", "public, max-age=31536000, immutable")
+                                            .header(
+                                                "Cache-Control",
+                                                "public, max-age=31536000, immutable",
+                                            )
                                             .body(Full::new(Bytes::new()))
                                             .unwrap());
                                     }
@@ -1885,31 +1994,32 @@ async fn handle_hyper_request(
     }
 
     // Read body - skip for GET/HEAD requests (usually empty)
-    let (body, body_bytes_opt, multipart_form, multipart_files) = if method == "GET" || method == "HEAD" {
-        (String::new(), None, None, None)
-    } else {
-        let body_bytes = http_body_util::BodyExt::collect(req.into_body())
-            .await
-            .map(|b| b.to_bytes().to_vec())
-            .unwrap_or_default();
+    let (body, body_bytes_opt, multipart_form, multipart_files) =
+        if method == "GET" || method == "HEAD" {
+            (String::new(), None, None, None)
+        } else {
+            let body_bytes = http_body_util::BodyExt::collect(req.into_body())
+                .await
+                .map(|b| b.to_bytes().to_vec())
+                .unwrap_or_default();
 
-        // Check if this is a multipart form
-        let content_type = headers.get("content-type").map(|s| s.as_str());
-        if let Some(ct) = content_type {
-            if ct.starts_with("multipart/form-data") {
-                // Parse multipart form data
-                let (form_fields, files) = parse_multipart_body(&body_bytes, ct).await;
-                let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-                (body_str, Some(body_bytes), Some(form_fields), Some(files))
+            // Check if this is a multipart form
+            let content_type = headers.get("content-type").map(|s| s.as_str());
+            if let Some(ct) = content_type {
+                if ct.starts_with("multipart/form-data") {
+                    // Parse multipart form data
+                    let (form_fields, files) = parse_multipart_body(&body_bytes, ct).await;
+                    let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+                    (body_str, Some(body_bytes), Some(form_fields), Some(files))
+                } else {
+                    let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+                    (body_str, None, None, None)
+                }
             } else {
                 let body_str = String::from_utf8_lossy(&body_bytes).to_string();
                 (body_str, None, None, None)
             }
-        } else {
-            let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-            (body_str, None, None, None)
-        }
-    };
+        };
 
     // Create oneshot channel for response
     let (response_tx, response_rx) = oneshot::channel();
@@ -1943,9 +2053,10 @@ async fn handle_hyper_request(
                 .status(StatusCode::from_u16(resp_data.status).unwrap_or(StatusCode::OK));
 
             // Check if response is HTML for live reload injection
-            let is_html = resp_data.headers.iter().any(|(k, v)| {
-                k.to_lowercase() == "content-type" && v.contains("text/html")
-            });
+            let is_html = resp_data
+                .headers
+                .iter()
+                .any(|(k, v)| k.to_lowercase() == "content-type" && v.contains("text/html"));
 
             for (key, value) in &resp_data.headers {
                 builder = builder.header(key.as_str(), value.as_str());
@@ -1958,9 +2069,7 @@ async fn handle_hyper_request(
                 resp_data.body
             };
 
-            Ok(builder
-                .body(Full::new(Bytes::from(body)))
-                .unwrap())
+            Ok(builder.body(Full::new(Bytes::from(body))).unwrap())
         }
         Err(_) => Ok(Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -2005,7 +2114,10 @@ async fn handle_websocket_upgrade(
             eprintln!("[WS] Upgrade error: {}", e);
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Full::new(Bytes::from(format!("WebSocket upgrade error: {}", e))))
+                .body(Full::new(Bytes::from(format!(
+                    "WebSocket upgrade error: {}",
+                    e
+                ))))
                 .unwrap());
         }
     };
@@ -2029,9 +2141,8 @@ async fn handle_websocket_upgrade(
         let (mut ws_write, mut ws_read) = stream.split();
 
         // Create connection in registry
-        let (ws_tx, mut ws_rx) = tokio::sync::mpsc::channel::<
-            Result<tungstenite::Message, tungstenite::Error>,
-        >(32);
+        let (ws_tx, mut ws_rx) =
+            tokio::sync::mpsc::channel::<Result<tungstenite::Message, tungstenite::Error>>(32);
         let ws_tx_arc = Arc::new(ws_tx);
         let connection = WebSocketConnection::new(ws_tx_arc.clone());
         let connection_id = connection.id;
@@ -2234,7 +2345,11 @@ async fn handle_websocket_stream<S>(
 }
 
 /// Handle a WebSocket event by calling the handler function.
-fn handle_websocket_event(interpreter: &mut Interpreter, data: &WebSocketEventData, runtime_handle: &tokio::runtime::Handle) {
+fn handle_websocket_event(
+    interpreter: &mut Interpreter,
+    data: &WebSocketEventData,
+    runtime_handle: &tokio::runtime::Handle,
+) {
     use crate::interpreter::value::Value;
 
     // Clone connection_id for use in async spawns
@@ -2255,7 +2370,11 @@ fn handle_websocket_event(interpreter: &mut Interpreter, data: &WebSocketEventDa
             Err(_) => {
                 // Try to look up the function directly in the environment
                 // handler_name format: "controller#action" - extract the action part
-                let action_name = route.handler_name.split('#').last().unwrap_or(&route.handler_name);
+                let action_name = route
+                    .handler_name
+                    .split('#')
+                    .last()
+                    .unwrap_or(&route.handler_name);
                 match interpreter.environment.borrow().get(action_name) {
                     Some(h) => h,
                     None => {
@@ -2338,7 +2457,10 @@ fn handle_websocket_event(interpreter: &mut Interpreter, data: &WebSocketEventDa
 }
 
 /// Handle a LiveView event by calling the controller handler.
-fn handle_liveview_event(interpreter: &mut Interpreter, data: &LiveViewEventData) -> Result<(), String> {
+fn handle_liveview_event(
+    interpreter: &mut Interpreter,
+    data: &LiveViewEventData,
+) -> Result<(), String> {
     use crate::interpreter::value::Value;
     use crate::live::view::LIVE_REGISTRY;
 
@@ -2369,20 +2491,21 @@ fn handle_liveview_event(interpreter: &mut Interpreter, data: &LiveViewEventData
     // If we have a registered handler, call it
     if let Some(handler_name) = handler_name {
         // Try to resolve the handler from the controller registry
-        let handler = match crate::interpreter::builtins::router::resolve_handler(&handler_name, None) {
-            Ok(h) => h,
-            Err(_) => {
-                // Try to look up the function directly in the environment
-                let action_name = handler_name.split('#').last().unwrap_or(&handler_name);
-                match interpreter.environment.borrow().get(action_name) {
-                    Some(h) => h,
-                    None => {
-                        // Fall back to hardcoded handler
-                        return handle_liveview_event_fallback(data, &mut instance);
+        let handler =
+            match crate::interpreter::builtins::router::resolve_handler(&handler_name, None) {
+                Ok(h) => h,
+                Err(_) => {
+                    // Try to look up the function directly in the environment
+                    let action_name = handler_name.split('#').last().unwrap_or(&handler_name);
+                    match interpreter.environment.borrow().get(action_name) {
+                        Some(h) => h,
+                        None => {
+                            // Fall back to hardcoded handler
+                            return handle_liveview_event_fallback(data, &mut instance);
+                        }
                     }
                 }
-            }
-        };
+            };
 
         // Call the handler function
         match interpreter.call_value(handler, vec![event_value], Span::default()) {
@@ -2399,8 +2522,10 @@ fn handle_liveview_event(interpreter: &mut Interpreter, data: &LiveViewEventData
 
                         // Preserve the id
                         let mut state = new_state.clone();
-                        if let (serde_json::Value::Object(old), serde_json::Value::Object(ref mut new_obj)) =
-                            (&instance.state, &mut state)
+                        if let (
+                            serde_json::Value::Object(old),
+                            serde_json::Value::Object(ref mut new_obj),
+                        ) = (&instance.state, &mut state)
                         {
                             if let Some(id) = old.get("id") {
                                 new_obj.insert("id".to_string(), id.clone());
@@ -2452,7 +2577,12 @@ fn handle_liveview_event_fallback(
                 instance.state["count"] = json!(count - 1);
             }
         }
-        _ => return Err(format!("Unknown event: {} for component {}", data.event, component)),
+        _ => {
+            return Err(format!(
+                "Unknown event: {} for component {}",
+                data.event, component
+            ))
+        }
     }
 
     // Render new HTML and send patch
@@ -2547,10 +2677,22 @@ fn value_to_json(value: &Value) -> serde_json::Value {
 }
 
 /// Call the route handler with the request hash.
-fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash: Value, dev_mode: bool, request_data: &RequestData) -> ResponseData {
+fn call_handler(
+    interpreter: &mut Interpreter,
+    handler_name: &str,
+    request_hash: Value,
+    dev_mode: bool,
+    request_data: &RequestData,
+) -> ResponseData {
     // Check if this is an OOP controller action (contains #)
     if handler_name.contains('#') {
-        if let Some(response) = call_oop_controller_action(interpreter, handler_name, &request_hash, dev_mode, request_data) {
+        if let Some(response) = call_oop_controller_action(
+            interpreter,
+            handler_name,
+            &request_hash,
+            dev_mode,
+            request_data,
+        ) {
             return response;
         }
         // If not an OOP controller or error, fall through to function-based handling
@@ -2585,21 +2727,40 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
                     interpreter.pop_frame();
                     if dev_mode {
                         // Use captured stack trace from error if available, otherwise get from interpreter
-                        let stack_trace: Vec<String> = e.breakpoint_stack_trace()
+                        let stack_trace: Vec<String> = e
+                            .breakpoint_stack_trace()
                             .map(|st| st.to_vec())
                             .unwrap_or_else(|| interpreter.get_stack_trace());
-                        let breakpoint_env = e.breakpoint_env_json().map(|s| s.to_string()).or(captured_env);
-                        let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, breakpoint_env.as_deref());
+                        let breakpoint_env = e
+                            .breakpoint_env_json()
+                            .map(|s| s.to_string())
+                            .or(captured_env);
+                        let error_html = render_error_page(
+                            &e.to_string(),
+                            interpreter,
+                            request_data,
+                            &stack_trace,
+                            breakpoint_env.as_deref(),
+                        );
                         ResponseData {
                             status: if e.is_breakpoint() { 200 } else { 500 },
-                            headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                            headers: vec![(
+                                "Content-Type".to_string(),
+                                "text/html; charset=utf-8".to_string(),
+                            )],
                             body: error_html,
                         }
                     } else {
-                        let error_html = render_production_error_page(500, "An error occurred while processing your request.");
+                        let error_html = render_production_error_page(
+                            500,
+                            "An error occurred while processing your request.",
+                        );
                         ResponseData {
                             status: 500,
-                            headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                            headers: vec![(
+                                "Content-Type".to_string(),
+                                "text/html; charset=utf-8".to_string(),
+                            )],
                             body: error_html,
                         }
                     }
@@ -2617,17 +2778,32 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
             if dev_mode {
                 // This error is a String from resolve_handler, no captured stack trace
                 let stack_trace = interpreter.get_stack_trace();
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, captured_env.as_deref());
+                let error_html = render_error_page(
+                    &e.to_string(),
+                    interpreter,
+                    request_data,
+                    &stack_trace,
+                    captured_env.as_deref(),
+                );
                 ResponseData {
                     status: 500,
-                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )],
                     body: error_html,
                 }
             } else {
-                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
+                let error_html = render_production_error_page(
+                    500,
+                    "An error occurred while processing your request.",
+                );
                 ResponseData {
                     status: 500,
-                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )],
                     body: error_html,
                 }
             }
@@ -2637,7 +2813,13 @@ fn call_handler(interpreter: &mut Interpreter, handler_name: &str, request_hash:
 
 /// Call an OOP controller action (controller#action).
 /// Returns Some(ResponseData) if handled, None if not an OOP controller.
-fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str, request_hash: &Value, dev_mode: bool, request_data: &RequestData) -> Option<ResponseData> {
+fn call_oop_controller_action(
+    interpreter: &mut Interpreter,
+    handler_name: &str,
+    request_hash: &Value,
+    dev_mode: bool,
+    request_data: &RequestData,
+) -> Option<ResponseData> {
     let (controller_key, action_name) = handler_name.split_once('#')?;
 
     // Check if this is an OOP controller (has a class definition)
@@ -2667,7 +2849,15 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
 
     // Execute before_action hooks (if controller info exists)
     if let Some(ref info) = controller_info {
-        if let Some(before_response) = execute_before_actions(interpreter, info, &action_name, req.clone(), &params, &session, &headers) {
+        if let Some(before_response) = execute_before_actions(
+            interpreter,
+            info,
+            &action_name,
+            req.clone(),
+            &params,
+            &session,
+            &headers,
+        ) {
             return Some(before_response);
         }
     }
@@ -2678,17 +2868,27 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         Err(e) => {
             return Some(if dev_mode {
                 let stack_trace = interpreter.get_stack_trace();
-                let error_html = render_error_page(&e, interpreter, request_data, &stack_trace, None);
+                let error_html =
+                    render_error_page(&e, interpreter, request_data, &stack_trace, None);
                 ResponseData {
                     status: 500,
-                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )],
                     body: error_html,
                 }
             } else {
-                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
+                let error_html = render_production_error_page(
+                    500,
+                    "An error occurred while processing your request.",
+                );
                 ResponseData {
                     status: 500,
-                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )],
                     body: error_html,
                 }
             });
@@ -2700,7 +2900,13 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
 
     // Call the action method on the class
     // For OOP controllers, the method is inside the class, not in the global environment
-    let action_result = call_class_method(interpreter, &class_rc, &controller_instance, action_name, &req);
+    let action_result = call_class_method(
+        interpreter,
+        &class_rc,
+        &controller_instance,
+        action_name,
+        &req,
+    );
 
     let response = match action_result {
         Ok(result) => {
@@ -2715,21 +2921,37 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
         Err(e) => {
             if dev_mode {
                 // Use breakpoint's captured stack trace if available, otherwise get current
-                let stack_trace: Vec<String> = e.breakpoint_stack_trace()
+                let stack_trace: Vec<String> = e
+                    .breakpoint_stack_trace()
                     .map(|st| st.to_vec())
                     .unwrap_or_else(|| interpreter.get_stack_trace());
                 let breakpoint_env = e.breakpoint_env_json();
-                let error_html = render_error_page(&e.to_string(), interpreter, request_data, &stack_trace, breakpoint_env);
+                let error_html = render_error_page(
+                    &e.to_string(),
+                    interpreter,
+                    request_data,
+                    &stack_trace,
+                    breakpoint_env,
+                );
                 ResponseData {
                     status: if e.is_breakpoint() { 200 } else { 500 },
-                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )],
                     body: error_html,
                 }
             } else {
-                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
+                let error_html = render_production_error_page(
+                    500,
+                    "An error occurred while processing your request.",
+                );
                 ResponseData {
                     status: 500,
-                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )],
                     body: error_html,
                 }
             }
@@ -2738,7 +2960,13 @@ fn call_oop_controller_action(interpreter: &mut Interpreter, handler_name: &str,
 
     // Execute after_action hooks (if controller info exists)
     if let Some(ref info) = controller_info {
-        return Some(execute_after_actions(interpreter, info, &action_name, req, &response));
+        return Some(execute_after_actions(
+            interpreter,
+            info,
+            &action_name,
+            req,
+            &response,
+        ));
     }
 
     Some(response)
@@ -2755,15 +2983,25 @@ fn call_class_method(
     // Look up the method in the class
     if let Some(method) = class.methods.get(method_name) {
         // Push stack frame for the method call with the method's source path
-        let method_span = method.span.unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1));
-        interpreter.push_frame(&format!("{}#{}", class.name, method_name), method_span, method.source_path.clone());
+        let method_span = method
+            .span
+            .unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1));
+        interpreter.push_frame(
+            &format!("{}#{}", class.name, method_name),
+            method_span,
+            method.source_path.clone(),
+        );
 
         // Set current source path for proper error location tracking
         if let Some(ref source_path) = method.source_path {
             interpreter.set_source_path(std::path::PathBuf::from(source_path));
         }
 
-        let result = interpreter.call_value(Value::Function(method.clone()), vec![request_hash.clone()], method_span);
+        let result = interpreter.call_value(
+            Value::Function(method.clone()),
+            vec![request_hash.clone()],
+            method_span,
+        );
 
         // Capture environment BEFORE popping frame so we preserve local variables for debugging
         let result = match result {
@@ -2775,7 +3013,12 @@ fn call_class_method(
                 } else {
                     let env_json = interpreter.serialize_environment_for_debug();
                     let stack_trace = interpreter.get_stack_trace();
-                    Err(RuntimeError::with_env(e.to_string(), e.span(), env_json, stack_trace))
+                    Err(RuntimeError::with_env(
+                        e.to_string(),
+                        e.span(),
+                        env_json,
+                        stack_trace,
+                    ))
                 }
             }
         };
@@ -2785,7 +3028,10 @@ fn call_class_method(
         result
     } else {
         Err(RuntimeError::General {
-            message: format!("Method '{}' not found in class '{}'", method_name, class.name),
+            message: format!(
+                "Method '{}' not found in class '{}'",
+                method_name, class.name
+            ),
             span: Span::default(),
         })
     }
@@ -2796,7 +3042,11 @@ fn get_hash_field(hash: &Value, field: &str) -> Option<Value> {
     match hash {
         Value::Hash(fields) => {
             let key = Value::String(field.to_string());
-            fields.borrow().iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())
+            fields
+                .borrow()
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.clone())
         }
         _ => None,
     }
@@ -2814,7 +3064,9 @@ fn execute_before_actions(
 ) -> Option<ResponseData> {
     for before_action in &controller_info.before_actions {
         // Check if this before_action applies to this action
-        if !before_action.actions.is_empty() && before_action.actions.iter().all(|a| a != action_name) {
+        if !before_action.actions.is_empty()
+            && before_action.actions.iter().all(|a| a != action_name)
+        {
             continue;
         }
 
@@ -2851,16 +3103,30 @@ fn execute_after_actions(
     response: &ResponseData,
 ) -> ResponseData {
     let response_value = Value::Hash(Rc::new(RefCell::new(vec![
-        (Value::String("status".to_string()), Value::Int(response.status as i64)),
-        (Value::String("headers".to_string()), Value::Hash(Rc::new(RefCell::new(
-            response.headers.iter().map(|(k, v)| (Value::String(k.clone()), Value::String(v.clone()))).collect()
-        )))),
-        (Value::String("body".to_string()), Value::String(response.body.clone())),
+        (
+            Value::String("status".to_string()),
+            Value::Int(response.status as i64),
+        ),
+        (
+            Value::String("headers".to_string()),
+            Value::Hash(Rc::new(RefCell::new(
+                response
+                    .headers
+                    .iter()
+                    .map(|(k, v)| (Value::String(k.clone()), Value::String(v.clone())))
+                    .collect(),
+            ))),
+        ),
+        (
+            Value::String("body".to_string()),
+            Value::String(response.body.clone()),
+        ),
     ])));
 
     for after_action in &controller_info.after_actions {
         // Check if this after_action applies to this action
-        if !after_action.actions.is_empty() && after_action.actions.iter().all(|a| a != action_name) {
+        if !after_action.actions.is_empty() && after_action.actions.iter().all(|a| a != action_name)
+        {
             continue;
         }
 
@@ -2895,9 +3161,9 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
         let fields = hash.borrow();
 
         // Check if this is a response hash by looking for "status" field
-        let has_status = fields.iter().any(|(k, _)| {
-            matches!(k, Value::String(s) if s == "status")
-        });
+        let has_status = fields
+            .iter()
+            .any(|(k, _)| matches!(k, Value::String(s) if s == "status"));
 
         // If no status field, this is a modified request, not a response
         if !has_status {
@@ -2911,15 +3177,25 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
         for (key, val) in fields.iter() {
             if let Value::String(k) = key {
                 match k.as_str() {
-                    "status" => if let Value::Int(s) = val { status = *s; },
-                    "body" => if let Value::String(b) = val { body = b.clone(); },
-                    "headers" => if let Value::Hash(h) = val {
-                        for (hk, hv) in h.borrow().iter() {
-                            if let (Value::String(key_str), Value::String(val_str)) = (hk, hv) {
-                                headers.push((key_str.clone(), val_str.clone()));
+                    "status" => {
+                        if let Value::Int(s) = val {
+                            status = *s;
+                        }
+                    }
+                    "body" => {
+                        if let Value::String(b) = val {
+                            body = b.clone();
+                        }
+                    }
+                    "headers" => {
+                        if let Value::Hash(h) = val {
+                            for (hk, hv) in h.borrow().iter() {
+                                if let (Value::String(key_str), Value::String(val_str)) = (hk, hv) {
+                                    headers.push((key_str.clone(), val_str.clone()));
+                                }
                             }
                         }
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -2940,25 +3216,44 @@ fn extract_response_from_value(value: &Value) -> Option<ResponseData> {
 }
 
 /// Create a new controller instance.
-fn create_controller_instance(class_name: &str, interpreter: &mut Interpreter) -> Result<Value, String> {
-    crate::interpreter::builtins::controller::registry::create_controller_instance(class_name, interpreter)
+fn create_controller_instance(
+    class_name: &str,
+    interpreter: &mut Interpreter,
+) -> Result<Value, String> {
+    crate::interpreter::builtins::controller::registry::create_controller_instance(
+        class_name,
+        interpreter,
+    )
 }
 
 /// Set up the controller context (inject req, params, session, headers).
-fn setup_controller_context(controller: &Value, req: &Value, params: &Value, session: &Value, headers: &Value) {
-    crate::interpreter::builtins::controller::registry::setup_controller_context(controller, req, params, session, headers);
+fn setup_controller_context(
+    controller: &Value,
+    req: &Value,
+    params: &Value,
+    session: &Value,
+    headers: &Value,
+) {
+    crate::interpreter::builtins::controller::registry::setup_controller_context(
+        controller, req, params, session, headers,
+    );
 }
 
 /// Call a controller method with the request hash.
 #[allow(dead_code)]
-fn call_controller_method(request_hash: &Value, method_name: &str, interpreter: &mut Interpreter) -> Result<Value, String> {
+fn call_controller_method(
+    request_hash: &Value,
+    method_name: &str,
+    interpreter: &mut Interpreter,
+) -> Result<Value, String> {
     // Look up the function in the environment and call it with the request hash
     let method_value = match interpreter.environment.borrow().get(method_name) {
         Some(v) => v.clone(),
         None => return Err(format!("Method '{}' not found", method_name)),
     };
 
-    interpreter.call_value(method_value, vec![request_hash.clone()], Span::default())
+    interpreter
+        .call_value(method_value, vec![request_hash.clone()], Span::default())
         .map_err(|e| format!("Error calling method: {}", e))
 }
 
@@ -2988,10 +3283,22 @@ fn uploaded_files_to_value(files: &[UploadedFile]) -> Value {
         .iter()
         .map(|f| {
             let pairs: Vec<(Value, Value)> = vec![
-                (Value::String("name".to_string()), Value::String(f.name.clone())),
-                (Value::String("filename".to_string()), Value::String(f.filename.clone())),
-                (Value::String("content_type".to_string()), Value::String(f.content_type.clone())),
-                (Value::String("size".to_string()), Value::Int(f.data.len() as i64)),
+                (
+                    Value::String("name".to_string()),
+                    Value::String(f.name.clone()),
+                ),
+                (
+                    Value::String("filename".to_string()),
+                    Value::String(f.filename.clone()),
+                ),
+                (
+                    Value::String("content_type".to_string()),
+                    Value::String(f.content_type.clone()),
+                ),
+                (
+                    Value::String("size".to_string()),
+                    Value::Int(f.data.len() as i64),
+                ),
                 (
                     Value::String("data".to_string()),
                     Value::Array(Rc::new(RefCell::new(
@@ -3055,7 +3362,11 @@ fn parse_request_body(
 }
 
 /// Handle a single request (called on interpreter thread)
-fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: bool) -> ResponseData {
+fn handle_request(
+    interpreter: &mut Interpreter,
+    data: &RequestData,
+    dev_mode: bool,
+) -> ResponseData {
     let start_time = Instant::now();
     let method = &data.method;
     let path = &data.path;
@@ -3081,15 +3392,30 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             // Log timing for 404 responses (skip health checks)
             if log_requests && path != "/health" {
                 let elapsed = start_time.elapsed();
-                println!("[LOG] {} {} - 404 ({:.3}ms)", method, path, elapsed.as_secs_f64() * 1000.0);
+                println!(
+                    "[LOG] {} {} - 404 ({:.3}ms)",
+                    method,
+                    path,
+                    elapsed.as_secs_f64() * 1000.0
+                );
             }
-            let error_html = render_production_error_page(404, "The page you're looking for doesn't exist.");
+            let error_html =
+                render_production_error_page(404, "The page you're looking for doesn't exist.");
             return ResponseData {
                 status: 404,
                 headers: if is_new_session {
-                    vec![("Set-Cookie".to_string(), create_session_cookie(&session_id)), ("Content-Type".to_string(), "text/html; charset=utf-8".to_string())]
+                    vec![
+                        ("Set-Cookie".to_string(), create_session_cookie(&session_id)),
+                        (
+                            "Content-Type".to_string(),
+                            "text/html; charset=utf-8".to_string(),
+                        ),
+                    ]
                 } else {
-                    vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())]
+                    vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )]
                 },
                 body: error_html,
             };
@@ -3111,38 +3437,46 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
     );
 
     // Build request hash with parsed body - optimize for empty query/headers/body
-    let mut request_hash = if data.query.is_empty() && data.headers.is_empty() && data.body.is_empty() {
-        build_request_hash_with_parsed(
-            &data.method,
-            &data.path,
-            matched_params,
-            HashMap::new(),
-            HashMap::new(),
-            String::new(),
-            parsed_body,
-        )
-    } else {
-        build_request_hash_with_parsed(
-            &data.method,
-            &data.path,
-            matched_params,
-            data.query.clone(),
-            data.headers.clone(),
-            data.body.clone(),
-            parsed_body,
-        )
-    };
+    let mut request_hash =
+        if data.query.is_empty() && data.headers.is_empty() && data.body.is_empty() {
+            build_request_hash_with_parsed(
+                &data.method,
+                &data.path,
+                matched_params,
+                HashMap::new(),
+                HashMap::new(),
+                String::new(),
+                parsed_body,
+            )
+        } else {
+            build_request_hash_with_parsed(
+                &data.method,
+                &data.path,
+                matched_params,
+                data.query.clone(),
+                data.headers.clone(),
+                data.body.clone(),
+                parsed_body,
+            )
+        };
 
     // Helper to finalize response with session cookie and timing
     let finalize_response = |mut resp: ResponseData| -> ResponseData {
         // Add session cookie if it's a new session
         if is_new_session {
-            resp.headers.push(("Set-Cookie".to_string(), create_session_cookie(&session_id)));
+            resp.headers
+                .push(("Set-Cookie".to_string(), create_session_cookie(&session_id)));
         }
         // Log timing (skip health checks to avoid benchmark noise)
         if log_requests && path != "/health" {
             let elapsed = start_time.elapsed();
-            println!("[LOG] {} {} - {} ({:.3}ms)", method, path, resp.status, elapsed.as_secs_f64() * 1000.0);
+            println!(
+                "[LOG] {} {} - {} ({:.3}ms)",
+                method,
+                path,
+                resp.status,
+                elapsed.as_secs_f64() * 1000.0
+            );
         }
         // Clear session context
         set_current_session_id(None);
@@ -3151,7 +3485,13 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
 
     // Fast path: no middleware at all (avoid cloning middleware list if empty)
     if scoped_middleware.is_empty() && !has_middleware() {
-        return finalize_response(call_handler(interpreter, &handler_name, request_hash, dev_mode, data));
+        return finalize_response(call_handler(
+            interpreter,
+            &handler_name,
+            request_hash,
+            dev_mode,
+            data,
+        ));
     }
 
     // Only clone middleware list if we need it
@@ -3176,17 +3516,32 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
                         let stack_trace = interpreter.get_stack_trace();
-                        let error_html = render_error_page(&err.to_string(), interpreter, data, &stack_trace, None);
+                        let error_html = render_error_page(
+                            &err.to_string(),
+                            interpreter,
+                            data,
+                            &stack_trace,
+                            None,
+                        );
                         return finalize_response(ResponseData {
                             status: 500,
-                            headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                            headers: vec![(
+                                "Content-Type".to_string(),
+                                "text/html; charset=utf-8".to_string(),
+                            )],
                             body: error_html,
                         });
                     }
-                    let error_html = render_production_error_page(500, "An error occurred while processing your request.");
+                    let error_html = render_production_error_page(
+                        500,
+                        "An error occurred while processing your request.",
+                    );
                     return finalize_response(ResponseData {
                         status: 500,
-                        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/html; charset=utf-8".to_string(),
+                        )],
                         body: error_html,
                     });
                 }
@@ -3194,21 +3549,37 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             Err(e) => {
                 if dev_mode {
                     // Use captured stack trace from error if available
-                    let stack_trace: Vec<String> = e.breakpoint_stack_trace()
+                    let stack_trace: Vec<String> = e
+                        .breakpoint_stack_trace()
                         .map(|st| st.to_vec())
                         .unwrap_or_else(|| interpreter.get_stack_trace());
                     let breakpoint_env = e.breakpoint_env_json();
-                    let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace, breakpoint_env);
+                    let error_html = render_error_page(
+                        &e.to_string(),
+                        interpreter,
+                        data,
+                        &stack_trace,
+                        breakpoint_env,
+                    );
                     return finalize_response(ResponseData {
                         status: if e.is_breakpoint() { 200 } else { 500 },
-                        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/html; charset=utf-8".to_string(),
+                        )],
                         body: error_html,
                     });
                 }
-                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
+                let error_html = render_production_error_page(
+                    500,
+                    "An error occurred while processing your request.",
+                );
                 return finalize_response(ResponseData {
                     status: 500,
-                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )],
                     body: error_html,
                 });
             }
@@ -3246,17 +3617,32 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
                         let stack_trace = interpreter.get_stack_trace();
-                        let error_html = render_error_page(&err.to_string(), interpreter, data, &stack_trace, None);
+                        let error_html = render_error_page(
+                            &err.to_string(),
+                            interpreter,
+                            data,
+                            &stack_trace,
+                            None,
+                        );
                         return finalize_response(ResponseData {
                             status: 500,
-                            headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                            headers: vec![(
+                                "Content-Type".to_string(),
+                                "text/html; charset=utf-8".to_string(),
+                            )],
                             body: error_html,
                         });
                     }
-                    let error_html = render_production_error_page(500, "An error occurred while processing your request.");
+                    let error_html = render_production_error_page(
+                        500,
+                        "An error occurred while processing your request.",
+                    );
                     return finalize_response(ResponseData {
                         status: 500,
-                        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/html; charset=utf-8".to_string(),
+                        )],
                         body: error_html,
                     });
                 }
@@ -3264,21 +3650,37 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
             Err(e) => {
                 if dev_mode {
                     // Use captured stack trace from error if available
-                    let stack_trace: Vec<String> = e.breakpoint_stack_trace()
+                    let stack_trace: Vec<String> = e
+                        .breakpoint_stack_trace()
                         .map(|st| st.to_vec())
                         .unwrap_or_else(|| interpreter.get_stack_trace());
                     let breakpoint_env = e.breakpoint_env_json();
-                    let error_html = render_error_page(&e.to_string(), interpreter, data, &stack_trace, breakpoint_env);
+                    let error_html = render_error_page(
+                        &e.to_string(),
+                        interpreter,
+                        data,
+                        &stack_trace,
+                        breakpoint_env,
+                    );
                     return finalize_response(ResponseData {
                         status: if e.is_breakpoint() { 200 } else { 500 },
-                        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/html; charset=utf-8".to_string(),
+                        )],
                         body: error_html,
                     });
                 }
-                let error_html = render_production_error_page(500, "An error occurred while processing your request.");
+                let error_html = render_production_error_page(
+                    500,
+                    "An error occurred while processing your request.",
+                );
                 return finalize_response(ResponseData {
                     status: 500,
-                    headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/html; charset=utf-8".to_string(),
+                    )],
                     body: error_html,
                 });
             }
@@ -3286,7 +3688,13 @@ fn handle_request(interpreter: &mut Interpreter, data: &RequestData, dev_mode: b
     }
 
     // Call the route handler
-    finalize_response(call_handler(interpreter, &handler_name, request_hash, dev_mode, data))
+    finalize_response(call_handler(
+        interpreter,
+        &handler_name,
+        request_hash,
+        dev_mode,
+        data,
+    ))
 }
 
 /// Handle REPL execution for dev mode.
@@ -3306,7 +3714,11 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
         }
     };
 
-    let code = json.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string();
+    let code = json
+        .get("code")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
     let request_data = json.get("request_data").cloned();
     let breakpoint_env = json.get("breakpoint_env").cloned();
 
@@ -3331,7 +3743,8 @@ async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes
     let query = uri.query().unwrap_or("");
 
     // Parse query parameters
-    let file = query.split('&')
+    let file = query
+        .split('&')
         .filter_map(|p| {
             let mut parts = p.split('=');
             match (parts.next(), parts.next()) {
@@ -3340,14 +3753,20 @@ async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes
             }
         })
         .find(|(k, _)| *k == "file")
-        .map(|(_, f)| urlencoding::decode(f).unwrap_or_else(|_| Cow::Borrowed(f)).into_owned())
+        .map(|(_, f)| {
+            urlencoding::decode(f)
+                .unwrap_or_else(|_| Cow::Borrowed(f))
+                .into_owned()
+        })
         .unwrap_or_else(String::new);
 
     if file.is_empty() {
         return Ok(Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(r#"{"error": "Missing file parameter"}"#)))
+            .body(Full::new(Bytes::from(
+                r#"{"error": "Missing file parameter"}"#,
+            )))
             .unwrap());
     }
 
@@ -3367,13 +3786,16 @@ async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes
             return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error": "Could not read file"}"#)))
+                .body(Full::new(Bytes::from(
+                    r#"{"error": "Could not read file"}"#,
+                )))
                 .unwrap());
         }
     };
 
     // Parse line from query
-    let line: usize = query.split('&')
+    let line: usize = query
+        .split('&')
         .filter_map(|p| {
             let mut parts = p.split('=');
             match (parts.next(), parts.next()) {
@@ -3409,7 +3831,11 @@ struct ReplResult {
     error: Option<String>,
 }
 
-fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakpoint_env: Option<serde_json::Value>) -> ReplResult {
+fn execute_repl_code(
+    code: &str,
+    request_data: Option<serde_json::Value>,
+    breakpoint_env: Option<serde_json::Value>,
+) -> ReplResult {
     if code.trim().is_empty() {
         return ReplResult {
             result: "null".to_string(),
@@ -3430,7 +3856,10 @@ fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakp
             for (name, value) in map {
                 // Skip internal variables
                 if !name.starts_with("__") {
-                    interpreter.environment.borrow_mut().define(name, convert_json_to_value(value));
+                    interpreter
+                        .environment
+                        .borrow_mut()
+                        .define(name, convert_json_to_value(value));
                 }
             }
         }
@@ -3439,22 +3868,40 @@ fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakp
     // Set up environment variables from request data
     if let Some(data) = request_data {
         let req_val = convert_json_to_value(data.clone());
-        interpreter.environment.borrow_mut().define("req".to_string(), req_val);
+        interpreter
+            .environment
+            .borrow_mut()
+            .define("req".to_string(), req_val);
 
         if let Some(v) = data.get("params").cloned() {
-            interpreter.environment.borrow_mut().define("params".to_string(), convert_json_to_value(v));
+            interpreter
+                .environment
+                .borrow_mut()
+                .define("params".to_string(), convert_json_to_value(v));
         }
         if let Some(v) = data.get("query").cloned() {
-            interpreter.environment.borrow_mut().define("query".to_string(), convert_json_to_value(v));
+            interpreter
+                .environment
+                .borrow_mut()
+                .define("query".to_string(), convert_json_to_value(v));
         }
         if let Some(v) = data.get("body").cloned() {
-            interpreter.environment.borrow_mut().define("body".to_string(), convert_json_to_value(v));
+            interpreter
+                .environment
+                .borrow_mut()
+                .define("body".to_string(), convert_json_to_value(v));
         }
         if let Some(v) = data.get("headers").cloned() {
-            interpreter.environment.borrow_mut().define("headers".to_string(), convert_json_to_value(v));
+            interpreter
+                .environment
+                .borrow_mut()
+                .define("headers".to_string(), convert_json_to_value(v));
         }
         if let Some(v) = data.get("session").cloned() {
-            interpreter.environment.borrow_mut().define("session".to_string(), convert_json_to_value(v));
+            interpreter
+                .environment
+                .borrow_mut()
+                .define("session".to_string(), convert_json_to_value(v));
         }
     }
 
@@ -3464,8 +3911,11 @@ fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakp
     // First, try to evaluate as an expression (to capture and return the value)
     let wrapped_code = format!("let __repl_result__ = ({});", code_trimmed);
     let tokens = crate::lexer::Scanner::new(&wrapped_code).scan_tokens();
-    let parse_result = tokens.map_err(|e| format!("{:?}", e))
-        .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
+    let parse_result = tokens.map_err(|e| format!("{:?}", e)).and_then(|tokens| {
+        crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| format!("{:?}", e))
+    });
 
     if let Ok(program) = parse_result {
         match interpreter.interpret(&program) {
@@ -3492,43 +3942,51 @@ fn execute_repl_code(code: &str, request_data: Option<serde_json::Value>, breakp
 
     // If expression evaluation failed, try parsing as a complete program (statements)
     let tokens = crate::lexer::Scanner::new(code).scan_tokens();
-    let parse_result = tokens.map_err(|e| format!("{:?}", e))
-        .and_then(|tokens| crate::parser::Parser::new(tokens).parse().map_err(|e| format!("{:?}", e)));
+    let parse_result = tokens.map_err(|e| format!("{:?}", e)).and_then(|tokens| {
+        crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| format!("{:?}", e))
+    });
 
     match parse_result {
-        Ok(program) => {
-            match interpreter.interpret(&program) {
-                Ok(_) => {
-                    ReplResult {
-                        result: "ok".to_string(),
-                        error: None,
-                    }
-                }
-                Err(e) => ReplResult {
-                    result: "null".to_string(),
-                    error: Some(format!("Execution error: {}", e)),
-                },
-            }
-        }
-        Err(parse_errors) => {
-            ReplResult {
+        Ok(program) => match interpreter.interpret(&program) {
+            Ok(_) => ReplResult {
+                result: "ok".to_string(),
+                error: None,
+            },
+            Err(e) => ReplResult {
                 result: "null".to_string(),
-                error: Some(format!("Parse error: {}", parse_errors)),
-            }
-        }
+                error: Some(format!("Execution error: {}", e)),
+            },
+        },
+        Err(parse_errors) => ReplResult {
+            result: "null".to_string(),
+            error: Some(format!("Parse error: {}", parse_errors)),
+        },
     }
 }
 
 /// Helper to convert JSON to Value, returning Null on error.
 fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::Value {
-    crate::interpreter::value::json_to_value(&json).unwrap_or(crate::interpreter::value::Value::Null)
+    crate::interpreter::value::json_to_value(&json)
+        .unwrap_or(crate::interpreter::value::Value::Null)
 }
 
 /// Helper function to render error page with full details.
 /// If `breakpoint_env_json` is provided, it will be used to populate REPL variables.
 /// Otherwise, variables are captured from the current interpreter environment.
-fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &RequestData, stack_trace: &[String], breakpoint_env_json: Option<&str>) -> String {
-    let error_type = if breakpoint_env_json.is_some() { "Breakpoint" } else { "RuntimeError" };
+fn render_error_page(
+    error_msg: &str,
+    interpreter: &Interpreter,
+    request_data: &RequestData,
+    stack_trace: &[String],
+    breakpoint_env_json: Option<&str>,
+) -> String {
+    let error_type = if breakpoint_env_json.is_some() {
+        "Breakpoint"
+    } else {
+        "RuntimeError"
+    };
 
     // Capture environment: use breakpoint env if provided, otherwise capture from interpreter
     let captured_env = if let Some(env) = breakpoint_env_json {
@@ -3541,38 +3999,43 @@ fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &
     let mut full_stack_trace: Vec<String> = Vec::new();
 
     // Extract error message and stack trace from the combined error
-    let (actual_error, embedded_stack): (String, Vec<String>) = if let Some(stack_start) = error_msg.find("Stack trace:\n") {
-        let error_part = error_msg[..stack_start].trim().to_string();
-        let stack_part = error_msg[stack_start + "Stack trace:\n".len()..]
-            .lines()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        (error_part, stack_part)
-    } else {
-        (error_msg.to_string(), Vec::new())
-    };
+    let (actual_error, embedded_stack): (String, Vec<String>) =
+        if let Some(stack_start) = error_msg.find("Stack trace:\n") {
+            let error_part = error_msg[..stack_start].trim().to_string();
+            let stack_part = error_msg[stack_start + "Stack trace:\n".len()..]
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            (error_part, stack_part)
+        } else {
+            (error_msg.to_string(), Vec::new())
+        };
 
     // Try to parse span info from error message
     let span_info = extract_span_from_error(&actual_error);
     let error_line = span_info.line;
 
     // Try to get file from error message, or fall back to first stack frame
-    let error_file = span_info.file.clone().or_else(|| {
-        // Try embedded stack trace first
-        for frame in &embedded_stack {
-            if let Some(file) = extract_file_from_frame(frame) {
-                return Some(file);
+    let error_file = span_info
+        .file
+        .clone()
+        .or_else(|| {
+            // Try embedded stack trace first
+            for frame in &embedded_stack {
+                if let Some(file) = extract_file_from_frame(frame) {
+                    return Some(file);
+                }
             }
-        }
-        // Then try passed stack trace
-        for frame in stack_trace {
-            if let Some(file) = extract_file_from_frame(frame) {
-                return Some(file);
+            // Then try passed stack trace
+            for frame in stack_trace {
+                if let Some(file) = extract_file_from_frame(frame) {
+                    return Some(file);
+                }
             }
-        }
-        None
-    }).unwrap_or_else(|| "unknown".to_string());
+            None
+        })
+        .unwrap_or_else(|| "unknown".to_string());
 
     location = format!("{}:{}", error_file, error_line);
 
@@ -3591,13 +4054,17 @@ fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &
     // 4. "error in path/file.html.erb" (no line info, use line 1)
 
     // Try format 1: "at line:col in file.html.erb"
-    let view_pattern1 = regex::Regex::new(r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").ok();
+    let view_pattern1 =
+        regex::Regex::new(r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").ok();
     // Try format 2: "in file.html.erb at line:col"
-    let view_pattern2 = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)) at (\d+):(\d+)").ok();
+    let view_pattern2 =
+        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)) at (\d+):(\d+)").ok();
     // Try format 3: "at file.html.erb:line" (new template renderer format)
-    let view_pattern3 = regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)):(\d+)").ok();
+    let view_pattern3 =
+        regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)):(\d+)").ok();
     // Try format 4: "in file.html.erb" (no line number)
-    let view_pattern4 = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))(?:\s|$)").ok();
+    let view_pattern4 =
+        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))(?:\s|$)").ok();
 
     let mut view_added = false;
 
@@ -3661,10 +4128,19 @@ fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &
     let _source_preview = get_source_preview(&error_file, error_line);
 
     let mut request_hash_map = HashMap::new();
-    request_hash_map.insert("method".to_string(), Value::String(request_data.method.clone()));
+    request_hash_map.insert(
+        "method".to_string(),
+        Value::String(request_data.method.clone()),
+    );
     request_hash_map.insert("path".to_string(), Value::String(request_data.path.clone()));
-    request_hash_map.insert("params".to_string(), Value::String(format!("{:?}", request_data.query)));
-    request_hash_map.insert("headers".to_string(), Value::String(format!("{:?}", request_data.headers)));
+    request_hash_map.insert(
+        "params".to_string(),
+        Value::String(format!("{:?}", request_data.query)),
+    );
+    request_hash_map.insert(
+        "headers".to_string(),
+        Value::String(format!("{:?}", request_data.headers)),
+    );
     request_hash_map.insert("body".to_string(), Value::String(request_data.body.clone()));
     request_hash_map.insert("session".to_string(), Value::String("N/A".to_string()));
 
@@ -3672,7 +4148,8 @@ fn render_error_page(error_msg: &str, interpreter: &Interpreter, request_data: &
     // Include both "params" and "query" as aliases for the query string parameters
     let query_json = format!("{:?}", request_data.query);
     let headers_json = format!("{:?}", request_data.headers);
-    let request_data_json = format!(r#"{{"method":"{}","path":"{}","params":{},"query":{},"headers":{},"body":"{}","session":"N/A"}}"#,
+    let request_data_json = format!(
+        r#"{{"method":"{}","path":"{}","params":{},"query":{},"headers":{},"body":"{}","session":"N/A"}}"#,
         request_data.method,
         request_data.path,
         query_json,
@@ -3729,51 +4206,86 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     // Try to find file path pattern - supports .sl, .html.erb, and .erb files
     // Include @ for paths like /home/user@domain.com/...
     let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl))").unwrap();
-    let file = file_re.captures(error_msg)
+    let file = file_re
+        .captures(error_msg)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string());
 
     // Try format "at file.html.erb:line" first (new template renderer format)
     // This prioritizes view file errors over controller errors
-    let at_file_line_re = regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)):(\d+)").unwrap();
+    let at_file_line_re =
+        regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)):(\d+)").unwrap();
     if let Some(caps) = at_file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
-        let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
-        return SpanInfo { file, line, column: 1 };
+        let line = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(1);
+        return SpanInfo {
+            file,
+            line,
+            column: 1,
+        };
     }
 
     // Try to find span format "at line:column" (e.g., "at 11:23")
     // This is the standard Span display format from error messages
     let span_re = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
     if let Some(caps) = span_re.captures(error_msg) {
-        let line = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
-        let column = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+        let line = caps
+            .get(1)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(1);
+        let column = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(1);
         return SpanInfo { file, line, column };
     }
 
     // Try to find patterns like "file.sl:line" or "file.html.erb:line"
-    let file_line_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl)):(\d+)").unwrap();
+    let file_line_re =
+        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl)):(\d+)").unwrap();
     if let Some(caps) = file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
-        let line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
-        return SpanInfo { file, line, column: 1 };
+        let line = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(1);
+        return SpanInfo {
+            file,
+            line,
+            column: 1,
+        };
     }
 
     // Try to find "line X" or "line: X" patterns
     let line_re = regex::Regex::new(r"(?:at\s+)?line\s*[=:]\s*(\d+)").unwrap();
     if let Some(caps) = line_re.captures(error_msg) {
-        let line = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
-        return SpanInfo { file, line, column: 1 };
+        let line = caps
+            .get(1)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(1);
+        return SpanInfo {
+            file,
+            line,
+            column: 1,
+        };
     }
 
-    SpanInfo { file, line: 1, column: 1 }
+    SpanInfo {
+        file,
+        line: 1,
+        column: 1,
+    }
 }
 
 /// Extract file path from a stack frame string like "func_name at ./path/file.sl:10"
 fn extract_file_from_frame(frame: &str) -> Option<String> {
     // Support .sl, .html.erb, and .erb files (include @ for paths like /home/user@domain.com/...)
     let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl))").ok()?;
-    file_re.captures(frame)
+    file_re
+        .captures(frame)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string())
 }
@@ -3833,11 +4345,13 @@ pub fn render_dev_error_page(
     let mut frame_index = 0;
 
     // Regex to find file paths with line numbers - supports .sl, .html.erb, .erb (include @ for paths)
-    let file_regex = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl)):(\d+)").unwrap();
+    let file_regex =
+        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl)):(\d+)").unwrap();
     // Regex to find span info after "at" (line:column)
     let span_regex = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
     // Regex to find view files in error messages (e.g., "error in /path/to/file.html.erb")
-    let view_file_regex = regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").unwrap();
+    let view_file_regex =
+        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").unwrap();
 
     for frame in stack_trace.iter() {
         // Skip "Error: ..." entries - they're not actual stack frames
@@ -3853,12 +4367,21 @@ pub fn render_dev_error_page(
 
         // First, try to extract file path (supports .sl, .html.erb, .erb)
         if let Some(caps) = file_regex.captures(frame) {
-            file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            file = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             // Get line from file:line pattern as fallback
-            line = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            line = caps
+                .get(2)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
         } else if let Some(caps) = view_file_regex.captures(frame) {
             // Try to find view file path in error message like "error in /path/file.html.erb"
-            file = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            file = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
         }
 
         // If there's a span after "at" (like "at 11:23"), prefer that line number
@@ -3870,14 +4393,18 @@ pub fn render_dev_error_page(
         }
 
         // Helper to check if string contains a source file extension
-        let contains_source_ext = |s: &str| s.contains(".sl") || s.contains(".html.erb") || s.contains(".erb");
+        let contains_source_ext =
+            |s: &str| s.contains(".sl") || s.contains(".html.erb") || s.contains(".erb");
 
         // Determine display name based on frame type
         let (display_name, icon_html) = if is_view_frame {
             // For view frames, extract just the view name from the file path
             let view_name = file.rsplit('/').next().unwrap_or(&file);
             // Add a document icon for views
-            (view_name.to_string(), r#"<svg class="inline-block w-4 h-4 mr-1.5 -mt-0.5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>"#)
+            (
+                view_name.to_string(),
+                r#"<svg class="inline-block w-4 h-4 mr-1.5 -mt-0.5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>"#,
+            )
         } else {
             // Try to extract function name - look for pattern before " at "
             let func = if let Some(at_pos) = frame.find(" at ") {
@@ -3914,7 +4441,11 @@ pub fn render_dev_error_page(
 
         // Use different colors for views vs controllers
         let (name_color, location_color, border_color) = if is_view_frame {
-            ("text-teal-300", "text-teal-400/70", "border-l-2 border-teal-400")
+            (
+                "text-teal-300",
+                "text-teal-400/70",
+                "border-l-2 border-teal-400",
+            )
         } else {
             ("text-white", "text-gray-400", "")
         };
@@ -3935,11 +4466,13 @@ pub fn render_dev_error_page(
     }
 
     // Parse request data from JSON
-    let request_method = extract_json_field(request_data_json, "method").unwrap_or("UNKNOWN".to_string());
+    let request_method =
+        extract_json_field(request_data_json, "method").unwrap_or("UNKNOWN".to_string());
     let request_path = extract_json_field(request_data_json, "path").unwrap_or("/".to_string());
     let request_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -4441,7 +4974,10 @@ fn escape_html(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-pub fn get_source_file(file_path: &str, _line: usize) -> Option<HashMap<String, HashMap<usize, String>>> {
+pub fn get_source_file(
+    file_path: &str,
+    _line: usize,
+) -> Option<HashMap<String, HashMap<usize, String>>> {
     let path = std::path::Path::new(file_path);
     if !path.exists() {
         return None;
@@ -4476,7 +5012,8 @@ fn render_production_error_page(status_code: u16, message: &str) -> String {
         400 => (
             "400 Bad Request".to_string(),
             "Bad Request".to_string(),
-            "The request could not be understood by the server due to malformed syntax.".to_string(),
+            "The request could not be understood by the server due to malformed syntax."
+                .to_string(),
             "warning".to_string(),
         ),
         403 => (

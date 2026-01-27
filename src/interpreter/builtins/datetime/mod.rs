@@ -35,7 +35,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_from_unix(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => Ok(Value::Int(*ts)),
             Some(Value::Float(ts)) => Ok(Value::Int(*ts as i64)),
             _ => Err("datetime_from_unix requires an integer timestamp".to_string()),
@@ -43,7 +43,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_to_unix(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => Ok(Value::Int(*ts)),
             Some(Value::Float(ts)) => Ok(Value::Int(*ts as i64)),
             _ => Err("datetime_to_unix requires an integer timestamp".to_string()),
@@ -51,7 +51,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_parse(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::String(s)) => {
                 let s = s.as_str();
                 let datetime = if s.ends_with('Z') || s.contains("+") {
@@ -95,7 +95,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_parse_tz(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match (args.get(0), args.get(1)) {
+        match (args.first(), args.get(1)) {
             (Some(Value::String(s)), Some(Value::String(tz))) => {
                 let s = s.as_str();
                 let datetime = chrono::DateTime::parse_from_rfc3339(&format!("{}T{}", s, tz))
@@ -111,7 +111,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_format(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match (args.get(0), args.get(1)) {
+        match (args.first(), args.get(1)) {
             (Some(Value::Int(ts)), Some(Value::String(fmt))) => {
                 let datetime = chrono::DateTime::from_timestamp(*ts, 0)
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
@@ -124,7 +124,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_components(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => {
                 let datetime = chrono::DateTime::from_timestamp(*ts, 0)
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
@@ -181,7 +181,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_add(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match (args.get(0), args.get(1)) {
+        match (args.first(), args.get(1)) {
             (Some(Value::Int(ts)), Some(Value::Int(seconds))) => Ok(Value::Int(ts + seconds)),
             (Some(Value::Int(ts)), Some(Value::Float(seconds))) => {
                 Ok(Value::Int(ts + (*seconds as i64)))
@@ -191,28 +191,28 @@ mod datetime_inner {
     }
 
     pub fn datetime_add_days(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => Ok(Value::Int(ts + (24 * 60 * 60))),
             _ => Err("datetime_add_days requires a timestamp".to_string()),
         }
     }
 
     pub fn datetime_add_hours(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => Ok(Value::Int(ts + (60 * 60))),
             _ => Err("datetime_add_hours requires a timestamp".to_string()),
         }
     }
 
     pub fn datetime_add_weeks(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => Ok(Value::Int(ts + (7 * 24 * 60 * 60))),
             _ => Err("datetime_add_weeks requires a timestamp".to_string()),
         }
     }
 
     pub fn datetime_add_months(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => {
                 let datetime = chrono::DateTime::from_timestamp(*ts, 0)
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
@@ -225,7 +225,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_add_years(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => {
                 let datetime = chrono::DateTime::from_timestamp(*ts, 0)
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
@@ -238,14 +238,14 @@ mod datetime_inner {
     }
 
     pub fn datetime_diff(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match (args.get(0), args.get(1)) {
+        match (args.first(), args.get(1)) {
             (Some(Value::Int(ts1)), Some(Value::Int(ts2))) => Ok(Value::Int(ts2 - ts1)),
             _ => Err("datetime_diff requires (timestamp1: Int, timestamp2: Int)".to_string()),
         }
     }
 
     pub fn datetime_sub(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match (args.get(0), args.get(1)) {
+        match (args.first(), args.get(1)) {
             (Some(Value::Int(ts)), Some(Value::Int(seconds))) => Ok(Value::Int(ts - seconds)),
             (Some(Value::Int(ts)), Some(Value::Float(seconds))) => {
                 Ok(Value::Int(ts - (*seconds as i64)))
@@ -255,28 +255,28 @@ mod datetime_inner {
     }
 
     pub fn datetime_is_before(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match (args.get(0), args.get(1)) {
+        match (args.first(), args.get(1)) {
             (Some(Value::Int(ts1)), Some(Value::Int(ts2))) => Ok(Value::Bool(ts1 < ts2)),
             _ => Err("datetime_is_before requires (timestamp1: Int, timestamp2: Int)".to_string()),
         }
     }
 
     pub fn datetime_is_after(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match (args.get(0), args.get(1)) {
+        match (args.first(), args.get(1)) {
             (Some(Value::Int(ts1)), Some(Value::Int(ts2))) => Ok(Value::Bool(ts1 > ts2)),
             _ => Err("datetime_is_after requires (timestamp1: Int, timestamp2: Int)".to_string()),
         }
     }
 
     pub fn datetime_is_same(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match (args.get(0), args.get(1)) {
+        match (args.first(), args.get(1)) {
             (Some(Value::Int(ts1)), Some(Value::Int(ts2))) => Ok(Value::Bool(ts1 == ts2)),
             _ => Err("datetime_is_same requires (timestamp1: Int, timestamp2: Int)".to_string()),
         }
     }
 
     pub fn datetime_to_iso(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => {
                 let datetime = chrono::DateTime::from_timestamp(*ts, 0)
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
@@ -287,7 +287,7 @@ mod datetime_inner {
     }
 
     pub fn datetime_weekday(args: Vec<Value>, _span: Span) -> Result<Value, String> {
-        match args.get(0) {
+        match args.first() {
             Some(Value::Int(ts)) => {
                 let datetime = chrono::DateTime::from_timestamp(*ts, 0)
                     .ok_or_else(|| "Invalid timestamp".to_string())?;

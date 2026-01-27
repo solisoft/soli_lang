@@ -636,8 +636,14 @@ impl TypeEnvironment {
             MethodInfo {
                 name: "between".to_string(),
                 params: vec![
-                    ("start".to_string(), Type::Class(ClassType::new("DateTime".to_string()))),
-                    ("end".to_string(), Type::Class(ClassType::new("DateTime".to_string()))),
+                    (
+                        "start".to_string(),
+                        Type::Class(ClassType::new("DateTime".to_string())),
+                    ),
+                    (
+                        "end".to_string(),
+                        Type::Class(ClassType::new("DateTime".to_string())),
+                    ),
                 ],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,

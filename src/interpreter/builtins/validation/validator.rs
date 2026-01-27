@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use crate::interpreter::value::{NativeFunction, Value};
 
-use super::rules::ValidationRule;
 use super::create_error;
+use super::rules::ValidationRule;
 
 /// The type of value a validator expects.
 #[derive(Clone, Debug, PartialEq)]
@@ -84,7 +84,10 @@ impl Validator {
         }
 
         if let Some(ref schema) = self.nested_schema {
-            pairs.push((Value::String("__nested_schema__".to_string()), schema.clone()));
+            pairs.push((
+                Value::String("__nested_schema__".to_string()),
+                schema.clone(),
+            ));
         }
 
         // Serialize rules
@@ -256,7 +259,13 @@ impl Validator {
     pub fn from_value(value: &Value) -> Result<Self, Value> {
         let hash = match value {
             Value::Hash(h) => h.borrow().clone(),
-            _ => return Err(create_error("schema", "invalid validator", "invalid_schema")),
+            _ => {
+                return Err(create_error(
+                    "schema",
+                    "invalid validator",
+                    "invalid_schema",
+                ))
+            }
         };
 
         // Check for __validator__ marker
@@ -269,7 +278,11 @@ impl Validator {
         });
 
         if !is_validator {
-            return Err(create_error("schema", "invalid validator", "invalid_schema"));
+            return Err(create_error(
+                "schema",
+                "invalid validator",
+                "invalid_schema",
+            ));
         }
 
         // Extract type

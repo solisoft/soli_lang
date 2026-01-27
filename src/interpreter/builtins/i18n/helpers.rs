@@ -7,6 +7,7 @@ use std::cell::RefCell;
 
 // Thread-local storage for the current locale (shared with mod.rs)
 thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
     pub(crate) static CURRENT_LOCALE: RefCell<String> = RefCell::new("en".to_string());
 }
 
@@ -108,8 +109,14 @@ mod tests {
             ),
         ];
 
-        assert_eq!(translate("hello", "en", &translations), Some("Hello".to_string()));
-        assert_eq!(translate("hello", "fr", &translations), Some("Bonjour".to_string()));
+        assert_eq!(
+            translate("hello", "en", &translations),
+            Some("Hello".to_string())
+        );
+        assert_eq!(
+            translate("hello", "fr", &translations),
+            Some("Bonjour".to_string())
+        );
     }
 
     #[test]

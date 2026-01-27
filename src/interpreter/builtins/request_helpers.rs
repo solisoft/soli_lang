@@ -12,9 +12,11 @@ use super::test_server::get_test_server_port;
 type HashPairs = Vec<(Value, Value)>;
 
 thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
     static REQUEST_HEADERS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    #[allow(clippy::missing_const_for_thread_local)]
     static AUTH_HEADERS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
-    static COOKIES: RefCell<String> = RefCell::new(String::new());
+    static COOKIES: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 pub fn register_request_helpers(env: &mut Environment) {

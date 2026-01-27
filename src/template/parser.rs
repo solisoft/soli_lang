@@ -587,16 +587,12 @@ fn parse_partial_call(expr: &str, line: usize) -> Result<TemplateNode, String> {
     let expr = expr.trim();
 
     // Handle both "render 'name'" and "render('name', context)" forms
-    let args = if expr.starts_with("render(") {
+    let args = if let Some(inner) = expr.strip_prefix("render(") {
         // Function call form: render('name', context)
-        let inner = expr
-            .trim_start_matches("render(")
-            .trim_end_matches(')')
-            .trim();
-        inner
-    } else if expr.starts_with("render ") {
+        inner.trim_end_matches(')').trim()
+    } else if let Some(rest) = expr.strip_prefix("render ") {
         // Space form: render 'name' or render 'name', context
-        expr[7..].trim()
+        rest.trim()
     } else {
         return Err(format!("Invalid render call at line {}: {}", line, expr));
     };
@@ -710,8 +706,8 @@ pub fn compile_expr(expr: &str) -> Expr {
     }
 
     // Check for negation
-    if expr.starts_with('!') {
-        let inner = compile_expr(&expr[1..]);
+    if let Some(rest) = expr.strip_prefix('!') {
+        let inner = compile_expr(rest);
         return Expr::Not(Box::new(inner));
     }
 
@@ -925,8 +921,8 @@ fn compile_variable_access(expr: &str) -> Expr {
             // Handle any further access
             if after_bracket.is_empty() {
                 return indexed;
-            } else if after_bracket.starts_with('.') {
-                return compile_chained_access(indexed, &after_bracket[1..]);
+            } else if let Some(rest) = after_bracket.strip_prefix('.') {
+                return compile_chained_access(indexed, rest);
             } else if after_bracket.starts_with('[') {
                 return compile_further_brackets(indexed, after_bracket);
             }
@@ -1051,8 +1047,8 @@ fn compile_further_brackets(base: Expr, brackets: &str) -> Expr {
 
         if after.is_empty() {
             indexed
-        } else if after.starts_with('.') {
-            compile_chained_access(indexed, &after[1..])
+        } else if let Some(rest) = after.strip_prefix('.') {
+            compile_chained_access(indexed, rest)
         } else if after.starts_with('[') {
             compile_further_brackets(indexed, after)
         } else {
@@ -1073,7 +1069,7 @@ fn parse_function_args(args_str: &str) -> Vec<Expr> {
 
     for c in args_str.chars() {
         if in_string {
-            if c == string_char && current.chars().last() != Some('\\') {
+            if c == string_char && !current.ends_with('\\') {
                 in_string = false;
             }
             current.push(c);

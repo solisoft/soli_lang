@@ -307,14 +307,18 @@ pub fn register_session_builtins(env: &mut Environment) {
     // session_regenerate() -> String (new ID)
     env.define(
         "session_regenerate".to_string(),
-        Value::NativeFunction(NativeFunction::new("session_regenerate", Some(0), |_args| {
-            if let Some(old_id) = get_current_session_id() {
-                let new_id = SESSION_STORE.regenerate(&old_id);
-                set_current_session_id(Some(new_id.clone()));
-                return Ok(Value::String(new_id));
-            }
-            Ok(Value::Null)
-        })),
+        Value::NativeFunction(NativeFunction::new(
+            "session_regenerate",
+            Some(0),
+            |_args| {
+                if let Some(old_id) = get_current_session_id() {
+                    let new_id = SESSION_STORE.regenerate(&old_id);
+                    set_current_session_id(Some(new_id.clone()));
+                    return Ok(Value::String(new_id));
+                }
+                Ok(Value::Null)
+            },
+        )),
     );
 
     // session_has(key) -> Bool

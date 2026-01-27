@@ -264,7 +264,7 @@ fn constant_str(constant: &Constant) -> String {
         }
         Constant::Function(f) => format!("<fn {}>", f.name),
         Constant::Class(c) => format!("<class {}>", c.name),
-        Constant::Null => format!("null"),
+        Constant::Null => "null".to_string(),
     }
 }
 

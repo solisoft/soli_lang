@@ -33,11 +33,8 @@ pub fn register_string_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("join", Some(2), |args| {
             match (&args[0], &args[1]) {
                 (Value::Array(arr), Value::String(delim)) => {
-                    let parts: Vec<String> = arr
-                        .borrow()
-                        .iter()
-                        .map(|v| format!("{}", v))
-                        .collect();
+                    let parts: Vec<String> =
+                        arr.borrow().iter().map(|v| format!("{}", v)).collect();
                     Ok(Value::String(parts.join(delim.as_str())))
                 }
                 _ => Err("join requires (array, string)".to_string()),
@@ -50,9 +47,7 @@ pub fn register_string_builtins(env: &mut Environment) {
         "contains".to_string(),
         Value::NativeFunction(NativeFunction::new("contains", Some(2), |args| {
             match (&args[0], &args[1]) {
-                (Value::String(s), Value::String(sub)) => {
-                    Ok(Value::Bool(s.contains(sub.as_str())))
-                }
+                (Value::String(s), Value::String(sub)) => Ok(Value::Bool(s.contains(sub.as_str()))),
                 _ => Err("contains requires (string, string)".to_string()),
             }
         })),
@@ -82,7 +77,11 @@ pub fn register_string_builtins(env: &mut Environment) {
             match (&args[0], &args[1], &args[2]) {
                 (Value::String(s), Value::Int(start), Value::Int(end)) => {
                     let start_usize = if *start < 0 { 0 } else { *start as usize };
-                    let end_usize = if *end > s.len() as i64 { s.len() as i64 } else { *end } as usize;
+                    let end_usize = if *end > s.len() as i64 {
+                        s.len() as i64
+                    } else {
+                        *end
+                    } as usize;
                     if start_usize >= end_usize || start_usize >= s.len() {
                         return Ok(Value::String(String::new()));
                     }
@@ -107,12 +106,17 @@ pub fn register_string_builtins(env: &mut Environment) {
     // downcase(string) - Convert to lowercase
     env.define(
         "downcase".to_string(),
-        Value::NativeFunction(NativeFunction::new("downcase", Some(1), |args| {
-            match &args[0] {
+        Value::NativeFunction(NativeFunction::new(
+            "downcase",
+            Some(1),
+            |args| match &args[0] {
                 Value::String(s) => Ok(Value::String(s.to_lowercase())),
-                other => Err(format!("downcase expects string, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "downcase expects string, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // trim(string) - Remove whitespace from both ends

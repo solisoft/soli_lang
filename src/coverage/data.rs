@@ -104,6 +104,12 @@ pub struct AggregatedCoverage {
     pub pending_count: usize,
 }
 
+impl Default for AggregatedCoverage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AggregatedCoverage {
     pub fn new() -> Self {
         Self {

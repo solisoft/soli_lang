@@ -124,7 +124,8 @@ impl DbConfig {
         // Load .env file first (won't override existing env vars)
         load_env_file(app_path);
 
-        let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let host =
+            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
         let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         let username = std::env::var("SOLIDB_USERNAME").ok();
         let password = std::env::var("SOLIDB_PASSWORD").ok();
@@ -421,18 +422,12 @@ let db = MigrationDb();
         let mut applied_migrations = Vec::new();
 
         for migration in pending {
-            println!(
-                "  \x1b[33mMigrating\x1b[0m {}",
-                migration.full_name()
-            );
+            println!("  \x1b[33mMigrating\x1b[0m {}", migration.full_name());
 
             self.execute_migration(migration, "up")?;
             self.record_migration(migration)?;
 
-            println!(
-                "  \x1b[32m   Applied\x1b[0m {}",
-                migration.full_name()
-            );
+            println!("  \x1b[32m   Applied\x1b[0m {}", migration.full_name());
 
             applied_migrations.push(migration.full_name());
         }
@@ -462,18 +457,12 @@ let db = MigrationDb();
             .find(|m| &m.version == last_version)
             .ok_or_else(|| format!("Migration {} not found in files", last_version))?;
 
-        println!(
-            "  \x1b[33mRolling back\x1b[0m {}",
-            migration.full_name()
-        );
+        println!("  \x1b[33mRolling back\x1b[0m {}", migration.full_name());
 
         self.execute_migration(migration, "down")?;
         self.remove_migration_record(migration)?;
 
-        println!(
-            "  \x1b[32m   Reverted\x1b[0m {}",
-            migration.full_name()
-        );
+        println!("  \x1b[32m   Reverted\x1b[0m {}", migration.full_name());
 
         Ok(MigrationResult {
             message: format!("Rolled back {}", migration.full_name()),
@@ -577,8 +566,7 @@ fn down(db: Any) -> Any {{
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
     );
 
-    fs::write(&filepath, template)
-        .map_err(|e| format!("Failed to write migration file: {}", e))?;
+    fs::write(&filepath, template).map_err(|e| format!("Failed to write migration file: {}", e))?;
 
     Ok(filepath)
 }
@@ -597,10 +585,7 @@ pub fn print_status(status: &MigrationStatus) {
         return;
     }
 
-    println!(
-        "  {:14}  {:30}  {:10}",
-        "Version", "Name", "Status"
-    );
+    println!("  {:14}  {:30}  {:10}", "Version", "Name", "Status");
     println!("  {:-<14}  {:-<30}  {:-<10}", "", "", "");
 
     for entry in &status.entries {
@@ -610,10 +595,7 @@ pub fn print_status(status: &MigrationStatus) {
             "\x1b[33m  down  \x1b[0m"
         };
 
-        println!(
-            "  {:14}  {:30}  {}",
-            entry.version, entry.name, status_str
-        );
+        println!("  {:14}  {:30}  {}", entry.version, entry.name, status_str);
     }
 
     println!();

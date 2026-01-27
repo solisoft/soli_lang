@@ -340,7 +340,12 @@ impl RuntimeError {
     }
 
     /// Create a WithEnv error with captured environment and stack trace
-    pub fn with_env(message: impl Into<String>, span: Span, env_json: impl Into<String>, stack_trace: Vec<String>) -> Self {
+    pub fn with_env(
+        message: impl Into<String>,
+        span: Span,
+        env_json: impl Into<String>,
+        stack_trace: Vec<String>,
+    ) -> Self {
         Self::WithEnv {
             message: message.into(),
             span,

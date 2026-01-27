@@ -6,11 +6,9 @@ use std::rc::Rc;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
-type HashPairs = Vec<(Value, Value)>;
-
 thread_local! {
-    static LAST_ASSIGNS: RefCell<Option<Value>> = RefCell::new(None);
-    static LAST_VIEW_PATH: RefCell<Option<String>> = RefCell::new(None);
+    static LAST_ASSIGNS: RefCell<Option<Value>> = const { RefCell::new(None) };
+    static LAST_VIEW_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 pub fn register_assigns_helpers(env: &mut Environment) {
@@ -59,15 +57,14 @@ pub fn register_assigns_helpers(env: &mut Environment) {
 
     env.define(
         "flash[:key]".to_string(),
-        Value::NativeFunction(NativeFunction::new("flash[:key]", Some(1), |args| {
+        Value::NativeFunction(NativeFunction::new("flash[:key]", Some(1), |_args| {
             Ok(Value::Null)
         })),
     );
 
     env.define(
         "have_assign".to_string(),
-        Value::NativeFunction(NativeFunction::new("have_assign", Some(1), |args| {
-            let key = extract_string(&args[0], "have_assign(key)")?;
+        Value::NativeFunction(NativeFunction::new("have_assign", Some(1), |_args| {
             Ok(Value::Bool(false))
         })),
     );

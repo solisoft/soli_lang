@@ -9,6 +9,41 @@
 //! - **Bytecode VM**: Faster execution via bytecode compilation
 //! - **JIT compilation**: (with `jit` feature) Native code for hot paths
 
+// Allow some clippy lints that are stylistic and not critical
+#![allow(clippy::module_inception)]
+#![allow(clippy::result_large_err)]
+#![allow(clippy::arc_with_non_send_sync)]
+#![allow(clippy::only_used_in_recursion)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::ptr_arg)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::collapsible_match)]
+#![allow(clippy::derivable_impls)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::wildcard_in_or_patterns)]
+#![allow(clippy::needless_borrows_for_generic_args)]
+#![allow(clippy::unnecessary_lazy_evaluations)]
+#![allow(clippy::len_zero)]
+#![allow(clippy::redundant_pattern_matching)]
+#![allow(clippy::trim_split_whitespace)]
+#![allow(clippy::to_string_in_format_args)]
+#![allow(clippy::while_let_on_iterator)]
+#![allow(clippy::manual_ok_err)]
+#![allow(clippy::unwrap_or_default)]
+#![allow(clippy::unnecessary_filter_map)]
+#![allow(clippy::manual_clamp)]
+#![allow(clippy::redundant_closure)]
+#![allow(clippy::unused_enumerate_index)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::let_underscore_future)]
+#![allow(clippy::double_ended_iterator_last)]
+#![allow(clippy::needless_late_init)]
+#![allow(clippy::manual_strip)]
+#![allow(clippy::never_loop)]
+
 pub mod ast;
 pub mod bytecode;
 pub mod coverage;

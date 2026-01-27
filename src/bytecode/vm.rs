@@ -12,6 +12,7 @@ use chrono::{Datelike, Timelike};
 
 // Thread-local storage for I18n locale
 thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
     static VM_CURRENT_LOCALE: RefCell<String> = RefCell::new("en".to_string());
 }
 
@@ -387,7 +388,7 @@ fn call_datetime_method(inst: &VMInstance, method_name: &str) -> Result<VMValue,
             VMValue::Float(t) => Some(t as i64),
             _ => None,
         })
-        .ok_or_else(|| format!("DateTime/Duration instance missing timestamp field"))?;
+        .ok_or_else(|| "DateTime/Duration instance missing timestamp field".to_string())?;
 
     // Use chrono to parse the timestamp (timestamp is in nanoseconds)
     let datetime = chrono::DateTime::from_timestamp(
@@ -1757,9 +1758,9 @@ impl VM {
                 let mut in_tag = false;
                 let mut current_tag = String::new();
                 let mut tag_buffer = String::new();
-                let mut chars = s.chars().peekable();
+                let chars = s.chars();
 
-                while let Some(c) = chars.next() {
+                for c in chars {
                     if c == '<' {
                         if in_tag {
                             result.push_str(&current_tag);
@@ -1774,10 +1775,10 @@ impl VM {
                             let tag = tag_buffer.trim().to_lowercase();
                             let is_closing = tag.starts_with("</");
                             let is_self_closing = tag.ends_with("/>")
-                                || matches!(
-                                    tag.strip_suffix(">").and_then(|t| t.strip_suffix('/')),
-                                    Some(_)
-                                );
+                                || tag
+                                    .strip_suffix(">")
+                                    .and_then(|t| t.strip_suffix('/'))
+                                    .is_some();
                             let tag_name = if is_closing {
                                 tag.trim_start_matches('<')
                                     .trim_start_matches('/')
@@ -3901,7 +3902,7 @@ impl VM {
                 }
                 args.reverse();
 
-                let locale = match args.get(0) {
+                let locale = match args.first() {
                     Some(VMValue::String(s)) => s.as_str().to_string(),
                     Some(other) => {
                         return Err(RuntimeError::new(
@@ -3934,7 +3935,7 @@ impl VM {
                 }
                 args.reverse();
 
-                let key = match args.get(0) {
+                let key = match args.first() {
                     Some(VMValue::String(s)) => s.as_str().to_string(),
                     _ => {
                         return Err(RuntimeError::new(
@@ -4012,7 +4013,7 @@ impl VM {
                 }
                 args.reverse();
 
-                let key = match args.get(0) {
+                let key = match args.first() {
                     Some(VMValue::String(s)) => s.as_str().to_string(),
                     _ => {
                         return Err(RuntimeError::new(
@@ -4097,7 +4098,7 @@ impl VM {
                 }
                 args.reverse();
 
-                let n = match args.get(0) {
+                let n = match args.first() {
                     Some(VMValue::Int(i)) => *i as f64,
                     Some(VMValue::Float(f)) => *f,
                     _ => {
@@ -4141,7 +4142,7 @@ impl VM {
                 }
                 args.reverse();
 
-                let amount = match args.get(0) {
+                let amount = match args.first() {
                     Some(VMValue::Int(i)) => *i as f64,
                     Some(VMValue::Float(f)) => *f,
                     _ => {
@@ -4206,13 +4207,7 @@ impl VM {
                     .collect();
 
                 let result = if frac_part > 0 {
-                    format!(
-                        "{}{}{}{}",
-                        symbol,
-                        formatted_int,
-                        decimal_sep,
-                        format!("{:02}", frac_part)
-                    )
+                    format!("{}{}{}{:02}", symbol, formatted_int, decimal_sep, frac_part)
                 } else {
                     format!("{}{}", symbol, formatted_int)
                 };
@@ -4230,7 +4225,7 @@ impl VM {
                 }
                 args.reverse();
 
-                let ts = match args.get(0) {
+                let ts = match args.first() {
                     Some(VMValue::Int(n)) => *n,
                     _ => {
                         return Err(RuntimeError::new(

@@ -95,7 +95,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "year".to_string(),
         Rc::new(NativeFunction::new("DateTime.year", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.year() called on non-DateTime".to_string()),
             };
@@ -118,7 +118,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "month".to_string(),
         Rc::new(NativeFunction::new("DateTime.month", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.month() called on non-DateTime".to_string()),
             };
@@ -141,7 +141,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "day".to_string(),
         Rc::new(NativeFunction::new("DateTime.day", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.day() called on non-DateTime".to_string()),
             };
@@ -164,7 +164,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "hour".to_string(),
         Rc::new(NativeFunction::new("DateTime.hour", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.hour() called on non-DateTime".to_string()),
             };
@@ -187,7 +187,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "minute".to_string(),
         Rc::new(NativeFunction::new("DateTime.minute", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.minute() called on non-DateTime".to_string()),
             };
@@ -210,7 +210,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "second".to_string(),
         Rc::new(NativeFunction::new("DateTime.second", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.second() called on non-DateTime".to_string()),
             };
@@ -236,7 +236,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.millisecond",
             Some(0),
             |args| {
-                let this = match args.get(0) {
+                let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
                     _ => return Err("DateTime.millisecond() called on non-DateTime".to_string()),
                 };
@@ -260,7 +260,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "weekday".to_string(),
         Rc::new(NativeFunction::new("DateTime.weekday", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.weekday() called on non-DateTime".to_string()),
             };
@@ -283,7 +283,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "to_unix".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_unix", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.to_unix() called on non-DateTime".to_string()),
             };
@@ -298,7 +298,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "to_iso".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_iso", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.to_iso() called on non-DateTime".to_string()),
             };
@@ -320,7 +320,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "to_string".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_string", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("DateTime.to_string() called on non-DateTime".to_string()),
             };
@@ -349,7 +349,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.total_seconds",
             Some(0),
             |args| {
-                let this = match args.get(0) {
+                let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
                     _ => return Err("Duration.total_seconds() called on non-Duration".to_string()),
                 };
@@ -368,7 +368,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.total_minutes",
             Some(0),
             |args| {
-                let this = match args.get(0) {
+                let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
                     _ => return Err("Duration.total_minutes() called on non-Duration".to_string()),
                 };
@@ -387,7 +387,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.total_hours",
             Some(0),
             |args| {
-                let this = match args.get(0) {
+                let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
                     _ => return Err("Duration.total_hours() called on non-Duration".to_string()),
                 };
@@ -406,7 +406,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.total_days",
             Some(0),
             |args| {
-                let this = match args.get(0) {
+                let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
                     _ => return Err("Duration.total_days() called on non-Duration".to_string()),
                 };
@@ -422,7 +422,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dur_native_methods.insert(
         "to_string".to_string(),
         Rc::new(NativeFunction::new("Duration.to_string", Some(0), |args| {
-            let this = match args.get(0) {
+            let this = match args.first() {
                 Some(Value::Instance(inst)) => inst,
                 _ => return Err("Duration.to_string() called on non-Duration".to_string()),
             };
@@ -474,7 +474,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.parse",
             Some(1),
             move |args| {
-                let s = match args.get(0) {
+                let s = match args.first() {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("DateTime.parse() requires string".to_string()),
                 };
@@ -518,7 +518,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.between",
             Some(2),
             move |args| {
-                let dt1 = match args.get(0) {
+                let dt1 = match args.first() {
                     Some(Value::Instance(inst)) => inst,
                     _ => return Err("Duration.between() requires DateTime".to_string()),
                 };
@@ -554,7 +554,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.seconds",
             Some(1),
             move |args| {
-                let s = match args.get(0) {
+                let s = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.seconds() requires number".to_string()),
@@ -580,7 +580,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.minutes",
             Some(1),
             move |args| {
-                let m = match args.get(0) {
+                let m = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.minutes() requires number".to_string()),
@@ -606,7 +606,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.hours",
             Some(1),
             move |args| {
-                let h = match args.get(0) {
+                let h = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.hours() requires number".to_string()),
@@ -629,7 +629,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dur_static_methods.insert(
         "days".to_string(),
         Rc::new(NativeFunction::new("Duration.days", Some(1), move |args| {
-            let d = match args.get(0) {
+            let d = match args.first() {
                 Some(Value::Float(f)) => *f,
                 Some(Value::Int(i)) => *i as f64,
                 _ => return Err("Duration.days() requires number".to_string()),
@@ -654,7 +654,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "Duration.weeks",
             Some(1),
             move |args| {
-                let w = match args.get(0) {
+                let w = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.weeks() requires number".to_string()),

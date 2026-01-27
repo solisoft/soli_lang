@@ -8,6 +8,9 @@ use std::rc::Rc;
 use crate::bytecode::instruction::OpCode;
 use crate::span::Span;
 
+/// Type alias for native method handlers to reduce type complexity.
+pub type NativeMethodHandler = fn(&VMInstance) -> Result<VMValue, String>;
+
 /// A chunk of bytecode containing instructions and metadata.
 #[derive(Debug, Clone)]
 pub struct Chunk {
@@ -418,7 +421,7 @@ pub struct VMClass {
     pub constructor: Option<Rc<RefCell<Closure>>>,
     pub superclass: Option<Rc<RefCell<VMClass>>>,
     /// Native method handlers (class name -> method name -> handler)
-    pub native_methods: HashMap<String, fn(&VMInstance) -> Result<VMValue, String>>,
+    pub native_methods: HashMap<String, NativeMethodHandler>,
 }
 
 impl VMClass {
@@ -443,12 +446,9 @@ impl VMClass {
         None
     }
 
-    pub fn find_native_method(
-        &self,
-        name: &str,
-    ) -> Option<fn(&VMInstance) -> Result<VMValue, String>> {
+    pub fn find_native_method(&self, name: &str) -> Option<NativeMethodHandler> {
         if let Some(method) = self.native_methods.get(name) {
-            return Some(method.clone());
+            return Some(*method);
         }
         if let Some(ref superclass) = self.superclass {
             return superclass.borrow().find_native_method(name);
@@ -510,6 +510,7 @@ pub enum VMIterator {
 }
 
 impl VMIterator {
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<VMValue> {
         match self {
             VMIterator::Array { array, index } => {

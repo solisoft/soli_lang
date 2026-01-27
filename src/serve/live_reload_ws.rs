@@ -43,7 +43,10 @@ pub async fn handle_live_reload_websocket(
             eprintln!("[LiveReload WS] Upgrade error: {}", e);
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Full::new(Bytes::from(format!("WebSocket upgrade error: {}", e))))
+                .body(Full::new(Bytes::from(format!(
+                    "WebSocket upgrade error: {}",
+                    e
+                ))))
                 .unwrap());
         }
     };
@@ -63,7 +66,11 @@ pub async fn handle_live_reload_websocket(
         let (mut sink, mut stream) = stream.split();
 
         // Send initial connection confirmation
-        if sink.send(tungstenite::Message::Text("connected".to_string())).await.is_err() {
+        if sink
+            .send(tungstenite::Message::Text("connected".to_string()))
+            .await
+            .is_err()
+        {
             return;
         }
 

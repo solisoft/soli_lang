@@ -7,11 +7,9 @@
 //!
 //! The standalone functions have been removed in favor of the HTTP class API.
 
-use std::cell::RefCell;
 use std::net::{IpAddr, ToSocketAddrs};
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::Value;
 
 const BLOCKED_SCHEMES: &[&str] = &["javascript", "file", "ftp", "ssh", "telnet", "gopher"];
 
@@ -50,12 +48,10 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
         } else {
             h
         }
+    } else if let Some((_, h)) = rest.split_once('@') {
+        h
     } else {
-        if let Some((_, h)) = rest.split_once('@') {
-            h
-        } else {
-            &rest
-        }
+        rest
     };
 
     let host = if let Some((h, _)) = host.split_once(':') {

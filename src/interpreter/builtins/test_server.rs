@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
-use tokio::runtime::Runtime;
 use tokio::net::TcpListener;
+use tokio::runtime::Runtime;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
@@ -16,11 +16,11 @@ static TEST_SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 static TEST_SERVER_PORT: AtomicU16 = AtomicU16::new(0);
 
 thread_local! {
-    static LAST_RESPONSE: RefCell<Option<Value>> = RefCell::new(None);
-    static LAST_REQUEST: RefCell<Option<HashMap<String, Value>>> = RefCell::new(None);
-    static LAST_ASSIGNS: RefCell<Option<HashMap<String, Value>>> = RefCell::new(None);
-    static LAST_VIEW_PATH: RefCell<Option<String>> = RefCell::new(None);
-    static CURRENT_USER: RefCell<Option<Value>> = RefCell::new(None);
+    static LAST_RESPONSE: RefCell<Option<Value>> = const { RefCell::new(None) };
+    static LAST_REQUEST: RefCell<Option<HashMap<String, Value>>> = const { RefCell::new(None) };
+    static LAST_ASSIGNS: RefCell<Option<HashMap<String, Value>>> = const { RefCell::new(None) };
+    static LAST_VIEW_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
+    static CURRENT_USER: RefCell<Option<Value>> = const { RefCell::new(None) };
 }
 
 /// Register test server built-in functions.
@@ -51,10 +51,14 @@ pub fn register_test_server_builtins(env: &mut Environment) {
 
     env.define(
         "test_server_running".to_string(),
-        Value::NativeFunction(NativeFunction::new("test_server_running", Some(0), |_args| {
-            let running = is_test_server_running();
-            Ok(Value::Bool(running))
-        })),
+        Value::NativeFunction(NativeFunction::new(
+            "test_server_running",
+            Some(0),
+            |_args| {
+                let running = is_test_server_running();
+                Ok(Value::Bool(running))
+            },
+        )),
     );
 }
 

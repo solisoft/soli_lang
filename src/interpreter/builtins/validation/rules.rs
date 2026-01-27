@@ -180,19 +180,23 @@ impl ValidationRule {
                 // Simple URL regex
                 let url_re = Regex::new(r"^https?://[^\s/$.?#].[^\s]*$").unwrap();
                 if !url_re.is_match(&s) {
-                    return Err(create_error(field_name, "must be a valid URL", "invalid_url"));
+                    return Err(create_error(
+                        field_name,
+                        "must be a valid URL",
+                        "invalid_url",
+                    ));
                 }
             }
             ValidationRule::OneOf(allowed) => {
-                let is_match = allowed.iter().any(|allowed_val| {
-                    match (value, allowed_val) {
+                let is_match = allowed
+                    .iter()
+                    .any(|allowed_val| match (value, allowed_val) {
                         (Value::Int(a), Value::Int(b)) => a == b,
                         (Value::Float(a), Value::Float(b)) => (a - b).abs() < f64::EPSILON,
                         (Value::String(a), Value::String(b)) => a == b,
                         (Value::Bool(a), Value::Bool(b)) => a == b,
                         _ => false,
-                    }
-                });
+                    });
                 if !is_match {
                     let allowed_strs: Vec<String> =
                         allowed.iter().map(|v| format!("{}", v)).collect();

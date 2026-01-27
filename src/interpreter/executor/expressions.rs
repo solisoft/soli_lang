@@ -794,7 +794,7 @@ impl Interpreter {
                     let thread_name = std::thread::current().name().map(|s| s.to_string());
                     let is_main_thread = thread_name
                         .as_ref()
-                        .map_or(false, |n| n == "main" || n.starts_with("tokio-runtime"));
+                        .is_some_and(|n| n == "main" || n.starts_with("tokio-runtime"));
                     if is_main_thread {
                         // Run the HTTP server (this blocks until server stops)
                         return self.run_http_server(port);

@@ -51,7 +51,10 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
     }
 
     if BLOCKED_SCHEMES.contains(&scheme.as_str()) {
-        return Err(format!("URL scheme '{}:' is not allowed for security reasons", scheme));
+        return Err(format!(
+            "URL scheme '{}:' is not allowed for security reasons",
+            scheme
+        ));
     }
 
     if scheme != "http" && scheme != "https" {
@@ -64,12 +67,10 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
         } else {
             h
         }
+    } else if let Some((_, h)) = rest.split_once('@') {
+        h
     } else {
-        if let Some((_, h)) = rest.split_once('@') {
-            h
-        } else {
-            &rest
-        }
+        rest
     };
 
     let host = if let Some((h, _)) = host.split_once(':') {
@@ -173,7 +174,10 @@ where
         let result = f();
         let _ = tx.send(result);
     });
-    Value::Future(Arc::new(Mutex::new(FutureState::Pending { receiver: rx, kind })))
+    Value::Future(Arc::new(Mutex::new(FutureState::Pending {
+        receiver: rx,
+        kind,
+    })))
 }
 
 fn value_to_json(value: &Value) -> Result<String, String> {
@@ -480,7 +484,11 @@ pub fn register_http_class(env: &mut Environment) {
             if let Some(rt) = get_tokio_handle() {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
-                    let resp = client.delete(&url).send().await.map_err(|e| e.to_string())?;
+                    let resp = client
+                        .delete(&url)
+                        .send()
+                        .await
+                        .map_err(|e| e.to_string())?;
 
                     let status = resp.status();
                     if !status.is_success() {
@@ -531,7 +539,11 @@ pub fn register_http_class(env: &mut Environment) {
                 match rt.block_on(async move {
                     let resp = client.head(&url).send().await.map_err(|e| e.to_string())?;
                     let status = resp.status().as_u16();
-                    Ok(format!("{} {}", status, resp.status().canonical_reason().unwrap_or("")))
+                    Ok(format!(
+                        "{} {}",
+                        status,
+                        resp.status().canonical_reason().unwrap_or("")
+                    ))
                 }) {
                     Ok(text) => Ok(Value::String(text)),
                     Err(e) => Err(e),
@@ -541,11 +553,7 @@ pub fn register_http_class(env: &mut Environment) {
                     move || match ureq::head(&url).call() {
                         Ok(response) => {
                             let status = response.status();
-                            Ok(format!(
-                                "{} {}",
-                                status,
-                                response.status_text()
-                            ))
+                            Ok(format!("{} {}", status, response.status_text()))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
@@ -889,11 +897,7 @@ pub fn register_http_class(env: &mut Environment) {
                     let resp = request.send().await.map_err(|e| e.to_string())?;
 
                     let status = resp.status().as_u16();
-                    let status_text = resp
-                        .status()
-                        .canonical_reason()
-                        .unwrap_or("")
-                        .to_string();
+                    let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
 
                     let mut headers_map = serde_json::Map::new();
                     for (name, value) in resp.headers().iter() {
@@ -1008,9 +1012,11 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "json_stringify".to_string(),
-        Rc::new(NativeFunction::new("HTTP.json_stringify", Some(1), |args| {
-            value_to_json(&args[0]).map(Value::String)
-        })),
+        Rc::new(NativeFunction::new(
+            "HTTP.json_stringify",
+            Some(1),
+            |args| value_to_json(&args[0]).map(Value::String),
+        )),
     );
 
     http_static_methods.insert(
@@ -1104,10 +1110,7 @@ pub fn register_http_class(env: &mut Environment) {
         constructor: None,
     };
 
-    env.define(
-        "HTTP".to_string(),
-        Value::Class(Rc::new(http_class)),
-    );
+    env.define("HTTP".to_string(), Value::Class(Rc::new(http_class)));
 }
 
 fn create_http_response(
@@ -1127,7 +1130,10 @@ fn create_http_response(
         .collect();
 
     let result: Vec<(Value, Value)> = vec![
-        (Value::String("status".to_string()), Value::Int(status as i64)),
+        (
+            Value::String("status".to_string()),
+            Value::Int(status as i64),
+        ),
         (
             Value::String("status_text".to_string()),
             Value::String(status_text),

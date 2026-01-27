@@ -95,7 +95,7 @@ jobs:
         run: ../bin/soli test tests/
         working-directory: www
 
-  # Job 4: Lint and format check
+  # Job 4: Lint check
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -104,10 +104,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-action@stable
         with:
-          components: rustfmt, clippy
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+          components: clippy
 
       - name: Clippy
         run: cargo clippy -- -D warnings

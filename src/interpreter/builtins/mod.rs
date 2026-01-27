@@ -278,10 +278,7 @@ fn register_error_classes(env: &mut Environment) {
         native_methods: HashMap::new(),
         constructor: None,
     };
-    env.define(
-        "Error".to_string(),
-        Value::Class(Rc::new(error_class)),
-    );
+    env.define("Error".to_string(), Value::Class(Rc::new(error_class)));
 
     // ValueError class
     let value_error_class = Class {

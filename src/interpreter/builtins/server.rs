@@ -13,7 +13,7 @@ use crate::interpreter::value::{NativeFunction, Value};
 pub struct Route {
     pub method: String,
     pub path_pattern: String,
-    pub handler_name: String,  // Store function name instead of Value
+    pub handler_name: String, // Store function name instead of Value
     pub middleware: Vec<Value>,
 }
 
@@ -29,7 +29,7 @@ pub struct WorkerRoute {
 // Route registry stored in thread-local storage.
 // Routes contain handler names that are looked up in each worker's interpreter.
 thread_local! {
-    pub static ROUTES: RefCell<Vec<Route>> = RefCell::new(Vec::new());
+    pub static ROUTES: RefCell<Vec<Route>> = const { RefCell::new(Vec::new()) };
     // Method-indexed route cache for O(1) method lookup + O(m) route search
     // where m = routes for that method, instead of O(n) for all routes
     static ROUTE_INDEX: RefCell<RouteIndex> = RefCell::new(RouteIndex::new());
@@ -40,7 +40,7 @@ thread_local! {
 #[derive(Clone, Default)]
 pub struct RouteIndex {
     /// Routes grouped by HTTP method
-    by_method: HashMap<String, Vec<usize>>,  // method -> indices into ROUTES
+    by_method: HashMap<String, Vec<usize>>, // method -> indices into ROUTES
     /// Exact path matches for fast lookup (method:path -> route index)
     exact_matches: HashMap<String, usize>,
     /// Version counter to detect stale index
@@ -76,7 +76,8 @@ impl RouteIndex {
 }
 
 // Track if routes are "direct" (http_server_get/post) vs MVC (get/post DSL)
-static DIRECT_ROUTES_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static DIRECT_ROUTES_MODE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Mark that we're using direct route registration (http_server_get/post)
 pub fn set_direct_routes_mode() {
@@ -343,7 +344,15 @@ pub fn build_request_hash(
     headers: HashMap<String, String>,
     body: String,
 ) -> Value {
-    build_request_hash_with_parsed(method, path, params, query, headers, body, ParsedBody::default())
+    build_request_hash_with_parsed(
+        method,
+        path,
+        params,
+        query,
+        headers,
+        body,
+        ParsedBody::default(),
+    )
 }
 
 /// Build a request hash with parsed body data.
@@ -399,11 +408,16 @@ pub fn build_request_hash_with_parsed(
                                     KEY_FILES.with(|key_files| {
                                         KEY_ALL.with(|key_all| {
                                             vec![
-                                                (key_method.clone(), Value::String(method.to_string())),
+                                                (
+                                                    key_method.clone(),
+                                                    Value::String(method.to_string()),
+                                                ),
                                                 (key_path.clone(), Value::String(path.to_string())),
                                                 (
                                                     key_params.clone(),
-                                                    Value::Hash(Rc::new(RefCell::new(params_pairs))),
+                                                    Value::Hash(Rc::new(RefCell::new(
+                                                        params_pairs,
+                                                    ))),
                                                 ),
                                                 (
                                                     key_query.clone(),
@@ -411,7 +425,9 @@ pub fn build_request_hash_with_parsed(
                                                 ),
                                                 (
                                                     key_headers.clone(),
-                                                    Value::Hash(Rc::new(RefCell::new(header_pairs))),
+                                                    Value::Hash(Rc::new(RefCell::new(
+                                                        header_pairs,
+                                                    ))),
                                                 ),
                                                 (key_body.clone(), Value::String(body)),
                                                 (
@@ -424,7 +440,9 @@ pub fn build_request_hash_with_parsed(
                                                 ),
                                                 (
                                                     key_files.clone(),
-                                                    parsed.files.unwrap_or(Value::Array(Rc::new(RefCell::new(Vec::new())))),
+                                                    parsed.files.unwrap_or(Value::Array(Rc::new(
+                                                        RefCell::new(Vec::new()),
+                                                    ))),
                                                 ),
                                                 (
                                                     key_all.clone(),

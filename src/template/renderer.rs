@@ -9,6 +9,9 @@ use crate::interpreter::value::Value;
 use crate::interpreter::Interpreter;
 use crate::template::parser::{BinaryOp, CompareOp, Expr, TemplateNode};
 
+/// Type alias for partial renderer callbacks to reduce type complexity.
+pub type PartialRenderer<'a> = Option<&'a dyn Fn(&str, &Value) -> Result<String, String>>;
+
 /// Resolve a value if it's a Future, otherwise return as-is.
 /// This enables auto-resolution of async HTTP responses in templates.
 #[inline]
@@ -32,7 +35,7 @@ fn resolve_if_future(value: Value) -> Result<Value, String> {
 pub fn render_nodes(
     nodes: &[TemplateNode],
     data: &Value,
-    partial_renderer: Option<&dyn Fn(&str, &Value) -> Result<String, String>>,
+    partial_renderer: PartialRenderer<'_>,
 ) -> Result<String, String> {
     render_nodes_with_path(nodes, data, partial_renderer, None)
 }
@@ -50,7 +53,7 @@ pub fn render_nodes(
 pub fn render_nodes_with_path(
     nodes: &[TemplateNode],
     data: &Value,
-    partial_renderer: Option<&dyn Fn(&str, &Value) -> Result<String, String>>,
+    partial_renderer: PartialRenderer<'_>,
     template_path: Option<&str>,
 ) -> Result<String, String> {
     let mut output = String::new();

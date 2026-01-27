@@ -106,11 +106,11 @@ pub struct ValidationRule {
     pub uniqueness: bool,
     pub min_length: Option<usize>,
     pub max_length: Option<usize>,
-    pub format: Option<String>,  // regex pattern
+    pub format: Option<String>, // regex pattern
     pub numericality: bool,
     pub min: Option<f64>,
     pub max: Option<f64>,
-    pub custom: Option<String>,  // method name for custom validation
+    pub custom: Option<String>, // method name for custom validation
 }
 
 impl Default for ValidationRule {
@@ -156,8 +156,14 @@ impl ValidationError {
 
     pub fn to_value(&self) -> Value {
         let pairs = vec![
-            (Value::String("field".into()), Value::String(self.field.clone())),
-            (Value::String("message".into()), Value::String(self.message.clone())),
+            (
+                Value::String("field".into()),
+                Value::String(self.field.clone()),
+            ),
+            (
+                Value::String("message".into()),
+                Value::String(self.message.clone()),
+            ),
         ];
         Value::Hash(Rc::new(RefCell::new(pairs)))
     }
@@ -223,12 +229,30 @@ pub fn register_callback(class_name: &str, callback_type: &str, method_name: &st
     match callback_type {
         "before_save" => metadata.callbacks.before_save.push(method_name.to_string()),
         "after_save" => metadata.callbacks.after_save.push(method_name.to_string()),
-        "before_create" => metadata.callbacks.before_create.push(method_name.to_string()),
-        "after_create" => metadata.callbacks.after_create.push(method_name.to_string()),
-        "before_update" => metadata.callbacks.before_update.push(method_name.to_string()),
-        "after_update" => metadata.callbacks.after_update.push(method_name.to_string()),
-        "before_delete" => metadata.callbacks.before_delete.push(method_name.to_string()),
-        "after_delete" => metadata.callbacks.after_delete.push(method_name.to_string()),
+        "before_create" => metadata
+            .callbacks
+            .before_create
+            .push(method_name.to_string()),
+        "after_create" => metadata
+            .callbacks
+            .after_create
+            .push(method_name.to_string()),
+        "before_update" => metadata
+            .callbacks
+            .before_update
+            .push(method_name.to_string()),
+        "after_update" => metadata
+            .callbacks
+            .after_update
+            .push(method_name.to_string()),
+        "before_delete" => metadata
+            .callbacks
+            .before_delete
+            .push(method_name.to_string()),
+        "after_delete" => metadata
+            .callbacks
+            .after_delete
+            .push(method_name.to_string()),
         _ => {}
     }
 }
@@ -243,9 +267,9 @@ pub fn register_callback(class_name: &str, callback_type: &str, method_name: &st
 pub struct QueryBuilder {
     pub class_name: String,
     pub collection: String,
-    pub filter: Option<String>,                              // Raw filter expression (e.g., "doc.age >= @age AND doc.active == @active")
-    pub bind_vars: HashMap<String, serde_json::Value>,       // Bind variables
-    pub order_by: Option<(String, String)>,                  // (field, direction)
+    pub filter: Option<String>, // Raw filter expression (e.g., "doc.age >= @age AND doc.active == @active")
+    pub bind_vars: HashMap<String, serde_json::Value>, // Bind variables
+    pub order_by: Option<(String, String)>, // (field, direction)
     pub limit_val: Option<usize>,
     pub offset_val: Option<usize>,
 }
@@ -316,11 +340,7 @@ impl QueryBuilder {
 // ============================================================================
 
 /// Run validations on data and return any errors.
-pub fn run_validations(
-    class_name: &str,
-    data: &Value,
-    _is_create: bool,
-) -> Vec<ValidationError> {
+pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<ValidationError> {
     let registry = MODEL_REGISTRY.lock().unwrap();
     let metadata = match registry.get(class_name) {
         Some(m) => m,
@@ -336,7 +356,8 @@ pub fn run_validations(
 
     for rule in &metadata.validations {
         // Find the field value
-        let field_value = hash.iter()
+        let field_value = hash
+            .iter()
             .find(|(k, _)| matches!(k, Value::String(s) if s == &rule.field))
             .map(|(_, v)| v.clone());
 
@@ -344,7 +365,9 @@ pub fn run_validations(
         if rule.presence {
             match &field_value {
                 None => errors.push(ValidationError::new(&rule.field, "can't be blank")),
-                Some(Value::Null) => errors.push(ValidationError::new(&rule.field, "can't be blank")),
+                Some(Value::Null) => {
+                    errors.push(ValidationError::new(&rule.field, "can't be blank"))
+                }
                 Some(Value::String(s)) if s.is_empty() => {
                     errors.push(ValidationError::new(&rule.field, "can't be blank"))
                 }
@@ -439,10 +462,12 @@ pub fn run_validations(
 }
 
 /// Build a validation result hash.
-pub fn build_validation_result(valid: bool, errors: Vec<ValidationError>, record: Option<Value>) -> Value {
-    let mut pairs = vec![
-        (Value::String("valid".into()), Value::Bool(valid)),
-    ];
+pub fn build_validation_result(
+    valid: bool,
+    errors: Vec<ValidationError>,
+    record: Option<Value>,
+) -> Value {
+    let mut pairs = vec![(Value::String("valid".into()), Value::Bool(valid))];
 
     if !valid {
         let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
@@ -544,19 +569,23 @@ impl Model {
 
                 let field = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
-                    Some(other) => return Err(format!(
-                        "validates() expects string field name, got {}",
-                        other.type_name()
-                    )),
+                    Some(other) => {
+                        return Err(format!(
+                            "validates() expects string field name, got {}",
+                            other.type_name()
+                        ))
+                    }
                     None => return Err("validates() requires field argument".to_string()),
                 };
 
                 let options = match args.get(2) {
                     Some(Value::Hash(hash)) => hash.borrow().clone(),
-                    Some(other) => return Err(format!(
-                        "validates() expects hash options, got {}",
-                        other.type_name()
-                    )),
+                    Some(other) => {
+                        return Err(format!(
+                            "validates() expects hash options, got {}",
+                            other.type_name()
+                        ))
+                    }
                     None => return Err("validates() requires options argument".to_string()),
                 };
 
@@ -623,10 +652,14 @@ impl Model {
 
         // Callback registration methods
         for callback_type in &[
-            "before_save", "after_save",
-            "before_create", "after_create",
-            "before_update", "after_update",
-            "before_delete", "after_delete",
+            "before_save",
+            "after_save",
+            "before_create",
+            "after_create",
+            "before_update",
+            "after_update",
+            "before_delete",
+            "after_delete",
         ] {
             let callback_name = callback_type.to_string();
             let method_name = format!("Model.{}", callback_type);
@@ -636,15 +669,19 @@ impl Model {
                     let class_name = get_class_name_from_class(&args)?;
                     let method_name = match args.get(1) {
                         Some(Value::String(s)) => s.clone(),
-                        Some(other) => return Err(format!(
-                            "{}() expects string method name, got {}",
-                            callback_name,
-                            other.type_name()
-                        )),
-                        None => return Err(format!(
-                            "{}() requires method name argument",
-                            callback_name
-                        )),
+                        Some(other) => {
+                            return Err(format!(
+                                "{}() expects string method name, got {}",
+                                callback_name,
+                                other.type_name()
+                            ))
+                        }
+                        None => {
+                            return Err(format!(
+                                "{}() requires method name argument",
+                                callback_name
+                            ))
+                        }
                     };
                     register_callback(&class_name, &callback_name, &method_name);
                     Ok(Value::Null)
@@ -663,9 +700,10 @@ impl Model {
                 let class_name = get_class_name_from_class(&args)?;
                 let collection = class_name_to_collection(&class_name);
 
-                let data = args.get(1).cloned().ok_or_else(|| {
-                    "Model.create() requires data argument".to_string()
-                })?;
+                let data = args
+                    .get(1)
+                    .cloned()
+                    .ok_or_else(|| "Model.create() requires data argument".to_string())?;
 
                 // Run validations
                 let errors = run_validations(&class_name, &data, true);
@@ -694,7 +732,8 @@ impl Model {
                     tokio::runtime::Runtime::new()
                         .map_err(|e| format!("Failed to create async runtime: {}", e))?
                         .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = std::env::var("SOLIDB_HOST")
+                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
                             let database = "default".to_string();
                             let mut client = SoliDBClient::connect(&host)
                                 .await
@@ -712,7 +751,10 @@ impl Model {
                             // Add the record with id
                             if let serde_json::Value::Object(mut data_map) = data_value {
                                 data_map.insert("id".to_string(), id);
-                                result_map.insert("record".to_string(), serde_json::Value::Object(data_map));
+                                result_map.insert(
+                                    "record".to_string(),
+                                    serde_json::Value::Object(data_map),
+                                );
                             }
 
                             Ok(serde_json::to_string(&result_map).unwrap_or_default())
@@ -742,7 +784,8 @@ impl Model {
                     tokio::runtime::Runtime::new()
                         .map_err(|e| format!("Failed to create async runtime: {}", e))?
                         .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = std::env::var("SOLIDB_HOST")
+                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
                             let database = "default".to_string();
                             let mut client = SoliDBClient::connect(&host)
                                 .await
@@ -815,7 +858,8 @@ impl Model {
                     tokio::runtime::Runtime::new()
                         .map_err(|e| format!("Failed to create async runtime: {}", e))?
                         .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = std::env::var("SOLIDB_HOST")
+                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
                             let database = "default".to_string();
                             let mut client = SoliDBClient::connect(&host)
                                 .await
@@ -872,7 +916,8 @@ impl Model {
                     tokio::runtime::Runtime::new()
                         .map_err(|e| format!("Failed to create async runtime: {}", e))?
                         .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = std::env::var("SOLIDB_HOST")
+                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
                             let database = "default".to_string();
                             let mut client = SoliDBClient::connect(&host)
                                 .await
@@ -910,7 +955,8 @@ impl Model {
                     tokio::runtime::Runtime::new()
                         .map_err(|e| format!("Failed to create async runtime: {}", e))?
                         .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = std::env::var("SOLIDB_HOST")
+                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
                             let database = "default".to_string();
                             let mut client = SoliDBClient::connect(&host)
                                 .await
@@ -937,13 +983,17 @@ impl Model {
                     tokio::runtime::Runtime::new()
                         .map_err(|e| format!("Failed to create async runtime: {}", e))?
                         .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                            let host = std::env::var("SOLIDB_HOST")
+                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
                             let database = "default".to_string();
                             let mut client = SoliDBClient::connect(&host)
                                 .await
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
 
-                            let sdbql = format!("FOR doc IN {} COLLECT WITH COUNT INTO count RETURN count", collection);
+                            let sdbql = format!(
+                                "FOR doc IN {} COLLECT WITH COUNT INTO count RETURN count",
+                                collection
+                            );
                             let results = client
                                 .query(&database, &sdbql, None)
                                 .await
@@ -982,19 +1032,23 @@ pub fn register_model_builtins(env: &mut Environment) {
 
             let field = match args.get(1) {
                 Some(Value::String(s)) => s.clone(),
-                Some(other) => return Err(format!(
-                    "validates() expects string field name, got {}",
-                    other.type_name()
-                )),
+                Some(other) => {
+                    return Err(format!(
+                        "validates() expects string field name, got {}",
+                        other.type_name()
+                    ))
+                }
                 None => return Err("validates() requires field argument".to_string()),
             };
 
             let options = match args.get(2) {
                 Some(Value::Hash(hash)) => hash.borrow().clone(),
-                Some(other) => return Err(format!(
-                    "validates() expects hash options, got {}",
-                    other.type_name()
-                )),
+                Some(other) => {
+                    return Err(format!(
+                        "validates() expects hash options, got {}",
+                        other.type_name()
+                    ))
+                }
                 None => return Err("validates() requires options argument".to_string()),
             };
 
@@ -1061,33 +1115,45 @@ pub fn register_model_builtins(env: &mut Environment) {
 
     // Callback registration global functions
     for callback_type in &[
-        "before_save", "after_save",
-        "before_create", "after_create",
-        "before_update", "after_update",
-        "before_delete", "after_delete",
+        "before_save",
+        "after_save",
+        "before_create",
+        "after_create",
+        "before_update",
+        "after_update",
+        "before_delete",
+        "after_delete",
     ] {
         let callback_name = callback_type.to_string();
         let callback_name_for_fn = callback_name.clone();
         let callback_name_for_closure = callback_name.clone();
         env.define(
             callback_name,
-            Value::NativeFunction(NativeFunction::new(&callback_name_for_fn, Some(2), move |args| {
-                let class_name = get_class_name_from_class(&args)?;
-                let method_name = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    Some(other) => return Err(format!(
-                        "{}() expects string method name, got {}",
-                        callback_name_for_closure,
-                        other.type_name()
-                    )),
-                    None => return Err(format!(
-                        "{}() requires method name argument",
-                        callback_name_for_closure
-                    )),
-                };
-                register_callback(&class_name, &callback_name_for_closure, &method_name);
-                Ok(Value::Null)
-            })),
+            Value::NativeFunction(NativeFunction::new(
+                &callback_name_for_fn,
+                Some(2),
+                move |args| {
+                    let class_name = get_class_name_from_class(&args)?;
+                    let method_name = match args.get(1) {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(other) => {
+                            return Err(format!(
+                                "{}() expects string method name, got {}",
+                                callback_name_for_closure,
+                                other.type_name()
+                            ))
+                        }
+                        None => {
+                            return Err(format!(
+                                "{}() requires method name argument",
+                                callback_name_for_closure
+                            ))
+                        }
+                    };
+                    register_callback(&class_name, &callback_name_for_closure, &method_name);
+                    Ok(Value::Null)
+                },
+            )),
         );
     }
 }
@@ -1104,7 +1170,8 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
         tokio::runtime::Runtime::new()
             .map_err(|e| format!("Failed to create async runtime: {}", e))?
             .block_on(async {
-                let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                let host = std::env::var("SOLIDB_HOST")
+                    .unwrap_or_else(|_| "http://localhost:6745".to_string());
                 let database = "default".to_string();
                 let mut client = SoliDBClient::connect(&host)
                     .await
@@ -1136,7 +1203,8 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
         tokio::runtime::Runtime::new()
             .map_err(|e| format!("Failed to create async runtime: {}", e))?
             .block_on(async {
-                let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                let host = std::env::var("SOLIDB_HOST")
+                    .unwrap_or_else(|_| "http://localhost:6745".to_string());
                 let database = "default".to_string();
                 let mut client = SoliDBClient::connect(&host)
                     .await
@@ -1154,7 +1222,10 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
                     .map_err(|e| format!("Query failed: {}", e))?;
 
                 // Return first result or null
-                let first = results.into_iter().next().unwrap_or(serde_json::Value::Null);
+                let first = results
+                    .into_iter()
+                    .next()
+                    .unwrap_or(serde_json::Value::Null);
                 Ok(serde_json::to_string(&first).unwrap_or_default())
             })
     })
@@ -1177,7 +1248,8 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
         tokio::runtime::Runtime::new()
             .map_err(|e| format!("Failed to create async runtime: {}", e))?
             .block_on(async {
-                let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+                let host = std::env::var("SOLIDB_HOST")
+                    .unwrap_or_else(|_| "http://localhost:6745".to_string());
                 let database = "default".to_string();
                 let mut client = SoliDBClient::connect(&host)
                     .await

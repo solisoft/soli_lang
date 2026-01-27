@@ -24,12 +24,13 @@ lazy_static::lazy_static! {
 
 // Thread-local controller instances for current request.
 thread_local! {
-    static CURRENT_CONTROLLER: RefCell<Option<Value>> = RefCell::new(None);
+    static CURRENT_CONTROLLER: RefCell<Option<Value>> = const { RefCell::new(None) };
 }
 
 // Thread-local cache for pre-compiled handler programs.
 // Key: handler source string, Value: parsed Program
 thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
     static HANDLER_PROGRAM_CACHE: RefCell<HashMap<String, crate::ast::Program>> = RefCell::new(HashMap::new());
 }
 
@@ -37,6 +38,12 @@ thread_local! {
 #[derive(Debug, Clone)]
 pub struct ControllerRegistry {
     controllers: HashMap<String, ControllerInfo>,
+}
+
+impl Default for ControllerRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ControllerRegistry {
@@ -88,7 +95,7 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
 
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "sl") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "sl") {
             if let Some(file_name) = path.file_stem().and_then(|n| n.to_str()) {
                 // Skip non-controller files
                 if !file_name.ends_with("_controller") {
@@ -148,11 +155,7 @@ fn parse_controller_file(path: &Path, file_name: &str) -> Result<ControllerInfo,
 
 /// Convert "posts_controller" to "PostsController"
 fn to_class_name(file_name: &str) -> String {
-    let without_suffix = if file_name.ends_with("_controller") {
-        &file_name[..file_name.len() - "_controller".len()]
-    } else {
-        file_name
-    };
+    let without_suffix = file_name.strip_suffix("_controller").unwrap_or(file_name);
 
     let mut result = String::new();
     let mut capitalize = true;
@@ -185,12 +188,11 @@ fn to_controller_name(class_name: &str) -> String {
 fn extract_class_name(source: &str) -> Option<String> {
     for line in source.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("class ") {
+        if let Some(after_class) = trimmed.strip_prefix("class ") {
             // Parse "class ClassName extends ..."
-            let after_class = &trimmed["class ".len()..];
             let class_name = if let Some(pos) = after_class.find(" extends ") {
                 &after_class[..pos]
-            } else if let Some(pos) = after_class.find(" ") {
+            } else if let Some(pos) = after_class.find(' ') {
                 &after_class[..pos]
             } else {
                 after_class
@@ -267,8 +269,8 @@ fn extract_static_block(source: &str) -> Result<String, String> {
                 let rest: String = source[pos..].chars().take(6).collect();
                 if rest.to_lowercase() == "static" {
                     // Check if followed by {
-                    let mut ahead = chars.clone();
-                    while let Some((_, c2)) = ahead.next() {
+                    let ahead = chars.clone();
+                    for (_, c2) in ahead {
                         if c2.is_whitespace() {
                             continue;
                         }
@@ -320,9 +322,9 @@ fn extract_quoted_value(source: &str, key: &str) -> Option<String> {
     let key_pattern = format!("{} = ", key);
     if let Some(pos) = source.find(&key_pattern) {
         let after = &source[pos + key_pattern.len()..];
-        if after.starts_with('"') {
-            if let Some(end) = after[1..].find('"') {
-                return Some(after[1..=end].to_string());
+        if let Some(stripped) = after.strip_prefix('"') {
+            if let Some(end) = stripped.find('"') {
+                return Some(stripped[..end].to_string());
             }
         }
     }

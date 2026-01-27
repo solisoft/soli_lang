@@ -1173,7 +1173,7 @@ fn create_controller(
         .join(",\n");
 
     let content = format!(
-        r#"// {} controller - auto-generated scaffold
+        r#"// {controller_name} controller - auto-generated scaffold
 
 class {controller_name} extends Controller {{
     static {{
@@ -1484,7 +1484,6 @@ fn create_form_view(
         format!("Edit {}", to_title_case(model_var))
     };
 
-    let submit_text = if action == "new" { "Create" } else { "Update" };
     let form_action = if action == "new" {
         format!("/{}", resource_name)
     } else {
@@ -1892,16 +1891,6 @@ fn to_snake_case(s: &str) -> String {
         }
     }
     result
-}
-
-fn to_singular(s: &str) -> String {
-    let snake = to_snake_case(s);
-    // Remove trailing 's' if it exists
-    if snake.ends_with('s') && snake.len() > 1 {
-        snake[..snake.len() - 1].to_string()
-    } else {
-        snake
-    }
 }
 
 fn to_snake_case_plural(s: &str) -> String {

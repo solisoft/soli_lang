@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 thread_local! {
-    static CURRENT_COVERAGE: RefCell<Option<TestCoverage>> = RefCell::new(None);
+    static CURRENT_COVERAGE: RefCell<Option<TestCoverage>> = const { RefCell::new(None) };
 }
 
 pub struct CoverageTracker {
@@ -64,7 +64,7 @@ impl CoverageTracker {
                         let is_executable = self
                             .executable_lines
                             .get(&file_cov.path)
-                            .and_then(|lines| lines.get(&line_num))
+                            .and_then(|lines| lines.get(line_num))
                             .is_some();
 
                         let aggregated_line = aggregated_file
@@ -94,12 +94,11 @@ impl CoverageTracker {
                         aggregated_branch.hits_true += branch_cov.hits_true;
                         aggregated_branch.hits_false += branch_cov.hits_false;
 
-                        if aggregated_branch.hits_true > 0 || aggregated_branch.hits_false > 0 {
-                            if aggregated_branch.hits_true == branch_cov.hits_true
-                                && aggregated_branch.hits_false == branch_cov.hits_false
-                            {
-                                aggregated_file.covered_branches += 1;
-                            }
+                        if (aggregated_branch.hits_true > 0 || aggregated_branch.hits_false > 0)
+                            && aggregated_branch.hits_true == branch_cov.hits_true
+                            && aggregated_branch.hits_false == branch_cov.hits_false
+                        {
+                            aggregated_file.covered_branches += 1;
                         }
 
                         aggregated_file.total_branches += 1;
@@ -310,9 +309,7 @@ where
         *cov.borrow_mut() = Some(TestCoverage::new(test_name.to_string()));
     });
 
-    let result = f();
-
-    result
+    f()
 }
 
 pub fn current_coverage<F, R>(f: F) -> R

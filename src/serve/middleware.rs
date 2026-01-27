@@ -111,7 +111,7 @@ pub struct Middleware {
 // Middleware registry stored in thread-local storage.
 // Middleware contains Value (which uses Rc), so must be accessed from interpreter thread only.
 thread_local! {
-    pub static MIDDLEWARE: RefCell<Vec<Middleware>> = RefCell::new(Vec::new());
+    pub static MIDDLEWARE: RefCell<Vec<Middleware>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Clear all registered middleware.

@@ -339,7 +339,8 @@ impl Interpreter {
                 let env_json = self.serialize_environment(&captured_env);
 
                 // Get current file path for error location
-                let file_path = self.current_source_path
+                let file_path = self
+                    .current_source_path
                     .as_ref()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| "unknown".to_string());
@@ -348,7 +349,9 @@ impl Interpreter {
                 let mut stack_trace = self.get_stack_trace();
 
                 // Get the current function name from the last stack frame
-                let func_name = self.call_stack.last()
+                let func_name = self
+                    .call_stack
+                    .last()
                     .map(|f| f.function_name.clone())
                     .unwrap_or_else(|| "unknown".to_string());
 
@@ -358,7 +361,12 @@ impl Interpreter {
                 }
                 stack_trace.push(format!("{} at {}:{}", func_name, file_path, e.span().line));
 
-                Err(RuntimeError::with_env(e.to_string(), e.span(), env_json, stack_trace))
+                Err(RuntimeError::with_env(
+                    e.to_string(),
+                    e.span(),
+                    env_json,
+                    stack_trace,
+                ))
             }
             other => other,
         };
@@ -411,7 +419,12 @@ impl Interpreter {
                     // Capture stack trace before popping frame
                     let stack_trace = self.get_stack_trace();
 
-                    Err(RuntimeError::with_env(e.to_string(), e.span(), env_json, stack_trace))
+                    Err(RuntimeError::with_env(
+                        e.to_string(),
+                        e.span(),
+                        env_json,
+                        stack_trace,
+                    ))
                 }
             }
         };

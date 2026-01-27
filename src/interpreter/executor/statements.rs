@@ -279,12 +279,12 @@ impl Interpreter {
         };
 
         // Check if this class extends Model (directly or indirectly)
-        let extends_model = superclass.as_ref().map_or(false, |sc| {
+        let extends_model = superclass.as_ref().is_some_and(|sc| {
             sc.name == "Model"
                 || sc
                     .superclass
                     .as_ref()
-                    .map_or(false, |ssc| ssc.name == "Model")
+                    .is_some_and(|ssc| ssc.name == "Model")
         });
 
         // Create environment for methods (with potential super binding)

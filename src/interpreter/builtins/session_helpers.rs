@@ -13,7 +13,7 @@ use super::request_helpers::{
 type HashPairs = Vec<(Value, Value)>;
 
 thread_local! {
-    static TEST_USER: RefCell<Option<Value>> = RefCell::new(None);
+    static TEST_USER: RefCell<Option<Value>> = const { RefCell::new(None) };
 }
 
 /// Register session helper built-in functions.

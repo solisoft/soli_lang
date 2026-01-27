@@ -70,7 +70,7 @@ pub async fn handle_live_reload_sse(
                 .body(Full::new(Bytes::from("retry: 100\n: keepalive\n\n")))
                 .unwrap()
         }
-        }
+    }
 }
 
 /// Find the last occurrence of an ASCII pattern in a string, case-insensitive.

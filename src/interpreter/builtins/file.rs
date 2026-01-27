@@ -42,11 +42,9 @@ pub fn register_file_builtins(env: &mut Environment) {
     env.define(
         "slurp".to_string(),
         Value::NativeFunction(NativeFunction::new("slurp", None, |args| match &args[..] {
-            [Value::String(path)] => {
-                fs::read_to_string(path)
-                    .map(Value::String)
-                    .map_err(|e| format!("slurp failed to read {}: {}", path, e))
-            }
+            [Value::String(path)] => fs::read_to_string(path)
+                .map(Value::String)
+                .map_err(|e| format!("slurp failed to read {}: {}", path, e)),
             [Value::String(path), Value::String(mode)] => {
                 if mode == "binary" {
                     let bytes = fs::read(path)
