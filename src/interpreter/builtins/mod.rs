@@ -22,6 +22,7 @@ pub mod file;
 pub mod hash;
 pub mod html;
 pub mod http;
+pub mod http_class;
 pub mod i18n;
 pub mod jwt;
 pub mod math;
@@ -181,8 +182,8 @@ pub fn register_builtins(env: &mut Environment) {
 
     // ===== Register other submodule builtins =====
 
-    // Register HTTP client functions
-    http::register_http_builtins(env);
+    // Register HTTP class
+    http_class::register_http_class(env);
 
     // Register HTTP server functions
     server::register_server_builtins(env);

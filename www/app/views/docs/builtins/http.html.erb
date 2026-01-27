@@ -9,12 +9,28 @@
             <span class="text-white">HTTP</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">HTTP Functions</span>
+            <span class="bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">HTTP Class</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            HTTP client for GET, POST, PUT, PATCH, DELETE requests with JSON support and parallel requests.
+            HTTP client class for GET, POST, PUT, PATCH, DELETE requests with JSON support and parallel requests.
         </p>
     </div>
+
+    <!-- HTTP Class Overview -->
+    <section id="section-class-overview" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+            </span>
+            HTTP Class
+        </h2>
+        <p class="text-gray-400 mb-4">All HTTP functions are accessed via the <code class="text-indigo-400">HTTP</code> class:</p>
+        <pre data-filename="Example"><code class="language-soli text-sm">let response = HTTP.get("https://api.example.com/users")
+let response = HTTP.post("https://api.example.com/users", { "name": "Alice" })
+let response = HTTP.request("DELETE", "https://api.example.com/users/1")</code></pre>
+    </section>
 
     <!-- Basic HTTP Requests -->
     <section id="section-basic-requests" class="scroll-mt-20 mb-12">
@@ -29,13 +45,13 @@
 
         <section id="fn-http-get" class="scroll-mt-20 mb-6">
             <a href="#fn-http-get" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_get(url, options?)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.get(url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">Perform an HTTP GET request. Returns <code class="text-amber-400">{ "status": Int, "body": String, "headers": Hash }</code>.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_get("https://api.example.com/users")
+            <p class="text-gray-400 mb-3">Perform an HTTP GET request. Returns a Future that resolves to the response body as a string.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.get("https://api.example.com/users")
 if resp["status"] == 200 {
     println(resp["body"])
 }</code></pre>
@@ -43,13 +59,13 @@ if resp["status"] == 200 {
 
         <section id="fn-http-post" class="scroll-mt-20 mb-6">
             <a href="#fn-http-post" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_post(url, body, options?)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.post(url, body, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP POST request with a body.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_post(
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.post(
     "https://api.example.com/users",
     "name=Alice",
     { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
@@ -58,13 +74,13 @@ if resp["status"] == 200 {
 
         <section id="fn-http-put" class="scroll-mt-20 mb-6">
             <a href="#fn-http-put" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_put(url, body, options?)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.put(url, body, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP PUT request with a body.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_put(
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.put(
     "https://api.example.com/users/1",
     { "name": "Alice Updated" }
 )</code></pre>
@@ -72,24 +88,24 @@ if resp["status"] == 200 {
 
         <section id="fn-http-delete" class="scroll-mt-20 mb-6">
             <a href="#fn-http-delete" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_delete(url, options?)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.delete(url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP DELETE request.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_delete("https://api.example.com/users/1")</code></pre>
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.delete("https://api.example.com/users/1")</code></pre>
         </section>
 
         <section id="fn-http-patch" class="scroll-mt-20 mb-6">
             <a href="#fn-http-patch" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_patch(url, body, options?)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.patch(url, body, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP PATCH request with a body.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_patch(
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.patch(
     "https://api.example.com/users/1",
     { "email": "new_email@example.com" }
 )</code></pre>
@@ -97,13 +113,13 @@ if resp["status"] == 200 {
 
         <section id="fn-http-head" class="scroll-mt-20 mb-6">
             <a href="#fn-http-head" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_head(url, options?)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.head(url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP HEAD request.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_head("https://api.example.com/users")
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.head("https://api.example.com/users")
 println(resp["headers"])</code></pre>
         </section>
     </section>
@@ -114,25 +130,25 @@ println(resp["headers"])</code></pre>
 
         <section id="fn-http-get-json" class="scroll-mt-20 mb-6">
             <a href="#fn-http-get-json" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_get_json(url)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.get_json(url)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">GET request with automatic JSON parsing of response body.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let data = http_get_json("https://api.example.com/users/1")
+            <pre data-filename="Example"><code class="language-soli text-sm">let data = HTTP.get_json("https://api.example.com/users/1")
 println(data["body"]["name"])</code></pre>
         </section>
 
         <section id="fn-http-post-json" class="scroll-mt-20 mb-6">
             <a href="#fn-http-post-json" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_post_json(url, data)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.post_json(url, data)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">POST request with automatic JSON serialization.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_post_json(
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.post_json(
     "https://api.example.com/users",
     { "name": "Alice", "email": "alice@example.com" }
 )</code></pre>
@@ -140,13 +156,13 @@ println(data["body"]["name"])</code></pre>
 
         <section id="fn-http-put-json" class="scroll-mt-20 mb-6">
             <a href="#fn-http-put-json" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_put_json(url, data)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.put_json(url, data)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">PUT request with automatic JSON serialization.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_put_json(
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.put_json(
     "https://api.example.com/users/1",
     { "name": "Alice Updated", "email": "alice_updated@example.com" }
 )</code></pre>
@@ -154,13 +170,13 @@ println(data["body"]["name"])</code></pre>
 
         <section id="fn-http-patch-json" class="scroll-mt-20 mb-6">
             <a href="#fn-http-patch-json" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_patch_json(url, data)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.patch_json(url, data)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">PATCH request with automatic JSON serialization.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_patch_json(
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.patch_json(
     "https://api.example.com/users/1",
     { "email": "new_email@example.com" }
 )</code></pre>
@@ -173,14 +189,14 @@ println(data["body"]["name"])</code></pre>
 
         <section id="fn-http-request" class="scroll-mt-20 mb-6">
             <a href="#fn-http-request" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">http_request(method, url, options?)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.request(method, url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.).</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let resp = http_request("DELETE", "https://api.example.com/users/1")
-let resp = http_request("PATCH", url, { "body": json, "headers": headers })</code></pre>
+            <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.request("DELETE", "https://api.example.com/users/1")
+let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</code></pre>
         </section>
     </section>
 
@@ -243,20 +259,49 @@ let resp = http_request("PATCH", url, { "body": json, "headers": headers })</cod
         </div>
     </section>
 
+    <!-- JSON Helpers -->
+    <section id="section-json-helpers" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">JSON Helpers</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="fn-http-json-parse" class="scroll-mt-20">
+                    <a href="#fn-http-json-parse" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">HTTP.json_parse(string)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Parse a JSON string into a Soli value</p>
+                </section>
+
+                <section id="fn-http-json-stringify" class="scroll-mt-20">
+                    <a href="#fn-http-json-stringify" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">HTTP.json_stringify(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Convert a Soli value to a JSON string</p>
+                </section>
+            </div>
+        </div>
+    </section>
+
     <!-- Parallel Requests -->
     <section id="section-parallel-requests" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Parallel Requests</h2>
 
         <section id="fn-http-get-all" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-http-get-all" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">http_get_all(urls)</code>
+            <div class="rounded-xl border border-white/10 p-5">
+                <a bg-white/5 href="#fn-http-get-all" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">HTTP.get_all(urls)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let responses = http_get_all([
+                <pre data-filename="Example"><code class="language-soli text-sm">let responses = HTTP.get_all([
     "https://api.example.com/users",
     "https://api.example.com/posts"
 ])</code></pre>
@@ -266,13 +311,13 @@ let resp = http_request("PATCH", url, { "body": json, "headers": headers })</cod
         <section id="fn-http-parallel" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-http-parallel" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">http_parallel(requests)</code>
+                    <code class="text-lg font-mono text-indigo-400">HTTP.parallel(requests)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let responses = http_parallel([
+                <pre data-filename="Example"><code class="language-soli text-sm">let responses = HTTP.parallel([
     { "method": "GET", "url": "https://api.example.com/users" },
     { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
 ])</code></pre>
