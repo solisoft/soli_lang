@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/solisoft/soli_lang/compare/v0.1.0...v0.1.1) (2026-01-27)
+
+
+### Bug Fixes
+
+* Add license and repository to Cargo.toml for crates.io ([9102ea7](https://github.com/solisoft/soli_lang/commit/9102ea7b318c9e25618128abcbff7beb259357dc))
+
 ## 0.1.0 (2026-01-27)
 
 
