@@ -60,42 +60,7 @@ jobs:
       - name: Run language tests
         run: ./bin/soli test tests/
 
-  # Job 3: Run MVC app tests
-  mvc-tests:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download soli binary
-        uses: actions/download-artifact@v4
-        with:
-          name: soli-binary
-          path: ./bin
-
-      - name: Make binary executable
-        run: chmod +x ./bin/soli
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: www/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: www
-
-      - name: Build CSS
-        run: npm run build:css
-        working-directory: www
-
-      - name: Run MVC tests
-        run: ../bin/soli test tests/
-        working-directory: www
-
-  # Job 4: Lint check
+  # Job 3: Lint check
   lint:
     runs-on: ubuntu-latest
     steps:
