@@ -37,6 +37,13 @@ impl TypeChecker {
                 Ok(Type::Bool)
             }
 
+            ExprKind::NullishCoalescing { left, right } => {
+                self.check_expr(left)?;
+                let right_type = self.check_expr(right)?;
+                // The result type is the right type (since if left is null, we return right)
+                Ok(right_type)
+            }
+
             ExprKind::Call { callee, arguments } => self.check_call_expr(expr, callee, arguments),
 
             ExprKind::Pipeline { left, right } => self.check_pipeline_expr(left, right),

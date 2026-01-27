@@ -517,7 +517,11 @@ pub fn build_validation_result(
 /// - "User" → "users"
 /// - "BlogPost" → "blog_posts"
 /// - "UserProfile" → "user_profiles"
+/// - "CustomerModel" → "customers" (strips _model suffix before pluralizing)
 fn class_name_to_collection(name: &str) -> String {
+    // Strip _model suffix if present for cleaner collection names
+    let name = name.strip_suffix("Model").unwrap_or(name);
+
     let mut result = String::new();
     for (i, c) in name.chars().enumerate() {
         if c.is_uppercase() && i > 0 {

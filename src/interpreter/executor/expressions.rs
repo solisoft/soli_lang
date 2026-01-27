@@ -62,6 +62,15 @@ impl Interpreter {
                 }
             }
 
+            ExprKind::NullishCoalescing { left, right } => {
+                let left_val = self.evaluate(left)?;
+                if matches!(left_val, Value::Null) {
+                    self.evaluate(right)
+                } else {
+                    Ok(left_val)
+                }
+            }
+
             ExprKind::Call { callee, arguments } => {
                 self.evaluate_call(callee, arguments, expr.span)
             }
@@ -411,9 +420,24 @@ impl Interpreter {
                     return Ok(Value::Function(method));
                 }
                 if let Some(native_method) = class.find_native_static_method(name) {
-                    // Native static methods don't need the class prepended
-                    // Just return the native function directly
-                    return Ok(Value::NativeFunction((*native_method).clone()));
+                    // For native static methods that expect the class as first arg,
+                    // we need to return a special wrapper that will prepend the class
+                    // Create a closure that prepends the class to arguments
+                    let class_clone = class.clone();
+                    let method_clone = (*native_method).clone();
+                    let name_clone = name.to_string();
+
+                    return Ok(Value::NativeFunction(NativeFunction::new(
+                        &format!("{}.{}", class.name, name),
+                        Some(0),
+                        move |args: Vec<Value>| {
+                            // Prepend the class value to arguments - the native method expects
+                            // the class as its first argument (arity 1), but users call with 0 args
+                            let mut new_args = vec![Value::Class(class_clone.clone())];
+                            new_args.extend(args);
+                            (method_clone.func)(new_args)
+                        },
+                    )));
                 }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: class.name.clone(),

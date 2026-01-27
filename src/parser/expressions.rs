@@ -387,6 +387,19 @@ impl Parser {
                 ))
             }
 
+            // Nullish coalescing: a ?? b
+            TokenKind::NullishCoalescing => {
+                let right = self.parse_precedence(precedence.next())?;
+                let span = start_span.merge(&right.span);
+                Ok(Expr::new(
+                    ExprKind::NullishCoalescing {
+                        left: Box::new(left),
+                        right: Box::new(right),
+                    },
+                    span,
+                ))
+            }
+
             // Pipeline operator
             TokenKind::Pipeline => {
                 let right = self.parse_precedence(precedence.next())?;

@@ -78,8 +78,9 @@ pub enum TokenKind {
     Bang,
     And,
     Or,
-    Pipeline, // |>
-    Pipe,     // |
+    Pipeline,          // |>
+    Pipe,              // |
+    NullishCoalescing, // ??
 
     // Delimiters
     LeftParen,
@@ -223,6 +224,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Or => write!(f, "||"),
             TokenKind::Pipeline => write!(f, "|>"),
             TokenKind::Pipe => write!(f, "|"),
+            TokenKind::NullishCoalescing => write!(f, "??"),
             TokenKind::LeftParen => write!(f, "("),
             TokenKind::RightParen => write!(f, ")"),
             TokenKind::LeftBrace => write!(f, "{{"),

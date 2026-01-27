@@ -1254,6 +1254,11 @@ fn worker_loop(
     // Set dev mode for file hash caching (production = permanent cache, dev = check mtime)
     crate::interpreter::builtins::template::set_dev_mode(dev_mode);
 
+    // Load models in this worker so classes are defined in environment
+    if let Err(e) = load_models(interpreter, &_models_dir) {
+        eprintln!("Worker {}: Error loading models: {}", worker_id, e);
+    }
+
     // Load controllers in this worker so functions are defined in environment
     load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
 

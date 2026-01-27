@@ -88,6 +88,17 @@ pub fn register_builtins(env: &mut Environment) {
         })),
     );
 
+    // await(future) - Await a Future value and return the resolved result
+    env.define(
+        "await".to_string(),
+        Value::NativeFunction(NativeFunction::new("await", Some(1), |args| {
+            if args.is_empty() {
+                return Err("await() requires one argument".to_string());
+            }
+            args[0].clone().resolve()
+        })),
+    );
+
     // input(prompt?) - Read a line from stdin
     env.define(
         "input".to_string(),

@@ -736,6 +736,27 @@ impl Compiler {
                 self.patch_jump(jump);
             }
 
+            ExprKind::NullishCoalescing { left, right } => {
+                // a ?? b: if a is null, return b; else return a
+                self.compile_expression(left)?;
+                // Stack: [left]
+                self.emit_op(OpCode::Dup, line);
+                // Stack: [left, left]
+                // Jump to right branch if left is null (null is falsy)
+                let jump_to_right = self.emit_jump(OpCode::JumpIfFalseNoPop, line);
+                // Stack: [left, left] (unchanged if condition was true)
+                self.emit_op(OpCode::Pop, line);
+                // Stack: [left] - keep the original value
+                let end_jump = self.emit_jump(OpCode::Jump, line);
+                // Right branch: pop the duplicate and original, then evaluate right
+                self.patch_jump(jump_to_right);
+                self.emit_op(OpCode::Pop, line);
+                // Stack: [] - both values popped
+                self.compile_expression(right)?;
+                // Stack: [right]
+                self.patch_jump(end_jump);
+            }
+
             ExprKind::Lambda {
                 params,
                 return_type: _,

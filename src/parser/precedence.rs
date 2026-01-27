@@ -6,18 +6,19 @@ use crate::lexer::TokenKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
     None = 0,
-    Assignment = 1, // =
-    Ternary = 2,    // ? :
-    Or = 3,         // ||
-    And = 4,        // &&
-    Equality = 5,   // == !=
-    Comparison = 6, // < > <= >=
-    Pipeline = 7,   // |>
-    Term = 8,       // + -
-    Factor = 9,     // * / %
-    Unary = 10,     // ! -
-    Call = 11,      // . () []
-    Primary = 12,
+    Assignment = 1,        // =
+    Ternary = 2,           // ? :
+    NullishCoalescing = 3, // ??
+    Or = 4,                // ||
+    And = 5,               // &&
+    Equality = 6,          // == !=
+    Comparison = 7,        // < > <= >=
+    Pipeline = 8,          // |>
+    Term = 9,              // + -
+    Factor = 10,           // * / %
+    Unary = 11,            // ! -
+    Call = 12,             // . () []
+    Primary = 13,
 }
 
 impl Precedence {
@@ -25,7 +26,8 @@ impl Precedence {
         match self {
             Precedence::None => Precedence::Assignment,
             Precedence::Assignment => Precedence::Ternary,
-            Precedence::Ternary => Precedence::Or,
+            Precedence::Ternary => Precedence::NullishCoalescing,
+            Precedence::NullishCoalescing => Precedence::Or,
             Precedence::Or => Precedence::And,
             Precedence::And => Precedence::Equality,
             Precedence::Equality => Precedence::Comparison,
@@ -44,6 +46,7 @@ pub fn get_precedence(kind: &TokenKind) -> Precedence {
     match kind {
         TokenKind::Equal => Precedence::Assignment,
         TokenKind::Question => Precedence::Ternary,
+        TokenKind::NullishCoalescing => Precedence::NullishCoalescing,
         TokenKind::Or => Precedence::Or,
         TokenKind::And => Precedence::And,
         TokenKind::EqualEqual | TokenKind::BangEqual => Precedence::Equality,

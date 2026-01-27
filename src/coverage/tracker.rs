@@ -494,6 +494,10 @@ impl CoverageTracker {
                 self.collect_lines_from_expr(path, lines, left);
                 self.collect_lines_from_expr(path, lines, right);
             }
+            NullishCoalescing { left, right } => {
+                self.collect_lines_from_expr(path, lines, left);
+                self.collect_lines_from_expr(path, lines, right);
+            }
             Lambda { body, .. } => {
                 for stmt in body {
                     self.collect_lines_from_stmt(path, lines, stmt);

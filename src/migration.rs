@@ -228,14 +228,21 @@ impl MigrationRunner {
             .block_on(async {
                 let mut client = SoliDBClient::connect(&config.host)
                     .await
-                    .map_err(|e| format!("Failed to connect to database: {}", e))?;
+                    .map_err(|e| format!("Failed to connect: {}", e))?;
 
-                // Authenticate if credentials provided
                 if let (Some(username), Some(password)) = (&config.username, &config.password) {
                     client
                         .auth(&config.database, username, password)
                         .await
-                        .map_err(|e| format!("Authentication failed: {}", e))?;
+                        .map_err(|e| format!("Auth failed: {}", e))?;
+                }
+
+                // Create _migrations collection if it doesn't exist
+                if client.list_collections(&config.database).await
+                    .map_err(|e| format!("Failed to list collections: {}", e))?
+                    .iter().find(|c| c.as_str() == "_migrations").is_none() {
+                    client.create_collection(&config.database, "_migrations", None).await
+                        .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
                 }
 
                 // Query applied migrations (SDBQL/AQL syntax)
@@ -274,6 +281,14 @@ impl MigrationRunner {
                         .auth(&config.database, username, password)
                         .await
                         .map_err(|e| format!("Auth failed: {}", e))?;
+                }
+
+                // Create _migrations collection if it doesn't exist
+                if client.list_collections(&config.database).await
+                    .map_err(|e| format!("Failed to list collections: {}", e))?
+                    .iter().find(|c| c.as_str() == "_migrations").is_none() {
+                    client.create_collection(&config.database, "_migrations", None).await
+                        .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
                 }
 
                 // Get the next batch number (SDBQL/AQL syntax)
@@ -324,6 +339,14 @@ impl MigrationRunner {
                         .map_err(|e| format!("Auth failed: {}", e))?;
                 }
 
+                // Create _migrations collection if it doesn't exist
+                if client.list_collections(&config.database).await
+                    .map_err(|e| format!("Failed to list collections: {}", e))?
+                    .iter().find(|c| c.as_str() == "_migrations").is_none() {
+                    client.create_collection(&config.database, "_migrations", None).await
+                        .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
+                }
+
                 client
                     .delete(&config.database, "_migrations", &version)
                     .await
@@ -355,37 +378,37 @@ let _db = Solidb(_db_host, _db_name);
 class MigrationDb {{
     // Run a raw SDBQL query
     fn query(sdbql: String) -> Any {{
-        return _db.query(sdbql);
+        return solidb_query(_db_host, _db_name, sdbql);
     }}
 
     // Collection management
     fn create_collection(name: String) -> Any {{
-        return _db.create_collection(name);
+        return solidb_create_collection(_db, name);
     }}
 
     fn drop_collection(name: String) -> Any {{
-        return _db.drop_collection(name);
+        return solidb_drop_collection(_db, name);
     }}
 
     fn list_collections() -> Any {{
-        return _db.list_collections();
+        return solidb_list_collections(_db);
     }}
 
     fn collection_stats(name: String) -> Any {{
-        return _db.collection_stats(name);
+        return solidb_collection_stats(_db, name);
     }}
 
     // Index management
     fn create_index(collection: String, name: String, fields: Any, options: Any) -> Any {{
-        return _db.create_index(collection, name, fields, options);
+        return solidb_create_index(_db, collection, name, fields, options);
     }}
 
     fn drop_index(collection: String, name: String) -> Any {{
-        return _db.drop_index(collection, name);
+        return solidb_drop_index(_db, collection, name);
     }}
 
     fn list_indexes(collection: String) -> Any {{
-        return _db.list_indexes(collection);
+        return solidb_list_indexes(_db, collection);
     }}
 }}
 

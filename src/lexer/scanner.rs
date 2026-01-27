@@ -83,7 +83,13 @@ impl<'a> Scanner<'a> {
             }
             ':' => Ok(self.make_token(TokenKind::Colon)),
             ';' => Ok(self.make_token(TokenKind::Semicolon)),
-            '?' => Ok(self.make_token(TokenKind::Question)),
+            '?' => {
+                if self.match_char('?') {
+                    Ok(self.make_token(TokenKind::NullishCoalescing))
+                } else {
+                    Ok(self.make_token(TokenKind::Question))
+                }
+            }
             '+' => Ok(self.make_token(TokenKind::Plus)),
             '*' => Ok(self.make_token(TokenKind::Star)),
             '/' => Ok(self.make_token(TokenKind::Slash)),

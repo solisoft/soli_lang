@@ -1204,7 +1204,8 @@ pub fn register_template_builtins(env: &mut Environment) {
                 return Err("render_json() requires at least one argument".to_string());
             }
 
-            let data = args[0].clone();
+            // Auto-resolve any Futures in the data
+            let data = resolve_futures_in_value(args[0].clone());
             let status = if args.len() > 1 {
                 match &args[1] {
                     Value::Int(n) => *n as i64,

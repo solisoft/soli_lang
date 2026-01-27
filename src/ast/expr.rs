@@ -94,6 +94,9 @@ pub enum ExprKind {
     /// Logical or: a || b
     LogicalOr { left: Box<Expr>, right: Box<Expr> },
 
+    /// Nullish coalescing: a ?? b (returns b if a is null, else a)
+    NullishCoalescing { left: Box<Expr>, right: Box<Expr> },
+
     /// Lambda/anonymous function: |x, y| { stmt; }
     Lambda {
         params: Vec<Parameter>,

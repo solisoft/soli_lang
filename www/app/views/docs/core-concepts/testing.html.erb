@@ -380,18 +380,137 @@ assert_eq(location, "/expected/path");</code></pre>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Assertions</h3>
+        <p class="text-gray-400 mb-4">Soli provides assertion functions for writing tests with expressive syntax:</p>
 
-        <pre data-filename="Assertions"><code class="language-soli text-sm">expect(value).to_equal(expected);
+        <section id="fn-assert-equal" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-equal" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">assert_equal(expected, actual, message)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Asserts that two values are equal.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42");
+assert_equal("hello", str, "string should match");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-assert-true" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-true" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">assert_true(value, message)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Asserts that a value is true.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_true(user.is_active, "user should be active");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-assert-false" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-false" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">assert_false(value, message)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Asserts that a value is false.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_false(user.is_blocked, "user should not be blocked");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-assert-contains" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-contains" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">assert_contains(haystack, needle, message)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Asserts that a collection contains a specific value.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_contains(users, "admin", "should contain admin user");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-assert-nil" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-nil" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">assert_nil(value, message)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Asserts that a value is nil (null).</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_nil(result.error, "should have no error");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-assert-not-nil" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-not-nil" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">assert_not_nil(value, message)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Asserts that a value is not nil.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_not_nil(user.id, "user should have an id");</code></pre>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-8">
+            <h4 class="text-lg font-semibold text-white mb-3">Assertion Result</h4>
+            <p class="text-gray-400 mb-2">All assertion functions return a result hash:</p>
+            <pre data-filename="Result"><code class="language-soli text-sm">{
+    "passed": true,
+    "message": "test description",
+    "expected": value_that_was_expected,
+    "actual": value_that_was_actual
+}</code></pre>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Expect Syntax (Alternative)</h3>
+        <pre data-filename="Expectations"><code class="language-soli text-sm">expect(value).to_equal(expected);
 expect(value).to_be(expected);
 expect(value).to_not_equal(other);
 expect(value).to_be_null();
 expect(value).to_not_be_null();
-expect(value).to_be_greater_than(10);
-expect(value).to_be_less_than(100);
-expect(value).to_contain("substring");
-expect(value).to_match(regex);
-expect(hash).to_have_key("name");
-expect(json_string).to_be_valid_json();</code></pre>
+expect(value).to_contain("substring");</code></pre>
+
+        <h2 class="text-2xl font-bold text-white mb-6" id="section-factories">Factory Functions</h2>
+
+        <section id="fn-factory-define" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-factory-define" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">Factory.define(name, data)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Define a factory with default data.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Factory.define("user", {
+    "name": "Test User",
+    "email": "test@example.com"
+})</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-factory-create" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-factory-create" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">Factory.create(name)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Create an instance from a factory.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let user = Factory.create("user")</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-factory-create-with" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-factory-create-with" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">Factory.create_with(name, overrides)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Create an instance with custom overrides.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let admin = Factory.create_with("user", { "role": "admin" })</code></pre>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">Factory.create_list(name, count)</code>
+                <p class="text-sm text-gray-400 mt-1">Create multiple instances</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">Factory.sequence(name)</code>
+                <p class="text-sm text-gray-400 mt-1">Get auto-incrementing number</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">Factory.clear()</code>
+                <p class="text-sm text-gray-400 mt-1">Clear all factories</p>
+            </div>
+        </div>
 
         <h2 class="text-2xl font-bold text-white mb-6" id="section-database-testing">Database Testing</h2>
 

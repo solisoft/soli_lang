@@ -158,15 +158,114 @@
     <section id="section-assertions" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Assertions</h2>
 
+        <section id="fn-assert-equal" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-equal" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">assert_equal(expected, actual, message)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Asserts that two values are equal.</p>
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42");
+assert_equal("hello", str, "string should match");
+assert_equal(true, is_valid, "should be valid");</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-assert-true" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-true" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">assert_true(value, message)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-indigo-400">true</code>.</p>
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_true(user.is_active, "user should be active");
+assert_true(contains(items, "test"), "should contain test item");</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-assert-false" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-false" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">assert_false(value, message)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-indigo-400">false</code>.</p>
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_false(user.is_blocked, "user should not be blocked");
+assert_false(is_empty(items), "items should not be empty");</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-assert-contains" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-contains" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">assert_contains(haystack, needle, message)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Asserts that a collection contains a specific value.</p>
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_contains(users, "admin", "should contain admin user");
+assert_contains([1, 2, 3], 2, "should contain 2");</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-assert-nil" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-nil" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">assert_nil(value, message)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-indigo-400">nil</code> (null).</p>
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_nil(result.error, "should have no error");
+assert_nil(user.deleted_at, "should not be deleted");</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="fn-assert-not-nil" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-assert-not-nil" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">assert_not_nil(value, message)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Asserts that a value is not <code class="text-indigo-400">nil</code>.</p>
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_not_nil(user.id, "user should have an id");
+assert_not_nil(response.body, "response should have body");</code></pre>
+                </div>
+            </div>
+        </section>
+
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <h3 class="text-lg font-semibold text-white mb-3">Basic Assertions</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-assert" class="scroll-mt-20">
-                    <a href="#fn-assert" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">assert(condition)</code>
-                    </a>
-                    <p class="text-gray-400 text-sm mt-1">Assert condition is true</p>
-                </section>
+            <h3 class="text-lg font-semibold text-white mb-3">Assertion Result</h3>
+            <p class="text-gray-400 mb-3">All assertion functions return a result hash with the following structure:</p>
+            <pre data-filename="Result Structure"><code class="language-soli text-sm">{
+    "passed": true,
+    "message": "description of the test",
+    "expected": value_that_was_expected,
+    "actual": value_that_was_actual
+}</code></pre>
+        </div>
+    </section>
 
                 <section id="fn-assert-not" class="scroll-mt-20">
                     <a href="#fn-assert-not" class="group flex items-center gap-2">
