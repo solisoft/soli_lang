@@ -7,7 +7,6 @@
 //! Solilang supports multiple execution modes:
 //! - **Tree-walk interpreter**: Simple, direct AST interpretation
 //! - **Bytecode VM**: Faster execution via bytecode compilation
-//! - **JIT compilation**: (with `jit` feature) Native code for hot paths
 
 // Allow some clippy lints that are stylistic and not critical
 #![allow(clippy::module_inception)]
@@ -56,12 +55,10 @@ pub mod module;
 pub mod parser;
 pub mod scaffold;
 pub mod serve;
+pub mod solidb_http;
 pub mod span;
 pub mod template;
 pub mod types;
-
-#[cfg(feature = "jit")]
-pub mod jit;
 
 use error::SolilangError;
 
@@ -73,9 +70,6 @@ pub enum ExecutionMode {
     TreeWalk,
     /// Bytecode virtual machine (faster)
     Bytecode,
-    /// JIT compilation (fastest, requires `jit` feature)
-    #[cfg(feature = "jit")]
-    Jit,
 }
 
 /// Run a Solilang program from source code using the default execution mode.
@@ -178,16 +172,6 @@ pub fn run_with_path(
             let mut vm = bytecode::VM::new();
             vm.run(function)?;
         }
-        #[cfg(feature = "jit")]
-        ExecutionMode::Jit => {
-            // JIT compilation path
-            let mut compiler = bytecode::Compiler::new();
-            let function = compiler.compile(&program)?;
-
-            // Run with JIT
-            let mut vm = jit::JitVM::new();
-            vm.run(function)?;
-        }
     }
 
     Ok(())
@@ -252,16 +236,6 @@ pub fn run_with_path_and_coverage(
 
             // Execute on VM
             let mut vm = bytecode::VM::new();
-            vm.run(function)?;
-        }
-        #[cfg(feature = "jit")]
-        ExecutionMode::Jit => {
-            // JIT compilation path
-            let mut compiler = bytecode::Compiler::new();
-            let function = compiler.compile(&program)?;
-
-            // Run with JIT
-            let mut vm = jit::JitVM::new();
             vm.run(function)?;
         }
     }

@@ -17,7 +17,7 @@ use crate::interpreter::builtins::datetime::helpers as datetime_helpers;
 use crate::interpreter::builtins::html;
 use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Function, NativeFunction, Value};
+use crate::interpreter::value::{value_to_json, Function, NativeFunction, Value};
 use crate::template::{html_response, TemplateCache};
 
 // Thread-local template cache
@@ -1217,8 +1217,7 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             let json_body = match &data {
                 Value::String(s) => s.clone(),
-                Value::Null => "null".to_string(),
-                _ => format!("{}", data),
+                _ => value_to_json(&data)?.to_string(),
             };
 
             let headers = Value::Hash(Rc::new(RefCell::new(vec![(

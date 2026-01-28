@@ -14,15 +14,14 @@ path = "src/main.rs"
 [features]
 default = ["bytecode"]
 bytecode = []
-jit = ["bytecode", "cranelift", "cranelift-module", "cranelift-jit", "cranelift-codegen", "cranelift-native", "cranelift-frontend", "target-lexicon"]
 
 [dependencies]
 thiserror = "1.0"
 rustyline = "12.0"
 
 # HTTP support
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "cookies"], default-features = false }
 ureq = { version = "2.9", features = ["json"] }
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
@@ -56,9 +55,6 @@ multer = "3"
 # JWT support
 jsonwebtoken = "9"
 
-# Database
-solidb-client = "0.5.0"
-
 # LiveView support
 diff = "0.1.13"
 async-channel = "2.3"
@@ -74,23 +70,10 @@ rand = "0.8"
 glob = "0.3"
 urlencoding = "2"
 
-# JIT compilation dependencies (optional)
-cranelift = { version = "0.111", optional = true }
-cranelift-module = { version = "0.111", optional = true }
-cranelift-jit = { version = "0.111", optional = true }
-cranelift-codegen = { version = "0.111", optional = true }
-cranelift-native = { version = "0.111", optional = true }
-cranelift-frontend = { version = "0.111", optional = true }
-target-lexicon = { version = "0.12", optional = true }
-
 [dev-dependencies]
 pretty_assertions = "1.4"
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
 name = "interpreter"
-harness = false
-
-[[bench]]
-name = "mode_comparison"
 harness = false

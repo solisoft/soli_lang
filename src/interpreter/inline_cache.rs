@@ -13,7 +13,8 @@
 use crate::interpreter::SymbolId;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::RwLock;
 
 lazy_static! {
     pub static ref INLINE_CACHE: InlineCacheRegistry = InlineCacheRegistry::new();
@@ -165,7 +166,7 @@ impl MethodInlineCache {
 pub struct InlineCacheRegistry {
     property_caches: RwLock<HashMap<usize, PropertyInlineCache>>,
     method_caches: RwLock<HashMap<usize, MethodInlineCache>>,
-    next_hidden_class_id: Mutex<u32>,
+    next_hidden_class_id: AtomicU32,
 }
 
 impl InlineCacheRegistry {
@@ -173,7 +174,7 @@ impl InlineCacheRegistry {
         Self {
             property_caches: RwLock::new(HashMap::new()),
             method_caches: RwLock::new(HashMap::new()),
-            next_hidden_class_id: Mutex::new(0),
+            next_hidden_class_id: AtomicU32::new(0),
         }
     }
 
@@ -202,9 +203,7 @@ impl InlineCacheRegistry {
     }
 
     pub fn new_hidden_class_id(&self) -> HiddenClassId {
-        let mut next = self.next_hidden_class_id.lock().unwrap();
-        let id = *next;
-        *next += 1;
+        let id = self.next_hidden_class_id.fetch_add(1, Ordering::Relaxed);
         HiddenClassId(id)
     }
 

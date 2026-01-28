@@ -85,15 +85,19 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread;
+use std::sync::{OnceLock, RwLock};
+use std::time::Duration;
 
+use crate::interpreter::builtins::http_class::get_http_client;
+use crate::serve::get_tokio_handle;
+use crate::solidb_http::SoliDBClient;
 use lazy_static::lazy_static;
-use solidb_client::SoliDBClient;
+use reqwest;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::symbol::SymbolId;
-use crate::interpreter::value::{Class, FutureState, HttpFutureKind, NativeFunction, Value};
+use crate::interpreter::value::{Class, NativeFunction, Value};
+
 
 // ============================================================================
 // Validation Types
@@ -198,34 +202,110 @@ pub struct ModelMetadata {
     pub callbacks: ModelCallbacks,
 }
 
+/// Cached database configuration to avoid repeated env::var() lookups.
+/// Note: api_key and database are read at request time so .env can be loaded later.
+struct DbConfig {
+    host: String,
+}
+
+impl DbConfig {
+    fn from_env() -> Self {
+        let host = std::env::var("SOLIDB_HOST")
+            .unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let host = host
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .to_string();
+        Self { host }
+    }
+}
+
 lazy_static! {
     /// Global registry mapping class names to their metadata.
-    pub static ref MODEL_REGISTRY: Mutex<HashMap<String, ModelMetadata>> =
-        Mutex::new(HashMap::new());
+    pub static ref MODEL_REGISTRY: RwLock<HashMap<String, ModelMetadata>> =
+        RwLock::new(HashMap::new());
+
+    /// Global async HTTP client with connection pooling for SoliDB queries.
+    pub static ref ASYNC_HTTP_CLIENT: reqwest::Client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .pool_max_idle_per_host(64)
+        .tcp_keepalive(Duration::from_secs(60))
+        .build()
+        .expect("Failed to create async HTTP client");
+
+    /// Shared tokio runtime for database operations.
+    pub static ref DB_RUNTIME: tokio::runtime::Runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .enable_all()
+        .build()
+        .expect("Failed to create database runtime");
+
+    /// Cached DB configuration (for username/password which are less likely to change).
+    static ref DB_CONFIG: DbConfig = DbConfig::from_env();
+}
+
+/// Cached DB config - initialized on first use.
+static CACHED_DB_CONFIG: OnceLock<CachedDbConfig> = OnceLock::new();
+
+struct CachedDbConfig {
+    cursor_url: String,
+    api_key: Option<String>,
+}
+
+/// Initialize DB config from environment - call this after .env is loaded.
+pub fn init_db_config() {
+    let _ = get_db_config();
+}
+
+/// Get cached DB config - initialized on first call.
+fn get_db_config() -> &'static CachedDbConfig {
+    CACHED_DB_CONFIG.get_or_init(|| {
+        let host = std::env::var("SOLIDB_HOST")
+            .unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let host = host
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .to_string();
+        let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
+        let cursor_url = format!("http://{}/_api/database/{}/cursor", host, database);
+        let api_key = std::env::var("SOLIDB_API_KEY").ok();
+        CachedDbConfig { cursor_url, api_key }
+    })
+}
+
+/// Get cursor URL.
+fn get_cursor_url() -> &'static str {
+    &get_db_config().cursor_url
+}
+
+/// Get API key.
+fn get_api_key() -> Option<&'static str> {
+    get_db_config().api_key.as_deref()
 }
 
 /// Get or create metadata for a model class.
 pub fn get_or_create_metadata(class_name: &str) -> ModelMetadata {
-    let registry = MODEL_REGISTRY.lock().unwrap();
+    let registry = MODEL_REGISTRY.read().unwrap();
     registry.get(class_name).cloned().unwrap_or_default()
 }
 
 /// Update metadata for a model class.
 pub fn update_metadata(class_name: &str, metadata: ModelMetadata) {
-    let mut registry = MODEL_REGISTRY.lock().unwrap();
+    let mut registry = MODEL_REGISTRY.write().unwrap();
     registry.insert(class_name.to_string(), metadata);
 }
 
 /// Register a validation rule for a model class.
 pub fn register_validation(class_name: &str, rule: ValidationRule) {
-    let mut registry = MODEL_REGISTRY.lock().unwrap();
+    let mut registry = MODEL_REGISTRY.write().unwrap();
     let metadata = registry.entry(class_name.to_string()).or_default();
     metadata.validations.push(rule);
 }
 
 /// Register a callback for a model class.
 pub fn register_callback(class_name: &str, callback_type: &str, method_name: &str) {
-    let mut registry = MODEL_REGISTRY.lock().unwrap();
+    let mut registry = MODEL_REGISTRY.write().unwrap();
     let metadata = registry.entry(class_name.to_string()).or_default();
     match callback_type {
         "before_save" => metadata.callbacks.before_save.push(method_name.to_string()),
@@ -365,7 +445,7 @@ impl QueryBuilder {
 
 /// Run validations on data and return any errors.
 pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<ValidationError> {
-    let registry = MODEL_REGISTRY.lock().unwrap();
+    let registry = MODEL_REGISTRY.read().unwrap();
     let metadata = match registry.get(class_name) {
         Some(m) => m,
         None => return vec![],
@@ -533,19 +613,169 @@ fn class_name_to_collection(name: &str) -> String {
     result
 }
 
-fn spawn_db_future<F>(f: F) -> Value
+/// Execute DB operation that returns serde_json::Value directly.
+/// This skips the double JSON conversion (Value -> String -> Value).
+fn exec_db_json<F>(f: F) -> Value
 where
-    F: FnOnce() -> Result<String, String> + Send + 'static,
+    F: FnOnce() -> Result<serde_json::Value, String>,
 {
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let result = f();
-        let _ = tx.send(result);
-    });
-    Value::Future(Arc::new(Mutex::new(FutureState::Pending {
-        receiver: rx,
-        kind: HttpFutureKind::Json,
-    })))
+    match f() {
+        Ok(json) => json_to_value(&json),
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
+}
+
+fn json_to_value(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
+            } else {
+                Value::String(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Value::String(s.clone()),
+        serde_json::Value::Array(arr) => {
+            let values: Vec<Value> = arr.iter().map(json_to_value).collect();
+            Value::Array(Rc::new(RefCell::new(values)))
+        }
+        serde_json::Value::Object(obj) => {
+            let pairs: Vec<(Value, Value)> = obj
+                .iter()
+                .map(|(k, v)| (Value::String(k.clone()), json_to_value(v)))
+                .collect();
+            Value::Hash(Rc::new(RefCell::new(pairs)))
+        }
+    }
+}
+
+/// Fast async query execution - uses server's tokio runtime.
+/// Uses same HTTP client as HTTP.request for consistency.
+fn exec_async_query_with_binds(
+    sdbql: String,
+    bind_vars: Option<HashMap<String, serde_json::Value>>,
+) -> Result<Vec<serde_json::Value>, String> {
+    // Get cached values (initialized on first use after .env is loaded)
+    let url = get_cursor_url();
+    let api_key = get_api_key();
+
+    let rt = get_tokio_handle().ok_or("No tokio runtime available")?;
+    let client = get_http_client().clone();
+
+    let future = async move {
+        let mut payload = serde_json::json!({ "query": sdbql });
+        if let Some(bv) = bind_vars {
+            payload["bindVars"] = serde_json::json!(bv);
+        }
+
+        let mut request = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(payload.to_string());
+
+        if let Some(key) = api_key {
+            request = request.header("X-API-Key", key);
+        }
+
+        let resp = request.send().await.map_err(|e| format!("HTTP error: {}", e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Query failed: {} - {}", status, body));
+        }
+
+        let json: serde_json::Value =
+            resp.json().await.map_err(|e| format!("JSON error: {}", e))?;
+        Ok(json
+            .get("result")
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default())
+    };
+
+    rt.block_on(future)
+}
+
+/// Simple async query without bind variables - convenience wrapper.
+fn exec_async_query(sdbql: String) -> Value {
+    match exec_async_query_with_binds(sdbql, None) {
+        Ok(results) => {
+            // Direct conversion without intermediate Array wrapper
+            let values: Vec<Value> = results.iter().map(json_to_value).collect();
+            Value::Array(Rc::new(RefCell::new(values)))
+        }
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
+}
+
+/// Async query returning raw JSON string (no Value conversion - fastest).
+/// Uses same HTTP client as HTTP.request for consistency.
+fn exec_async_query_raw(sdbql: String) -> Value {
+    // Get cached values (initialized on first use after .env is loaded)
+    let url = get_cursor_url();
+    let api_key = get_api_key();
+    let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\""#));
+
+    let Some(rt) = get_tokio_handle() else {
+        return Value::String("Error: No tokio runtime available".to_string());
+    };
+
+    let client = get_http_client().clone();
+    match rt.block_on(async move {
+        let mut request = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(body);
+
+        if let Some(key) = api_key {
+            request = request.header("X-API-Key", key);
+        }
+
+        let resp = request.send().await.map_err(|e| format!("HTTP error: {}", e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Query failed: {} - {}", status, body));
+        }
+
+        resp.text().await.map_err(|e| format!("Read error: {}", e))
+    }) {
+        Ok(text) => Value::String(text),
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
+}
+
+/// Hardcoded query - exact same pattern as HTTP.request for comparison.
+fn exec_query_hardcoded(sdbql: String) -> Value {
+    // Hardcoded values - exactly like test-cursor does
+    let url = "http://localhost:6745/_api/database/solipay/cursor";
+    let api_key = "sk_8bc935c8fc837e147a0ab100747d197b354d5cdf80635bbd5951bc1a313a1ab8";
+    let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\""#));
+
+    let Some(rt) = get_tokio_handle() else {
+        return Value::String("Error: No tokio runtime available".to_string());
+    };
+
+    let client = get_http_client().clone();
+    match rt.block_on(async move {
+        let request = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .header("X-API-Key", api_key)
+            .body(body);
+
+        let resp = request.send().await.map_err(|e| e.to_string())?;
+        resp.text().await.map_err(|e| e.to_string())
+    }) {
+        Ok(text) => Value::String(text),
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
 }
 
 // Re-export value_to_json from value module for backward compatibility
@@ -580,6 +810,38 @@ pub struct Model;
 impl Model {
     pub fn register_builtins(env: &mut Environment) {
         Self::register_model_class(env);
+
+        // Direct query function for benchmarking (bypasses all class dispatch)
+        env.define(
+            "db_query_raw".to_string(),
+            Value::NativeFunction(NativeFunction::new("db_query_raw", Some(1), |args| {
+                let query = match args.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("db_query_raw requires a query string".to_string()),
+                };
+                Ok(exec_async_query_raw(query))
+            })),
+        );
+
+        // Debug: show the cursor URL
+        env.define(
+            "db_cursor_url".to_string(),
+            Value::NativeFunction(NativeFunction::new("db_cursor_url", Some(0), |_args| {
+                Ok(Value::String(get_cursor_url().to_string()))
+            })),
+        );
+
+        // Test function with hardcoded values - mirrors HTTP.request exactly
+        env.define(
+            "db_query_hardcoded".to_string(),
+            Value::NativeFunction(NativeFunction::new("db_query_hardcoded", Some(1), |args| {
+                let query = match args.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("db_query_hardcoded requires a query string".to_string()),
+                };
+                Ok(exec_query_hardcoded(query))
+            })),
+        );
     }
 
     fn register_model_class(env: &mut Environment) {
@@ -756,38 +1018,26 @@ impl Model {
                 };
                 let data_value = data_value?;
 
-                Ok(spawn_db_future(move || {
-                    tokio::runtime::Runtime::new()
-                        .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                        .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST")
-                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                            let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(host)
-                                .await
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                Ok(exec_db_json(move || {
+                    let client = SoliDBClient::connect(&DB_CONFIG.host)
+                        .map_err(|e| format!("Failed to connect: {}", e))?;
 
-                            let id = client
-                                .insert(&database, &collection, None, data_value.clone())
-                                .await
-                                .map_err(|e| format!("Create failed: {}", e))?;
+                    let id = client
+                        .insert(&collection, None, data_value.clone())
+                        .map_err(|e| format!("Create failed: {}", e))?;
 
-                            // Build result with record
-                            let mut result_map = serde_json::Map::new();
-                            result_map.insert("valid".to_string(), serde_json::Value::Bool(true));
+                    // Build result with record - direct JSON construction
+                    let mut result_map = serde_json::Map::new();
+                    result_map.insert("valid".to_string(), serde_json::Value::Bool(true));
 
-                            // Add the record with id
-                            if let serde_json::Value::Object(mut data_map) = data_value {
-                                data_map.insert("id".to_string(), id);
-                                result_map.insert(
-                                    "record".to_string(),
-                                    serde_json::Value::Object(data_map),
-                                );
-                            }
+                    // Add the record with id
+                    if let serde_json::Value::Object(mut data_map) = data_value {
+                        data_map.insert("id".to_string(), id);
+                        result_map
+                            .insert("record".to_string(), serde_json::Value::Object(data_map));
+                    }
 
-                            Ok(serde_json::to_string(&result_map).unwrap_or_default())
-                        })
+                    Ok(serde_json::Value::Object(result_map))
                 }))
             })),
         );
@@ -809,25 +1059,16 @@ impl Model {
                     None => return Err("Model.find() requires id argument".to_string()),
                 };
 
-                Ok(spawn_db_future(move || {
-                    tokio::runtime::Runtime::new()
-                        .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                        .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST")
-                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                            let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(host)
-                                .await
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                Ok(exec_db_json(move || {
+                    let client = SoliDBClient::connect(&DB_CONFIG.host)
+                        .map_err(|e| format!("Failed to connect: {}", e))?;
 
-                            let doc = client
-                                .get(&database, &collection, &id)
-                                .await
-                                .map_err(|e| format!("Find failed: {}", e))?;
+                    let doc = client
+                        .get(&collection, &id)
+                        .map_err(|e| format!("Find failed: {}", e))?;
 
-                            Ok(serde_json::to_string(&doc).unwrap_or_default())
-                        })
+                    // Return doc or null if not found
+                    Ok(doc.unwrap_or(serde_json::Value::Null))
                 }))
             })),
         );
@@ -878,33 +1119,23 @@ impl Model {
             })),
         );
 
-        // Model.all() - Get all documents
+        // Model.all() - Get all documents (uses async HTTP for high performance)
         native_static_methods.insert(
             "all".to_string(),
             Rc::new(NativeFunction::new("Model.all", Some(1), |args| {
                 let collection = get_collection_from_class(&args)?;
+                let sdbql = format!("FOR doc IN {} RETURN doc", collection);
+                Ok(exec_async_query(sdbql))
+            })),
+        );
 
-                Ok(spawn_db_future(move || {
-                    tokio::runtime::Runtime::new()
-                        .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                        .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST")
-                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                            let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(host)
-                                .await
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-
-                            let sdbql = format!("FOR doc IN {} RETURN doc", collection);
-                            let results = client
-                                .query(&database, &sdbql, None)
-                                .await
-                                .map_err(|e| format!("Query failed: {}", e))?;
-
-                            Ok(serde_json::to_string(&results).unwrap_or_default())
-                        })
-                }))
+        // Model.all_json() - Get all documents as raw JSON string (fastest)
+        native_static_methods.insert(
+            "all_json".to_string(),
+            Rc::new(NativeFunction::new("Model.all_json", Some(1), |args| {
+                let collection = get_collection_from_class(&args)?;
+                let sdbql = format!("FOR doc IN {} RETURN doc", collection);
+                Ok(exec_async_query_raw(sdbql))
             })),
         );
 
@@ -943,25 +1174,15 @@ impl Model {
                 };
                 let data_value = data_value?;
 
-                Ok(spawn_db_future(move || {
-                    tokio::runtime::Runtime::new()
-                        .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                        .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST")
-                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                            let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(host)
-                                .await
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                Ok(exec_db_json(move || {
+                    let client = SoliDBClient::connect(&DB_CONFIG.host)
+                        .map_err(|e| format!("Failed to connect: {}", e))?;
 
-                            client
-                                .update(&database, &collection, &id, data_value, true)
-                                .await
-                                .map_err(|e| format!("Update failed: {}", e))?;
+                    client
+                        .update(&collection, &id, data_value, true)
+                        .map_err(|e| format!("Update failed: {}", e))?;
 
-                            Ok("Updated".to_string())
-                        })
+                    Ok(serde_json::Value::String("Updated".to_string()))
                 }))
             })),
         );
@@ -983,25 +1204,15 @@ impl Model {
                     None => return Err("Model.delete() requires id argument".to_string()),
                 };
 
-                Ok(spawn_db_future(move || {
-                    tokio::runtime::Runtime::new()
-                        .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                        .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST")
-                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                            let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(host)
-                                .await
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                Ok(exec_db_json(move || {
+                    let client = SoliDBClient::connect(&DB_CONFIG.host)
+                        .map_err(|e| format!("Failed to connect: {}", e))?;
 
-                            client
-                                .delete(&database, &collection, &id)
-                                .await
-                                .map_err(|e| format!("Delete failed: {}", e))?;
+                    client
+                        .delete(&collection, &id)
+                        .map_err(|e| format!("Delete failed: {}", e))?;
 
-                            Ok("Deleted".to_string())
-                        })
+                    Ok(serde_json::Value::String("Deleted".to_string()))
                 }))
             })),
         );
@@ -1012,29 +1223,20 @@ impl Model {
             Rc::new(NativeFunction::new("Model.count", Some(1), |args| {
                 let collection = get_collection_from_class(&args)?;
 
-                Ok(spawn_db_future(move || {
-                    tokio::runtime::Runtime::new()
-                        .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                        .block_on(async {
-                            let host = std::env::var("SOLIDB_HOST")
-                                .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                            let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                            let database = "default".to_string();
-                            let mut client = SoliDBClient::connect(host)
-                                .await
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                Ok(exec_db_json(move || {
+                    let client = SoliDBClient::connect(&DB_CONFIG.host)
+                        .map_err(|e| format!("Failed to connect: {}", e))?;
 
-                            let sdbql = format!(
-                                "FOR doc IN {} COLLECT WITH COUNT INTO count RETURN count",
-                                collection
-                            );
-                            let results = client
-                                .query(&database, &sdbql, None)
-                                .await
-                                .map_err(|e| format!("Query failed: {}", e))?;
+                    let sdbql = format!(
+                        "FOR doc IN {} COLLECT WITH COUNT INTO count RETURN count",
+                        collection
+                    );
+                    let results = client
+                        .query(&sdbql, None)
+                        .map_err(|e| format!("Query failed: {}", e))?;
 
-                            Ok(serde_json::to_string(&results).unwrap_or_default())
-                        })
+                    // Return directly as JSON array - skip string serialization
+                    Ok(serde_json::Value::Array(results))
                 }))
             })),
         );
@@ -1199,33 +1401,16 @@ pub fn register_model_builtins(env: &mut Environment) {
 /// Execute a QueryBuilder and return results.
 pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
     let (query, bind_vars) = qb.build_query();
+    let bind_vars_opt = if bind_vars.is_empty() {
+        None
+    } else {
+        Some(bind_vars)
+    };
 
-    spawn_db_future(move || {
-        tokio::runtime::Runtime::new()
-            .map_err(|e| format!("Failed to create async runtime: {}", e))?
-            .block_on(async {
-                let host = std::env::var("SOLIDB_HOST")
-                    .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                let database = "default".to_string();
-                let mut client = SoliDBClient::connect(host)
-                    .await
-                    .map_err(|e| format!("Failed to connect: {}", e))?;
-
-                let bind_vars_opt = if bind_vars.is_empty() {
-                    None
-                } else {
-                    Some(bind_vars)
-                };
-
-                let results = client
-                    .query(&database, &query, bind_vars_opt)
-                    .await
-                    .map_err(|e| format!("Query failed: {}", e))?;
-
-                Ok(serde_json::to_string(&results).unwrap_or_default())
-            })
-    })
+    match exec_async_query_with_binds(query, bind_vars_opt) {
+        Ok(results) => json_to_value(&serde_json::Value::Array(results)),
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
 }
 
 /// Execute a QueryBuilder for first result only.
@@ -1233,38 +1418,19 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
     let mut qb_with_limit = qb.clone();
     qb_with_limit.set_limit(1);
     let (query, bind_vars) = qb_with_limit.build_query();
+    let bind_vars_opt = if bind_vars.is_empty() {
+        None
+    } else {
+        Some(bind_vars)
+    };
 
-    spawn_db_future(move || {
-        tokio::runtime::Runtime::new()
-            .map_err(|e| format!("Failed to create async runtime: {}", e))?
-            .block_on(async {
-                let host = std::env::var("SOLIDB_HOST")
-                    .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                let database = "default".to_string();
-                let mut client = SoliDBClient::connect(host)
-                    .await
-                    .map_err(|e| format!("Failed to connect: {}", e))?;
-
-                let bind_vars_opt = if bind_vars.is_empty() {
-                    None
-                } else {
-                    Some(bind_vars)
-                };
-
-                let results: Vec<serde_json::Value> = client
-                    .query(&database, &query, bind_vars_opt)
-                    .await
-                    .map_err(|e| format!("Query failed: {}", e))?;
-
-                // Return first result or null
-                let first = results
-                    .into_iter()
-                    .next()
-                    .unwrap_or(serde_json::Value::Null);
-                Ok(serde_json::to_string(&first).unwrap_or_default())
-            })
-    })
+    match exec_async_query_with_binds(query, bind_vars_opt) {
+        Ok(results) => {
+            let first = results.into_iter().next().unwrap_or(serde_json::Value::Null);
+            json_to_value(&first)
+        }
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
 }
 
 /// Execute a QueryBuilder for count.
@@ -1292,32 +1458,16 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
 
     query.push_str(" COLLECT WITH COUNT INTO count RETURN count");
 
-    spawn_db_future(move || {
-        tokio::runtime::Runtime::new()
-            .map_err(|e| format!("Failed to create async runtime: {}", e))?
-            .block_on(async {
-                let host = std::env::var("SOLIDB_HOST")
-                    .unwrap_or_else(|_| "http://localhost:6745".to_string());
-                let host = host.trim_start_matches("https://").trim_start_matches("http://");
-                let database = "default".to_string();
-                let mut client = SoliDBClient::connect(host)
-                    .await
-                    .map_err(|e| format!("Failed to connect: {}", e))?;
+    let bind_vars_opt = if bind_vars_str.is_empty() {
+        None
+    } else {
+        Some(bind_vars_str)
+    };
 
-                let bind_vars_opt = if bind_vars_str.is_empty() {
-                    None
-                } else {
-                    Some(bind_vars_str)
-                };
-
-                let results = client
-                    .query(&database, &query, bind_vars_opt)
-                    .await
-                    .map_err(|e| format!("Query failed: {}", e))?;
-
-                Ok(serde_json::to_string(&results).unwrap_or_default())
-            })
-    })
+    match exec_async_query_with_binds(query, bind_vars_opt) {
+        Ok(results) => json_to_value(&serde_json::Value::Array(results)),
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
 }
 
 #[cfg(test)]

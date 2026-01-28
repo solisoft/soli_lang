@@ -457,6 +457,17 @@ impl Class {
         }
         None
     }
+
+    /// Check if this class is a subclass of Model (directly or indirectly).
+    pub fn is_model_subclass(&self) -> bool {
+        if self.name == "Model" {
+            return true;
+        }
+        if let Some(ref superclass) = self.superclass {
+            return superclass.is_model_subclass();
+        }
+        false
+    }
 }
 
 /// A class instance.

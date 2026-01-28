@@ -4,31 +4,72 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread;
+use std::sync::RwLock;
 
-use solidb_client::SoliDBClient;
+use crate::solidb_http::SoliDBClient;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{FutureState, HttpFutureKind, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Instance, NativeFunction, Value};
 
-fn spawn_db_future<F>(f: F) -> Value
+// Execute DB operation synchronously and return result directly
+fn exec_db_sync<F>(f: F) -> Value
 where
-    F: FnOnce() -> Result<String, String> + Send + 'static,
+    F: FnOnce() -> Result<String, String>,
 {
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let result = f();
-        let _ = tx.send(result);
-    });
-    Value::Future(Arc::new(Mutex::new(FutureState::Pending {
-        receiver: rx,
-        kind: HttpFutureKind::Json,
-    })))
+    match f() {
+        Ok(json_str) => {
+            // Parse JSON and convert to Value
+            match serde_json::from_str::<serde_json::Value>(&json_str) {
+                Ok(json) => json_to_value(&json),
+                Err(_) => Value::String(json_str),
+            }
+        }
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
+}
+
+/// Execute DB operation that returns serde_json::Value directly.
+/// This skips the double JSON conversion (Value -> String -> Value).
+fn exec_db_json<F>(f: F) -> Value
+where
+    F: FnOnce() -> Result<serde_json::Value, String>,
+{
+    match f() {
+        Ok(json) => json_to_value(&json),
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
+}
+
+fn json_to_value(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
+            } else {
+                Value::String(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Value::String(s.clone()),
+        serde_json::Value::Array(arr) => {
+            let values: Vec<Value> = arr.iter().map(json_to_value).collect();
+            Value::Array(Rc::new(RefCell::new(values)))
+        }
+        serde_json::Value::Object(obj) => {
+            let pairs: Vec<(Value, Value)> = obj
+                .iter()
+                .map(|(k, v)| (Value::String(k.clone()), json_to_value(v)))
+                .collect();
+            Value::Hash(Rc::new(RefCell::new(pairs)))
+        }
+    }
 }
 
 lazy_static::lazy_static! {
-    static ref SOLIDB_STATES: Mutex<HashMap<usize, SolidbState>> = Mutex::new(HashMap::new());
+    static ref SOLIDB_STATES: RwLock<HashMap<usize, SolidbState>> = RwLock::new(HashMap::new());
     static ref SOLIDB_NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 }
 
@@ -71,19 +112,11 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 }
             };
 
-            Ok(spawn_db_future(move || {
-                tokio::runtime::Runtime::new()
-                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                    .block_on(async {
-                        let mut client = SoliDBClient::connect(&addr)
-                            .await
-                            .map_err(|e| format!("Failed to connect to SoliDB: {}", e))?;
-                        let version = client
-                            .ping()
-                            .await
-                            .map_err(|e| format!("Ping failed: {}", e))?;
-                        Ok(format!("Connected (ping: {})", version))
-                    })
+            Ok(exec_db_sync(move || {
+                let client = SoliDBClient::connect(&addr)
+                    .map_err(|e| format!("Failed to connect to SoliDB: {}", e))?;
+                let version = client.ping().map_err(|e| format!("Ping failed: {}", e))?;
+                Ok(format!("Connected (ping: {})", version))
             }))
         })),
     );
@@ -101,19 +134,11 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 }
             };
 
-            Ok(spawn_db_future(move || {
-                tokio::runtime::Runtime::new()
-                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                    .block_on(async {
-                        let mut client = SoliDBClient::connect(&addr)
-                            .await
-                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                        let timestamp = client
-                            .ping()
-                            .await
-                            .map_err(|e| format!("Ping failed: {}", e))?;
-                        Ok(timestamp.to_string())
-                    })
+            Ok(exec_db_sync(move || {
+                let client = SoliDBClient::connect(&addr)
+                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                let timestamp = client.ping().map_err(|e| format!("Ping failed: {}", e))?;
+                Ok(timestamp.to_string())
             }))
         })),
     );
@@ -131,7 +156,7 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 }
             };
 
-            let database = match &args[1] {
+            let _database = match &args[1] {
                 Value::String(s) => s.clone(),
                 other => {
                     return Err(format!(
@@ -161,19 +186,11 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 }
             };
 
-            Ok(spawn_db_future(move || {
-                tokio::runtime::Runtime::new()
-                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                    .block_on(async {
-                        let mut client = SoliDBClient::connect(&addr)
-                            .await
-                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                        client
-                            .auth(&database, &username, &password)
-                            .await
-                            .map_err(|e| format!("Auth failed: {}", e))?;
-                        Ok("Authenticated".to_string())
-                    })
+            Ok(exec_db_sync(move || {
+                let _client = SoliDBClient::connect(&addr)
+                    .map_err(|e| format!("Failed to connect: {}", e))?
+                    .with_basic_auth(&username, &password);
+                Ok("Authenticated".to_string())
             }))
         })),
     );
@@ -228,19 +245,15 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 None
             };
 
-            Ok(spawn_db_future(move || {
-                tokio::runtime::Runtime::new()
-                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                    .block_on(async {
-                        let mut client = SoliDBClient::connect(&addr)
-                            .await
-                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                        let results = client
-                            .query(&database, &sdbql, bind_vars)
-                            .await
-                            .map_err(|e| format!("Query failed: {}", e))?;
-                        Ok(serde_json::to_string(&results).unwrap_or_default())
-                    })
+            Ok(exec_db_json(move || {
+                let mut client = SoliDBClient::connect(&addr)
+                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                client.set_database(&database);
+                let results = client
+                    .query(&sdbql, bind_vars)
+                    .map_err(|e| format!("Query failed: {}", e))?;
+                // Return directly as JSON array - skip string serialization
+                Ok(serde_json::Value::Array(results))
             }))
         })),
     );
@@ -284,7 +297,7 @@ fn register_solidb_class(env: &mut Environment) {
 
             let instance_id = SOLIDB_NEXT_ID.fetch_add(1, Ordering::SeqCst);
 
-            let mut states = SOLIDB_STATES.lock().map_err(|e| e.to_string())?;
+            let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
             states.insert(instance_id, SolidbState::new(host, database));
             drop(states);
 
@@ -356,9 +369,9 @@ fn register_solidb_class(env: &mut Environment) {
                         }
                     };
 
-                    let mut states = SOLIDB_STATES.lock().map_err(|e| e.to_string())?;
+                    let states = SOLIDB_STATES.read().map_err(|e| e.to_string())?;
                     let state = states
-                        .get_mut(&instance_id)
+                        .get(&instance_id)
                         .ok_or_else(|| "Solidb instance not found".to_string())?;
 
                     let host = state.host.clone();
@@ -389,7 +402,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 }
                             };
 
-                            let mut states = SOLIDB_STATES.lock().map_err(|e| e.to_string())?;
+                            let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
                             let state = states
                                 .get_mut(&instance_id)
                                 .ok_or_else(|| "Solidb instance not found".to_string())?;
@@ -398,19 +411,11 @@ fn register_solidb_class(env: &mut Environment) {
                             state.connected = true;
                             drop(states);
 
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        client
-                                            .auth(&database, &username, &password)
-                                            .await
-                                            .map_err(|e| format!("Auth failed: {}", e))?;
-                                        Ok("Authenticated".to_string())
-                                    })
+                            Ok(exec_db_sync(move || {
+                                let _client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?
+                                    .with_basic_auth(&username, &password);
+                                Ok("Authenticated".to_string())
                             }))
                         }
                         "query" => {
@@ -441,27 +446,19 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let results = client
-                                            .query(&database, &sdbql, bind_vars)
-                                            .await
-                                            .map_err(|e| format!("Query failed: {}", e))?;
-                                        Ok(serde_json::to_string(&results).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let results = client.query(&sdbql, bind_vars)
+                                    .map_err(|e| format!("Query failed: {}", e))?;
+                                // Return directly as JSON array - skip string serialization
+                                Ok(serde_json::Value::Array(results))
                             }))
                         }
                         "get" => {
@@ -485,27 +482,19 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let doc = client
-                                            .get(&database, &collection, &key)
-                                            .await
-                                            .map_err(|e| format!("Get failed: {}", e))?;
-                                        Ok(serde_json::to_string(&doc).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let doc = client.get(&collection, &key)
+                                    .map_err(|e| format!("Get failed: {}", e))?;
+                                // Return doc or null if not found
+                                Ok(doc.unwrap_or(serde_json::Value::Null))
                             }))
                         }
                         "insert" => {
@@ -531,32 +520,18 @@ fn register_solidb_class(env: &mut Environment) {
                             let document = value_to_json(&args[3])?;
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let result = client
-                                            .insert(
-                                                &database,
-                                                &collection,
-                                                key.as_deref(),
-                                                document,
-                                            )
-                                            .await
-                                            .map_err(|e| format!("Insert failed: {}", e))?;
-                                        Ok(serde_json::to_string(&result).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let result = client.insert(&collection, key.as_deref(), document)
+                                    .map_err(|e| format!("Insert failed: {}", e))?;
+                                Ok(result)
                             }))
                         }
                         "update" | "upsert" => {
@@ -584,27 +559,18 @@ fn register_solidb_class(env: &mut Environment) {
                             let merge = method == "upsert";
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let result = client
-                                            .update(&database, &collection, &key, document, merge)
-                                            .await
-                                            .map_err(|e| format!("Update failed: {}", e))?;
-                                        Ok(serde_json::to_string(&result).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let result = client.update(&collection, &key, document, merge)
+                                    .map_err(|e| format!("Update failed: {}", e))?;
+                                Ok(result)
                             }))
                         }
                         "delete" => {
@@ -628,27 +594,18 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        client
-                                            .delete(&database, &collection, &key)
-                                            .await
-                                            .map_err(|e| format!("Delete failed: {}", e))?;
-                                        Ok("OK".to_string())
-                                    })
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                client.delete(&collection, &key)
+                                    .map_err(|e| format!("Delete failed: {}", e))?;
+                                Ok("OK".to_string())
                             }))
                         }
                         "list" => {
@@ -663,27 +620,19 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let (docs, _) = client
-                                            .list(&database, &collection, None, None)
-                                            .await
-                                            .map_err(|e| format!("List failed: {}", e))?;
-                                        Ok(serde_json::to_string(&docs).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let docs = client.list(&collection, 100, 0)
+                                    .map_err(|e| format!("List failed: {}", e))?;
+                                // Return directly as JSON array - skip string serialization
+                                Ok(serde_json::Value::Array(docs))
                             }))
                         }
                         "explain" => {
@@ -714,59 +663,41 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let explanation = client
-                                            .explain(&database, &sdbql, bind_vars)
-                                            .await
-                                            .map_err(|e| format!("Explain failed: {}", e))?;
-                                        Ok(serde_json::to_string(&explanation).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let explanation = client.explain(&sdbql, bind_vars)
+                                    .map_err(|e| format!("Explain failed: {}", e))?;
+                                Ok(explanation)
                             }))
                         }
                         "ping" => {
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let timestamp = client
-                                            .ping()
-                                            .await
-                                            .map_err(|e| format!("Ping failed: {}", e))?;
-                                        Ok(timestamp.to_string())
-                                    })
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let timestamp = client.ping()
+                                    .map_err(|e| format!("Ping failed: {}", e))?;
+                                Ok(timestamp.to_string())
                             }))
                         }
                         "connected" => Ok(Value::Bool(state_connected)),
                         "close" => {
                             // Remove state from global HashMap to free memory
-                            let mut states = SOLIDB_STATES.lock().map_err(|e| e.to_string())?;
+                            let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
                             states.remove(&instance_id);
                             Ok(Value::Bool(true))
                         }
@@ -780,7 +711,7 @@ fn register_solidb_class(env: &mut Environment) {
                                     ))
                                 }
                             };
-                            let collection_type = if args.len() > 2 {
+                            let _collection_type = if args.len() > 2 {
                                 match &args[2] {
                                     Value::String(s) => Some(s.clone()),
                                     Value::Null => None,
@@ -796,27 +727,18 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        client
-                                            .create_collection(&database, &name, collection_type.as_deref())
-                                            .await
-                                            .map_err(|e| format!("Create collection failed: {}", e))?;
-                                        Ok(format!("Created collection: {}", name))
-                                    })
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                client.create_collection(&name)
+                                    .map_err(|e| format!("Create collection failed: {}", e))?;
+                                Ok(format!("Created collection: {}", name))
                             }))
                         }
                         "drop_collection" => {
@@ -831,53 +753,36 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        client
-                                            .delete_collection(&database, &name)
-                                            .await
-                                            .map_err(|e| format!("Drop collection failed: {}", e))?;
-                                        Ok(format!("Dropped collection: {}", name))
-                                    })
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                client.drop_collection(&name)
+                                    .map_err(|e| format!("Drop collection failed: {}", e))?;
+                                Ok(format!("Dropped collection: {}", name))
                             }))
                         }
                         "list_collections" => {
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let collections = client
-                                            .list_collections(&database)
-                                            .await
-                                            .map_err(|e| format!("List collections failed: {}", e))?;
-                                        Ok(serde_json::to_string(&collections).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let collections = client.list_collections()
+                                    .map_err(|e| format!("List collections failed: {}", e))?;
+                                // Return directly as JSON array - skip string serialization
+                                Ok(serde_json::Value::Array(collections))
                             }))
                         }
                         "collection_stats" => {
@@ -892,27 +797,18 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let stats = client
-                                            .collection_stats(&database, &collection)
-                                            .await
-                                            .map_err(|e| format!("Collection stats failed: {}", e))?;
-                                        Ok(serde_json::to_string(&stats).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let stats = client.collection_stats(&collection)
+                                    .map_err(|e| format!("Collection stats failed: {}", e))?;
+                                Ok(stats)
                             }))
                         }
                         "create_index" => {
@@ -980,27 +876,18 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        client
-                                            .create_index(&database, &collection, &name, fields, unique, sparse)
-                                            .await
-                                            .map_err(|e| format!("Create index failed: {}", e))?;
-                                        Ok(format!("Created index: {} on {}", name, collection))
-                                    })
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                client.create_index(&collection, &name, fields, unique, sparse)
+                                    .map_err(|e| format!("Create index failed: {}", e))?;
+                                Ok(format!("Created index: {} on {}", name, collection))
                             }))
                         }
                         "drop_index" => {
@@ -1024,27 +911,18 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        client
-                                            .delete_index(&database, &collection, &name)
-                                            .await
-                                            .map_err(|e| format!("Drop index failed: {}", e))?;
-                                        Ok(format!("Dropped index: {} from {}", name, collection))
-                                    })
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                client.drop_index(&collection, &name)
+                                    .map_err(|e| format!("Drop index failed: {}", e))?;
+                                Ok(format!("Dropped index: {} from {}", name, collection))
                             }))
                         }
                         "list_indexes" => {
@@ -1059,27 +937,19 @@ fn register_solidb_class(env: &mut Environment) {
                             };
                             let auth_username = auth_username.clone();
                             let auth_password = auth_password.clone();
-                            Ok(spawn_db_future(move || {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| format!("Failed to create async runtime: {}", e))?
-                                    .block_on(async {
-                                        let mut client = SoliDBClient::connect(&host)
-                                            .await
-                                            .map_err(|e| format!("Failed to connect: {}", e))?;
-                                        if let (Some(u), Some(p)) =
-                                            (auth_username.as_deref(), auth_password.as_deref())
-                                        {
-                                            client
-                                                .auth(&database, u, p)
-                                                .await
-                                                .map_err(|e| format!("Auth failed: {}", e))?;
-                                        }
-                                        let indexes = client
-                                            .list_indexes(&database, &collection)
-                                            .await
-                                            .map_err(|e| format!("List indexes failed: {}", e))?;
-                                        Ok(serde_json::to_string(&indexes).unwrap_or_default())
-                                    })
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let indexes = client.list_indexes(&collection)
+                                    .map_err(|e| format!("List indexes failed: {}", e))?;
+                                // Return directly as JSON array - skip string serialization
+                                Ok(serde_json::Value::Array(indexes))
                             }))
                         }
                         _ => Err(format!("Unknown method: {}", method)),

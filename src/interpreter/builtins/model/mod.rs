@@ -21,5 +21,5 @@ pub mod model;
 
 pub use model::{
     execute_query_builder, execute_query_builder_count, execute_query_builder_first,
-    register_model_builtins, value_to_json, QueryBuilder,
+    init_db_config, register_model_builtins, value_to_json, QueryBuilder,
 };

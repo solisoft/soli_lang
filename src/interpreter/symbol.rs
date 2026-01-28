@@ -5,12 +5,12 @@
 
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 lazy_static! {
     /// Global symbol table - all interned strings are stored here.
     /// SymbolIds are indices into this vector.
-    pub static ref SYMBOL_TABLE: Mutex<SymbolTable> = Mutex::new(SymbolTable::new());
+    pub static ref SYMBOL_TABLE: RwLock<SymbolTable> = RwLock::new(SymbolTable::new());
 }
 
 /// A unique identifier for an interned string.
@@ -84,17 +84,22 @@ impl SymbolTable {
 
 /// Get a SymbolId for a string, creating one if it doesn't exist.
 pub fn get_symbol(s: &str) -> SymbolId {
-    SYMBOL_TABLE.lock().unwrap().intern(s)
+    // Fast path: check if already interned with read lock
+    if let Some(id) = SYMBOL_TABLE.read().unwrap().lookup(s) {
+        return id;
+    }
+    // Slow path: need to intern with write lock
+    SYMBOL_TABLE.write().unwrap().intern(s)
 }
 
 /// Look up a SymbolId for a string (returns None if not interned).
 pub fn lookup_symbol(s: &str) -> Option<SymbolId> {
-    SYMBOL_TABLE.lock().unwrap().lookup(s)
+    SYMBOL_TABLE.read().unwrap().lookup(s)
 }
 
 /// Get the string for a SymbolId.
 pub fn symbol_string(id: SymbolId) -> Option<&'static str> {
-    SYMBOL_TABLE.lock().unwrap().get(id)
+    SYMBOL_TABLE.read().unwrap().get(id)
 }
 
 /// Get or create a SymbolId from a Value (for Value::String).

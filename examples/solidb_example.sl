@@ -2,7 +2,7 @@
 // This example demonstrates how to use the Solidb class to interact with SoliDB
 
 // Create a database connection
-let db = new Solidb("localhost:6745", "myapp");
+let db = new Solidb("http://localhost:6745", "solidb");
 
 // Authenticate (if your database requires authentication)
 // db.auth("username", "password");
@@ -31,12 +31,12 @@ db.insert("users", "user003", {
 
 // Query all users
 println("All users:");
-let all_users = db.query("FOR u IN users RETURN u");
+let all_users = db.query("FOR u IN users RETURN u", {});
 println(all_users);
 
 // Query with filter
 println("\nUsers in Paris:");
-let paris_users = db.query("FOR u IN users FILTER u.city == 'Paris' RETURN u");
+let paris_users = db.query("FOR u IN users FILTER u.city == 'Paris' RETURN u", {});
 println(paris_users);
 
 // Query with bind variables
@@ -52,20 +52,20 @@ println("Name:", user["name"]);
 println("Email:", user["email"]);
 
 // Update a document
-db.update("users", "user001", {"age": 31, "name": "Alice Smith"});
+db.update("users", "user001", {"age": 31, "name": "Alice Smith"}, true);
 let updated = db.get("users", "user001");
 println("\nUpdated user001:");
 println(updated);
 
 // Upsert (merge update)
-db.upsert("users", "user004", {"name": "David", "age": 28});
+db.update("users", "user004", {"name": "David", "age": 28}, true);
 let new_user = db.get("users", "user004");
 println("\nNew user (upserted):");
 println(new_user);
 
 // List all documents in a collection
 println("\nAll users in collection:");
-let users = db.list("users");
+let users = db.list("users", 100, 0);
 println(users);
 
 // Delete a document

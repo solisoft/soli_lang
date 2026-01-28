@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
@@ -48,6 +49,8 @@ pub struct InMemorySessionStore {
     sessions: RwLock<HashMap<String, Session>>,
     /// Session timeout duration (default: 24 hours)
     max_age: Duration,
+    /// Request counter for probabilistic cleanup
+    request_counter: AtomicU64,
 }
 
 impl InMemorySessionStore {
@@ -55,22 +58,38 @@ impl InMemorySessionStore {
         Self {
             sessions: RwLock::new(HashMap::new()),
             max_age: Duration::from_secs(24 * 60 * 60), // 24 hours
+            request_counter: AtomicU64::new(0),
         }
     }
 
     /// Get or create a session by ID.
     fn get_or_create(&self, session_id: &str) -> String {
-        // Lazy cleanup: remove expired sessions on each access
-        self.cleanup();
+        // Probabilistic cleanup: only run on 1 in 100 requests to reduce lock contention
+        let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
+        if count % 100 == 0 {
+            self.cleanup();
+        }
 
+        // Fast path: read lock to check if session exists and is valid
+        {
+            let sessions = self.sessions.read().unwrap();
+            if let Some(session) = sessions.get(session_id) {
+                if !session.is_expired(self.max_age) {
+                    // Session valid - touch() is skipped for performance
+                    // (expiration is 24h, a few seconds drift is acceptable)
+                    return session_id.to_string();
+                }
+            }
+        }
+
+        // Slow path: write lock to create/replace session
         let mut sessions = self.sessions.write().unwrap();
 
-        if let Some(session) = sessions.get_mut(session_id) {
+        // Double-check after acquiring write lock
+        if let Some(session) = sessions.get(session_id) {
             if !session.is_expired(self.max_age) {
-                session.touch();
                 return session_id.to_string();
             }
-            // Session expired, remove it
             sessions.remove(session_id);
         }
 

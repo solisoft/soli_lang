@@ -480,7 +480,6 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::broadcast;
 
     #[tokio::test]
     async fn test_websocket_check() {

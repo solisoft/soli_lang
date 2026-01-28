@@ -45,7 +45,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use solidb_client::SoliDBClient;
+use crate::solidb_http::SoliDBClient;
 
 /// Load a single .env file, setting variables that aren't already set
 fn load_single_env_file(path: &Path) {
@@ -127,7 +127,10 @@ impl DbConfig {
         let host =
             std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
         // Strip http:// or https:// prefix for TCP connection
-        let host_for_tcp = host.trim_start_matches("https://").trim_start_matches("http://").to_string();
+        let host_for_tcp = host
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .to_string();
         let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         let username = std::env::var("SOLIDB_USERNAME").ok();
         let password = std::env::var("SOLIDB_PASSWORD").ok();
@@ -223,44 +226,39 @@ impl MigrationRunner {
     pub fn get_applied_migrations(&self) -> Result<Vec<String>, String> {
         let config = self.config.clone();
 
-        tokio::runtime::Runtime::new()
-            .map_err(|e| format!("Failed to create async runtime: {}", e))?
-            .block_on(async {
-                let mut client = SoliDBClient::connect(&config.host)
-                    .await
-                    .map_err(|e| format!("Failed to connect: {}", e))?;
+        let mut client =
+            SoliDBClient::connect(&config.host).map_err(|e| format!("Failed to connect: {}", e))?;
 
-                if let (Some(username), Some(password)) = (&config.username, &config.password) {
-                    client
-                        .auth(&config.database, username, password)
-                        .await
-                        .map_err(|e| format!("Auth failed: {}", e))?;
-                }
+        if let (Some(username), Some(password)) = (&config.username, &config.password) {
+            client = client.with_basic_auth(username, password);
+        }
+        client.set_database(&config.database);
 
-                // Create _migrations collection if it doesn't exist
-                if client.list_collections(&config.database).await
-                    .map_err(|e| format!("Failed to list collections: {}", e))?
-                    .iter().find(|c| c.as_str() == "_migrations").is_none() {
-                    client.create_collection(&config.database, "_migrations", None).await
-                        .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
-                }
+        // Create _migrations collection if it doesn't exist
+        let collections = client
+            .list_collections()
+            .map_err(|e| format!("Failed to list collections: {}", e))?;
+        if !collections
+            .iter()
+            .any(|c| c.get("name").and_then(|n| n.as_str()) == Some("_migrations"))
+        {
+            client
+                .create_collection("_migrations")
+                .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
+        }
 
-                // Query applied migrations (SDBQL/AQL syntax)
-                let query = "FOR m IN _migrations SORT m.version ASC RETURN m";
-                let results = client
-                    .query(&config.database, query, None)
-                    .await
-                    .unwrap_or_else(|_| vec![]);
+        // Query applied migrations (SDBQL/AQL syntax)
+        let query = "FOR m IN _migrations SORT m.version ASC RETURN m";
+        let results = client.query(query, None).unwrap_or_else(|_| vec![]);
 
-                let mut versions = Vec::new();
-                for item in results {
-                    if let Some(version) = item.get("version").and_then(|v| v.as_str()) {
-                        versions.push(version.to_string());
-                    }
-                }
+        let mut versions = Vec::new();
+        for item in results {
+            if let Some(version) = item.get("version").and_then(|v| v.as_str()) {
+                versions.push(version.to_string());
+            }
+        }
 
-                Ok(versions)
-            })
+        Ok(versions)
     }
 
     /// Record a migration as applied
@@ -269,55 +267,51 @@ impl MigrationRunner {
         let version = migration.version.clone();
         let name = migration.name.clone();
 
-        tokio::runtime::Runtime::new()
-            .map_err(|e| format!("Failed to create async runtime: {}", e))?
-            .block_on(async {
-                let mut client = SoliDBClient::connect(&config.host)
-                    .await
-                    .map_err(|e| format!("Failed to connect: {}", e))?;
+        let mut client =
+            SoliDBClient::connect(&config.host).map_err(|e| format!("Failed to connect: {}", e))?;
 
-                if let (Some(username), Some(password)) = (&config.username, &config.password) {
-                    client
-                        .auth(&config.database, username, password)
-                        .await
-                        .map_err(|e| format!("Auth failed: {}", e))?;
-                }
+        if let (Some(username), Some(password)) = (&config.username, &config.password) {
+            client = client.with_basic_auth(username, password);
+        }
+        client.set_database(&config.database);
 
-                // Create _migrations collection if it doesn't exist
-                if client.list_collections(&config.database).await
-                    .map_err(|e| format!("Failed to list collections: {}", e))?
-                    .iter().find(|c| c.as_str() == "_migrations").is_none() {
-                    client.create_collection(&config.database, "_migrations", None).await
-                        .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
-                }
+        // Create _migrations collection if it doesn't exist
+        let collections = client
+            .list_collections()
+            .map_err(|e| format!("Failed to list collections: {}", e))?;
+        if !collections
+            .iter()
+            .any(|c| c.get("name").and_then(|n| n.as_str()) == Some("_migrations"))
+        {
+            client
+                .create_collection("_migrations")
+                .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
+        }
 
-                // Get the next batch number (SDBQL/AQL syntax)
-                let batch_query = "FOR m IN _migrations COLLECT AGGREGATE max_batch = MAX(m.batch) RETURN { max_batch }";
-                let batch_result = client
-                    .query(&config.database, batch_query, None)
-                    .await
-                    .unwrap_or_else(|_| vec![]);
+        // Get the next batch number (SDBQL/AQL syntax)
+        let batch_query =
+            "FOR m IN _migrations COLLECT AGGREGATE max_batch = MAX(m.batch) RETURN { max_batch }";
+        let batch_result = client.query(batch_query, None).unwrap_or_else(|_| vec![]);
 
-                let batch: i64 = batch_result
-                    .first()
-                    .and_then(|r| r.get("max_batch"))
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0) + 1;
+        let batch: i64 = batch_result
+            .first()
+            .and_then(|r| r.get("max_batch"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0)
+            + 1;
 
-                let doc = serde_json::json!({
-                    "version": version,
-                    "name": name,
-                    "batch": batch,
-                    "executed_at": chrono::Utc::now().to_rfc3339()
-                });
+        let doc = serde_json::json!({
+            "version": version,
+            "name": name,
+            "batch": batch,
+            "executed_at": chrono::Utc::now().to_rfc3339()
+        });
 
-                client
-                    .insert(&config.database, "_migrations", Some(&version), doc)
-                    .await
-                    .map_err(|e| format!("Failed to record migration: {}", e))?;
+        client
+            .insert("_migrations", Some(&version), doc)
+            .map_err(|e| format!("Failed to record migration: {}", e))?;
 
-                Ok(())
-            })
+        Ok(())
     }
 
     /// Remove a migration record
@@ -325,35 +319,19 @@ impl MigrationRunner {
         let config = self.config.clone();
         let version = migration.version.clone();
 
-        tokio::runtime::Runtime::new()
-            .map_err(|e| format!("Failed to create async runtime: {}", e))?
-            .block_on(async {
-                let mut client = SoliDBClient::connect(&config.host)
-                    .await
-                    .map_err(|e| format!("Failed to connect: {}", e))?;
+        let mut client =
+            SoliDBClient::connect(&config.host).map_err(|e| format!("Failed to connect: {}", e))?;
 
-                if let (Some(username), Some(password)) = (&config.username, &config.password) {
-                    client
-                        .auth(&config.database, username, password)
-                        .await
-                        .map_err(|e| format!("Auth failed: {}", e))?;
-                }
+        if let (Some(username), Some(password)) = (&config.username, &config.password) {
+            client = client.with_basic_auth(username, password);
+        }
+        client.set_database(&config.database);
 
-                // Create _migrations collection if it doesn't exist
-                if client.list_collections(&config.database).await
-                    .map_err(|e| format!("Failed to list collections: {}", e))?
-                    .iter().find(|c| c.as_str() == "_migrations").is_none() {
-                    client.create_collection(&config.database, "_migrations", None).await
-                        .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
-                }
+        client
+            .delete("_migrations", &version)
+            .map_err(|e| format!("Failed to remove migration record: {}", e))?;
 
-                client
-                    .delete(&config.database, "_migrations", &version)
-                    .await
-                    .map_err(|e| format!("Failed to remove migration record: {}", e))?;
-
-                Ok(())
-            })
+        Ok(())
     }
 
     /// Execute a migration's up() or down() function

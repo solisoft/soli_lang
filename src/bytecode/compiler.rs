@@ -192,6 +192,11 @@ impl Compiler {
         for (i, name) in natives.iter().enumerate() {
             self.natives.insert(name.to_string(), i as u16);
         }
+
+        // Add "type" as an alias for "type_of"
+        if let Some(&type_of_idx) = self.natives.get("type_of") {
+            self.natives.insert("type".to_string(), type_of_idx);
+        }
     }
 
     /// Compile a program into bytecode.
@@ -1552,7 +1557,6 @@ impl FunctionCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::stmt::Program;
 
     fn compile_source(source: &str) -> CompileResult<CompiledFunction> {
         let tokens = crate::lexer::Scanner::new(source)

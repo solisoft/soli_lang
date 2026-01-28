@@ -191,6 +191,36 @@ pub fn register_builtins(env: &mut Environment) {
     // HTML functions (html_escape, html_unescape, sanitize_html, strip_html)
     html::register_html_builtins(env);
 
+    // JSON functions (json_parse, json_stringify)
+    env.define(
+        "json_parse".to_string(),
+        Value::NativeFunction(NativeFunction::new("json_parse", Some(1), |args| {
+            let json_str = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "json_parse() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let json = serde_json::from_str::<serde_json::Value>(&json_str)
+                .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+            crate::interpreter::value::json_to_value(&json)
+        })),
+    );
+
+    env.define(
+        "json_stringify".to_string(),
+        Value::NativeFunction(NativeFunction::new("json_stringify", Some(1), |args| {
+            let json = crate::interpreter::value::value_to_json(&args[0])
+                .map_err(|e| format!("JSON serialization error: {}", e))?;
+            let json_str = serde_json::to_string(&json)
+                .map_err(|e| format!("JSON serialization error: {}", e))?;
+            Ok(Value::String(json_str))
+        })),
+    );
+
     // ===== Register other submodule builtins =====
 
     // Register HTTP class

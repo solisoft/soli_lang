@@ -114,7 +114,6 @@ impl Default for FileTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     #[test]
     fn test_file_tracker_basic() {

@@ -97,14 +97,13 @@ fn print_usage() {
     eprintln!("Options:");
     eprintln!("  --tree-walk     Use tree-walking interpreter (default)");
     eprintln!("  --bytecode      Use bytecode VM (faster)");
-    eprintln!("  --jit           Use JIT compilation (fastest)");
     eprintln!("  --disassemble   Print bytecode disassembly before execution");
     eprintln!("  --no-type-check Skip type checking");
     eprintln!("  -d              Daemonize server (creates soli.pid and soli.log)");
     eprintln!("  --dev           Enable development mode (hot reload, no caching)");
     eprintln!("  --port PORT     Port for serve command (default: 3000)");
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
-    eprintln!("  --mode MODE     Execution mode for serve: tree-walk, bytecode (default), jit");
+    eprintln!("  --mode MODE     Execution mode for serve: tree-walk, bytecode (default)");
     eprintln!("  --jobs N        Number of parallel test workers (default: CPU cores)");
     eprintln!("  --coverage      Generate coverage report");
     eprintln!("  --coverage-min N  Fail if coverage is below N% (default: 80)");
@@ -325,24 +324,8 @@ fn parse_args() -> Options {
                         serve_mode = match args[i].as_str() {
                             "tree-walk" => ExecutionMode::TreeWalk,
                             "bytecode" => ExecutionMode::Bytecode,
-                            "jit" => {
-                                #[cfg(feature = "jit")]
-                                {
-                                    ExecutionMode::Jit
-                                }
-                                #[cfg(not(feature = "jit"))]
-                                {
-                                    eprintln!(
-                                        "JIT mode not available - recompile with --features jit"
-                                    );
-                                    process::exit(64);
-                                }
-                            }
                             _ => {
-                                eprintln!(
-                                    "Unknown mode: {} (valid: tree-walk, bytecode, jit)",
-                                    args[i]
-                                );
+                                eprintln!("Unknown mode: {} (valid: tree-walk, bytecode)", args[i]);
                                 print_usage();
                                 process::exit(64);
                             }
@@ -367,8 +350,6 @@ fn parse_args() -> Options {
             }
             "--tree-walk" => options.mode = ExecutionMode::TreeWalk,
             "--bytecode" => options.mode = ExecutionMode::Bytecode,
-            #[cfg(feature = "jit")]
-            "--jit" => options.mode = ExecutionMode::Jit,
             "--disassemble" => {
                 options.disassemble = true;
                 // Disassemble implies bytecode mode if not already set
@@ -797,8 +778,6 @@ fn run_repl(mode: ExecutionMode) {
     let mode_name = match mode {
         ExecutionMode::TreeWalk => "tree-walk",
         ExecutionMode::Bytecode => "bytecode",
-        #[cfg(feature = "jit")]
-        ExecutionMode::Jit => "jit",
     };
     println!("Soli v0.1.0 - Solilang Interpreter ({})", mode_name);
     println!("Type 'exit' or Ctrl+D to quit.\n");
@@ -887,8 +866,6 @@ fn run_simple_repl(mode: ExecutionMode) {
 enum ReplState {
     TreeWalk(solilang::interpreter::Interpreter),
     Bytecode(solilang::bytecode::VM),
-    #[cfg(feature = "jit")]
-    Jit(solilang::jit::JitVM),
 }
 
 impl ReplState {
@@ -898,8 +875,6 @@ impl ReplState {
                 ReplState::TreeWalk(solilang::interpreter::Interpreter::new())
             }
             ExecutionMode::Bytecode => ReplState::Bytecode(solilang::bytecode::VM::new()),
-            #[cfg(feature = "jit")]
-            ExecutionMode::Jit => ReplState::Jit(solilang::jit::JitVM::new()),
         }
     }
 
@@ -942,12 +917,6 @@ impl ReplState {
                 interpreter.interpret(&program)?;
             }
             ReplState::Bytecode(vm) => {
-                let mut compiler = solilang::bytecode::Compiler::new();
-                let function = compiler.compile(&program)?;
-                vm.run(function)?;
-            }
-            #[cfg(feature = "jit")]
-            ReplState::Jit(vm) => {
                 let mut compiler = solilang::bytecode::Compiler::new();
                 let function = compiler.compile(&program)?;
                 vm.run(function)?;

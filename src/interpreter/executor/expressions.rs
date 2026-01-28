@@ -414,30 +414,36 @@ impl Interpreter {
                     span,
                 })
             }
-            Value::Class(class) => {
+            Value::Class(ref class) => {
                 // Static method access - search up superclass chain
                 if let Some(method) = class.find_static_method(name) {
                     return Ok(Value::Function(method));
                 }
                 if let Some(native_method) = class.find_native_static_method(name) {
-                    // For native static methods that expect the class as first arg,
-                    // we need to return a special wrapper that will prepend the class
-                    // Create a closure that prepends the class to arguments
-                    let class_clone = class.clone();
-                    let method_clone = (*native_method).clone();
-                    let name_clone = name.to_string();
+                    // Check if this is a Model subclass - if so, create bound function
+                    if class.is_model_subclass() {
+                        // Create a new native function that captures the class
+                        let class_val = obj_val.clone();
+                        let method_name = name.to_string();
+                        let original_func = native_method.func.clone();
+                        let original_arity = native_method.arity;
 
-                    return Ok(Value::NativeFunction(NativeFunction::new(
-                        &format!("{}.{}", class.name, name),
-                        Some(0),
-                        move |args: Vec<Value>| {
-                            // Prepend the class value to arguments - the native method expects
-                            // the class as its first argument (arity 1), but users call with 0 args
-                            let mut new_args = vec![Value::Class(class_clone.clone())];
-                            new_args.extend(args);
-                            (method_clone.func)(new_args)
-                        },
-                    )));
+                        // Adjust arity (user passes N-1 args, we prepend class)
+                        let user_arity = original_arity.map(|a| a.saturating_sub(1));
+
+                        let bound_func = NativeFunction::new(
+                            Box::leak(format!("bound_{}", method_name).into_boxed_str()),
+                            user_arity,
+                            move |args| {
+                                let mut full_args = vec![class_val.clone()];
+                                full_args.extend(args);
+                                original_func(full_args)
+                            },
+                        );
+                        return Ok(Value::NativeFunction(bound_func));
+                    }
+                    // For non-Model classes, return the native function directly
+                    return Ok(Value::NativeFunction((*native_method).clone()));
                 }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: class.name.clone(),

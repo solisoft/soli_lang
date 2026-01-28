@@ -147,6 +147,51 @@ pub fn serve_folder_with_options(
     serve_folder_with_options_and_mode(folder, port, dev_mode, mode, num_workers)
 }
 
+/// Load environment variables from .env files in the application directory.
+/// This loads .env first, then .env.{APP_ENV} if APP_ENV is set.
+fn load_env_files(folder: &Path) {
+    // Load base .env
+    let env_file = folder.join(".env");
+    if env_file.exists() {
+        if let Ok(content) = std::fs::read_to_string(&env_file) {
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some((key, value)) = line.split_once('=') {
+                    let key = key.trim();
+                    let value = value.trim().trim_matches('"').trim_matches('\'');
+                    // Only set if not already set (env vars take precedence)
+                    if std::env::var(key).is_err() {
+                        std::env::set_var(key, value);
+                    }
+                }
+            }
+        }
+    }
+
+    // Load .env.{APP_ENV} if set
+    if let Ok(app_env) = std::env::var("APP_ENV") {
+        let env_specific = folder.join(format!(".env.{}", app_env));
+        if env_specific.exists() {
+            if let Ok(content) = std::fs::read_to_string(&env_specific) {
+                for line in content.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    if let Some((key, value)) = line.split_once('=') {
+                        let key = key.trim();
+                        let value = value.trim().trim_matches('"').trim_matches('\'');
+                        std::env::set_var(key, value);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Serve an MVC application from a folder with configurable options and execution mode.
 pub fn serve_folder_with_options_and_mode(
     folder: &Path,
@@ -155,6 +200,12 @@ pub fn serve_folder_with_options_and_mode(
     mode: ExecutionMode,
     workers: usize,
 ) -> Result<(), RuntimeError> {
+    // Load .env file before anything else
+    load_env_files(folder);
+
+    // Initialize DB config cache (must be after .env is loaded)
+    crate::interpreter::builtins::model::init_db_config();
+
     // Set up panic hook to catch worker panics
     std::panic::set_hook(Box::new(|panic_info| {
         let msg = panic_info.to_string();
