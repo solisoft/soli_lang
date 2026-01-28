@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/solisoft/soli_lang/compare/v0.1.1...v0.2.0) (2026-01-27)
+
+
+### Features
+
+* Enhance query builder with symbol-based bind variables ([757f032](https://github.com/solisoft/soli_lang/commit/757f0325198af1c23dc61d6b9b7b5f4ecb567a4c))
+
 ## [0.1.1](https://github.com/solisoft/soli_lang/compare/v0.1.0...v0.1.1) (2026-01-27)
 
 
