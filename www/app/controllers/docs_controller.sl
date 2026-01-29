@@ -356,3 +356,11 @@ fn redirect_scaffold(req: Any) -> Any {
 fn redirect_soli_language(req: Any) -> Any {
     return redirect("/docs/language");
 }
+
+// ============================================================================
+// Core Concepts - State Machines
+// ============================================================================
+
+fn core_concepts_state_machines(req: Any) -> Any {
+    return render_docs("docs/core-concepts/state-machines", "State Machines", "core_concepts", "state_machines");
+}

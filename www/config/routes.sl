@@ -156,4 +156,26 @@ post("/users/create-token", "users#create_token");
 post("/users/verify-token", "users#verify_token");
 post("/users/decode-token", "users#decode_token");
 
+// ============================================================================
+// State Machine Controller - REST API for State Machine management
+// ============================================================================
+
+// API endpoints
+get("/api/state-machines", "state_machines#list");
+post("/api/state-machines", "state_machines#create");
+get("/api/state-machines/:id", "state_machines#get");
+delete("/api/state-machines/:id", "state_machines#delete");
+post("/api/state-machines/:id/transition", "state_machines#transition");
+put("/api/state-machines/:id/context", "state_machines#set_context");
+get("/api/state-machines/:id/context/:key", "state_machines#get_context");
+
+// Demo page
+get("/state-machines", "state_machines#demo");
+
+// ============================================================================
+// Documentation
+// ============================================================================
+
+get("/docs/core-concepts/state-machines", "docs#core_concepts_state_machines");
+
 print("Routes loaded!");

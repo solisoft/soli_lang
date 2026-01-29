@@ -1,0 +1,169 @@
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-3xl font-bold text-white mb-6">State Machine Demo</h1>
+  
+  <div class="bg-white/5 rounded-xl border border-white/10 p-6 mb-6">
+    <h2 class="text-xl font-semibold text-white mb-4">Create a State Machine</h2>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Initial State</label>
+        <input type="text" id="initialState" value="pending" class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-lime-400" />
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">States (comma-separated)</label>
+        <input type="text" id="states" value="pending,confirmed,processing,shipped,delivered,cancelled" class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-lime-400" />
+      </div>
+    </div>
+    
+    <div class="mb-4">
+      <label class="block text-sm text-gray-400 mb-1">Transitions (JSON)</label>
+      <textarea id="transitions" class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white font-mono text-sm h-32 focus:outline-none focus:border-lime-400">[
+  {"event": "confirm", "from": "pending", "to": "confirmed"},
+  {"event": "process", "from": "confirmed", "to": "processing"},
+  {"event": "ship", "from": "processing", "to": "shipped"},
+  {"event": "deliver", "from": "shipped", "to": "delivered"},
+  {"event": "cancel", "from": "pending", "to": "cancelled"}
+]</textarea>
+    </div>
+    
+    <button onclick="createStateMachine()" class="bg-lime-400 text-black font-semibold px-6 py-2 rounded-lg hover:bg-lime-300 transition-colors">
+      Create State Machine
+    </button>
+  </div>
+  
+  <div id="stateMachineDisplay" class="hidden bg-white/5 rounded-xl border border-white/10 p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold text-white">Current State: <span id="currentState" class="text-lime-400"></span></h2>
+      <span id="stateMachineId" class="text-sm text-gray-400 font-mono"></span>
+    </div>
+    
+    <div class="mb-4">
+      <h3 class="text-sm text-gray-400 mb-2">Available Events</h3>
+      <div id="availableEvents" class="flex flex-wrap gap-2"></div>
+    </div>
+    
+    <div class="mb-4">
+      <h3 class="text-sm text-gray-400 mb-2">History</h3>
+      <div id="history" class="text-sm text-gray-300 font-mono"></div>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Set Context Key</label>
+        <input type="text" id="contextKey" placeholder="key" class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-lime-400" />
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">Set Context Value</label>
+        <input type="text" id="contextValue" placeholder="value" class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-lime-400" />
+      </div>
+    </div>
+    <button onclick="setContext()" class="mt-4 bg-blue-400 text-white font-semibold px-6 py-2 rounded-lg hover:bg-blue-300 transition-colors">
+      Set Context
+    </button>
+  </div>
+  
+  <div class="bg-white/5 rounded-xl border border-white/10 p-6">
+    <h2 class="text-xl font-semibold text-white mb-4">API Endpoints</h2>
+    <div class="font-mono text-sm text-gray-300 space-y-2">
+      <div><span class="text-purple-400">GET</span> /api/state-machines - List all state machines</div>
+      <div><span class="text-green-400">POST</span> /api/state-machines - Create a new state machine</div>
+      <div><span class="text-purple-400">GET</span> /api/state-machines/:id - Get state machine by ID</div>
+      <div><span class="text-red-400">DELETE</span> /api/state-machines/:id - Delete state machine</div>
+      <div><span class="text-green-400">POST</span> /api/state-machines/:id/transition - Perform a transition</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentId = null;
+
+async function createStateMachine() {
+  const initialState = document.getElementById('initialState').value;
+  const states = document.getElementById('states').value.split(',').map(s => s.trim());
+  let transitions;
+  
+  try {
+    transitions = JSON.parse(document.getElementById('transitions').value);
+  } catch (e) {
+    alert('Invalid JSON in transitions');
+    return;
+  }
+  
+  const response = await fetch('/api/state-machines', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initial_state: initialState, states, transitions })
+  });
+  
+  const result = await response.json();
+  
+  if (result.success) {
+    currentId = result.id;
+    updateDisplay();
+  } else {
+    alert('Error: ' + result.error);
+  }
+}
+
+async function updateDisplay() {
+  if (!currentId) return;
+  
+  const response = await fetch('/api/state-machines/' + currentId);
+  const result = await response.json();
+  
+  if (!result.success) {
+    alert('State machine not found');
+    return;
+  }
+  
+  document.getElementById('stateMachineDisplay').classList.remove('hidden');
+  document.getElementById('currentState').textContent = result.state;
+  document.getElementById('stateMachineId').textContent = result.id;
+  
+  const eventsContainer = document.getElementById('availableEvents');
+  eventsContainer.innerHTML = '';
+  result.available_events.forEach(event => {
+    const btn = document.createElement('button');
+    btn.className = 'bg-lime-400 text-black font-semibold px-4 py-1 rounded-lg hover:bg-lime-300 transition-colors';
+    btn.textContent = event;
+    btn.onclick = () => performTransition(event);
+    eventsContainer.appendChild(btn);
+  });
+  
+  document.getElementById('history').textContent = JSON.stringify(result.history, null, 2);
+}
+
+async function performTransition(event) {
+  const response = await fetch('/api/state-machines/' + currentId + '/transition', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event })
+  });
+  
+  const result = await response.json();
+  
+  if (result.success) {
+    updateDisplay();
+  } else {
+    alert('Transition failed: ' + result.error);
+  }
+}
+
+async function setContext() {
+  const key = document.getElementById('contextKey').value;
+  const value = document.getElementById('contextValue').value;
+  
+  if (!currentId || !key) {
+    alert('Please create a state machine and provide a key');
+    return;
+  }
+  
+  await fetch('/api/state-machines/' + currentId + '/context', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value })
+  });
+  
+  alert('Context set: ' + key + ' = ' + value);
+}
+</script>
