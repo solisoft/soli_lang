@@ -7,7 +7,13 @@ use super::core::{ParseResult, Parser};
 
 impl Parser {
     pub(crate) fn statement(&mut self) -> ParseResult<Stmt> {
-        if self.check(&TokenKind::If) {
+        if self.check(&TokenKind::Class) {
+            self.class_declaration()
+        } else if self.check(&TokenKind::Fn) {
+            self.function_declaration()
+        } else if self.check(&TokenKind::Let) {
+            self.let_declaration()
+        } else if self.check(&TokenKind::If) {
             self.if_statement()
         } else if self.check(&TokenKind::While) {
             self.while_statement()
@@ -21,6 +27,8 @@ impl Parser {
             self.try_statement()
         } else if self.check(&TokenKind::LeftBrace) {
             self.block_statement()
+        } else if self.check(&TokenKind::Interface) {
+            self.interface_declaration()
         } else {
             self.expression_statement()
         }
