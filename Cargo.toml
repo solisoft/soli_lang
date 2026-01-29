@@ -44,6 +44,9 @@ argon2 = { version = "0.5", features = ["std", "rand"] }
 curve25519-dalek = "4"
 rand_core = "0.6"
 
+# Data encoding
+base64 = "0.22"
+
 # Validation
 regex = "1"
 chrono = { version = "0.4", features = ["std"] }

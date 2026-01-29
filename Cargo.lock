@@ -1891,6 +1891,7 @@ version = "0.2.0"
 dependencies = [
  "argon2",
  "async-channel",
+ "base64",
  "bytes",
  "chrono",
  "criterion",

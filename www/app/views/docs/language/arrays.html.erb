@@ -1,0 +1,722 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Arrays</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">Arrays</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Ordered, mutable collections with powerful built-in methods for transformation and manipulation.
+        </p>
+    </div>
+
+    <!-- Creating Arrays -->
+    <section id="section-creating" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </span>
+            Creating Arrays
+        </h2>
+
+        <div class="space-y-6">
+            <section id="array-literals" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-literals" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Array Literals</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Create arrays using square brackets with comma-separated values.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">// Basic array literal
+let numbers = [1, 2, 3, 4, 5];
+let names = ["Alice", "Bob", "Charlie"];
+let mixed = [1, "hello", true, null];
+
+// Empty array
+let empty = [];
+
+// Nested arrays
+let matrix = [[1, 2], [3, 4], [5, 6]];</code></pre>
+                </div>
+            </section>
+
+            <section id="type-annotation" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#type-annotation" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Type Annotations</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Optionally specify array types for clarity and type safety.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">// Typed arrays
+let scores: Int[] = [95, 87, 92, 88, 90];
+let names: String[] = ["Alice", "Bob", "Charlie"];
+let flags: Bool[] = [true, false, true];
+
+// Multi-dimensional arrays
+let matrix: Int[][] = [[1, 2], [3, 4], [5, 6]];</code></pre>
+                </div>
+            </section>
+
+            <section id="range-function" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#range-function" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">range(start, end, step?)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Creates an array of numbers from start to end (exclusive).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">range(0, 5)        // [0, 1, 2, 3, 4]
+range(1, 10)       // [1, 2, 3, 4, 5, 6, 7, 8, 9]
+range(0, 10, 2)    // [0, 2, 4, 6, 8] (step of 2)
+range(5, 0, -1)    // [5, 4, 3, 2, 1] (reverse)</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Accessing Elements -->
+    <section id="section-accessing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+            </span>
+            Accessing Elements
+        </h2>
+
+        <div class="space-y-6">
+            <section id="index-access" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#index-access" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Index Access</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Access elements using zero-based indexing. Negative indices count from the end.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50];
+
+// Zero-based indexing
+print(arr[0]);    // 10 (first element)
+print(arr[2]);    // 30 (third element)
+
+// Negative indexing
+print(arr[-1]);   // 50 (last element)
+print(arr[-2]);   // 40 (second to last)
+
+// Out of bounds returns null
+print(arr[10]);   // null</code></pre>
+                </div>
+            </section>
+
+            <section id="modifying" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#modifying" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Modifying Elements</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Arrays are mutable - you can modify elements by index.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+
+// Modify existing element
+arr[0] = 100;
+print(arr);  // [100, 2, 3, 4, 5]
+
+// Add new element (extends array)
+arr[10] = 999;
+print(arr);  // [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Built-in Functions -->
+    <section id="section-functions" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+            </span>
+            Built-in Functions
+        </h2>
+
+        <div class="space-y-6">
+            <section id="fn-len" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-len" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">len(array)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the number of elements in the array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+print(len(arr));  // 5
+
+let empty = [];
+print(len(empty));  // 0</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-push" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-push" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">push(array, value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Add an element to the end of an array (modifies in place).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
+push(arr, 4);
+print(arr);  // [1, 2, 3, 4]
+
+push(arr, 5);
+print(arr);  // [1, 2, 3, 4, 5]</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-pop" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-pop" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">pop(array)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Remove and return the last element from an array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+let last = pop(arr);
+print(last);   // 5
+print(arr);    // [1, 2, 3, 4]
+
+// Returns null if array is empty
+let empty = [];
+print(pop(empty));  // null</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Array Methods -->
+    <section id="section-methods" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            Array Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-map" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-map" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.map(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Transform each element using a function. Returns a new array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
+
+// Double each number
+let doubled = numbers.map(fn(x) x * 2);
+print(doubled);  // [2, 4, 6, 8, 10]
+
+// Convert to strings
+let strings = numbers.map(fn(x) str(x));
+print(strings);  // ["1", "2", "3", "4", "5"]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-filter" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-filter" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.filter(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Keep elements matching a condition. Returns a new array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Keep only even numbers
+let evens = numbers.filter(fn(x) x % 2 == 0);
+print(evens);  // [2, 4, 6, 8, 10]
+
+// Keep numbers greater than 5
+let large = numbers.filter(fn(x) x > 5);
+print(large);  // [6, 7, 8, 9, 10]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-reduce" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-reduce" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.reduce(fn, initial)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Accumulate array elements to a single value.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
+
+// Sum all numbers
+let sum = numbers.reduce(fn(acc, x) acc + x, 0);
+print(sum);  // 15
+
+// Product of all numbers
+let product = numbers.reduce(fn(acc, x) acc * x, 1);
+print(product);  // 120
+
+// Find maximum
+let max = numbers.reduce(fn(acc, x) if (x > acc) x else acc, numbers[0]);
+print(max);  // 5</code></pre>
+                </div>
+            </section>
+
+            <section id="method-each" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-each" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.each(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Iterate over elements for side effects. Returns the original array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3];
+
+// Print each number
+numbers.each(fn(x) print(x));
+// Output: 1
+//         2
+//         3
+
+// Modify external state
+let sum = 0;
+numbers.each(fn(x) sum = sum + x);
+print(sum);  // 6</code></pre>
+                </div>
+            </section>
+
+            <section id="method-find" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-find" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.find(fn)</code> / <code class="text-lg font-mono text-indigo-400">.any?(fn)</code> / <code class="text-lg font-mono text-indigo-400">.all?(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Search and check array elements.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
+
+// find - returns first matching element
+let first_even = numbers.find(fn(x) x % 2 == 0);
+print(first_even);  // 2
+
+// any? - returns true if any element matches
+let has_large = numbers.any?(fn(x) x > 4);
+print(has_large);  // true
+
+// all? - returns true if all elements match
+let all_positive = numbers.all?(fn(x) x > 0);
+print(all_positive);  // true</code></pre>
+                </div>
+            </section>
+
+            <section id="method-sort" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-sort" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.sort()</code> / <code class="text-lg font-mono text-indigo-400">.sort(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Sort elements. Default is ascending order, or provide a custom comparator.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [3, 1, 4, 1, 5, 9, 2, 6];
+
+// Default sort (ascending)
+let sorted = numbers.sort();
+print(sorted);  // [1, 1, 2, 3, 4, 5, 6, 9]
+
+// Custom comparator (descending)
+let desc = numbers.sort(fn(a, b) b - a);
+print(desc);  // [9, 6, 5, 4, 3, 2, 1, 1]
+
+// Sort by string length
+let words = ["cherry", "pie", "apple"];
+let by_length = words.sort(fn(a, b) len(a) - len(b));
+print(by_length);  // ["pie", "apple", "cherry"]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-reverse" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-reverse" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.reverse()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Return a new array with elements in reverse order.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+let reversed = arr.reverse();
+print(reversed);  // [5, 4, 3, 2, 1]
+print(arr);       // [1, 2, 3, 4, 5] (original unchanged)</code></pre>
+                </div>
+            </section>
+
+            <section id="method-uniq" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-uniq" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.uniq()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Remove duplicate elements. Returns a new array with unique values.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 2, 3, 3, 3, 4];
+let unique = arr.uniq();
+print(unique);  // [1, 2, 3, 4]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-compact" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-compact" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.compact()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Remove null values from the array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, 2, null, 3, null];
+let cleaned = arr.compact();
+print(cleaned);  // [1, 2, 3]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-flatten" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-flatten" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.flatten()</code> / <code class="text-lg font-mono text-indigo-400">.flatten(n)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Flatten nested arrays. Optionally specify depth.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let nested = [[1, 2], [3, 4], [5, 6]];
+let flat = nested.flatten();
+print(flat);  // [1, 2, 3, 4, 5, 6]
+
+// Flatten only 1 level deep
+let deep = [[1, 2], [[3, 4]]];
+let partial = deep.flatten(1);
+print(partial);  // [1, 2, [3, 4]]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-first-last" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-first-last" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.first()</code> / <code class="text-lg font-mono text-indigo-400">.last()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Get the first or last element.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50];
+print(arr.first());  // 10
+print(arr.last());   // 50
+
+// Returns null for empty arrays
+let empty = [];
+print(empty.first());  // null
+print(empty.last());   // null</code></pre>
+                </div>
+            </section>
+
+            <section id="method-empty-include" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-empty-include" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.empty?()</code> / <code class="text-lg font-mono text-indigo-400">.include?(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if array is empty or contains a value.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
+
+print(arr.empty?());      // false
+print(arr.include?(2));   // true
+print(arr.include?(99));  // false
+
+let empty = [];
+print(empty.empty?());    // true</code></pre>
+                </div>
+            </section>
+
+            <section id="method-sample-shuffle" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-sample-shuffle" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.sample()</code> / <code class="text-lg font-mono text-indigo-400">.shuffle()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Random element selection and shuffling.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+
+// Get random element
+let random = arr.sample();
+print(random);  // Random element (e.g., 3)
+
+// Shuffle array
+let shuffled = arr.shuffle();
+print(shuffled);  // Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
+                </div>
+            </section>
+
+            <section id="method-take-drop" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-take-drop" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.take(n)</code> / <code class="text-lg font-mono text-indigo-400">.drop(n)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Take or skip the first n elements.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+
+// Take first n elements
+let first_three = arr.take(3);
+print(first_three);  // [1, 2, 3]
+
+// Skip first n elements
+let rest = arr.drop(3);
+print(rest);  // [4, 5]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-zip" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-zip" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.zip(other)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Combine two arrays into pairs.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let names = ["Alice", "Bob", "Charlie"];
+let scores = [95, 87, 92];
+
+let pairs = names.zip(scores);
+// [["Alice", 95], ["Bob", 87], ["Charlie", 92]]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-sum-min-max" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-sum-min-max" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.sum()</code> / <code class="text-lg font-mono text-indigo-400">.min()</code> / <code class="text-lg font-mono text-indigo-400">.max()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Numeric aggregation methods.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [10, 5, 8, 3, 12];
+
+print(numbers.sum());   // 38.0
+print(numbers.min());   // 3
+print(numbers.max());   // 12</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Method Chaining -->
+    <section id="section-chaining" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            Method Chaining
+        </h2>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Chaining Example</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Chain multiple methods together
+let result = numbers
+    .filter(fn(x) x % 2 == 0)   // Keep evens: [2, 4, 6, 8, 10]
+    .map(fn(x) x * x)           // Square them: [4, 16, 36, 64, 100]
+    .filter(fn(x) x < 50);      // Keep less than 50: [4, 16, 36]
+
+print(result);  // [4, 16, 36]
+
+// With pipeline operator
+let result2 = numbers
+    |> filter(fn(x) x > 5)
+    |> map(fn(x) x * 2)
+    |> sum();
+
+print(result2);  // 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Array Class Methods -->
+    <section id="section-array-class" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </span>
+            Array Class Methods
+        </h2>
+
+        <div class="space-y-6">
+            <p class="text-gray-400">Array literals are automatically wrapped in an Array class instance that provides methods for manipulation and transformation. Each array value has access to these methods via dot notation.</p>
+
+            <section id="array-to-string" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-to-string" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">to_string()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns a formatted string representation of the array. Called automatically in REPL.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
+// In REPL, displays: [1, 2, 3]
+// Equivalent to: arr.to_string()</code></pre>
+                </div>
+            </section>
+
+            <section id="array-length" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-length" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">length()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the number of elements in the array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
+arr.push(1);
+arr.push(2);
+arr.length();  // 2</code></pre>
+                </div>
+            </section>
+
+            <section id="array-push-pop" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-push-pop" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">push(value) / pop()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Adds an element to the end or removes and returns the last element.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
+arr.push(1);  // []
+arr.push(2);  // [1, 2]
+let last = arr.pop();  // 2, arr is now [1]</code></pre>
+                </div>
+            </section>
+
+            <section id="array-get" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-get" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">get(index)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the element at the specified index. Supports negative indices for backward access.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
+arr.push("first");
+arr.push("second");
+arr.push("third");
+arr.get(0);      // "first"
+arr.get(2);      // "third"
+arr.get(-1);     // "third" (last)
+arr.get(-2);     // "second"</code></pre>
+                </div>
+            </section>
+
+            <section id="array-new" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-new" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Array.new()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Creates a new empty Array instance.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
+arr.length();  // 0</code></pre>
+                </div>
+            </section>
+
+            <section id="array-clear" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-clear" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">clear()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Removes all elements from the array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
+arr.push(1);
+arr.push(2);
+arr.push(3);
+arr.clear();
+arr.length();  // 0</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/functions" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Functions
+        </a>
+        <a href="/docs/language/hashes" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Hashes
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

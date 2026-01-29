@@ -144,10 +144,11 @@ float(42)     // 42.0</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Returns the length of a string, array, or hash.</p>
+                    <p class="text-gray-400 mb-3">Returns the length of a string, array, or hash. Works with both primitives and class instances.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">len("hello")      // 5
 len([1, 2, 3])    // 3
-len({"a": 1})     // 1</code></pre>
+len({"a": 1})     // 1
+let arr = Array.new(); arr.push(1); len(arr)  // 1</code></pre>
                 </div>
             </section>
         </div>
@@ -157,32 +158,47 @@ len({"a": 1})     // 1</code></pre>
     <section id="section-arrays" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Array Functions</h2>
 
+        <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mb-6">
+            <p class="text-yellow-300 text-sm">
+                <strong>Tip:</strong> Most array functions are also available as <a href="/docs/language/arrays" class="underline hover:text-yellow-200">Array class methods</a>.
+                Use <code class="text-yellow-300">arr.push(42)</code> instead of <code class="text-yellow-300">push(arr, 42)</code> for a more object-oriented style.
+            </p>
+        </div>
+
         <div class="space-y-6">
             <section id="fn-push" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-push" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">push(array, value)</code>
+                        <code class="text-lg font-mono text-indigo-400">push(array, value)</code> / <code class="text-lg font-mono text-indigo-400">array.push(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Add an element to the end of an array.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2]
-push(arr, 3)     // arr is now [1, 2, 3]</code></pre>
+push(arr, 3)     // arr is now [1, 2, 3]
+
+// Or use class method style:
+let arr2 = [1, 2]
+arr2.push(3)     // arr2 is now [1, 2, 3]</code></pre>
                 </div>
             </section>
 
             <section id="fn-pop" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-pop" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">pop(array)</code>
+                        <code class="text-lg font-mono text-indigo-400">pop(array)</code> / <code class="text-lg font-mono text-indigo-400">array.pop()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove and return the last element from an array.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
-let last = pop(arr)  // last is 3, arr is [1, 2]</code></pre>
+let last = pop(arr)  // last is 3, arr is [1, 2]
+
+// Or use class method style:
+let arr2 = [1, 2, 3]
+let last2 = arr2.pop()  // last2 is 3, arr2 is [1, 2]</code></pre>
                 </div>
             </section>
 
@@ -200,6 +216,23 @@ range(1, 10, 2)  // [1, 3, 5, 7, 9]
 range(5, 0, -1)  // [5, 4, 3, 2, 1]</code></pre>
                 </div>
             </section>
+
+            <section id="fn-clear" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-clear" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">clear(array | hash)</code> / <code class="text-lg font-mono text-indigo-400">array.clear()</code> / <code class="text-lg font-mono text-indigo-400">hash.clear()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Remove all elements from an array or all entries from a hash.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+clear(arr)  // arr is now []
+
+let h = {"a": 1, "b": 2}
+h.clear()   // h is now {}</code></pre>
+                </div>
+            </section>
         </div>
     </section>
 
@@ -207,73 +240,98 @@ range(5, 0, -1)  // [5, 4, 3, 2, 1]</code></pre>
     <section id="section-hashes" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Hash Functions</h2>
 
+        <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mb-6">
+            <p class="text-yellow-300 text-sm">
+                <strong>Tip:</strong> Most hash functions are also available as <a href="/docs/language/hashes" class="underline hover:text-yellow-200">Hash class methods</a>.
+                Use <code class="text-yellow-300">h.keys()</code> instead of <code class="text-yellow-300">keys(h)</code> for a more object-oriented style.
+            </p>
+        </div>
+
         <div class="space-y-6">
             <section id="fn-keys" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-keys" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">keys(hash)</code>
+                        <code class="text-lg font-mono text-indigo-400">keys(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.keys()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of all keys in a hash.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
-keys(h)     // ["name", "age"]</code></pre>
+keys(h)       // ["name", "age"]
+h.keys()      // ["name", "age"]</code></pre>
                 </div>
             </section>
 
             <section id="fn-values" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-values" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">values(hash)</code>
+                        <code class="text-lg font-mono text-indigo-400">values(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.values()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of all values in a hash.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
-values(h)   // ["Alice", 30]</code></pre>
+values(h)     // ["Alice", 30]
+h.values()    // ["Alice", 30]</code></pre>
                 </div>
             </section>
 
             <section id="fn-entries" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-entries" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">entries(hash)</code>
+                        <code class="text-lg font-mono text-indigo-400">entries(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.entries()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of [key, value] pairs.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
-entries(h)  // [["name", "Alice"], ["age", 30]]</code></pre>
+entries(h)    // [["name", "Alice"], ["age", 30]]
+h.entries()   // [["name", "Alice"], ["age", 30]]</code></pre>
                 </div>
             </section>
 
             <section id="fn-has-key" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-has-key" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">has_key(hash, key)</code>
+                        <code class="text-lg font-mono text-indigo-400">has_key(hash, key)</code> / <code class="text-lg font-mono text-indigo-400">hash.has_key(key)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if a key exists in a hash.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">has_key({"a": 1}, "a")    // true
-has_key({"a": 1}, "b")    // false</code></pre>
+has_key({"a": 1}, "b")    // false
+let h = {"a": 1}; h.has_key("a")  // true</code></pre>
                 </div>
             </section>
 
             <section id="fn-merge" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-merge" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">merge(h1, h2)</code>
+                        <code class="text-lg font-mono text-indigo-400">merge(h1, h2)</code> / <code class="text-lg font-mono text-indigo-400">hash.merge(other)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Merge two hashes together.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">merge({"x": 1}, {"y": 2})     // {"x": 1, "y": 2}</code></pre>
+                    <p class="text-gray-400 mb-3">Merge two hashes together. Values from h2 take precedence.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">merge({"x": 1}, {"y": 2})     // {"x": 1, "y": 2}
+let h1 = {"a": 1}; let h2 = {"a": 2}; h1.merge(h2)  // {"a": 2}</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-from-entries" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-from-entries" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">from_entries(array)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Create a hash from an array of [key, value] pairs.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">from_entries([["a", 1], ["b", 2]])  // {"a": 1, "b": 2}</code></pre>
                 </div>
             </section>
         </div>
@@ -283,131 +341,152 @@ has_key({"a": 1}, "b")    // false</code></pre>
     <section id="section-strings" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">String Functions</h2>
 
+        <div class="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6">
+            <p class="text-blue-300 text-sm">
+                <strong>Note:</strong> String functions are now primarily available as <a href="/docs/language/strings" class="underline hover:text-blue-200">String class methods</a>.
+                Use <code class="text-blue-300">"hello".split(",")</code> instead of <code class="text-blue-300">split("hello", ",")</code>.
+            </p>
+        </div>
+
         <div class="space-y-6">
             <section id="fn-split" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-split" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">split(str, sep)</code>
+                        <code class="text-lg font-mono text-indigo-400">str.split(sep)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Split a string by a separator.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">split("a,b,c", ",")      // ["a", "b", "c"]</code></pre>
+                    <p class="text-gray-400 mb-3">Split a string by a separator. Returns an array of string parts.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"a,b,c".split(",")      // ["a", "b", "c"]
+"hello world".split(" ")  // ["hello", "world"]</code></pre>
                 </div>
             </section>
 
             <section id="fn-join" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-join" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">join(arr, sep)</code>
+                        <code class="text-lg font-mono text-indigo-400">str.join(sep)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Join array elements with a separator.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">join(["a", "b"], "-")    // "a-b"</code></pre>
+                    <p class="text-gray-400 mb-3">Join string parts with a separator.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"a,b,c".join("-")    // "a-b-c"</code></pre>
                 </div>
             </section>
 
             <section id="fn-contains" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-contains" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">contains(str, sub)</code>
+                        <code class="text-lg font-mono text-indigo-400">str.contains(sub)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if a string contains a substring.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">contains("hello world", "world")  // true
-contains("hello", "xyz")          // false</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"hello world".contains("world")  // true
+"hello".contains("xyz")          // false</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-starts-with" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-starts-with" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">str.starts_with(prefix)</code> / <code class="text-lg font-mono text-indigo-400">str.ends_with(suffix)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if a string starts with a prefix or ends with a suffix.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"hello".starts_with("hell")  // true
+"hello".ends_with("llo")     // true</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-index-of" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-index-of" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">str.index_of(substr)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the index of the first occurrence of substring, or -1 if not found.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"hello world".index_of("world")  // 6
+"hello".index_of("xyz")          // -1</code></pre>
                 </div>
             </section>
 
             <section id="fn-substring" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-substring" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">substring(str, start, end?)</code>
+                        <code class="text-lg font-mono text-indigo-400">str.substring(start, end)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Extract a substring from start to end index (end optional, defaults to end of string).</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">substring("hello world", 0, 5)   // "hello"
-substring("hello world", 6)       // "world"</code></pre>
+                    <p class="text-gray-400 mb-3">Extract a substring from start to end (exclusive).</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"hello world".substring(0, 5)   // "hello"
+"hello world".substring(6, 11)  // "world"</code></pre>
                 </div>
             </section>
 
-            <section id="fn-upcase" class="scroll-mt-20">
+            <section id="fn-case" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-upcase" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">upcase(str)</code> / <code class="text-lg font-mono text-indigo-400">downcase(str)</code> / <code class="text-lg font-mono text-indigo-400">trim(str)</code>
+                    <a href="#fn-case" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">str.upcase()</code> / <code class="text-lg font-mono text-indigo-400">str.downcase()</code> / <code class="text-lg font-mono text-indigo-400">str.trim()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Transform string case and whitespace.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">upcase("hello")      // "HELLO"
-downcase("HELLO")    // "hello"
-trim("  hi  ")       // "hi"</code></pre>
+                    <p class="text-gray-400 mb-3">Transform string case and remove whitespace.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"hello".upcase()      // "HELLO"
+"HELLO".downcase()    // "hello"
+"  hi  ".trim()       // "hi"</code></pre>
                 </div>
             </section>
 
             <section id="fn-replace" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-replace" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">replace(str, from, to)</code>
+                        <code class="text-lg font-mono text-indigo-400">str.replace(from, to)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Replace all occurrences of a substring.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">replace("hello world", "world", "soli")  // "hello soli"</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"hello world".replace("world", "soli")  // "hello soli"</code></pre>
                 </div>
             </section>
 
-            <section id="fn-lpad" class="scroll-mt-20">
+            <section id="fn-pad" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-lpad" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">lpad(str, width, pad_char?)</code>
+                    <a href="#fn-pad" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">str.lpad(width, pad_char?)</code> / <code class="text-lg font-mono text-indigo-400">str.rpad(width, pad_char?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Left pad a string to reach the specified width. Optional pad character defaults to space.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">lpad("hi", 5)           // "   hi"
-lpad("hi", 5, "0")      // "000hi"
-lpad("hello", 10, "-")  // "-----hello"</code></pre>
+                    <p class="text-gray-400 mb-3">Pad a string to reach the specified width.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"hi".lpad(5)           // "   hi"
+"hi".rpad(5)           // "hi   "
+"hi".lpad(5, "0")      // "000hi"</code></pre>
                 </div>
             </section>
 
-            <section id="fn-rpad" class="scroll-mt-20">
+            <section id="fn-string-new" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-rpad" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">rpad(str, width, pad_char?)</code>
+                    <a href="#fn-string-new" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">String.new(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Right pad a string to reach the specified width. Optional pad character defaults to space.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">rpad("hi", 5)           // "hi   "
-rpad("hi", 5, "0")      // "hi000"
-rpad("hello", 10, "-")  // "hello-----"</code></pre>
-                </div>
-            </section>
-
-            <section id="fn-html-escape" class="scroll-mt-20">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-html-escape" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">html_escape(str)</code> / <code class="text-lg font-mono text-indigo-400">html_unescape(str)</code> / <code class="text-lg font-mono text-indigo-400">sanitize_html(str)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">HTML encoding and security functions.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">html_escape("&lt;script&gt;")     // "&amp;lt;script&amp;gt;"
-html_unescape("&amp;lt;p&amp;gt;")  // "&lt;p&gt;"
-sanitize_html("&lt;p onclick='x'&gt;") // "&lt;p&gt;"</code></pre>
+                    <p class="text-gray-400 mb-3">Create a String instance from various value types.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">String.new(42)       // "42"
+String.new(3.14)     // "3.14"
+String.new(true)     // "true"</code></pre>
                 </div>
             </section>
         </div>

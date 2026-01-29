@@ -55,6 +55,9 @@ get("/docs/language/variables-types", "docs#language_variables_types");
 get("/docs/language/operators", "docs#language_operators");
 get("/docs/language/control-flow", "docs#language_control_flow");
 get("/docs/language/functions", "docs#language_functions");
+get("/docs/language/strings", "docs#language_strings");
+get("/docs/language/arrays", "docs#language_arrays");
+get("/docs/language/hashes", "docs#language_hashes");
 get("/docs/language/collections", "docs#language_collections");
 get("/docs/language/classes-oop", "docs#language_classes_oop");
 get("/docs/language/pattern-matching", "docs#language_pattern_matching");
@@ -76,6 +79,9 @@ get("/docs/builtins/validation", "docs#builtins_validation");
 get("/docs/builtins/session", "docs#builtins_session");
 get("/docs/builtins/testing", "docs#builtins_testing");
 get("/docs/builtins/i18n", "docs#builtins_i18n");
+
+// Utility
+get("/docs/utility/base64", "docs#utility_base64");
 
 // Testing
 get("/docs/testing", "docs#testing");

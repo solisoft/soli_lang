@@ -1412,6 +1412,24 @@
       "signature": "Hash",
       "description": "Key-value collection type",
       "keywords": ["type", "object", "map", "dictionary"]
+    },
+    {
+      "title": "Base64.encode",
+      "type": "method",
+      "category": "Utility",
+      "path": "/docs/utility/base64#method-encode",
+      "signature": "Base64.encode(value)",
+      "description": "Encode a string to Base64 format",
+      "keywords": ["base64", "encode", "encoding", "binary", "convert"]
+    },
+    {
+      "title": "Base64.decode",
+      "type": "method",
+      "category": "Utility",
+      "path": "/docs/utility/base64#method-decode",
+      "signature": "Base64.decode(value)",
+      "description": "Decode a Base64 string back to the original string",
+      "keywords": ["base64", "decode", "decoding", "binary", "convert"]
     }
   ]
 }

@@ -142,6 +142,18 @@ fn language_functions(req: Any) -> Any {
     return render_docs("docs/language/functions", "Functions", "language", "functions");
 }
 
+fn language_strings(req: Any) -> Any {
+    return render_docs("docs/language/strings", "Strings", "language", "strings");
+}
+
+fn language_arrays(req: Any) -> Any {
+    return render_docs("docs/language/arrays", "Arrays", "language", "arrays");
+}
+
+fn language_hashes(req: Any) -> Any {
+    return render_docs("docs/language/hashes", "Hashes", "language", "hashes");
+}
+
 fn language_collections(req: Any) -> Any {
     return render_docs("docs/language/collections", "Collections", "language", "collections");
 }
@@ -223,7 +235,14 @@ fn builtins_i18n(req: Any) -> Any {
 }
 
 // ============================================================================
-// Testing
+// Utility
+// ============================================================================
+
+fn utility_base64(req: Any) -> Any {
+    return render_docs("docs/utility/base64", "Base64 Encoding", "utility", "base64");
+}
+
+// ============================================================================// Testing
 // ============================================================================
 
 fn testing(req: Any) -> Any {
