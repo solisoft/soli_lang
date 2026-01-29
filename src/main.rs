@@ -9,8 +9,6 @@ use std::process;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
-use solilang::ExecutionMode;
-
 #[cfg(unix)]
 use daemonize::Daemonize;
 #[cfg(unix)]
@@ -39,7 +37,6 @@ enum Command {
         folder: String,
         port: u16,
         dev_mode: bool,
-        mode: ExecutionMode,
         workers: usize,
         daemonize: bool,
     },
@@ -68,8 +65,6 @@ enum DbMigrateAction {
 
 /// CLI options parsed from arguments.
 struct Options {
-    mode: ExecutionMode,
-    disassemble: bool,
     command: Command,
     no_type_check: bool,
 }
@@ -80,7 +75,7 @@ fn print_usage() {
     eprintln!("Usage: soli [options] [script.sl]");
     eprintln!("       soli new <app_name>");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
-    eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N] [--mode MODE]");
+    eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
     eprintln!("       soli db:migrate <up|down|status> [folder]");
     eprintln!("       soli db:migrate generate <name> [folder]");
@@ -95,15 +90,11 @@ fn print_usage() {
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  --tree-walk     Use tree-walking interpreter (default)");
-    eprintln!("  --bytecode      Use bytecode VM (faster)");
-    eprintln!("  --disassemble   Print bytecode disassembly before execution");
     eprintln!("  --no-type-check Skip type checking");
     eprintln!("  -d              Daemonize server (creates soli.pid and soli.log)");
     eprintln!("  --dev           Enable development mode (hot reload, no caching)");
     eprintln!("  --port PORT     Port for serve command (default: 3000)");
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
-    eprintln!("  --mode MODE     Execution mode for serve: tree-walk, bytecode (default)");
     eprintln!("  --jobs N        Number of parallel test workers (default: CPU cores)");
     eprintln!("  --coverage      Generate coverage report");
     eprintln!("  --coverage-min N  Fail if coverage is below N% (default: 80)");
@@ -113,8 +104,6 @@ fn print_usage() {
     eprintln!("Examples:");
     eprintln!("  soli                          Start interactive REPL");
     eprintln!("  soli script.sl                Run a script file");
-    eprintln!("  soli --bytecode script.sl     Run with bytecode VM");
-    eprintln!("  soli --disassemble fib.sl     Show bytecode and run");
     eprintln!("  soli new my_app               Create a new MVC application");
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
@@ -123,7 +112,6 @@ fn print_usage() {
     eprintln!("  soli serve my_app --dev       Start development server (with hot reload)");
     eprintln!("  soli serve my_app --port 8080 Start on custom port");
     eprintln!("  soli serve my_app --workers 16 Start server with 16 workers");
-    eprintln!("  soli serve my_app --mode bytecode  Use bytecode VM for MVC server");
     eprintln!("  soli test                     Run all tests in tests/");
     eprintln!("  soli test spec.sl             Run specific test file");
     eprintln!("  soli test --coverage          Run tests with coverage");
@@ -138,8 +126,6 @@ fn print_usage() {
 fn parse_args() -> Options {
     let args: Vec<String> = env::args().skip(1).collect();
     let mut options = Options {
-        mode: ExecutionMode::Bytecode,
-        disassemble: false,
         command: Command::Repl,
         no_type_check: false,
     };
@@ -281,7 +267,6 @@ fn parse_args() -> Options {
                 let mut port = 3000u16;
                 let mut dev_mode = false; // Production by default
                 let mut daemonize = false;
-                let mut serve_mode = ExecutionMode::Bytecode;
                 // Default to number of CPU cores for optimal parallelism
                 let mut workers = std::thread::available_parallelism()
                     .map(|p| p.get())
@@ -314,22 +299,6 @@ fn parse_args() -> Options {
                         daemonize = true; // Enable daemon mode
                     } else if args[i] == "--dev" {
                         dev_mode = true; // Enable development mode
-                    } else if args[i] == "--mode" {
-                        i += 1;
-                        if i >= args.len() {
-                            eprintln!("--mode requires a mode argument");
-                            print_usage();
-                            process::exit(64);
-                        }
-                        serve_mode = match args[i].as_str() {
-                            "tree-walk" => ExecutionMode::TreeWalk,
-                            "bytecode" => ExecutionMode::Bytecode,
-                            _ => {
-                                eprintln!("Unknown mode: {} (valid: tree-walk, bytecode)", args[i]);
-                                print_usage();
-                                process::exit(64);
-                            }
-                        };
                     } else if args[i].starts_with('-') {
                         eprintln!("Unknown option for serve: {}", args[i]);
                         print_usage();
@@ -342,20 +311,10 @@ fn parse_args() -> Options {
                     folder,
                     port,
                     dev_mode,
-                    mode: serve_mode,
                     workers,
                     daemonize,
                 };
                 return options;
-            }
-            "--tree-walk" => options.mode = ExecutionMode::TreeWalk,
-            "--bytecode" => options.mode = ExecutionMode::Bytecode,
-            "--disassemble" => {
-                options.disassemble = true;
-                // Disassemble implies bytecode mode if not already set
-                if options.mode == ExecutionMode::TreeWalk {
-                    options.mode = ExecutionMode::Bytecode;
-                }
             }
             "--no-type-check" => options.no_type_check = true,
             "test" => {
@@ -465,7 +424,7 @@ fn main() {
     let options = parse_args();
 
     match &options.command {
-        Command::Repl => run_repl(options.mode),
+        Command::Repl => run_repl(),
         Command::Run { file } => run_file(file, &options),
         Command::Eval { code } => run_eval(code, &options),
         Command::New { name } => run_new(name),
@@ -479,10 +438,9 @@ fn main() {
             folder,
             port,
             dev_mode,
-            mode,
             workers,
             daemonize,
-        } => run_serve(folder, *port, *dev_mode, *mode, *workers, *daemonize),
+        } => run_serve(folder, *port, *dev_mode, *workers, *daemonize),
         Command::Test {
             path,
             jobs,
@@ -503,7 +461,6 @@ fn run_serve(
     folder: &str,
     port: u16,
     dev_mode: bool,
-    mode: ExecutionMode,
     workers: usize,
     daemonize: bool,
 ) {
@@ -568,7 +525,7 @@ fn run_serve(
     }
 
     if let Err(e) =
-        solilang::serve::serve_folder_with_options_and_mode(path, port, dev_mode, mode, workers)
+        solilang::serve::serve_folder_with_options(path, port, dev_mode, workers)
     {
         eprintln!("Error: {}", e);
         process::exit(70);
@@ -595,84 +552,6 @@ fn run_generate(scaffold_name: &str, fields: &[String], folder: &str) {
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);
-        }
-    }
-}
-
-fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
-    use solilang::migration::{DbConfig, MigrationRunner};
-
-    let app_path = Path::new(folder);
-
-    if !app_path.exists() {
-        eprintln!("Error: Folder '{}' does not exist", folder);
-        process::exit(1);
-    }
-
-    // Load database config from .env file and environment
-    let config = DbConfig::from_env(app_path);
-
-    match action {
-        DbMigrateAction::Up => {
-            println!();
-            println!("  \x1b[1mRunning migrations...\x1b[0m");
-            println!();
-
-            let runner = MigrationRunner::new(config, app_path);
-            match runner.migrate_up() {
-                Ok(result) => {
-                    println!();
-                    println!("  \x1b[32m{}\x1b[0m", result.message);
-                    println!();
-                }
-                Err(e) => {
-                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-                    process::exit(1);
-                }
-            }
-        }
-        DbMigrateAction::Down => {
-            println!();
-            println!("  \x1b[1mRolling back migration...\x1b[0m");
-            println!();
-
-            let runner = MigrationRunner::new(config, app_path);
-            match runner.migrate_down() {
-                Ok(result) => {
-                    println!();
-                    println!("  \x1b[32m{}\x1b[0m", result.message);
-                    println!();
-                }
-                Err(e) => {
-                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-                    process::exit(1);
-                }
-            }
-        }
-        DbMigrateAction::Status => {
-            let runner = MigrationRunner::new(config, app_path);
-            match runner.status() {
-                Ok(status) => {
-                    solilang::migration::print_status(&status);
-                }
-                Err(e) => {
-                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-                    process::exit(1);
-                }
-            }
-        }
-        DbMigrateAction::Generate { name } => {
-            match solilang::migration::generate_migration(app_path, name) {
-                Ok(path) => {
-                    println!();
-                    println!("  \x1b[32mCreated migration:\x1b[0m {}", path.display());
-                    println!();
-                }
-                Err(e) => {
-                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
-                    process::exit(1);
-                }
-            }
         }
     }
 }
@@ -754,9 +633,7 @@ fn run_file(path: &str, options: &Options) {
 
     let result = solilang::run_file(
         path,
-        options.mode,
         !options.no_type_check,
-        options.disassemble,
     );
 
     if let Err(e) = result {
@@ -774,24 +651,20 @@ fn run_eval(code: &str, _options: &Options) {
     }
 }
 
-fn run_repl(mode: ExecutionMode) {
-    let mode_name = match mode {
-        ExecutionMode::TreeWalk => "tree-walk",
-        ExecutionMode::Bytecode => "bytecode",
-    };
-    println!("Soli v0.1.0 - Solilang Interpreter ({})", mode_name);
+fn run_repl() {
+    println!("Soli v0.1.0 - Solilang Interpreter");
     println!("Type 'exit' or Ctrl+D to quit.\n");
 
     let mut rl = match DefaultEditor::new() {
         Ok(editor) => editor,
         Err(_) => {
             // Fallback to simple stdin reading
-            run_simple_repl(mode);
+            run_simple_repl();
             return;
         }
     };
 
-    let mut repl_state = ReplState::new(mode);
+    let mut interpreter = solilang::interpreter::Interpreter::new();
 
     loop {
         match rl.readline(">>> ") {
@@ -807,7 +680,7 @@ fn run_repl(mode: ExecutionMode) {
                 let _ = rl.add_history_entry(line);
 
                 // Try to execute the line
-                if let Err(e) = repl_state.execute_line(line) {
+                if let Err(e) = execute_repl_line(&mut interpreter, line) {
                     eprintln!("Error: {}", e);
                 }
             }
@@ -827,9 +700,9 @@ fn run_repl(mode: ExecutionMode) {
     }
 }
 
-fn run_simple_repl(mode: ExecutionMode) {
+fn run_simple_repl() {
     let stdin = io::stdin();
-    let mut repl_state = ReplState::new(mode);
+    let mut interpreter = solilang::interpreter::Interpreter::new();
 
     loop {
         print!(">>> ");
@@ -850,7 +723,7 @@ fn run_simple_repl(mode: ExecutionMode) {
                     break;
                 }
 
-                if let Err(e) = repl_state.execute_line(line) {
+                if let Err(e) = execute_repl_line(&mut interpreter, line) {
                     eprintln!("Error: {}", e);
                 }
             }
@@ -862,69 +735,46 @@ fn run_simple_repl(mode: ExecutionMode) {
     }
 }
 
-/// REPL state that can work with different execution modes.
-enum ReplState {
-    TreeWalk(solilang::interpreter::Interpreter),
-    Bytecode(solilang::bytecode::VM),
-}
+fn execute_repl_line(
+    interpreter: &mut solilang::interpreter::Interpreter,
+    source: &str,
+) -> Result<(), solilang::error::SolilangError> {
+    // Check if input looks like an expression that should print its result
+    // Strip trailing semicolon for the check
+    let trimmed = source.trim_end_matches(';').trim();
 
-impl ReplState {
-    fn new(mode: ExecutionMode) -> Self {
-        match mode {
-            ExecutionMode::TreeWalk => {
-                ReplState::TreeWalk(solilang::interpreter::Interpreter::new())
-            }
-            ExecutionMode::Bytecode => ReplState::Bytecode(solilang::bytecode::VM::new()),
-        }
-    }
+    let source = if !trimmed.ends_with('}')
+        && !trimmed.starts_with("let ")
+        && !trimmed.starts_with("fn ")
+        && !trimmed.starts_with("class ")
+        && !trimmed.starts_with("interface ")
+        && !trimmed.starts_with("if ")
+        && !trimmed.starts_with("while ")
+        && !trimmed.starts_with("for ")
+        && !trimmed.starts_with("return ")
+        && !trimmed.starts_with("print(")
+        && !trimmed.starts_with("println(")
+    {
+        // Wrap as print statement for expression evaluation
+        format!("print({});", trimmed)
+    } else if !source.ends_with(';') && !source.ends_with('}') {
+        format!("{};", source)
+    } else {
+        source.to_string()
+    };
 
-    fn execute_line(&mut self, source: &str) -> Result<(), solilang::error::SolilangError> {
-        // Check if input looks like an expression that should print its result
-        // Strip trailing semicolon for the check
-        let trimmed = source.trim_end_matches(';').trim();
+    // Lex
+    let tokens = solilang::lexer::Scanner::new(&source).scan_tokens()?;
 
-        let source = if !trimmed.ends_with('}')
-            && !trimmed.starts_with("let ")
-            && !trimmed.starts_with("fn ")
-            && !trimmed.starts_with("class ")
-            && !trimmed.starts_with("interface ")
-            && !trimmed.starts_with("if ")
-            && !trimmed.starts_with("while ")
-            && !trimmed.starts_with("for ")
-            && !trimmed.starts_with("return ")
-            && !trimmed.starts_with("print(")
-            && !trimmed.starts_with("println(")
-        {
-            // Wrap as print statement for expression evaluation
-            format!("print({});", trimmed)
-        } else if !source.ends_with(';') && !source.ends_with('}') {
-            format!("{};", source)
-        } else {
-            source.to_string()
-        };
+    // Parse
+    let program = solilang::parser::Parser::new(tokens).parse()?;
 
-        // Lex
-        let tokens = solilang::lexer::Scanner::new(&source).scan_tokens()?;
+    // Skip type checking in REPL for flexibility
 
-        // Parse
-        let program = solilang::parser::Parser::new(tokens).parse()?;
+    // Execute
+    interpreter.interpret(&program)?;
 
-        // Skip type checking in REPL for flexibility
-
-        // Execute based on mode
-        match self {
-            ReplState::TreeWalk(interpreter) => {
-                interpreter.interpret(&program)?;
-            }
-            ReplState::Bytecode(vm) => {
-                let mut compiler = solilang::bytecode::Compiler::new();
-                let function = compiler.compile(&program)?;
-                vm.run(function)?;
-            }
-        }
-
-        Ok(())
-    }
+    Ok(())
 }
 
 fn format_duration(duration: std::time::Duration) -> String {
@@ -1012,8 +862,6 @@ fn run_test(
                             match solilang::run_with_path_and_coverage(
                                 &source,
                                 Some(&file),
-                                solilang::ExecutionMode::TreeWalk,
-                                false,
                                 false,
                                 None,
                                 Some(&file),
@@ -1098,22 +946,16 @@ fn run_test(
     }
 
     println!();
-    println!("Stopping test server...");
-    solilang::interpreter::builtins::test_server::stop_test_server();
 }
 
-fn collect_test_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {
+fn collect_test_files(dir: &Path) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
 
-    if let Ok(entries) = std::fs::read_dir(dir) {
+    if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext == "sl" {
-                        files.push(path);
-                    }
-                }
+            if path.is_file() && path.extension().map(|e| e == "sl").unwrap_or(false) {
+                files.push(path);
             } else if path.is_dir() {
                 files.extend(collect_test_files(&path));
             }
@@ -1123,34 +965,78 @@ fn collect_test_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {
     files
 }
 
-#[allow(dead_code)]
-fn collect_source_files() -> Vec<std::path::PathBuf> {
-    let mut files = Vec::new();
-    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
+    use solilang::migration::{DbConfig, MigrationRunner};
 
-    let app_dir = project_root.join("app");
-    if app_dir.exists() {
-        collect_sl_files_recursive(&app_dir, &mut files);
+    let app_path = Path::new(folder);
+
+    if !app_path.exists() {
+        eprintln!("Error: Folder '{}' does not exist", folder);
+        process::exit(1);
     }
 
-    files
-}
+    // Load database config from .env file and environment
+    let config = DbConfig::from_env(app_path);
 
-#[allow(dead_code)]
-fn collect_sl_files_recursive(dir: &std::path::PathBuf, files: &mut Vec<std::path::PathBuf>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext == "sl" {
-                        files.push(path);
-                    }
+    match action {
+        DbMigrateAction::Up => {
+            println!();
+            println!("  \x1b[1mRunning migrations...\x1b[0m");
+            println!();
+
+            let runner = MigrationRunner::new(config, app_path);
+            match runner.migrate_up() {
+                Ok(result) => {
+                    println!();
+                    println!("  \x1b[32m{}\x1b[0m", result.message);
+                    println!();
                 }
-            } else if path.is_dir() {
-                let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
-                if dir_name != "tests" && dir_name != "target" && dir_name != "node_modules" {
-                    collect_sl_files_recursive(&path, files);
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        DbMigrateAction::Down => {
+            println!();
+            println!("  \x1b[1mRolling back migration...\x1b[0m");
+            println!();
+
+            let runner = MigrationRunner::new(config, app_path);
+            match runner.migrate_down() {
+                Ok(result) => {
+                    println!();
+                    println!("  \x1b[32m{}\x1b[0m", result.message);
+                    println!();
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        DbMigrateAction::Status => {
+            let runner = MigrationRunner::new(config, app_path);
+            match runner.status() {
+                Ok(status) => {
+                    solilang::migration::print_status(&status);
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        DbMigrateAction::Generate { name } => {
+            match solilang::migration::generate_migration(app_path, name) {
+                Ok(path) => {
+                    println!();
+                    println!("  \x1b[32mCreated migration:\x1b[0m {}", path.display());
+                    println!();
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
                 }
             }
         }

@@ -142,4 +142,58 @@ pub fn register_string_builtins(env: &mut Environment) {
             }
         })),
     );
+
+    // lpad(string, width, pad_char?) - Left pad string to reach width
+    env.define(
+        "lpad".to_string(),
+        Value::NativeFunction(NativeFunction::new("lpad", None, |args| {
+            let (s, width, pad_char) = match args.len() {
+                2 => match (&args[0], &args[1]) {
+                    (Value::String(s), Value::Int(width)) => (s.clone(), *width as usize, ' '),
+                    _ => return Err("lpad requires (string, int) or (string, int, string)".to_string()),
+                },
+                3 => match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::Int(width), Value::String(pad_str)) => {
+                        let pad_char = pad_str.chars().next().unwrap_or(' ');
+                        (s.clone(), *width as usize, pad_char)
+                    }
+                    _ => return Err("lpad requires (string, int) or (string, int, string)".to_string()),
+                },
+                _ => return Err("lpad requires (string, int) or (string, int, string)".to_string()),
+            };
+            if s.len() >= width {
+                Ok(Value::String(s))
+            } else {
+                let padding = width - s.len();
+                Ok(Value::String(pad_char.to_string().repeat(padding) + &s))
+            }
+        })),
+    );
+
+    // rpad(string, width, pad_char?) - Right pad string to reach width
+    env.define(
+        "rpad".to_string(),
+        Value::NativeFunction(NativeFunction::new("rpad", None, |args| {
+            let (s, width, pad_char) = match args.len() {
+                2 => match (&args[0], &args[1]) {
+                    (Value::String(s), Value::Int(width)) => (s.clone(), *width as usize, ' '),
+                    _ => return Err("rpad requires (string, int) or (string, int, string)".to_string()),
+                },
+                3 => match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::Int(width), Value::String(pad_str)) => {
+                        let pad_char = pad_str.chars().next().unwrap_or(' ');
+                        (s.clone(), *width as usize, pad_char)
+                    }
+                    _ => return Err("rpad requires (string, int) or (string, int, string)".to_string()),
+                },
+                _ => return Err("rpad requires (string, int) or (string, int, string)".to_string()),
+            };
+            if s.len() >= width {
+                Ok(Value::String(s))
+            } else {
+                let padding = width - s.len();
+                Ok(Value::String(s + &pad_char.to_string().repeat(padding)))
+            }
+        })),
+    );
 }

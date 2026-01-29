@@ -518,6 +518,24 @@ impl TypeEnvironment {
             },
         );
 
+        // lpad(String, Int, String?) -> String
+        self.functions.insert(
+            "lpad".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Int, Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // rpad(String, Int, String?) -> String
+        self.functions.insert(
+            "rpad".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Int, Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // regex_match(String, String) -> Bool
         self.functions.insert(
             "regex_match".to_string(),

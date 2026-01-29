@@ -667,8 +667,6 @@ fn call_function_value(
 ) -> Result<Value, String> {
     match func {
         Value::Function(_func_data) => {
-            // For bytecode functions, we'd need to call them properly
-            // For now, this is a placeholder
             Err("Function calls not yet implemented for OOP controllers".to_string())
         }
         Value::NativeFunction(native_func) => (native_func.func)(args.to_vec()),

@@ -137,6 +137,32 @@ throw RuntimeError.new("Something failed");
 - `pop(arr)` - remove last
 - `range(start, end)` - create numeric array
 
+### Array Methods (Chainable)
+- `arr.map(fn(x) ...)` - transform each element
+- `arr.filter(fn(x) ...)` - keep elements matching predicate
+- `arr.each(fn(x) ...)` - iterate for side effects
+- `arr.reduce(fn(acc, x) ..., initial?)` - aggregate to single value
+- `arr.find(fn(x) ...)` - return first matching element
+- `arr.any?(fn(x) ...)` - check if any element matches
+- `arr.all?(fn(x) ...)` - check if all elements match
+- `arr.sort(fn(a, b)?)` - sort elements (default or custom comparator)
+- `arr.reverse()` - reverse array order
+- `arr.uniq()` - remove duplicate elements
+- `arr.compact()` - remove null values
+- `arr.flatten(depth?)` - flatten nested arrays
+- `arr.first()` - get first element
+- `arr.last()` - get last element
+- `arr.empty?()` - check if array has no elements
+- `arr.include?(value)` - check if array contains value
+- `arr.sample()` - get random element
+- `arr.shuffle()` - randomize array order
+- `arr.take(n)` - get first n elements
+- `arr.drop(n)` - skip first n elements
+- `arr.zip(other)` - combine two arrays into pairs
+- `arr.sum()` - sum numeric elements
+- `arr.min()` - find minimum value
+- `arr.max()` - find maximum value
+
 ### Hashes
 - `len(hash)` - entry count
 - `keys(hash)` - array of keys
@@ -146,6 +172,56 @@ throw RuntimeError.new("Something failed");
 - `delete(hash, key)` - remove entry
 - `merge(h1, h2)` - combine hashes
 - `clear(hash)` - remove all
+
+### Hash Methods (Chainable)
+- `hash.map(fn(k, v) ...)` - transform to new hash
+- `hash.filter(fn(k, v) ...)` - keep entries matching predicate
+- `hash.each(fn(k, v) ...)` - iterate for side effects
+- `hash.get(key, default?)` - get value with optional default
+- `hash.fetch(key, default?)` - get value, error if missing (optional default)
+- `hash.invert()` - swap keys and values
+- `hash.transform_values(fn(v) ...)` - transform all values
+- `hash.transform_keys(fn(k) ...)` - transform all keys
+- `hash.select(fn(k, v) ...)` - keep entries where function returns true
+- `hash.reject(fn(k, v) ...)` - remove entries where function returns true
+- `hash.slice([key1, key2, ...])` - get subset with specified keys
+- `hash.except([key1, key2, ...])` - get hash without specified keys
+- `hash.compact()` - remove entries with null values
+- `hash.dig(key, key2, ...)` - navigate nested hashes safely
+
+### String Methods
+- `str.starts_with?(prefix)` - check if string starts with prefix
+- `str.ends_with?(suffix)` - check if string ends with suffix
+- `str.chomp()` - remove trailing newline
+- `str.lstrip()` - remove leading whitespace
+- `str.rstrip()` - remove trailing whitespace
+- `str.squeeze(chars?)` - compress consecutive characters
+- `str.count(substr)` - count occurrences of substring
+- `str.gsub(pattern, replacement)` - global regex substitution
+- `str.sub(pattern, replacement)` - single regex substitution
+- `str.match(pattern)` - regex match, returns captures array
+- `str.scan(pattern)` - find all regex matches
+- `str.tr(from, to)` - character translation
+- `str.center(width, pad?)` - center with padding
+- `str.ljust(width, pad?)` - left justify with padding
+- `str.rjust(width, pad?)` - right justify with padding
+- `str.ord()` - get ASCII/Unicode codepoint of first char
+- `str.bytes()` - get array of byte values
+- `str.chars()` - get array of characters
+- `str.lines()` - split into array of lines
+- `str.bytesize()` - get byte length
+- `str.capitalize()` - capitalize first letter, lowercase rest
+- `str.swapcase()` - toggle case of all characters
+- `str.insert(index, string)` - insert string at position
+- `str.delete(substr)` - remove all occurrences
+- `str.delete_prefix(prefix)` - remove prefix if present
+- `str.delete_suffix(suffix)` - remove suffix if present
+- `str.partition(sep)` - split into [before, sep, after]
+- `str.rpartition(sep)` - partition from right
+- `str.reverse()` - reverse string
+- `str.hex()` - parse as hexadecimal number
+- `str.oct()` - parse as octal number
+- `str.truncate(length, suffix?)` - truncate with ellipsis
 
 ### HTTP/Server
 - `http_get(url)` - HTTP GET (returns future)
@@ -229,10 +305,9 @@ post("/users", fn() {
 | String interp | `"Hello \(name)"` |
 | Import | `import "./file.sl"` |
 
-## Execution Modes
+## Execution
 
-- **Tree-walking interpreter**: Default, simple, portable
-- **Bytecode VM**: Faster execution for larger codebases
+Solilang uses a tree-walking interpreter for executing programs. The interpreter is simple, portable, and provides good performance for most use cases.
 
 ## File Extension
 

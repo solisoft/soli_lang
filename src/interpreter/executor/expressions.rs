@@ -452,9 +452,12 @@ impl Interpreter {
                 })
             }
             Value::Array(_) => {
-                // Handle array methods: map, filter, each
+                // Handle array methods: map, filter, each, reduce, find, any?, all?, sort, reverse, uniq, compact, flatten, first, last, empty?, include?, sample, shuffle, take, drop, zip, sum, min, max
                 match name {
-                    "map" | "filter" | "each" => Ok(Value::Method(ValueMethod {
+                    "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?" | "sort"
+                    | "reverse" | "uniq" | "compact" | "flatten" | "first" | "last" | "empty?"
+                    | "include?" | "sample" | "shuffle" | "take" | "drop" | "zip" | "sum"
+                    | "min" | "max" => Ok(Value::Method(ValueMethod {
                         receiver: Box::new(obj_val),
                         method_name: name.to_string(),
                     })),
@@ -466,9 +469,11 @@ impl Interpreter {
                 }
             }
             Value::Hash(_) => {
-                // Handle hash methods
+                // Handle hash methods: map, filter, each, get, fetch, invert, transform_values, transform_keys, select, reject, slice, except, compact, dig
                 match name {
-                    "map" | "filter" | "each" => Ok(Value::Method(ValueMethod {
+                    "map" | "filter" | "each" | "get" | "fetch" | "invert" | "transform_values"
+                    | "transform_keys" | "select" | "reject" | "slice" | "except" | "compact"
+                    | "dig" => Ok(Value::Method(ValueMethod {
                         receiver: Box::new(obj_val),
                         method_name: name.to_string(),
                     })),
@@ -490,6 +495,26 @@ impl Interpreter {
                     }
                     _ => Err(RuntimeError::NoSuchProperty {
                         value_type: "QueryBuilder".to_string(),
+                        property: name.to_string(),
+                        span,
+                    }),
+                }
+            }
+            Value::String(ref s) => {
+                // Handle string methods
+                let _ = s; // silence unused warning
+                match name {
+                    "starts_with?" | "ends_with?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
+                    | "count" | "gsub" | "sub" | "match" | "scan" | "tr" | "center" | "ljust"
+                    | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
+                    | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
+                    | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"
+                    | "truncate" => Ok(Value::Method(ValueMethod {
+                        receiver: Box::new(obj_val),
+                        method_name: name.to_string(),
+                    })),
+                    _ => Err(RuntimeError::NoSuchProperty {
+                        value_type: "String".to_string(),
                         property: name.to_string(),
                         span,
                     }),
@@ -886,7 +911,7 @@ impl Interpreter {
             }
 
             Value::Method(method) => {
-                // Handle array/hash/QueryBuilder methods
+                // Handle array/hash/QueryBuilder/String methods
                 match *method.receiver {
                     Value::Array(arr) => {
                         let items = arr.borrow().clone();
@@ -898,6 +923,9 @@ impl Interpreter {
                     }
                     Value::QueryBuilder(qb) => {
                         self.call_query_builder_method(qb, &method.method_name, arguments, span)
+                    }
+                    Value::String(s) => {
+                        self.call_string_method(&s, &method.method_name, arguments, span)
                     }
                     _ => Err(RuntimeError::type_error(
                         format!("{} does not support methods", method.receiver.type_name()),
@@ -1063,6 +1091,431 @@ impl Interpreter {
 
                 // Return the original array for chaining
                 Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))))
+            }
+            "reduce" => {
+                // reduce expects a function and optional initial value
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let func = match &arguments[0] {
+                    Value::Function(f) => f.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "reduce expects a function argument",
+                            span,
+                        ))
+                    }
+                };
+
+                let mut acc = if arguments.len() == 2 {
+                    arguments[1].clone()
+                } else if !items.is_empty() {
+                    items[0].clone()
+                } else {
+                    return Err(RuntimeError::type_error(
+                        "reduce on empty array requires initial value",
+                        span,
+                    ));
+                };
+
+                let start_idx = if arguments.len() == 2 { 0 } else { 1 };
+
+                for item in items.iter().skip(start_idx) {
+                    let call_env = Environment::with_enclosing(func.closure.clone());
+                    let mut call_env = call_env;
+
+                    if func.params.len() >= 2 {
+                        call_env.define(func.params[0].name.clone(), acc.clone());
+                        call_env.define(func.params[1].name.clone(), item.clone());
+                    } else if func.params.len() == 1 {
+                        let pair = Value::Array(Rc::new(RefCell::new(vec![acc.clone(), item.clone()])));
+                        call_env.define(func.params[0].name.clone(), pair);
+                    }
+
+                    acc = match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(v) => v,
+                        ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in array reduce", span));
+                        }
+                    };
+                }
+
+                Ok(acc)
+            }
+            "find" => {
+                // find expects a function that returns boolean
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let func = match &arguments[0] {
+                    Value::Function(f) => f.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "find expects a function argument",
+                            span,
+                        ))
+                    }
+                };
+
+                for item in items {
+                    let call_env = Environment::with_enclosing(func.closure.clone());
+                    let mut call_env = call_env;
+
+                    let param_name = func
+                        .params
+                        .first()
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| "it".to_string());
+                    call_env.define(param_name, item.clone());
+
+                    let result_value = match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(v) => v,
+                        ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in array find", span));
+                        }
+                    };
+
+                    if result_value.is_truthy() {
+                        return Ok(item.clone());
+                    }
+                }
+
+                Ok(Value::Null)
+            }
+            "any?" => {
+                // any? expects a function that returns boolean
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let func = match &arguments[0] {
+                    Value::Function(f) => f.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "any? expects a function argument",
+                            span,
+                        ))
+                    }
+                };
+
+                for item in items {
+                    let call_env = Environment::with_enclosing(func.closure.clone());
+                    let mut call_env = call_env;
+
+                    let param_name = func
+                        .params
+                        .first()
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| "it".to_string());
+                    call_env.define(param_name, item.clone());
+
+                    let result_value = match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(v) => v,
+                        ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in array any?", span));
+                        }
+                    };
+
+                    if result_value.is_truthy() {
+                        return Ok(Value::Bool(true));
+                    }
+                }
+
+                Ok(Value::Bool(false))
+            }
+            "all?" => {
+                // all? expects a function that returns boolean
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let func = match &arguments[0] {
+                    Value::Function(f) => f.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "all? expects a function argument",
+                            span,
+                        ))
+                    }
+                };
+
+                for item in items {
+                    let call_env = Environment::with_enclosing(func.closure.clone());
+                    let mut call_env = call_env;
+
+                    let param_name = func
+                        .params
+                        .first()
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| "it".to_string());
+                    call_env.define(param_name, item.clone());
+
+                    let result_value = match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(v) => v,
+                        ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in array all?", span));
+                        }
+                    };
+
+                    if !result_value.is_truthy() {
+                        return Ok(Value::Bool(false));
+                    }
+                }
+
+                Ok(Value::Bool(true))
+            }
+            "sort" => {
+                // sort with optional comparator function
+                let mut result = items.to_vec();
+                if arguments.len() > 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+
+                if let Some(func_val) = arguments.first() {
+                    // Custom comparator
+                    let func = match func_val {
+                        Value::Function(f) => f.clone(),
+                        _ => {
+                            return Err(RuntimeError::type_error(
+                                "sort expects a function argument",
+                                span,
+                            ))
+                        }
+                    };
+
+                    result.sort_by(|a, b| {
+                        let call_env = Environment::with_enclosing(func.closure.clone());
+                        let mut call_env = call_env;
+
+                        if func.params.len() >= 2 {
+                            call_env.define(func.params[0].name.clone(), a.clone());
+                            call_env.define(func.params[1].name.clone(), b.clone());
+                        }
+
+                        match self.execute_block(&func.body, call_env) {
+                            Ok(ControlFlow::Return(Value::Int(n))) => n.cmp(&0),
+                            Ok(ControlFlow::Return(Value::Float(n))) => {
+                                if n < 0.0 {
+                                    std::cmp::Ordering::Less
+                                } else if n > 0.0 {
+                                    std::cmp::Ordering::Greater
+                                } else {
+                                    std::cmp::Ordering::Equal
+                                }
+                            }
+                            _ => std::cmp::Ordering::Equal,
+                        }
+                    });
+                } else {
+                    // Default sort
+                    result.sort_by(|a, b| match (a, b) {
+                        (Value::Int(a), Value::Int(b)) => a.cmp(b),
+                        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+                        (Value::String(a), Value::String(b)) => a.cmp(b),
+                        (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+                        (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)).unwrap_or(std::cmp::Ordering::Equal),
+                        _ => std::cmp::Ordering::Equal,
+                    });
+                }
+
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "reverse" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let mut result = items.to_vec();
+                result.reverse();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "uniq" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let mut result = Vec::new();
+                for item in items {
+                    if !result.contains(item) {
+                        result.push(item.clone());
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "compact" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let result: Vec<Value> = items.iter().filter(|v| !matches!(v, Value::Null)).cloned().collect();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "flatten" => {
+                let depth = match arguments.len() {
+                    0 => None, // Flatten all levels
+                    1 => match &arguments[0] {
+                        Value::Int(n) if *n >= 0 => Some(*n as usize),
+                        _ => return Err(RuntimeError::type_error("flatten expects a non-negative integer", span)),
+                    },
+                    _ => return Err(RuntimeError::wrong_arity(1, arguments.len(), span)),
+                };
+
+                fn flatten_recursive(arr: &[Value], current_depth: usize, max_depth: Option<usize>) -> Vec<Value> {
+                    if let Some(max) = max_depth {
+                        if current_depth >= max {
+                            return arr.to_vec();
+                        }
+                    }
+
+                    let mut result = Vec::new();
+                    for item in arr {
+                        if let Value::Array(inner) = item {
+                            result.extend(flatten_recursive(&inner.borrow(), current_depth + 1, max_depth));
+                        } else {
+                            result.push(item.clone());
+                        }
+                    }
+                    result
+                }
+
+                let result = flatten_recursive(items, 0, depth);
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "first" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(items.first().cloned().unwrap_or(Value::Null))
+            }
+            "last" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(items.last().cloned().unwrap_or(Value::Null))
+            }
+            "empty?" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Bool(items.is_empty()))
+            }
+            "include?" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                Ok(Value::Bool(items.contains(&arguments[0])))
+            }
+            "sample" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                if items.is_empty() {
+                    return Ok(Value::Null);
+                }
+                use rand::seq::SliceRandom;
+                use rand::thread_rng;
+                let mut rng = thread_rng();
+                Ok(items.choose(&mut rng).cloned().unwrap_or(Value::Null))
+            }
+            "shuffle" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                use rand::seq::SliceRandom;
+                use rand::thread_rng;
+                let mut result = items.to_vec();
+                let mut rng = thread_rng();
+                result.shuffle(&mut rng);
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "take" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let n = match &arguments[0] {
+                    Value::Int(n) if *n >= 0 => *n as usize,
+                    _ => return Err(RuntimeError::type_error("take expects a non-negative integer", span)),
+                };
+                let result: Vec<Value> = items.iter().take(n).cloned().collect();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "drop" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let n = match &arguments[0] {
+                    Value::Int(n) if *n >= 0 => *n as usize,
+                    _ => return Err(RuntimeError::type_error("drop expects a non-negative integer", span)),
+                };
+                let result: Vec<Value> = items.iter().skip(n).cloned().collect();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "zip" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let other = match &arguments[0] {
+                    Value::Array(arr) => arr.borrow().clone(),
+                    _ => return Err(RuntimeError::type_error("zip expects an array argument", span)),
+                };
+
+                let result: Vec<Value> = items.iter().zip(other.iter()).map(|(a, b)| {
+                    Value::Array(Rc::new(RefCell::new(vec![a.clone(), b.clone()])))
+                }).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "sum" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let mut total = 0.0;
+                for item in items {
+                    match item {
+                        Value::Int(n) => total += *n as f64,
+                        Value::Float(n) => total += *n,
+                        _ => return Err(RuntimeError::type_error("sum expects numeric array", span)),
+                    }
+                }
+                Ok(Value::Float(total))
+            }
+            "min" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                if items.is_empty() {
+                    return Ok(Value::Null);
+                }
+                let mut min = &items[0];
+                for item in items.iter().skip(1) {
+                    match (min, item) {
+                        (Value::Int(a), Value::Int(b)) if b < a => min = item,
+                        (Value::Float(a), Value::Float(b)) if b < a => min = item,
+                        (Value::String(a), Value::String(b)) if b < a => min = item,
+                        (Value::Int(a), Value::Float(b)) if *b < *a as f64 => min = item,
+                        (Value::Float(a), Value::Int(b)) if (*b as f64) < *a => min = item,
+                        _ => {}
+                    }
+                }
+                Ok(min.clone())
+            }
+            "max" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                if items.is_empty() {
+                    return Ok(Value::Null);
+                }
+                let mut max = &items[0];
+                for item in items.iter().skip(1) {
+                    match (max, item) {
+                        (Value::Int(a), Value::Int(b)) if b > a => max = item,
+                        (Value::Float(a), Value::Float(b)) if b > a => max = item,
+                        (Value::String(a), Value::String(b)) if b > a => max = item,
+                        (Value::Int(a), Value::Float(b)) if *b > *a as f64 => max = item,
+                        (Value::Float(a), Value::Int(b)) if (*b as f64) > *a => max = item,
+                        _ => {}
+                    }
+                }
+                Ok(max.clone())
             }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
@@ -1250,6 +1703,337 @@ impl Interpreter {
                 // Return the original hash for chaining
                 Ok(Value::Hash(Rc::new(RefCell::new(entries.to_vec()))))
             }
+            "get" => {
+                // get(key) or get(key, default)
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let key = &arguments[0];
+                if !key.is_hashable() {
+                    return Err(RuntimeError::type_error(
+                        format!("{} cannot be used as a hash key", key.type_name()),
+                        span,
+                    ));
+                }
+                let default = arguments.get(1).cloned().unwrap_or(Value::Null);
+
+                for (k, v) in entries {
+                    if key.hash_eq(k) {
+                        return Ok(v.clone());
+                    }
+                }
+                Ok(default)
+            }
+            "fetch" => {
+                // fetch(key) or fetch(key, default) - raises error if key not found and no default
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let key = &arguments[0];
+                if !key.is_hashable() {
+                    return Err(RuntimeError::type_error(
+                        format!("{} cannot be used as a hash key", key.type_name()),
+                        span,
+                    ));
+                }
+
+                for (k, v) in entries {
+                    if key.hash_eq(k) {
+                        return Ok(v.clone());
+                    }
+                }
+
+                if let Some(default) = arguments.get(1) {
+                    Ok(default.clone())
+                } else {
+                    Err(RuntimeError::type_error(
+                        format!("key not found: {:?}", key),
+                        span,
+                    ))
+                }
+            }
+            "invert" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let mut result = Vec::new();
+                for (k, v) in entries {
+                    if !v.is_hashable() {
+                        return Err(RuntimeError::type_error(
+                            format!("{} cannot be used as a hash key", v.type_name()),
+                            span,
+                        ));
+                    }
+                    result.push((v.clone(), k.clone()));
+                }
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "transform_values" => {
+                // transform_values(fn(value)) - transform all values
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let func = match &arguments[0] {
+                    Value::Function(f) => f.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "transform_values expects a function argument",
+                            span,
+                        ))
+                    }
+                };
+
+                let mut result = Vec::new();
+                for (key, value) in entries {
+                    let call_env = Environment::with_enclosing(func.closure.clone());
+                    let mut call_env = call_env;
+
+                    let param_name = func
+                        .params
+                        .first()
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| "it".to_string());
+                    call_env.define(param_name, value.clone());
+
+                    let new_value = match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(v) => v,
+                        ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in hash transform_values", span));
+                        }
+                    };
+                    result.push((key.clone(), new_value));
+                }
+
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "transform_keys" => {
+                // transform_keys(fn(key)) - transform all keys
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let func = match &arguments[0] {
+                    Value::Function(f) => f.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "transform_keys expects a function argument",
+                            span,
+                        ))
+                    }
+                };
+
+                let mut result = Vec::new();
+                for (key, value) in entries {
+                    let call_env = Environment::with_enclosing(func.closure.clone());
+                    let mut call_env = call_env;
+
+                    let param_name = func
+                        .params
+                        .first()
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| "it".to_string());
+                    call_env.define(param_name, key.clone());
+
+                    let new_key = match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(v) => v,
+                        ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in hash transform_keys", span));
+                        }
+                    };
+
+                    if !new_key.is_hashable() {
+                        return Err(RuntimeError::type_error(
+                            "transformed key must be hashable",
+                            span,
+                        ));
+                    }
+                    result.push((new_key, value.clone()));
+                }
+
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "select" => {
+                // select(fn(key, value)) - keep entries where function returns true
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let func = match &arguments[0] {
+                    Value::Function(f) => f.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "select expects a function argument",
+                            span,
+                        ))
+                    }
+                };
+
+                let mut result = Vec::new();
+                for (key, value) in entries {
+                    let call_env = Environment::with_enclosing(func.closure.clone());
+                    let mut call_env = call_env;
+
+                    if func.params.len() >= 2 {
+                        call_env.define(func.params[0].name.clone(), key.clone());
+                        call_env.define(func.params[1].name.clone(), value.clone());
+                    } else if func.params.len() == 1 {
+                        let pair =
+                            Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
+                        call_env.define(func.params[0].name.clone(), pair);
+                    }
+
+                    let result_value = match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(v) => v,
+                        ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in hash select", span));
+                        }
+                    };
+
+                    if result_value.is_truthy() {
+                        result.push((key.clone(), value.clone()));
+                    }
+                }
+
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "reject" => {
+                // reject(fn(key, value)) - remove entries where function returns true
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let func = match &arguments[0] {
+                    Value::Function(f) => f.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "reject expects a function argument",
+                            span,
+                        ))
+                    }
+                };
+
+                let mut result = Vec::new();
+                for (key, value) in entries {
+                    let call_env = Environment::with_enclosing(func.closure.clone());
+                    let mut call_env = call_env;
+
+                    if func.params.len() >= 2 {
+                        call_env.define(func.params[0].name.clone(), key.clone());
+                        call_env.define(func.params[1].name.clone(), value.clone());
+                    } else if func.params.len() == 1 {
+                        let pair =
+                            Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
+                        call_env.define(func.params[0].name.clone(), pair);
+                    }
+
+                    let result_value = match self.execute_block(&func.body, call_env)? {
+                        ControlFlow::Return(v) => v,
+                        ControlFlow::Normal => Value::Null,
+                        ControlFlow::Throw(_) => {
+                            return Err(RuntimeError::new("Exception in hash reject", span));
+                        }
+                    };
+
+                    if !result_value.is_truthy() {
+                        result.push((key.clone(), value.clone()));
+                    }
+                }
+
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "slice" => {
+                // slice([key1, key2, ...]) - get subset with specified keys
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let keys_arr = match &arguments[0] {
+                    Value::Array(arr) => arr.borrow().clone(),
+                    _ => return Err(RuntimeError::type_error("slice expects an array of keys", span)),
+                };
+
+                let mut result = Vec::new();
+                for key in keys_arr {
+                    if !key.is_hashable() {
+                        return Err(RuntimeError::type_error(
+                            format!("{} cannot be used as a hash key", key.type_name()),
+                            span,
+                        ));
+                    }
+                    for (k, v) in entries {
+                        if key.hash_eq(k) {
+                            result.push((k.clone(), v.clone()));
+                            break;
+                        }
+                    }
+                }
+
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "except" => {
+                // except([key1, key2, ...]) - get hash without specified keys
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let keys_arr = match &arguments[0] {
+                    Value::Array(arr) => arr.borrow().clone(),
+                    _ => return Err(RuntimeError::type_error("except expects an array of keys", span)),
+                };
+
+                let mut result = Vec::new();
+                for (k, v) in entries {
+                    let mut found = false;
+                    for key in &keys_arr {
+                        if key.is_hashable() && k.hash_eq(key) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        result.push((k.clone(), v.clone()));
+                    }
+                }
+
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "compact" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let result: Vec<(Value, Value)> = entries
+                    .iter()
+                    .filter(|(_, v)| !matches!(v, Value::Null))
+                    .cloned()
+                    .collect();
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "dig" => {
+                // dig(key, key2, ...) - navigate nested hashes
+                if arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+
+                let mut current = Value::Hash(Rc::new(RefCell::new(entries.to_vec())));
+                for key in arguments {
+                    match current {
+                        Value::Hash(hash) => {
+                            let hash_ref = hash.borrow();
+                            let mut found = None;
+                            for (k, v) in hash_ref.iter() {
+                                if key.hash_eq(k) {
+                                    found = Some(v.clone());
+                                    break;
+                                }
+                            }
+                            match found {
+                                Some(v) => current = v,
+                                None => return Ok(Value::Null),
+                            }
+                        }
+                        _ => return Ok(Value::Null),
+                    }
+                }
+                Ok(current)
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Hash".to_string(),
                 property: method_name.to_string(),
@@ -1415,6 +2199,493 @@ impl Interpreter {
             }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "QueryBuilder".to_string(),
+                property: method_name.to_string(),
+                span,
+            }),
+        }
+    }
+
+    /// Handle string methods
+    fn call_string_method(
+        &mut self,
+        s: &str,
+        method_name: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        use regex::Regex;
+
+        match method_name {
+            "starts_with?" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let prefix = match &arguments[0] {
+                    Value::String(p) => p,
+                    _ => return Err(RuntimeError::type_error("starts_with? expects a string argument", span)),
+                };
+                Ok(Value::Bool(s.starts_with(prefix)))
+            }
+            "ends_with?" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let suffix = match &arguments[0] {
+                    Value::String(suf) => suf,
+                    _ => return Err(RuntimeError::type_error("ends_with? expects a string argument", span)),
+                };
+                Ok(Value::Bool(s.ends_with(suffix)))
+            }
+            "chomp" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let result = s.strip_suffix('\n')
+                    .or_else(|| s.strip_suffix("\r\n"))
+                    .or_else(|| s.strip_suffix('\r'))
+                    .unwrap_or(s);
+                Ok(Value::String(result.to_string()))
+            }
+            "lstrip" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::String(s.trim_start().to_string()))
+            }
+            "rstrip" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::String(s.trim_end().to_string()))
+            }
+            "squeeze" => {
+                if arguments.len() > 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let chars_to_squeeze: Option<Vec<char>> = arguments.first().map(|v| match v {
+                    Value::String(s) => s.chars().collect(),
+                    _ => vec![],
+                });
+
+                let mut result = String::new();
+                let mut last_char: Option<char> = None;
+
+                for c in s.chars() {
+                    let should_squeeze = chars_to_squeeze.as_ref()
+                        .map(|chars| chars.contains(&c))
+                        .unwrap_or(true);
+
+                    if should_squeeze {
+                        if last_char != Some(c) {
+                            result.push(c);
+                        }
+                    } else {
+                        result.push(c);
+                    }
+                    last_char = Some(c);
+                }
+                Ok(Value::String(result))
+            }
+            "count" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let substr = match &arguments[0] {
+                    Value::String(sub) => sub,
+                    _ => return Err(RuntimeError::type_error("count expects a string argument", span)),
+                };
+                let count = s.matches(substr).count() as i64;
+                Ok(Value::Int(count))
+            }
+            "gsub" => {
+                if arguments.len() < 2 || arguments.len() > 3 {
+                    return Err(RuntimeError::wrong_arity(3, arguments.len(), span));
+                }
+                let pattern = match &arguments[0] {
+                    Value::String(p) => p,
+                    _ => return Err(RuntimeError::type_error("gsub expects a string pattern", span)),
+                };
+                let replacement = match &arguments[1] {
+                    Value::String(r) => r.clone(),
+                    _ => return Err(RuntimeError::type_error("gsub expects a string replacement", span)),
+                };
+
+                let result = if arguments.len() == 3 {
+                    // With limit
+                    let limit = match &arguments[2] {
+                        Value::Int(n) if *n >= 0 => *n as usize,
+                        _ => return Err(RuntimeError::type_error("gsub limit must be a non-negative integer", span)),
+                    };
+                    let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                    re.replacen(s, limit, &replacement).to_string()
+                } else {
+                    let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                    re.replace_all(s, &replacement).to_string()
+                };
+                Ok(Value::String(result))
+            }
+            "sub" => {
+                if arguments.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let pattern = match &arguments[0] {
+                    Value::String(p) => p,
+                    _ => return Err(RuntimeError::type_error("sub expects a string pattern", span)),
+                };
+                let replacement = match &arguments[1] {
+                    Value::String(r) => r.clone(),
+                    _ => return Err(RuntimeError::type_error("sub expects a string replacement", span)),
+                };
+
+                let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                let result = re.replacen(s, 1, &replacement).to_string();
+                Ok(Value::String(result))
+            }
+            "match" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let pattern = match &arguments[0] {
+                    Value::String(p) => p,
+                    _ => return Err(RuntimeError::type_error("match expects a string pattern", span)),
+                };
+
+                let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                if let Some(captures) = re.captures(s) {
+                    let mut result = Vec::new();
+                    for i in 0..captures.len() {
+                        if let Some(m) = captures.get(i) {
+                            result.push(Value::String(m.as_str().to_string()));
+                        }
+                    }
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                } else {
+                    Ok(Value::Null)
+                }
+            }
+            "scan" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let pattern = match &arguments[0] {
+                    Value::String(p) => p,
+                    _ => return Err(RuntimeError::type_error("scan expects a string pattern", span)),
+                };
+
+                let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                let matches: Vec<Value> = re.find_iter(s).map(|m| Value::String(m.as_str().to_string())).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(matches))))
+            }
+            "tr" => {
+                if arguments.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let from_chars = match &arguments[0] {
+                    Value::String(f) => f,
+                    _ => return Err(RuntimeError::type_error("tr expects a string from pattern", span)),
+                };
+                let to_chars = match &arguments[1] {
+                    Value::String(t) => t,
+                    _ => return Err(RuntimeError::type_error("tr expects a string to pattern", span)),
+                };
+
+                let mut result = String::new();
+                for c in s.chars() {
+                    if let Some(pos) = from_chars.find(c) {
+                        if let Some(replacement) = to_chars.chars().nth(pos) {
+                            result.push(replacement);
+                        }
+                    } else {
+                        result.push(c);
+                    }
+                }
+                Ok(Value::String(result))
+            }
+            "center" => {
+                if arguments.len() < 1 || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let width = match &arguments[0] {
+                    Value::Int(w) if *w > 0 => *w as usize,
+                    _ => return Err(RuntimeError::type_error("center expects a positive integer width", span)),
+                };
+                let pad_char = arguments.get(1).map(|v| match v {
+                    Value::String(s) => s.chars().next().unwrap_or(' '),
+                    _ => ' ',
+                }).unwrap_or(' ');
+
+                if s.len() >= width {
+                    Ok(Value::String(s.to_string()))
+                } else {
+                    let total_pad = width - s.len();
+                    let left_pad = total_pad / 2;
+                    let right_pad = total_pad - left_pad;
+                    let result = pad_char.to_string().repeat(left_pad) + s + &pad_char.to_string().repeat(right_pad);
+                    Ok(Value::String(result))
+                }
+            }
+            "ljust" => {
+                if arguments.len() < 1 || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let width = match &arguments[0] {
+                    Value::Int(w) if *w > 0 => *w as usize,
+                    _ => return Err(RuntimeError::type_error("ljust expects a positive integer width", span)),
+                };
+                let pad_char = arguments.get(1).map(|v| match v {
+                    Value::String(s) => s.chars().next().unwrap_or(' '),
+                    _ => ' ',
+                }).unwrap_or(' ');
+
+                if s.len() >= width {
+                    Ok(Value::String(s.to_string()))
+                } else {
+                    let result = s.to_string() + &pad_char.to_string().repeat(width - s.len());
+                    Ok(Value::String(result))
+                }
+            }
+            "rjust" => {
+                if arguments.len() < 1 || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let width = match &arguments[0] {
+                    Value::Int(w) if *w > 0 => *w as usize,
+                    _ => return Err(RuntimeError::type_error("rjust expects a positive integer width", span)),
+                };
+                let pad_char = arguments.get(1).map(|v| match v {
+                    Value::String(s) => s.chars().next().unwrap_or(' '),
+                    _ => ' ',
+                }).unwrap_or(' ');
+
+                if s.len() >= width {
+                    Ok(Value::String(s.to_string()))
+                } else {
+                    let result = pad_char.to_string().repeat(width - s.len()) + s;
+                    Ok(Value::String(result))
+                }
+            }
+            "ord" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                if let Some(c) = s.chars().next() {
+                    Ok(Value::Int(c as i64))
+                } else {
+                    Err(RuntimeError::type_error("ord on empty string", span))
+                }
+            }
+            "chr" => {
+                // This is a class method, not instance method - should not be called on a string instance
+                Err(RuntimeError::type_error("chr is not a string instance method", span))
+            }
+            "bytes" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let bytes: Vec<Value> = s.bytes().map(|b| Value::Int(b as i64)).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(bytes))))
+            }
+            "chars" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let chars: Vec<Value> = s.chars().map(|c| Value::String(c.to_string())).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(chars))))
+            }
+            "lines" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let lines: Vec<Value> = s.lines().map(|l| Value::String(l.to_string())).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(lines))))
+            }
+            "bytesize" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Int(s.len() as i64))
+            }
+            "capitalize" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let mut chars = s.chars();
+                let result: String = match chars.next() {
+                    None => String::new(),
+                    Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                };
+                Ok(Value::String(result))
+            }
+            "swapcase" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let result: String = s.chars().map(|c| {
+                    if c.is_uppercase() { c.to_lowercase().to_string() }
+                    else { c.to_uppercase().to_string() }
+                }).collect();
+                Ok(Value::String(result))
+            }
+            "insert" => {
+                if arguments.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let index = match &arguments[0] {
+                    Value::Int(i) if *i >= 0 => *i as usize,
+                    _ => return Err(RuntimeError::type_error("insert expects a non-negative integer index", span)),
+                };
+                let insert_str = match &arguments[1] {
+                    Value::String(str) => str,
+                    _ => return Err(RuntimeError::type_error("insert expects a string to insert", span)),
+                };
+
+                let char_count = s.chars().count();
+                if index > char_count {
+                    return Err(RuntimeError::type_error("insert index out of bounds", span));
+                }
+
+                let mut result = String::new();
+                for (i, c) in s.chars().enumerate() {
+                    if i == index {
+                        result.push_str(insert_str);
+                    }
+                    result.push(c);
+                }
+                if index == char_count {
+                    result.push_str(insert_str);
+                }
+                Ok(Value::String(result))
+            }
+            "delete" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let to_delete = match &arguments[0] {
+                    Value::String(d) => d,
+                    _ => return Err(RuntimeError::type_error("delete expects a string argument", span)),
+                };
+                let result = s.replace(to_delete, "");
+                Ok(Value::String(result))
+            }
+            "delete_prefix" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let prefix = match &arguments[0] {
+                    Value::String(p) => p,
+                    _ => return Err(RuntimeError::type_error("delete_prefix expects a string argument", span)),
+                };
+                let result = s.strip_prefix(prefix).unwrap_or(s);
+                Ok(Value::String(result.to_string()))
+            }
+            "delete_suffix" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let suffix = match &arguments[0] {
+                    Value::String(suf) => suf,
+                    _ => return Err(RuntimeError::type_error("delete_suffix expects a string argument", span)),
+                };
+                let result = s.strip_suffix(suffix).unwrap_or(s);
+                Ok(Value::String(result.to_string()))
+            }
+            "partition" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let sep = match &arguments[0] {
+                    Value::String(s) => s,
+                    _ => return Err(RuntimeError::type_error("partition expects a string separator", span)),
+                };
+
+                if let Some(pos) = s.find(sep) {
+                    let before = &s[..pos];
+                    let after = &s[pos + sep.len()..];
+                    let result = vec![
+                        Value::String(before.to_string()),
+                        Value::String(sep.to_string()),
+                        Value::String(after.to_string()),
+                    ];
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                } else {
+                    let result = vec![
+                        Value::String(s.to_string()),
+                        Value::String("".to_string()),
+                        Value::String("".to_string()),
+                    ];
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                }
+            }
+            "rpartition" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let sep = match &arguments[0] {
+                    Value::String(s) => s,
+                    _ => return Err(RuntimeError::type_error("rpartition expects a string separator", span)),
+                };
+
+                if let Some(pos) = s.rfind(sep) {
+                    let before = &s[..pos];
+                    let after = &s[pos + sep.len()..];
+                    let result = vec![
+                        Value::String(before.to_string()),
+                        Value::String(sep.to_string()),
+                        Value::String(after.to_string()),
+                    ];
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                } else {
+                    let result = vec![
+                        Value::String("".to_string()),
+                        Value::String("".to_string()),
+                        Value::String(s.to_string()),
+                    ];
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                }
+            }
+            "reverse" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let result: String = s.chars().rev().collect();
+                Ok(Value::String(result))
+            }
+            "hex" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let result = i64::from_str_radix(s, 16).map_err(|e| RuntimeError::type_error(format!("invalid hex: {}", e), span))?;
+                Ok(Value::Int(result))
+            }
+            "oct" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let result = i64::from_str_radix(s, 8).map_err(|e| RuntimeError::type_error(format!("invalid octal: {}", e), span))?;
+                Ok(Value::Int(result))
+            }
+            "truncate" => {
+                if arguments.len() < 1 || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let length = match &arguments[0] {
+                    Value::Int(l) if *l > 0 => *l as usize,
+                    _ => return Err(RuntimeError::type_error("truncate expects a positive integer length", span)),
+                };
+                let suffix = arguments.get(1).map(|v| match v {
+                    Value::String(s) => s.as_str(),
+                    _ => "...",
+                }).unwrap_or("...");
+
+                if s.len() <= length {
+                    Ok(Value::String(s.to_string()))
+                } else {
+                    let result = &s[..length.saturating_sub(suffix.len())];
+                    Ok(Value::String(result.to_string() + suffix))
+                }
+            }
+            _ => Err(RuntimeError::NoSuchProperty {
+                value_type: "String".to_string(),
                 property: method_name.to_string(),
                 span,
             }),

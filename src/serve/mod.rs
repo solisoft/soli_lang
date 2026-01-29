@@ -12,6 +12,7 @@ mod live_reload_ws; // WebSocket-based live reload
 mod middleware;
 mod router;
 pub mod websocket;
+mod server_constants;
 
 pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
 pub use hot_reload::FileTracker;
@@ -86,7 +87,6 @@ use crate::interpreter::builtins::template::{clear_template_cache, init_template
 use crate::interpreter::{Interpreter, Value};
 use crate::live::socket::{extract_session_id as extract_live_session_id, handle_live_connection};
 use crate::span::Span;
-use crate::ExecutionMode;
 
 /// Uploaded file information
 #[derive(Clone)]
@@ -122,9 +122,41 @@ struct ResponseData {
     body: String,
 }
 
+fn track_views_recursive(dir: &Path, tracker: &mut FileTracker) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                track_views_recursive(&path, tracker);
+            } else if path.extension().is_some_and(|ext| ext == "erb") {
+                tracker.track(&path);
+            }
+        }
+    }
+}
+
+fn track_static_recursive(dir: &Path, tracker: &mut FileTracker) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                track_static_recursive(&path, tracker);
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if server_constants::is_tracked_static_extension(ext) {
+                    tracker.track(&path);
+                }
+            }
+        }
+    }
+}
+
 /// Serve an MVC application from a folder in production mode by default.
 pub fn serve_folder(folder: &Path, port: u16) -> Result<(), RuntimeError> {
-    serve_folder_with_options(folder, port, false)
+    // Default to number of CPU cores for optimal parallelism
+    let num_workers = std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(server_constants::DEFAULT_WORKER_COUNT);
+    serve_folder_with_options(folder, port, false, num_workers)
 }
 
 /// Serve an MVC application from a folder with configurable options.
@@ -132,72 +164,57 @@ pub fn serve_folder_with_options(
     folder: &Path,
     port: u16,
     dev_mode: bool,
+    workers: usize,
 ) -> Result<(), RuntimeError> {
-    // Default to number of CPU cores for optimal parallelism
-    let num_workers = std::thread::available_parallelism()
-        .map(|p| p.get())
-        .unwrap_or(4); // Fallback to 4 if unable to detect
-                       // Use TreeWalk in dev mode for better debugging (variable inspection on errors)
-                       // Use Bytecode in production for better performance
-    let mode = if dev_mode {
-        ExecutionMode::TreeWalk
-    } else {
-        ExecutionMode::Bytecode
-    };
-    serve_folder_with_options_and_mode(folder, port, dev_mode, mode, num_workers)
+    serve_folder_with_options_and_workers(folder, port, dev_mode, workers)
 }
 
 /// Load environment variables from .env files in the application directory.
 /// This loads .env first, then .env.{APP_ENV} if APP_ENV is set.
 fn load_env_files(folder: &Path) {
-    // Load base .env
-    let env_file = folder.join(".env");
-    if env_file.exists() {
-        if let Ok(content) = std::fs::read_to_string(&env_file) {
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some((key, value)) = line.split_once('=') {
-                    let key = key.trim();
-                    let value = value.trim().trim_matches('"').trim_matches('\'');
-                    // Only set if not already set (env vars take precedence)
-                    if std::env::var(key).is_err() {
-                        std::env::set_var(key, value);
-                    }
-                }
-            }
-        }
+    load_env_file(folder, ".env", false);
+
+    if let Ok(app_env) = std::env::var("APP_ENV") {
+        load_env_file(folder, &format!(".env.{}", app_env), true);
+    }
+}
+
+fn load_env_file(folder: &Path, filename: &str, override_existing: bool) {
+    let env_file = folder.join(filename);
+    if !env_file.exists() {
+        return;
     }
 
-    // Load .env.{APP_ENV} if set
-    if let Ok(app_env) = std::env::var("APP_ENV") {
-        let env_specific = folder.join(format!(".env.{}", app_env));
-        if env_specific.exists() {
-            if let Ok(content) = std::fs::read_to_string(&env_specific) {
-                for line in content.lines() {
-                    let line = line.trim();
-                    if line.is_empty() || line.starts_with('#') {
-                        continue;
-                    }
-                    if let Some((key, value)) = line.split_once('=') {
-                        let key = key.trim();
-                        let value = value.trim().trim_matches('"').trim_matches('\'');
-                        std::env::set_var(key, value);
-                    }
-                }
-            }
+    let Ok(content) = std::fs::read_to_string(&env_file) else {
+        return;
+    };
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+
+        let key = key.trim();
+        let value = value.trim().trim_matches('"').trim_matches('\'');
+
+        if override_existing {
+            std::env::set_var(key, value);
+        } else if std::env::var(key).is_err() {
+            std::env::set_var(key, value);
         }
     }
 }
 
-/// Serve an MVC application from a folder with configurable options and execution mode.
-pub fn serve_folder_with_options_and_mode(
+/// Serve an MVC application from a folder with configurable options and worker count.
+pub fn serve_folder_with_options_and_workers(
     folder: &Path,
     port: u16,
     dev_mode: bool,
-    mode: ExecutionMode,
     workers: usize,
 ) -> Result<(), RuntimeError> {
     // Load .env file before anything else
@@ -227,12 +244,11 @@ pub fn serve_folder_with_options_and_mode(
     }
 
     println!("Starting MVC server from {}", folder.display());
-    println!("Execution mode: {:?}", mode);
 
     // Set the app root for LiveView template resolution
     crate::live::component::set_app_root(folder.to_path_buf());
 
-    // Create interpreter or bytecode compiler based on mode
+    // Create interpreter
     let mut interpreter = Interpreter::new();
 
     // Load models first (shared code)
@@ -404,7 +420,6 @@ pub fn serve_folder_with_options_and_mode(
         public_dir,
         file_tracker,
         dev_mode,
-        mode,
         workers,
         views_dir,
         routes_file,
@@ -857,7 +872,6 @@ fn run_hyper_server_worker_pool(
     public_dir: PathBuf,
     _file_tracker: FileTracker,
     dev_mode: bool,
-    _mode: ExecutionMode,
     num_workers: usize,
     views_dir: PathBuf,
     routes_file: PathBuf,
@@ -874,7 +888,7 @@ fn run_hyper_server_worker_pool(
     let ws_registry = crate::serve::websocket::get_ws_registry();
 
     // Bounded channels for backpressure
-    let capacity_per_worker = 64;
+    let capacity_per_worker = server_constants::CAPACITY_PER_WORKER;
     let (ws_event_tx, ws_event_rx) = channel::bounded(num_workers * capacity_per_worker);
     // LiveView event channel
     let (lv_event_tx, lv_event_rx): (
@@ -1033,40 +1047,9 @@ fn run_hyper_server_worker_pool(
             }
 
             // Track view files recursively
-            fn track_views_recursive(dir: &Path, tracker: &mut FileTracker) {
-                if let Ok(entries) = std::fs::read_dir(dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_dir() {
-                            track_views_recursive(&path, tracker);
-                        } else if path.extension().is_some_and(|ext| ext == "erb") {
-                            tracker.track(&path);
-                        }
-                    }
-                }
-            }
             track_views_recursive(&watch_views_dir, &mut file_tracker);
 
             // Track static files (CSS, JS) in public directory
-            fn track_static_recursive(dir: &Path, tracker: &mut FileTracker) {
-                if let Ok(entries) = std::fs::read_dir(dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_dir() {
-                            track_static_recursive(&path, tracker);
-                        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                            if [
-                                "css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff",
-                                "woff2", "ttf",
-                            ]
-                            .contains(&ext)
-                            {
-                                tracker.track(&path);
-                            }
-                        }
-                    }
-                }
-            }
             if watch_public_dir.exists() {
                 track_static_recursive(&watch_public_dir, &mut file_tracker);
             }
@@ -1102,12 +1085,7 @@ fn run_hyper_server_worker_pool(
 
                     // Check if it's a static file (CSS, JS, images)
                     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        if [
-                            "css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff",
-                            "woff2", "ttf",
-                        ]
-                        .contains(&ext)
-                        {
+                        if server_constants::is_tracked_static_extension(ext) {
                             static_files_changed = true;
                         }
                     }
@@ -1333,8 +1311,6 @@ fn worker_loop(
     let mut last_static_files_version = hot_reload_versions.static_files.load(Ordering::Acquire);
     let mut last_routes_version = hot_reload_versions.routes.load(Ordering::Acquire);
 
-    const BATCH_SIZE: usize = 64;
-
     loop {
         // Check for hot reload (lock-free version check)
         let current_controllers = hot_reload_versions.controllers.load(Ordering::Acquire);
@@ -1430,7 +1406,7 @@ fn worker_loop(
         }
 
         // Batch process HTTP requests using try_recv for non-blocking drain
-        for _ in 0..BATCH_SIZE {
+        for _ in 0..server_constants::BATCH_SIZE {
             match work_rx.try_recv() {
                 Ok(data) => {
                     let resp_data = handle_request(interpreter, &data, dev_mode);
@@ -1849,7 +1825,7 @@ async fn handle_hyper_request(
                                                     if lv_event_tx.send(event_data).is_ok() {
                                                         // Wait for response (with timeout)
                                                         match tokio::time::timeout(
-                                                            std::time::Duration::from_secs(5),
+                                                            std::time::Duration::from_secs(server_constants::HEARTBEAT_TIMEOUT_SECS),
                                                             response_rx,
                                                         )
                                                         .await
@@ -1923,33 +1899,13 @@ async fn handle_hyper_request(
             let file_path = public_dir.join(relative_path);
 
             if file_path.exists() && file_path.is_file() {
-                let mime_type = match file_path.extension().and_then(|e| e.to_str()) {
-                    Some("css") => "text/css",
-                    Some("js") => "application/javascript",
-                    Some("png") => "image/png",
-                    Some("jpg") | Some("jpeg") => "image/jpeg",
-                    Some("ico") => "image/x-icon",
-                    Some("svg") => "image/svg+xml",
-                    Some("html") => "text/html",
-                    Some("json") => "application/json",
-                    Some("woff") => "font/woff",
-                    Some("woff2") => "font/woff2",
-                    Some("ttf") => "font/ttf",
-                    Some("gif") => "image/gif",
-                    _ => "application/octet-stream",
-                };
+                let mime_type = server_constants::get_mime_type(&file_path);
 
                 // In production mode, check for conditional request (If-None-Match)
                 if !dev_mode {
                     if let Ok(metadata) = std::fs::metadata(&file_path) {
                         if let Ok(modified) = metadata.modified() {
-                            let etag = format!(
-                                "\"{:x}\"",
-                                modified
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs()
-                            );
+                            let etag = server_constants::generate_etag(modified);
 
                             // Check If-None-Match header
                             if let Some(if_none_match) = req.headers().get("if-none-match") {
@@ -1961,7 +1917,7 @@ async fn handle_hyper_request(
                                             .header("ETag", &etag)
                                             .header(
                                                 "Cache-Control",
-                                                "public, max-age=31536000, immutable",
+                                                server_constants::STATIC_CACHE_MAX_AGE,
                                             )
                                             .body(Full::new(Bytes::new()))
                                             .unwrap());
@@ -1984,7 +1940,7 @@ async fn handle_hyper_request(
                                 .status(StatusCode::OK)
                                 .header("Content-Type", mime_type)
                                 .header("ETag", etag)
-                                .header("Cache-Control", "public, max-age=31536000, immutable")
+                                .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE)
                                 .body(Full::new(Bytes::from(content)))
                                 .unwrap());
                         }
@@ -2307,9 +2263,9 @@ async fn handle_websocket_stream<S>(
     if let Err(_) = ws_event_tx.send(connect_event) {
         // Silently ignore send errors
     }
-
+ 
     // Wait for handler response (don't block forever, max 5 seconds)
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), response_rx).await;
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS), response_rx).await;
 
     // Send ping to client
     let _ = stream.send(tungstenite::Message::Ping(vec![])).await;
@@ -2363,7 +2319,7 @@ async fn handle_websocket_stream<S>(
 
                         // Wait for handler response (don't block forever, max 5 seconds)
                         let _ = tokio::time::timeout(
-                            std::time::Duration::from_secs(5),
+                            std::time::Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS),
                             msg_response_rx,
                         )
                         .await;

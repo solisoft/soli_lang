@@ -12,8 +12,7 @@ name = "soli"
 path = "src/main.rs"
 
 [features]
-default = ["bytecode"]
-bytecode = []
+default = []
 
 [dependencies]
 thiserror = "1.0"

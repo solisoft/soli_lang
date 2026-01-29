@@ -217,6 +217,24 @@
       "keywords": ["string", "substitute", "find"]
     },
     {
+      "title": "lpad",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-lpad",
+      "signature": "lpad(str, width, pad_char?)",
+      "description": "Left pad a string to reach the specified width with optional pad character",
+      "keywords": ["string", "pad", "left", "align", "format", "fill"]
+    },
+    {
+      "title": "rpad",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-rpad",
+      "signature": "rpad(str, width, pad_char?)",
+      "description": "Right pad a string to reach the specified width with optional pad character",
+      "keywords": ["string", "pad", "right", "align", "format", "fill"]
+    },
+    {
       "title": "html_escape",
       "type": "function",
       "category": "Core",

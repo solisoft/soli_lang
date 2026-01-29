@@ -2,11 +2,9 @@
 //!
 //! This is the library root that exports all modules.
 //!
-//! # Execution Modes
+//! # Execution
 //!
-//! Solilang supports multiple execution modes:
-//! - **Tree-walk interpreter**: Simple, direct AST interpretation
-//! - **Bytecode VM**: Faster execution via bytecode compilation
+//! Solilang uses a tree-walking interpreter for executing programs.
 
 // Allow some clippy lints that are stylistic and not critical
 #![allow(clippy::module_inception)]
@@ -44,7 +42,6 @@
 #![allow(clippy::never_loop)]
 
 pub mod ast;
-pub mod bytecode;
 pub mod coverage;
 pub mod error;
 pub mod interpreter;
@@ -62,68 +59,42 @@ pub mod types;
 
 use error::SolilangError;
 
-/// Execution mode for running Solilang programs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ExecutionMode {
-    /// Tree-walking interpreter (default for compatibility)
-    #[default]
-    TreeWalk,
-    /// Bytecode virtual machine (faster)
-    Bytecode,
-}
-
-/// Run a Solilang program from source code using the default execution mode.
+/// Run a Solilang program from source code.
 pub fn run(source: &str) -> Result<(), SolilangError> {
-    run_with_options(source, ExecutionMode::default(), true, false)
+    run_with_options(source, true)
 }
 
 /// Run a Solilang program with optional type checking.
 pub fn run_with_type_check(source: &str, type_check: bool) -> Result<(), SolilangError> {
-    run_with_options(source, ExecutionMode::default(), type_check, false)
-}
-
-/// Run a Solilang program with bytecode VM.
-pub fn run_bytecode(source: &str) -> Result<(), SolilangError> {
-    run_with_options(source, ExecutionMode::Bytecode, true, false)
-}
-
-/// Run a Solilang program with bytecode VM and optional disassembly output.
-pub fn run_bytecode_with_disassembly(source: &str, disassemble: bool) -> Result<(), SolilangError> {
-    run_with_options(source, ExecutionMode::Bytecode, true, disassemble)
+    run_with_options(source, type_check)
 }
 
 /// Run a Solilang program with full control over execution options.
 pub fn run_with_options(
     source: &str,
-    mode: ExecutionMode,
     type_check: bool,
-    disassemble: bool,
 ) -> Result<(), SolilangError> {
-    run_with_path(source, None, mode, type_check, disassemble)
+    run_with_path(source, None, type_check)
 }
 
 /// Run a Solilang program from a file path with module resolution.
 pub fn run_file(
     path: &std::path::Path,
-    mode: ExecutionMode,
     type_check: bool,
-    disassemble: bool,
 ) -> Result<(), SolilangError> {
     let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {
         message: format!("Failed to read file '{}': {}", path.display(), e),
         span: span::Span::new(0, 0, 1, 1),
     })?;
 
-    run_with_path(&source, Some(path), mode, type_check, disassemble)
+    run_with_path(&source, Some(path), type_check)
 }
 
 /// Run a Solilang program with optional source path for module resolution.
 pub fn run_with_path(
     source: &str,
     source_path: Option<&std::path::Path>,
-    mode: ExecutionMode,
     type_check: bool,
-    disassemble: bool,
 ) -> Result<(), SolilangError> {
     // Lexing
     let tokens = lexer::Scanner::new(source).scan_tokens()?;
@@ -151,28 +122,9 @@ pub fn run_with_path(
         }
     }
 
-    // Execution based on mode
-    match mode {
-        ExecutionMode::TreeWalk => {
-            let mut interpreter = interpreter::Interpreter::new();
-            interpreter.interpret(&program)?;
-        }
-        ExecutionMode::Bytecode => {
-            // Compile to bytecode
-            let mut compiler = bytecode::Compiler::new();
-            let function = compiler.compile(&program)?;
-
-            // Optionally print disassembly
-            if disassemble {
-                bytecode::print_disassembly(&function);
-                println!("---");
-            }
-
-            // Execute on VM
-            let mut vm = bytecode::VM::new();
-            vm.run(function)?;
-        }
-    }
+    // Execute with tree-walking interpreter
+    let mut interpreter = interpreter::Interpreter::new();
+    interpreter.interpret(&program)?;
 
     Ok(())
 }
@@ -181,9 +133,7 @@ pub fn run_with_path(
 pub fn run_with_path_and_coverage(
     source: &str,
     source_path: Option<&std::path::Path>,
-    mode: ExecutionMode,
     type_check: bool,
-    disassemble: bool,
     coverage_tracker: Option<&std::rc::Rc<std::cell::RefCell<coverage::CoverageTracker>>>,
     source_file_path: Option<&std::path::Path>,
 ) -> Result<(), SolilangError> {
@@ -213,32 +163,13 @@ pub fn run_with_path_and_coverage(
         }
     }
 
-    // Execution based on mode
-    match mode {
-        ExecutionMode::TreeWalk => {
-            let mut interpreter = interpreter::Interpreter::new();
-            if let (Some(tracker), Some(path)) = (coverage_tracker, source_file_path) {
-                interpreter.set_coverage_tracker(tracker.clone());
-                interpreter.set_source_path(path.to_path_buf());
-            }
-            interpreter.interpret(&program)?;
-        }
-        ExecutionMode::Bytecode => {
-            // Compile to bytecode
-            let mut compiler = bytecode::Compiler::new();
-            let function = compiler.compile(&program)?;
-
-            // Optionally print disassembly
-            if disassemble {
-                bytecode::print_disassembly(&function);
-                println!("---");
-            }
-
-            // Execute on VM
-            let mut vm = bytecode::VM::new();
-            vm.run(function)?;
-        }
+    // Execute with tree-walking interpreter
+    let mut interpreter = interpreter::Interpreter::new();
+    if let (Some(tracker), Some(path)) = (coverage_tracker, source_file_path) {
+        interpreter.set_coverage_tracker(tracker.clone());
+        interpreter.set_source_path(path.to_path_buf());
     }
+    interpreter.interpret(&program)?;
 
     Ok(())
 }
@@ -269,18 +200,4 @@ pub fn type_check(source: &str) -> Result<(), Vec<error::TypeError>> {
 
     let mut checker = types::TypeChecker::new();
     checker.check(&program)
-}
-
-/// Compile source code to bytecode without executing.
-pub fn compile(source: &str) -> Result<bytecode::CompiledFunction, SolilangError> {
-    let tokens = lexer::Scanner::new(source).scan_tokens()?;
-    let program = parser::Parser::new(tokens).parse()?;
-    let mut compiler = bytecode::Compiler::new();
-    let function = compiler.compile(&program)?;
-    Ok(function)
-}
-
-/// Disassemble compiled bytecode to a string.
-pub fn disassemble(function: &bytecode::CompiledFunction) -> String {
-    bytecode::disassemble_function(function)
 }

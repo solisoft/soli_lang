@@ -527,7 +527,7 @@ impl TypeChecker {
                 })
             }
             Type::Array(inner_type) => {
-                // Handle array methods: map, filter, each
+                // Handle array methods: map, filter, each, reduce, find, any?, all?, sort, reverse, uniq, compact, flatten, first, last, empty?, include?, sample, shuffle, take, drop, zip, sum, min, max
                 match name {
                     "map" | "filter" | "each" => {
                         // fn(Element) -> Any (for filter/each) or fn(Element) -> T (for map)
@@ -535,6 +535,104 @@ impl TypeChecker {
                         Ok(Type::Function {
                             params: vec![Type::Any],
                             return_type: Box::new(Type::Any),
+                        })
+                    }
+                    "reduce" => {
+                        // fn(Accumulator, Element) -> Accumulator
+                        Ok(Type::Function {
+                            params: vec![Type::Any],
+                            return_type: Box::new(Type::Any),
+                        })
+                    }
+                    "find" => {
+                        // fn(Element) -> Bool, returns Element | null
+                        Ok(Type::Function {
+                            params: vec![Type::Any],
+                            return_type: Box::new(Type::Any),
+                        })
+                    }
+                    "any?" | "all?" => {
+                        // fn(Element) -> Bool, returns Bool
+                        Ok(Type::Function {
+                            params: vec![Type::Any],
+                            return_type: Box::new(Type::Bool),
+                        })
+                    }
+                    "sort" => {
+                        // Optional comparator fn(a, b) -> Int, returns Array
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Array(Box::new(inner_type.as_ref().clone()))),
+                        })
+                    }
+                    "reverse" | "uniq" | "compact" | "flatten" => {
+                        // Returns Array
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Array(Box::new(inner_type.as_ref().clone()))),
+                        })
+                    }
+                    "first" | "last" => {
+                        // Returns Element | null
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(inner_type.as_ref().clone()),
+                        })
+                    }
+                    "empty?" => {
+                        // Returns Bool
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Bool),
+                        })
+                    }
+                    "include?" => {
+                        // Returns Bool
+                        Ok(Type::Function {
+                            params: vec![inner_type.as_ref().clone()],
+                            return_type: Box::new(Type::Bool),
+                        })
+                    }
+                    "sample" => {
+                        // Returns Element | null
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(inner_type.as_ref().clone()),
+                        })
+                    }
+                    "shuffle" => {
+                        // Returns Array
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Array(Box::new(inner_type.as_ref().clone()))),
+                        })
+                    }
+                    "take" | "drop" => {
+                        // Int -> Array
+                        Ok(Type::Function {
+                            params: vec![Type::Int],
+                            return_type: Box::new(Type::Array(Box::new(inner_type.as_ref().clone()))),
+                        })
+                    }
+                    "zip" => {
+                        // Array -> Array of [a, b] pairs
+                        Ok(Type::Function {
+                            params: vec![Type::Any],
+                            return_type: Box::new(Type::Array(Box::new(Type::Array(Box::new(Type::Any))))),
+                        })
+                    }
+                    "sum" => {
+                        // Returns Float
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Float),
+                        })
+                    }
+                    "min" | "max" => {
+                        // Returns Element | null
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(inner_type.as_ref().clone()),
                         })
                     }
                     _ => Err(TypeError::NoSuchMember {
@@ -548,7 +646,7 @@ impl TypeChecker {
                 key_type,
                 value_type,
             } => {
-                // Handle hash methods: map, filter, each
+                // Handle hash methods: map, filter, each, get, fetch, invert, transform_values, transform_keys, select, reject, slice, except, compact, dig
                 match name {
                     "map" | "filter" | "each" => {
                         // fn(Any) -> Any (runtime passes [key, value] array for each entry)
@@ -557,8 +655,225 @@ impl TypeChecker {
                             return_type: Box::new(Type::Any),
                         })
                     }
+                    "get" => {
+                        // key, default? -> value | default | null
+                        Ok(Type::Function {
+                            params: vec![key_type.as_ref().clone(), Type::Any],
+                            return_type: Box::new(value_type.as_ref().clone()),
+                        })
+                    }
+                    "fetch" => {
+                        // key, default? -> value | default (error if not found and no default)
+                        Ok(Type::Function {
+                            params: vec![key_type.as_ref().clone(), Type::Any],
+                            return_type: Box::new(value_type.as_ref().clone()),
+                        })
+                    }
+                    "invert" => {
+                        // Returns Hash with swapped keys/values
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Hash {
+                                key_type: value_type.clone(),
+                                value_type: key_type.clone(),
+                            }),
+                        })
+                    }
+                    "transform_values" => {
+                        // fn(Value) -> NewValue
+                        Ok(Type::Function {
+                            params: vec![Type::Any],
+                            return_type: Box::new(Type::Hash {
+                                key_type: key_type.clone(),
+                                value_type: Box::new(Type::Any),
+                            }),
+                        })
+                    }
+                    "transform_keys" => {
+                        // fn(Key) -> NewKey
+                        Ok(Type::Function {
+                            params: vec![Type::Any],
+                            return_type: Box::new(Type::Hash {
+                                key_type: Box::new(Type::Any),
+                                value_type: value_type.clone(),
+                            }),
+                        })
+                    }
+                    "select" | "reject" => {
+                        // fn(Key, Value) -> Bool, returns Hash
+                        Ok(Type::Function {
+                            params: vec![Type::Any],
+                            return_type: Box::new(Type::Hash {
+                                key_type: key_type.clone(),
+                                value_type: value_type.clone(),
+                            }),
+                        })
+                    }
+                    "slice" | "except" => {
+                        // [keys] -> Hash
+                        Ok(Type::Function {
+                            params: vec![Type::Array(key_type.clone())],
+                            return_type: Box::new(Type::Hash {
+                                key_type: key_type.clone(),
+                                value_type: value_type.clone(),
+                            }),
+                        })
+                    }
+                    "compact" => {
+                        // Returns Hash without null values
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Hash {
+                                key_type: key_type.clone(),
+                                value_type: value_type.clone(),
+                            }),
+                        })
+                    }
+                    "dig" => {
+                        // key, ... -> Value | null (navigates nested hashes)
+                        Ok(Type::Function {
+                            params: vec![key_type.as_ref().clone()],
+                            return_type: Box::new(Type::Any),
+                        })
+                    }
                     _ => Err(TypeError::NoSuchMember {
                         type_name: format!("Hash({}, {})", key_type, value_type),
+                        member: name.to_string(),
+                        span: expr.span,
+                    }),
+                }
+            }
+            Type::String => {
+                // Handle string methods: starts_with?, ends_with?, chomp, lstrip, rstrip, squeeze, count, gsub, sub, match, scan, tr, center, ljust, rjust, ord, chr, bytes, chars, lines, bytesize, capitalize, swapcase, insert, delete, delete_prefix, delete_suffix, partition, rpartition, reverse, hex, oct, truncate
+                match name {
+                    "starts_with?" | "ends_with?" => {
+                        // String -> Bool
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Bool),
+                        })
+                    }
+                    "chomp" | "lstrip" | "rstrip" | "squeeze" | "capitalize" | "swapcase" | "reverse" | "delete_prefix" | "delete_suffix" => {
+                        // Returns String
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "count" => {
+                        // String -> Int
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Int),
+                        })
+                    }
+                    "gsub" | "sub" => {
+                        // pattern, replacement -> String
+                        Ok(Type::Function {
+                            params: vec![Type::String, Type::String],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "match" => {
+                        // pattern -> Array | null
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Any),
+                        })
+                    }
+                    "scan" => {
+                        // pattern -> Array of Strings
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Array(Box::new(Type::String))),
+                        })
+                    }
+                    "tr" => {
+                        // from, to -> String
+                        Ok(Type::Function {
+                            params: vec![Type::String, Type::String],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "center" | "ljust" | "rjust" => {
+                        // width, pad? -> String
+                        Ok(Type::Function {
+                            params: vec![Type::Int],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "ord" => {
+                        // Returns Int
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Int),
+                        })
+                    }
+                    "chr" => {
+                        // Int -> String
+                        Ok(Type::Function {
+                            params: vec![Type::Int],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "bytes" => {
+                        // Returns Array of Ints
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Array(Box::new(Type::Int))),
+                        })
+                    }
+                    "chars" | "lines" => {
+                        // Returns Array of Strings
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Array(Box::new(Type::String))),
+                        })
+                    }
+                    "bytesize" => {
+                        // Returns Int
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Int),
+                        })
+                    }
+                    "insert" => {
+                        // index, string -> String
+                        Ok(Type::Function {
+                            params: vec![Type::Int, Type::String],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "delete" => {
+                        // String -> String
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "partition" | "rpartition" => {
+                        // separator -> [String, String, String]
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Array(Box::new(Type::String))),
+                        })
+                    }
+                    "hex" | "oct" => {
+                        // Returns Int | null
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Any),
+                        })
+                    }
+                    "truncate" => {
+                        // length, suffix? -> String
+                        Ok(Type::Function {
+                            params: vec![Type::Int],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    _ => Err(TypeError::NoSuchMember {
+                        type_name: "String".to_string(),
                         member: name.to_string(),
                         span: expr.span,
                     }),

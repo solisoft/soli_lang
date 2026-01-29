@@ -398,8 +398,8 @@ let db = MigrationDb();
             source, config.host, config.database, direction
         );
 
-        // Run using tree-walk interpreter for simplicity
-        crate::run_with_options(&full_source, crate::ExecutionMode::TreeWalk, false, false)
+        // Run using tree-walk interpreter
+        crate::run_with_options(&full_source, false)
             .map_err(|e| format!("Migration {} failed: {}", direction, e))?;
 
         Ok(())

@@ -495,6 +495,12 @@ impl<'a> Scanner<'a> {
             }
         }
 
+        // Check for trailing ? (for predicate methods like empty?, include?, etc.)
+        if self.peek() == Some('?') {
+            value.push('?');
+            self.advance();
+        }
+
         let kind = TokenKind::keyword(&value).unwrap_or(TokenKind::Identifier(value));
         Ok(self.make_token(kind))
     }
