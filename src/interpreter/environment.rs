@@ -10,6 +10,7 @@ use crate::interpreter::value::Value;
 #[derive(Debug, Clone)]
 pub struct Environment {
     values: HashMap<String, Value>,
+    consts: HashMap<String, Value>,
     enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
@@ -17,6 +18,7 @@ impl Environment {
     pub fn new() -> Self {
         Self {
             values: HashMap::new(),
+            consts: HashMap::new(),
             enclosing: None,
         }
     }
@@ -24,6 +26,7 @@ impl Environment {
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Self {
             values: HashMap::new(),
+            consts: HashMap::new(),
             enclosing: Some(enclosing),
         }
     }
@@ -33,9 +36,29 @@ impl Environment {
         self.values.insert(name, value);
     }
 
+    /// Define a constant in the current scope.
+    pub fn define_const(&mut self, name: String, value: Value) {
+        self.consts.insert(name, value);
+    }
+
+    /// Check if a name is a constant.
+    pub fn is_const(&self, name: &str) -> bool {
+        if self.consts.contains_key(name) {
+            return true;
+        }
+        if let Some(ref enclosing) = self.enclosing {
+            return enclosing.borrow().is_const(name);
+        }
+        false
+    }
+
     /// Get a variable's value, searching up the scope chain.
     pub fn get(&self, name: &str) -> Option<Value> {
         if let Some(value) = self.values.get(name) {
+            return Some(value.clone());
+        }
+        // Also check consts
+        if let Some(value) = self.consts.get(name) {
             return Some(value.clone());
         }
         if let Some(ref enclosing) = self.enclosing {
@@ -44,8 +67,23 @@ impl Environment {
         None
     }
 
+    /// Get a constant's value, searching up the scope chain.
+    pub fn get_const(&self, name: &str) -> Option<Value> {
+        if let Some(value) = self.consts.get(name) {
+            return Some(value.clone());
+        }
+        if let Some(ref enclosing) = self.enclosing {
+            return enclosing.borrow().get_const(name);
+        }
+        None
+    }
+
     /// Assign to an existing variable, searching up the scope chain.
+    /// Returns false if the variable is const.
     pub fn assign(&mut self, name: &str, value: Value) -> bool {
+        if self.consts.contains_key(name) {
+            return false;
+        }
         if self.values.contains_key(name) {
             self.values.insert(name.to_string(), value);
             return true;

@@ -20,6 +20,8 @@ impl Parser {
             self.interface_declaration()
         } else if self.check(&TokenKind::Let) {
             self.let_declaration()
+        } else if self.check(&TokenKind::Const) {
+            self.const_declaration()
         } else {
             self.statement()
         }
@@ -457,6 +459,34 @@ impl Parser {
 
         Ok(Stmt::new(
             StmtKind::Let {
+                name,
+                type_annotation,
+                initializer,
+            },
+            span,
+        ))
+    }
+
+    pub(crate) fn const_declaration(&mut self) -> ParseResult<Stmt> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::Const)?;
+
+        let name = self.expect_identifier()?;
+
+        let type_annotation = if self.match_token(&TokenKind::Colon) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.expect(&TokenKind::Equal)?;
+        let initializer = self.expression()?;
+
+        self.match_token(&TokenKind::Semicolon);
+        let span = start_span.merge(&self.previous_span());
+
+        Ok(Stmt::new(
+            StmtKind::Const {
                 name,
                 type_annotation,
                 initializer,

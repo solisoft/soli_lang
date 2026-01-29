@@ -46,6 +46,32 @@ impl TypeChecker {
                 Ok(())
             }
 
+            StmtKind::Const {
+                name,
+                type_annotation,
+                initializer,
+            } => {
+                let declared_type = type_annotation.as_ref().map(|t| self.resolve_type(t));
+                let init_type = self.check_expr(initializer)?;
+
+                let const_type = match declared_type {
+                    Some(decl) => {
+                        if !init_type.is_assignable_to(&decl) {
+                            return Err(TypeError::mismatch(
+                                format!("{}", decl),
+                                format!("{}", init_type),
+                                stmt.span,
+                            ));
+                        }
+                        decl
+                    }
+                    None => init_type,
+                };
+
+                self.env.define(name.clone(), const_type);
+                Ok(())
+            }
+
             StmtKind::Block(statements) => {
                 self.env.push_scope();
                 for s in statements {

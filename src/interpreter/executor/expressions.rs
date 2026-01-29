@@ -674,6 +674,13 @@ impl Interpreter {
 
         match &target.kind {
             ExprKind::Variable(name) => {
+                // Check if the variable is a const
+                if self.environment.borrow().is_const(name) {
+                    return Err(RuntimeError::type_error(
+                        format!("cannot reassign constant '{}'", name),
+                        target.span,
+                    ));
+                }
                 if !self
                     .environment
                     .borrow_mut()
@@ -1128,7 +1135,8 @@ impl Interpreter {
                         call_env.define(func.params[0].name.clone(), acc.clone());
                         call_env.define(func.params[1].name.clone(), item.clone());
                     } else if func.params.len() == 1 {
-                        let pair = Value::Array(Rc::new(RefCell::new(vec![acc.clone(), item.clone()])));
+                        let pair =
+                            Value::Array(Rc::new(RefCell::new(vec![acc.clone(), item.clone()])));
                         call_env.define(func.params[0].name.clone(), pair);
                     }
 
@@ -1312,10 +1320,16 @@ impl Interpreter {
                     // Default sort
                     result.sort_by(|a, b| match (a, b) {
                         (Value::Int(a), Value::Int(b)) => a.cmp(b),
-                        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+                        (Value::Float(a), Value::Float(b)) => {
+                            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                        }
                         (Value::String(a), Value::String(b)) => a.cmp(b),
-                        (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
-                        (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)).unwrap_or(std::cmp::Ordering::Equal),
+                        (Value::Int(a), Value::Float(b)) => (*a as f64)
+                            .partial_cmp(b)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        (Value::Float(a), Value::Int(b)) => a
+                            .partial_cmp(&(*b as f64))
+                            .unwrap_or(std::cmp::Ordering::Equal),
                         _ => std::cmp::Ordering::Equal,
                     });
                 }
@@ -1346,7 +1360,11 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                let result: Vec<Value> = items.iter().filter(|v| !matches!(v, Value::Null)).cloned().collect();
+                let result: Vec<Value> = items
+                    .iter()
+                    .filter(|v| !matches!(v, Value::Null))
+                    .cloned()
+                    .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "flatten" => {
@@ -1354,12 +1372,21 @@ impl Interpreter {
                     0 => None, // Flatten all levels
                     1 => match &arguments[0] {
                         Value::Int(n) if *n >= 0 => Some(*n as usize),
-                        _ => return Err(RuntimeError::type_error("flatten expects a non-negative integer", span)),
+                        _ => {
+                            return Err(RuntimeError::type_error(
+                                "flatten expects a non-negative integer",
+                                span,
+                            ))
+                        }
                     },
                     _ => return Err(RuntimeError::wrong_arity(1, arguments.len(), span)),
                 };
 
-                fn flatten_recursive(arr: &[Value], current_depth: usize, max_depth: Option<usize>) -> Vec<Value> {
+                fn flatten_recursive(
+                    arr: &[Value],
+                    current_depth: usize,
+                    max_depth: Option<usize>,
+                ) -> Vec<Value> {
                     if let Some(max) = max_depth {
                         if current_depth >= max {
                             return arr.to_vec();
@@ -1369,7 +1396,11 @@ impl Interpreter {
                     let mut result = Vec::new();
                     for item in arr {
                         if let Value::Array(inner) = item {
-                            result.extend(flatten_recursive(&inner.borrow(), current_depth + 1, max_depth));
+                            result.extend(flatten_recursive(
+                                &inner.borrow(),
+                                current_depth + 1,
+                                max_depth,
+                            ));
                         } else {
                             result.push(item.clone());
                         }
@@ -1433,7 +1464,12 @@ impl Interpreter {
                 }
                 let n = match &arguments[0] {
                     Value::Int(n) if *n >= 0 => *n as usize,
-                    _ => return Err(RuntimeError::type_error("take expects a non-negative integer", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "take expects a non-negative integer",
+                            span,
+                        ))
+                    }
                 };
                 let result: Vec<Value> = items.iter().take(n).cloned().collect();
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
@@ -1444,7 +1480,12 @@ impl Interpreter {
                 }
                 let n = match &arguments[0] {
                     Value::Int(n) if *n >= 0 => *n as usize,
-                    _ => return Err(RuntimeError::type_error("drop expects a non-negative integer", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "drop expects a non-negative integer",
+                            span,
+                        ))
+                    }
                 };
                 let result: Vec<Value> = items.iter().skip(n).cloned().collect();
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
@@ -1455,12 +1496,19 @@ impl Interpreter {
                 }
                 let other = match &arguments[0] {
                     Value::Array(arr) => arr.borrow().clone(),
-                    _ => return Err(RuntimeError::type_error("zip expects an array argument", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "zip expects an array argument",
+                            span,
+                        ))
+                    }
                 };
 
-                let result: Vec<Value> = items.iter().zip(other.iter()).map(|(a, b)| {
-                    Value::Array(Rc::new(RefCell::new(vec![a.clone(), b.clone()])))
-                }).collect();
+                let result: Vec<Value> = items
+                    .iter()
+                    .zip(other.iter())
+                    .map(|(a, b)| Value::Array(Rc::new(RefCell::new(vec![a.clone(), b.clone()]))))
+                    .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "sum" => {
@@ -1472,7 +1520,9 @@ impl Interpreter {
                     match item {
                         Value::Int(n) => total += *n as f64,
                         Value::Float(n) => total += *n,
-                        _ => return Err(RuntimeError::type_error("sum expects numeric array", span)),
+                        _ => {
+                            return Err(RuntimeError::type_error("sum expects numeric array", span))
+                        }
                     }
                 }
                 Ok(Value::Float(total))
@@ -1799,7 +1849,10 @@ impl Interpreter {
                         ControlFlow::Return(v) => v,
                         ControlFlow::Normal => Value::Null,
                         ControlFlow::Throw(_) => {
-                            return Err(RuntimeError::new("Exception in hash transform_values", span));
+                            return Err(RuntimeError::new(
+                                "Exception in hash transform_values",
+                                span,
+                            ));
                         }
                     };
                     result.push((key.clone(), new_value));
@@ -1838,7 +1891,10 @@ impl Interpreter {
                         ControlFlow::Return(v) => v,
                         ControlFlow::Normal => Value::Null,
                         ControlFlow::Throw(_) => {
-                            return Err(RuntimeError::new("Exception in hash transform_keys", span));
+                            return Err(RuntimeError::new(
+                                "Exception in hash transform_keys",
+                                span,
+                            ));
                         }
                     };
 
@@ -1948,7 +2004,12 @@ impl Interpreter {
                 }
                 let keys_arr = match &arguments[0] {
                     Value::Array(arr) => arr.borrow().clone(),
-                    _ => return Err(RuntimeError::type_error("slice expects an array of keys", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "slice expects an array of keys",
+                            span,
+                        ))
+                    }
                 };
 
                 let mut result = Vec::new();
@@ -1976,7 +2037,12 @@ impl Interpreter {
                 }
                 let keys_arr = match &arguments[0] {
                     Value::Array(arr) => arr.borrow().clone(),
-                    _ => return Err(RuntimeError::type_error("except expects an array of keys", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "except expects an array of keys",
+                            span,
+                        ))
+                    }
                 };
 
                 let mut result = Vec::new();
@@ -2222,7 +2288,12 @@ impl Interpreter {
                 }
                 let prefix = match &arguments[0] {
                     Value::String(p) => p,
-                    _ => return Err(RuntimeError::type_error("starts_with? expects a string argument", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "starts_with? expects a string argument",
+                            span,
+                        ))
+                    }
                 };
                 Ok(Value::Bool(s.starts_with(prefix)))
             }
@@ -2232,7 +2303,12 @@ impl Interpreter {
                 }
                 let suffix = match &arguments[0] {
                     Value::String(suf) => suf,
-                    _ => return Err(RuntimeError::type_error("ends_with? expects a string argument", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "ends_with? expects a string argument",
+                            span,
+                        ))
+                    }
                 };
                 Ok(Value::Bool(s.ends_with(suffix)))
             }
@@ -2240,7 +2316,8 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                let result = s.strip_suffix('\n')
+                let result = s
+                    .strip_suffix('\n')
                     .or_else(|| s.strip_suffix("\r\n"))
                     .or_else(|| s.strip_suffix('\r'))
                     .unwrap_or(s);
@@ -2271,7 +2348,8 @@ impl Interpreter {
                 let mut last_char: Option<char> = None;
 
                 for c in s.chars() {
-                    let should_squeeze = chars_to_squeeze.as_ref()
+                    let should_squeeze = chars_to_squeeze
+                        .as_ref()
                         .map(|chars| chars.contains(&c))
                         .unwrap_or(true);
 
@@ -2292,7 +2370,12 @@ impl Interpreter {
                 }
                 let substr = match &arguments[0] {
                     Value::String(sub) => sub,
-                    _ => return Err(RuntimeError::type_error("count expects a string argument", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "count expects a string argument",
+                            span,
+                        ))
+                    }
                 };
                 let count = s.matches(substr).count() as i64;
                 Ok(Value::Int(count))
@@ -2303,23 +2386,42 @@ impl Interpreter {
                 }
                 let pattern = match &arguments[0] {
                     Value::String(p) => p,
-                    _ => return Err(RuntimeError::type_error("gsub expects a string pattern", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "gsub expects a string pattern",
+                            span,
+                        ))
+                    }
                 };
                 let replacement = match &arguments[1] {
                     Value::String(r) => r.clone(),
-                    _ => return Err(RuntimeError::type_error("gsub expects a string replacement", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "gsub expects a string replacement",
+                            span,
+                        ))
+                    }
                 };
 
                 let result = if arguments.len() == 3 {
                     // With limit
                     let limit = match &arguments[2] {
                         Value::Int(n) if *n >= 0 => *n as usize,
-                        _ => return Err(RuntimeError::type_error("gsub limit must be a non-negative integer", span)),
+                        _ => {
+                            return Err(RuntimeError::type_error(
+                                "gsub limit must be a non-negative integer",
+                                span,
+                            ))
+                        }
                     };
-                    let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                    let re = Regex::new(pattern).map_err(|e| {
+                        RuntimeError::type_error(format!("invalid regex: {}", e), span)
+                    })?;
                     re.replacen(s, limit, &replacement).to_string()
                 } else {
-                    let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                    let re = Regex::new(pattern).map_err(|e| {
+                        RuntimeError::type_error(format!("invalid regex: {}", e), span)
+                    })?;
                     re.replace_all(s, &replacement).to_string()
                 };
                 Ok(Value::String(result))
@@ -2330,14 +2432,25 @@ impl Interpreter {
                 }
                 let pattern = match &arguments[0] {
                     Value::String(p) => p,
-                    _ => return Err(RuntimeError::type_error("sub expects a string pattern", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "sub expects a string pattern",
+                            span,
+                        ))
+                    }
                 };
                 let replacement = match &arguments[1] {
                     Value::String(r) => r.clone(),
-                    _ => return Err(RuntimeError::type_error("sub expects a string replacement", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "sub expects a string replacement",
+                            span,
+                        ))
+                    }
                 };
 
-                let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                let re = Regex::new(pattern)
+                    .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
                 let result = re.replacen(s, 1, &replacement).to_string();
                 Ok(Value::String(result))
             }
@@ -2347,10 +2460,16 @@ impl Interpreter {
                 }
                 let pattern = match &arguments[0] {
                     Value::String(p) => p,
-                    _ => return Err(RuntimeError::type_error("match expects a string pattern", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "match expects a string pattern",
+                            span,
+                        ))
+                    }
                 };
 
-                let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                let re = Regex::new(pattern)
+                    .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
                 if let Some(captures) = re.captures(s) {
                     let mut result = Vec::new();
                     for i in 0..captures.len() {
@@ -2369,11 +2488,20 @@ impl Interpreter {
                 }
                 let pattern = match &arguments[0] {
                     Value::String(p) => p,
-                    _ => return Err(RuntimeError::type_error("scan expects a string pattern", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "scan expects a string pattern",
+                            span,
+                        ))
+                    }
                 };
 
-                let re = Regex::new(pattern).map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
-                let matches: Vec<Value> = re.find_iter(s).map(|m| Value::String(m.as_str().to_string())).collect();
+                let re = Regex::new(pattern)
+                    .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                let matches: Vec<Value> = re
+                    .find_iter(s)
+                    .map(|m| Value::String(m.as_str().to_string()))
+                    .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(matches))))
             }
             "tr" => {
@@ -2382,11 +2510,21 @@ impl Interpreter {
                 }
                 let from_chars = match &arguments[0] {
                     Value::String(f) => f,
-                    _ => return Err(RuntimeError::type_error("tr expects a string from pattern", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "tr expects a string from pattern",
+                            span,
+                        ))
+                    }
                 };
                 let to_chars = match &arguments[1] {
                     Value::String(t) => t,
-                    _ => return Err(RuntimeError::type_error("tr expects a string to pattern", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "tr expects a string to pattern",
+                            span,
+                        ))
+                    }
                 };
 
                 let mut result = String::new();
@@ -2407,12 +2545,20 @@ impl Interpreter {
                 }
                 let width = match &arguments[0] {
                     Value::Int(w) if *w > 0 => *w as usize,
-                    _ => return Err(RuntimeError::type_error("center expects a positive integer width", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "center expects a positive integer width",
+                            span,
+                        ))
+                    }
                 };
-                let pad_char = arguments.get(1).map(|v| match v {
-                    Value::String(s) => s.chars().next().unwrap_or(' '),
-                    _ => ' ',
-                }).unwrap_or(' ');
+                let pad_char = arguments
+                    .get(1)
+                    .map(|v| match v {
+                        Value::String(s) => s.chars().next().unwrap_or(' '),
+                        _ => ' ',
+                    })
+                    .unwrap_or(' ');
 
                 if s.len() >= width {
                     Ok(Value::String(s.to_string()))
@@ -2420,7 +2566,9 @@ impl Interpreter {
                     let total_pad = width - s.len();
                     let left_pad = total_pad / 2;
                     let right_pad = total_pad - left_pad;
-                    let result = pad_char.to_string().repeat(left_pad) + s + &pad_char.to_string().repeat(right_pad);
+                    let result = pad_char.to_string().repeat(left_pad)
+                        + s
+                        + &pad_char.to_string().repeat(right_pad);
                     Ok(Value::String(result))
                 }
             }
@@ -2430,12 +2578,20 @@ impl Interpreter {
                 }
                 let width = match &arguments[0] {
                     Value::Int(w) if *w > 0 => *w as usize,
-                    _ => return Err(RuntimeError::type_error("ljust expects a positive integer width", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "ljust expects a positive integer width",
+                            span,
+                        ))
+                    }
                 };
-                let pad_char = arguments.get(1).map(|v| match v {
-                    Value::String(s) => s.chars().next().unwrap_or(' '),
-                    _ => ' ',
-                }).unwrap_or(' ');
+                let pad_char = arguments
+                    .get(1)
+                    .map(|v| match v {
+                        Value::String(s) => s.chars().next().unwrap_or(' '),
+                        _ => ' ',
+                    })
+                    .unwrap_or(' ');
 
                 if s.len() >= width {
                     Ok(Value::String(s.to_string()))
@@ -2450,12 +2606,20 @@ impl Interpreter {
                 }
                 let width = match &arguments[0] {
                     Value::Int(w) if *w > 0 => *w as usize,
-                    _ => return Err(RuntimeError::type_error("rjust expects a positive integer width", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "rjust expects a positive integer width",
+                            span,
+                        ))
+                    }
                 };
-                let pad_char = arguments.get(1).map(|v| match v {
-                    Value::String(s) => s.chars().next().unwrap_or(' '),
-                    _ => ' ',
-                }).unwrap_or(' ');
+                let pad_char = arguments
+                    .get(1)
+                    .map(|v| match v {
+                        Value::String(s) => s.chars().next().unwrap_or(' '),
+                        _ => ' ',
+                    })
+                    .unwrap_or(' ');
 
                 if s.len() >= width {
                     Ok(Value::String(s.to_string()))
@@ -2476,7 +2640,10 @@ impl Interpreter {
             }
             "chr" => {
                 // This is a class method, not instance method - should not be called on a string instance
-                Err(RuntimeError::type_error("chr is not a string instance method", span))
+                Err(RuntimeError::type_error(
+                    "chr is not a string instance method",
+                    span,
+                ))
             }
             "bytes" => {
                 if !arguments.is_empty() {
@@ -2512,7 +2679,9 @@ impl Interpreter {
                 let mut chars = s.chars();
                 let result: String = match chars.next() {
                     None => String::new(),
-                    Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                    Some(first) => {
+                        first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                    }
                 };
                 Ok(Value::String(result))
             }
@@ -2520,10 +2689,16 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                let result: String = s.chars().map(|c| {
-                    if c.is_uppercase() { c.to_lowercase().to_string() }
-                    else { c.to_uppercase().to_string() }
-                }).collect();
+                let result: String = s
+                    .chars()
+                    .map(|c| {
+                        if c.is_uppercase() {
+                            c.to_lowercase().to_string()
+                        } else {
+                            c.to_uppercase().to_string()
+                        }
+                    })
+                    .collect();
                 Ok(Value::String(result))
             }
             "insert" => {
@@ -2532,11 +2707,21 @@ impl Interpreter {
                 }
                 let index = match &arguments[0] {
                     Value::Int(i) if *i >= 0 => *i as usize,
-                    _ => return Err(RuntimeError::type_error("insert expects a non-negative integer index", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "insert expects a non-negative integer index",
+                            span,
+                        ))
+                    }
                 };
                 let insert_str = match &arguments[1] {
                     Value::String(str) => str,
-                    _ => return Err(RuntimeError::type_error("insert expects a string to insert", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "insert expects a string to insert",
+                            span,
+                        ))
+                    }
                 };
 
                 let char_count = s.chars().count();
@@ -2562,7 +2747,12 @@ impl Interpreter {
                 }
                 let to_delete = match &arguments[0] {
                     Value::String(d) => d,
-                    _ => return Err(RuntimeError::type_error("delete expects a string argument", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "delete expects a string argument",
+                            span,
+                        ))
+                    }
                 };
                 let result = s.replace(to_delete, "");
                 Ok(Value::String(result))
@@ -2573,7 +2763,12 @@ impl Interpreter {
                 }
                 let prefix = match &arguments[0] {
                     Value::String(p) => p,
-                    _ => return Err(RuntimeError::type_error("delete_prefix expects a string argument", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "delete_prefix expects a string argument",
+                            span,
+                        ))
+                    }
                 };
                 let result = s.strip_prefix(prefix).unwrap_or(s);
                 Ok(Value::String(result.to_string()))
@@ -2584,7 +2779,12 @@ impl Interpreter {
                 }
                 let suffix = match &arguments[0] {
                     Value::String(suf) => suf,
-                    _ => return Err(RuntimeError::type_error("delete_suffix expects a string argument", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "delete_suffix expects a string argument",
+                            span,
+                        ))
+                    }
                 };
                 let result = s.strip_suffix(suffix).unwrap_or(s);
                 Ok(Value::String(result.to_string()))
@@ -2595,7 +2795,12 @@ impl Interpreter {
                 }
                 let sep = match &arguments[0] {
                     Value::String(s) => s,
-                    _ => return Err(RuntimeError::type_error("partition expects a string separator", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "partition expects a string separator",
+                            span,
+                        ))
+                    }
                 };
 
                 if let Some(pos) = s.find(sep) {
@@ -2622,7 +2827,12 @@ impl Interpreter {
                 }
                 let sep = match &arguments[0] {
                     Value::String(s) => s,
-                    _ => return Err(RuntimeError::type_error("rpartition expects a string separator", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "rpartition expects a string separator",
+                            span,
+                        ))
+                    }
                 };
 
                 if let Some(pos) = s.rfind(sep) {
@@ -2654,14 +2864,16 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                let result = i64::from_str_radix(s, 16).map_err(|e| RuntimeError::type_error(format!("invalid hex: {}", e), span))?;
+                let result = i64::from_str_radix(s, 16)
+                    .map_err(|e| RuntimeError::type_error(format!("invalid hex: {}", e), span))?;
                 Ok(Value::Int(result))
             }
             "oct" => {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                let result = i64::from_str_radix(s, 8).map_err(|e| RuntimeError::type_error(format!("invalid octal: {}", e), span))?;
+                let result = i64::from_str_radix(s, 8)
+                    .map_err(|e| RuntimeError::type_error(format!("invalid octal: {}", e), span))?;
                 Ok(Value::Int(result))
             }
             "truncate" => {
@@ -2670,12 +2882,20 @@ impl Interpreter {
                 }
                 let length = match &arguments[0] {
                     Value::Int(l) if *l > 0 => *l as usize,
-                    _ => return Err(RuntimeError::type_error("truncate expects a positive integer length", span)),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "truncate expects a positive integer length",
+                            span,
+                        ))
+                    }
                 };
-                let suffix = arguments.get(1).map(|v| match v {
-                    Value::String(s) => s.as_str(),
-                    _ => "...",
-                }).unwrap_or("...");
+                let suffix = arguments
+                    .get(1)
+                    .map(|v| match v {
+                        Value::String(s) => s.as_str(),
+                        _ => "...",
+                    })
+                    .unwrap_or("...");
 
                 if s.len() <= length {
                     Ok(Value::String(s.to_string()))

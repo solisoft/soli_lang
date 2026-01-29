@@ -50,6 +50,16 @@ impl Interpreter {
                 Ok(ControlFlow::Normal)
             }
 
+            StmtKind::Const {
+                name, initializer, ..
+            } => {
+                let value = self.evaluate(initializer)?;
+                self.environment
+                    .borrow_mut()
+                    .define_const(name.clone(), value);
+                Ok(ControlFlow::Normal)
+            }
+
             StmtKind::Block(statements) => self.execute_block(
                 statements,
                 Environment::with_enclosing(self.environment.clone()),

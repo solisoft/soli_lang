@@ -30,6 +30,13 @@ pub enum StmtKind {
         initializer: Option<Expr>,
     },
 
+    /// Constant declaration: const x: Type = expr;
+    Const {
+        name: String,
+        type_annotation: Option<TypeAnnotation>,
+        initializer: Expr,
+    },
+
     /// Block: { statements }
     Block(Vec<Stmt>),
 

@@ -17,6 +17,7 @@ pub enum TokenKind {
 
     // Keywords
     Let,
+    Const,
     Fn,
     Return,
     If,
@@ -109,6 +110,7 @@ impl TokenKind {
     pub fn keyword(ident: &str) -> Option<TokenKind> {
         match ident {
             "let" => Some(TokenKind::Let),
+            "const" => Some(TokenKind::Const),
             "fn" => Some(TokenKind::Fn),
             "return" => Some(TokenKind::Return),
             "if" => Some(TokenKind::If),
@@ -169,6 +171,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::BoolLiteral(b) => write!(f, "{}", b),
             TokenKind::Identifier(s) => write!(f, "{}", s),
             TokenKind::Let => write!(f, "let"),
+            TokenKind::Const => write!(f, "const"),
             TokenKind::Fn => write!(f, "fn"),
             TokenKind::Return => write!(f, "return"),
             TokenKind::If => write!(f, "if"),

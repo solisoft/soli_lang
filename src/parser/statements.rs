@@ -13,6 +13,8 @@ impl Parser {
             self.function_declaration()
         } else if self.check(&TokenKind::Let) {
             self.let_declaration()
+        } else if self.check(&TokenKind::Const) {
+            self.const_declaration()
         } else if self.check(&TokenKind::If) {
             self.if_statement()
         } else if self.check(&TokenKind::While) {
