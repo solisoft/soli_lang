@@ -135,6 +135,9 @@ pub struct ClassDecl {
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,
     pub constructor: Option<ConstructorDecl>,
+    /// Static initialization block - executed once when the class is defined.
+    /// Used for controller configuration (layout, before_action, etc.)
+    pub static_block: Option<Vec<Stmt>>,
     /// Class-level statements (e.g., validates(...), before_save(...))
     /// These are executed once when the class is defined.
     pub class_statements: Vec<Stmt>,

@@ -355,6 +355,24 @@ impl Interpreter {
             .borrow_mut()
             .define(decl.name.clone(), Value::Class(class_rc.clone()));
 
+        // Execute static block if present
+        if let Some(ref static_block) = decl.static_block {
+            // Create a temporary "this" context for the static block
+            // The static block can access the class via `this` or directly
+            let static_env = Rc::new(RefCell::new(Environment::with_enclosing(
+                self.environment.clone(),
+            )));
+            let this_value = Value::Class(class_rc.clone());
+            static_env
+                .borrow_mut()
+                .define("this".to_string(), this_value);
+
+            // Execute each statement in the static block
+            for stmt in static_block {
+                self.execute_with_env(stmt, static_env.clone())?;
+            }
+        }
+
         // Execute class-level statements (validates, callbacks, etc.) for Model subclasses
         if extends_model && !decl.class_statements.is_empty() {
             // Execute each class statement with the class as implicit receiver
@@ -379,6 +397,19 @@ impl Interpreter {
             }
         }
 
+        Ok(())
+    }
+
+    /// Execute a statement with a custom environment (used for static blocks).
+    fn execute_with_env(
+        &mut self,
+        stmt: &Stmt,
+        env: Rc<RefCell<Environment>>,
+    ) -> RuntimeResult<()> {
+        let previous_env = std::mem::replace(&mut self.environment, env);
+        let result = self.execute(stmt);
+        self.environment = previous_env;
+        result?;
         Ok(())
     }
 }

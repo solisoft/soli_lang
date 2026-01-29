@@ -8,6 +8,14 @@
 
 ## Install SoliLang
 
+### Simple Installation (Recommended)
+
+```bash
+cargo install solilang
+```
+
+### From Source
+
 ```bash
 # Clone the repository
 git clone https://github.com/solilang/solilang.git

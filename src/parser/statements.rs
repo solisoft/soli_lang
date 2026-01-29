@@ -217,7 +217,7 @@ impl Parser {
 
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
-            statements.push(self.declaration()?);
+            statements.push(self.statement()?);
         }
 
         self.expect(&TokenKind::RightBrace)?;

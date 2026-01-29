@@ -3428,9 +3428,17 @@ video {
   box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
 }
 
+.ring-inset {
+  --tw-ring-inset: inset;
+}
+
 .ring-gray-950 {
   --tw-ring-opacity: 1;
   --tw-ring-color: rgb(3 7 18 / var(--tw-ring-opacity, 1));
+}
+
+.ring-green-500\/40 {
+  --tw-ring-color: rgb(34 197 94 / 0.4);
 }
 
 .ring-white\/10 {

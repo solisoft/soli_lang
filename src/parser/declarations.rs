@@ -196,9 +196,20 @@ impl Parser {
         let mut fields = Vec::new();
         let mut methods = Vec::new();
         let mut constructor = None;
+        let mut static_block = None;
         let mut class_statements = Vec::new();
 
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            if self.check(&TokenKind::Static) {
+                // Check if this is a static block: static { ... }
+                if let Some(next) = self.tokens.get(self.current + 1) {
+                    if matches!(next.kind, TokenKind::LeftBrace) {
+                        static_block = Some(self.parse_static_block()?);
+                        continue;
+                    }
+                }
+            }
+
             let (visibility, is_static) = self.parse_modifiers();
 
             if self.check(&TokenKind::New) {
@@ -230,6 +241,7 @@ impl Parser {
                 fields,
                 methods,
                 constructor,
+                static_block,
                 class_statements,
                 span,
             }),
@@ -271,6 +283,21 @@ impl Parser {
         self.match_token(&TokenKind::Semicolon); // Optional semicolon
         let span = start_span.merge(&self.previous_span());
         Ok(Stmt::new(StmtKind::Expression(expr), span))
+    }
+
+    /// Parse a static { ... } block inside a class.
+    fn parse_static_block(&mut self) -> ParseResult<Vec<Stmt>> {
+        let _start_span = self.current_span();
+        self.expect(&TokenKind::Static)?;
+        self.expect(&TokenKind::LeftBrace)?;
+
+        let mut statements = Vec::new();
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            statements.push(self.statement()?);
+        }
+
+        self.expect(&TokenKind::RightBrace)?;
+        Ok(statements)
     }
 
     fn parse_modifiers(&mut self) -> (Visibility, bool) {
