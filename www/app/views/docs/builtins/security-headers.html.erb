@@ -1,0 +1,181 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-slate-400 via-gray-400 to-zinc-400 bg-clip-text text-transparent">Security Headers Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Automatic security header injection for HTTP responses. Protect your application from common web vulnerabilities with CSP, HSTS, X-Frame-Options, and more.
+        </p>
+    </div>
+
+    <!-- enable_security_headers -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">enable_security_headers() / disable_security_headers()</h2>
+        <p class="text-gray-400 mb-4">Enable or disable automatic security header injection on all responses.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Note</span>
+            </div>
+            <p class="text-gray-400 mb-4">Security headers are automatically added to all responses via middleware when enabled.</p>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>enable_security_headers()
+// All subsequent responses will include configured security headers
+
+disable_security_headers()
+// Disable automatic injection</code></pre>
+        </div>
+    </section>
+
+    <!-- set_csp -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">set_csp(policy, report_only?)</h2>
+        <p class="text-gray-400 mb-4">Sets the Content-Security-Policy header to prevent XSS attacks.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">policy</code> (String) - CSP policy string</li>
+                <li><code class="text-purple-400">report_only</code> (Bool, optional) - Use Content-Security-Policy-Report-Only (doesn't block)</li>
+            </ul>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>set_csp("default-src 'self'; script-src 'self' 'unsafe-inline'")
+set_csp("script-src 'self' https://cdn.example.com", true)  // Report only</code></pre>
+        </div>
+    </section>
+
+    <!-- set_hsts -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">set_hsts(max_age, include_subdomains?, preload?)</h2>
+        <p class="text-gray-400 mb-4">Sets the Strict-Transport-Security header to enforce HTTPS.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">max_age</code> (Int) - Max age in seconds (31536000 = 1 year)</li>
+                <li><code class="text-purple-400">include_subdomains</code> (Bool, optional) - Include subdomains flag (default: true)</li>
+                <li><code class="text-purple-400">preload</code> (Bool, optional) - Add preload directive (default: false)</li>
+            </ul>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>set_hsts(31536000, true, false)  // 1 year, include subdomains</code></pre>
+        </div>
+    </section>
+
+    <!-- Frame Options -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">prevent_clickjacking() / allow_same_origin_frames()</h2>
+        <p class="text-gray-400 mb-4">Control framing of your site to prevent clickjacking attacks.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>prevent_clickjacking()   // X-Frame-Options: DENY
+allow_same_origin_frames()  // X-Frame-Options: SAMEORIGIN</code></pre>
+        </div>
+    </section>
+
+    <!-- Content Type Options -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">set_content_type_options()</h2>
+        <p class="text-gray-400 mb-4">Sets X-Content-Type-Options: nosniff to prevent MIME type sniffing.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>set_content_type_options()  // Prevents browsers from interpreting files as a different MIME type</code></pre>
+        </div>
+    </section>
+
+    <!-- set_xss_protection -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">set_xss_protection(mode)</h2>
+        <p class="text-gray-400 mb-4">Sets the X-XSS-Protection header (legacy browsers).</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>set_xss_protection("1; mode=block")</code></pre>
+        </div>
+    </section>
+
+    <!-- Preset Functions -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Preset Configurations</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">secure_headers_basic()</h3>
+                <p class="text-gray-400 mb-4">Applies basic security headers:</p>
+                <ul class="text-gray-300 space-y-1 ml-4">
+                    <li>X-Frame-Options: SAMEORIGIN</li>
+                    <li>X-Content-Type-Options: nosniff</li>
+                </ul>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">secure_headers_strict()</h3>
+                <p class="text-gray-400 mb-4">Applies strict security headers including:</p>
+                <ul class="text-gray-300 space-y-1 ml-4">
+                    <li>Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'</li>
+                    <li>Strict-Transport-Security: max-age=31536000; includeSubDomains</li>
+                    <li>X-Frame-Options: DENY</li>
+                    <li>X-Content-Type-Options: nosniff</li>
+                    <li>Referrer-Policy: strict-origin</li>
+                    <li>Permissions-Policy: geolocation=(), microphone=(), camera=()</li>
+                    <li>Cross-Origin-Embedder-Policy: require-corp</li>
+                </ul>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">secure_headers_api()</h3>
+                <p class="text-gray-400 mb-4">Minimal headers suitable for JSON APIs:</p>
+                <ul class="text-gray-300 space-y-1 ml-4">
+                    <li>X-Content-Type-Options: nosniff</li>
+                    <li>Referrer-Policy: strict-origin</li>
+                </ul>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">secure_headers()</h3>
+                <p class="text-gray-400">Applies recommended security headers for web apps.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Additional Functions -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Additional Functions</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">set_referrer_policy(policy)</h3>
+                <p class="text-gray-400">Sets the Referrer-Policy header.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">set_permissions_policy(policy)</h3>
+                <p class="text-gray-400">Sets the Permissions-Policy header.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">set_coep(policy)</h3>
+                <p class="text-gray-400">Sets Cross-Origin-Embedder-Policy (e.g., "require-corp").</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">set_coop(policy)</h3>
+                <p class="text-gray-400">Sets Cross-Origin-Opener-Policy (e.g., "same-origin").</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">set_corp(policy)</h3>
+                <p class="text-gray-400">Sets Cross-Origin-Resource-Policy (e.g., "same-site").</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">reset_security_headers()</h3>
+                <p class="text-gray-400">Resets all security header configuration.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">get_security_headers()</h3>
+                <p class="text-gray-400">Gets the current security headers configuration.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Complete Example -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// In your app initialization or bootstrap file
+enable_security_headers()
+secure_headers_strict()
+
+// Or customize specific headers
+set_csp("default-src 'self'; script-src 'self' https://cdn.example.com")
+set_hsts(31536000, true, true)  // 1 year with preload
+prevent_clickjacking()
+set_content_type_options()
+set_referrer_policy("strict-origin-when-cross-origin")</code></pre>
+        </div>
+    </section>
+</div>

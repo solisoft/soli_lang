@@ -209,7 +209,7 @@ fn extract_test_definitions(program: &ast::Program) -> Vec<interpreter::builtins
 fn extract_suite_from_call(
     _name: &str,
     arguments: &[ast::Expr],
-    span: span::Span,
+    _span: span::Span,
 ) -> Option<interpreter::builtins::test_dsl::TestSuite> {
     if arguments.len() < 2 {
         return None;

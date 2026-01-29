@@ -151,7 +151,11 @@ impl SoliDBClient {
 
     pub fn ping(&self) -> Result<bool, SoliDBError> {
         // Do a simple query to check connectivity
-        let db = self.database.as_ref().map(|s| s.as_str()).unwrap_or("solidb");
+        let db = self
+            .database
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("solidb");
         let path = format!("/_api/database/{}/cursor", db);
         let _ = self.request(
             reqwest::Method::POST,
@@ -420,5 +424,83 @@ impl SoliDBClient {
         let path = format!("/_api/database/{}/collection/{}/stats", db, collection);
         let response: Value = self.request(reqwest::Method::GET, &path, None)?;
         Ok(response)
+    }
+
+    pub fn store_blob(
+        &self,
+        collection: &str,
+        data: &[u8],
+        filename: &str,
+        content_type: &str,
+    ) -> Result<String, SoliDBError> {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use uuid::Uuid;
+
+        let db = self.get_db()?;
+        let blob_id = Uuid::new_v4().to_string();
+        let encoded = STANDARD.encode(data);
+
+        let document = serde_json::json!({
+            "_key": blob_id,
+            "filename": filename,
+            "content_type": content_type,
+            "size": data.len(),
+            "data": encoded,
+            "created_at": chrono::Utc::now().to_rfc3339()
+        });
+
+        let path = format!("/_api/database/{}/document/{}", db, collection);
+        self.request(reqwest::Method::POST, &path, Some(&document))?;
+
+        Ok(blob_id)
+    }
+
+    pub fn get_blob(&self, collection: &str, blob_id: &str) -> Result<Vec<u8>, SoliDBError> {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+        let db = self.get_db()?;
+        let path = format!("/_api/database/{}/document/{}/{}", db, collection, blob_id);
+        let response: Value = self.request(reqwest::Method::GET, &path, None)?;
+
+        let data_str = response
+            .get("data")
+            .and_then(|d| d.as_str())
+            .ok_or_else(|| SoliDBError {
+                message: "Blob data not found".to_string(),
+                code: None,
+            })?;
+
+        STANDARD.decode(data_str).map_err(|e| SoliDBError {
+            message: format!("Failed to decode blob: {}", e),
+            code: None,
+        })
+    }
+
+    pub fn get_blob_metadata(
+        &self,
+        collection: &str,
+        blob_id: &str,
+    ) -> Result<serde_json::Value, SoliDBError> {
+        let db = self.get_db()?;
+        let path = format!("/_api/database/{}/document/{}/{}", db, collection, blob_id);
+        let response: Value = self.request(reqwest::Method::GET, &path, None)?;
+
+        let mut metadata = serde_json::Map::new();
+        if let Some(obj) = response.as_object() {
+            for (k, v) in obj.iter() {
+                if k != "data" {
+                    metadata.insert(k.clone(), v.clone());
+                }
+            }
+        }
+
+        Ok(serde_json::Value::Object(metadata))
+    }
+
+    pub fn delete_blob(&self, collection: &str, blob_id: &str) -> Result<(), SoliDBError> {
+        let db = self.get_db()?;
+        let path = format!("/_api/database/{}/document/{}/{}", db, collection, blob_id);
+        self.request(reqwest::Method::DELETE, &path, None)?;
+        Ok(())
     }
 }

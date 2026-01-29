@@ -234,6 +234,22 @@ fn builtins_i18n(req: Any) -> Any {
     return render_docs("docs/builtins/i18n", "I18n Functions", "builtins", "i18n");
 }
 
+fn builtins_cache(req: Any) -> Any {
+    return render_docs("docs/builtins/cache", "Cache Functions", "builtins", "cache");
+}
+
+fn builtins_rate_limit(req: Any) -> Any {
+    return render_docs("docs/builtins/rate-limit", "Rate Limiting Functions", "builtins", "rate_limit");
+}
+
+fn builtins_security_headers(req: Any) -> Any {
+    return render_docs("docs/builtins/security-headers", "Security Headers Functions", "builtins", "security_headers");
+}
+
+fn builtins_upload(req: Any) -> Any {
+    return render_docs("docs/builtins/upload", "File Upload Functions", "builtins", "upload");
+}
+
 // ============================================================================
 // Utility
 // ============================================================================

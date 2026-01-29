@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::RwLock;
 
 use crate::solidb_http::SoliDBClient;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Instance, NativeFunction, Value};
@@ -321,16 +322,18 @@ fn register_solidb_class(env: &mut Environment) {
         ("explain", 1),
         ("ping", 0),
         ("connected", 0),
-        ("close", 0), // Cleanup: remove state from global HashMap
-        // Collection management
+        ("close", 0),
         ("create_collection", 1),
         ("drop_collection", 1),
         ("list_collections", 0),
         ("collection_stats", 1),
-        // Index management
         ("create_index", 4),
         ("drop_index", 2),
         ("list_indexes", 1),
+        ("store_blob", 4),
+        ("get_blob", 2),
+        ("get_blob_metadata", 2),
+        ("delete_blob", 2),
     ];
 
     for (method_name, min_args) in method_definitions {
@@ -948,8 +951,167 @@ fn register_solidb_class(env: &mut Environment) {
                                 }
                                 let indexes = client.list_indexes(&collection)
                                     .map_err(|e| format!("List indexes failed: {}", e))?;
-                                // Return directly as JSON array - skip string serialization
                                 Ok(serde_json::Value::Array(indexes))
+                            }))
+                        }
+                        "store_blob" => {
+                            let collection = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "store_blob() expects string collection, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let data_base64 = match &args[2] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "store_blob() expects base64 string data, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let filename = match &args[3] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "store_blob() expects string filename, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let content_type = match &args[4] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "store_blob() expects string content_type, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let data = STANDARD.decode(&data_base64)
+                                .map_err(|e| format!("Failed to decode base64: {}", e))?;
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let blob_id = client.store_blob(&collection, &data, &filename, &content_type)
+                                    .map_err(|e| format!("Store blob failed: {}", e))?;
+                                Ok(blob_id)
+                            }))
+                        }
+                        "get_blob" => {
+                            let collection = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "get_blob() expects string collection, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let blob_id = match &args[2] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "get_blob() expects string blob_id, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let data = client.get_blob(&collection, &blob_id)
+                                    .map_err(|e| format!("Get blob failed: {}", e))?;
+                                Ok(STANDARD.encode(&data))
+                            }))
+                        }
+                        "get_blob_metadata" => {
+                            let collection = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "get_blob_metadata() expects string collection, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let blob_id = match &args[2] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "get_blob_metadata() expects string blob_id, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(exec_db_json(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                let metadata = client.get_blob_metadata(&collection, &blob_id)
+                                    .map_err(|e| format!("Get blob metadata failed: {}", e))?;
+                                Ok(metadata)
+                            }))
+                        }
+                        "delete_blob" => {
+                            let collection = match &args[1] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "delete_blob() expects string collection, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let blob_id = match &args[2] {
+                                Value::String(s) => s.clone(),
+                                other => {
+                                    return Err(format!(
+                                        "delete_blob() expects string blob_id, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            };
+                            let auth_username = auth_username.clone();
+                            let auth_password = auth_password.clone();
+                            Ok(exec_db_sync(move || {
+                                let mut client = SoliDBClient::connect(&host)
+                                    .map_err(|e| format!("Failed to connect: {}", e))?;
+                                client.set_database(&database);
+                                if let (Some(u), Some(p)) =
+                                    (auth_username.as_deref(), auth_password.as_deref())
+                                {
+                                    client = client.with_basic_auth(u, p);
+                                }
+                                client.delete_blob(&collection, &blob_id)
+                                    .map_err(|e| format!("Delete blob failed: {}", e))?;
+                                Ok("OK".to_string())
                             }))
                         }
                         _ => Err(format!("Unknown method: {}", method)),

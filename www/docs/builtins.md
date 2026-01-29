@@ -2118,6 +2118,501 @@ Awaits an asynchronous operation (used internally for async HTTP).
 
 ---
 
+## Cache Functions
+
+In-memory cache for storing and retrieving data with TTL support.
+
+### cache_set(key, value, ttl_seconds?)
+
+Stores a value in the cache.
+
+**Parameters:**
+- `key` (String) - Cache key
+- `value` (Any) - Value to cache (will be JSON serialized)
+- `ttl_seconds` (Int, optional) - Time to live in seconds (default: 3600)
+
+**Returns:** null
+
+**Example:**
+```soli
+cache_set("user:123", { "name": "Alice", "email": "alice@example.com" })
+cache_set("session", session_data, 1800)  // 30 minute TTL
+```
+
+### cache_get(key)
+
+Retrieves a value from the cache.
+
+**Parameters:**
+- `key` (String) - Cache key
+
+**Returns:** Any|null - Cached value or null if not found/expired
+
+**Example:**
+```soli
+let user = cache_get("user:123")
+if user != null {
+    println("Cached user: " + user["name"])
+}
+```
+
+### cache_delete(key)
+
+Removes a value from the cache.
+
+**Parameters:**
+- `key` (String) - Cache key
+
+**Returns:** Bool - true if key was removed
+
+### cache_has(key)
+
+Checks if a key exists in the cache (and is not expired).
+
+**Parameters:**
+- `key` (String) - Cache key
+
+**Returns:** Bool
+
+### cache_clear()
+
+Removes all entries from the cache.
+
+**Returns:** null
+
+### cache_clear_expired()
+
+Removes only expired entries from the cache.
+
+**Returns:** null
+
+### cache_keys()
+
+Returns all valid (non-expired) cache keys.
+
+**Returns:** Array - Array of key strings
+
+### cache_ttl(key)
+
+Gets the remaining TTL for a key.
+
+**Parameters:**
+- `key` (String) - Cache key
+
+**Returns:** Int|null - Seconds remaining, or null if not found/expired
+
+### cache_touch(key, ttl)
+
+Extends or sets the TTL for an existing key.
+
+**Parameters:**
+- `key` (String) - Cache key
+- `ttl` (Int) - New TTL in seconds
+
+**Returns:** Bool - true if key existed and was updated
+
+### cache_size()
+
+Returns the number of entries in the cache.
+
+**Returns:** Int
+
+### cache_config(ttl?, max_size?)
+
+Configures cache defaults.
+
+**Parameters:**
+- `ttl` (Int|null, optional) - Default TTL in seconds
+- `max_size` (Int|null, optional) - Maximum entries (default: 10000)
+
+**Returns:** null
+
+---
+
+## RateLimiter Class
+
+Sliding window rate limiter for API protection and abuse prevention.
+
+### Constructor
+
+**RateLimiter(key, limit, window_seconds)**
+
+Creates a new rate limiter instance for the given key.
+
+**Parameters:**
+- `key` (String) - Rate limit key (e.g., "ip:192.168.1.1" or "user:123")
+- `limit` (Int) - Maximum requests allowed in the window
+- `window_seconds` (Int) - Time window in seconds
+
+**Example:**
+```soli
+// Create a rate limiter for API access
+let limiter = RateLimiter("api:user123", 100, 60)
+```
+
+### Instance Methods
+
+**limiter.allowed()**
+
+Checks if a request is allowed under the rate limit.
+
+**Returns:** Bool - true if allowed, false if rate limited
+
+**Example:**
+```soli
+let limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
+if !limiter.allowed() {
+    return { "status": 429, "body": "Too Many Requests" }
+}
+```
+
+**limiter.throttle()**
+
+Returns the number of seconds until the next request is allowed.
+
+**Returns:** Int - Seconds to wait (0 if allowed immediately)
+
+**limiter.status()**
+
+Gets detailed rate limit status.
+
+**Returns:** Hash with keys:
+- `allowed` (Bool) - Whether request is allowed
+- `remaining` (Int) - Requests remaining in window
+- `reset_in` (Int) - Seconds until limit resets
+- `limit` (Int) - The limit
+- `window` (Int) - The window in seconds
+
+**Example:**
+```soli
+let limiter = RateLimiter("api:" + api_key, 1000, 3600)
+let status = limiter.status()
+println("Remaining: " + str(status["remaining"]) + "/" + str(status["limit"]))
+```
+
+**limiter.headers()**
+
+Generates rate limit headers for HTTP responses.
+
+**Returns:** Hash with:
+- `X-RateLimit-Limit` - Total limit
+- `X-RateLimit-Remaining` - Requests remaining
+- `X-RateLimit-Reset` - Reset timestamp
+
+**limiter.reset()**
+
+Resets the rate limit for this instance's key.
+
+**Returns:** Bool - true on success
+
+### Static Methods
+
+**RateLimiter.reset_all()**
+
+Resets all rate limit counters.
+
+**Returns:** Bool
+
+**RateLimiter.cleanup()**
+
+Cleans up expired rate limit entries.
+
+**Returns:** Bool
+
+### Helper Functions
+
+**rate_limiter_from_ip(req, limit, window_seconds)**
+
+Creates a RateLimiter instance based on client IP address (extracts from X-Forwarded-For or Remote-Addr).
+
+**Parameters:**
+- `req` (Hash) - Request hash
+- `limit` (Int) - Maximum requests allowed
+- `window_seconds` (Int, optional) - Time window in seconds (default: 60)
+
+**Returns:** RateLimiter instance
+
+---
+
+## Security Headers Functions
+
+Automatic security header injection for HTTP responses.
+
+### enable_security_headers()
+
+Enables automatic security header injection on all responses.
+
+**Returns:** Bool
+
+### disable_security_headers()
+
+Disables automatic security header injection.
+
+**Returns:** Bool
+
+### security_headers_enabled()
+
+Checks if security headers are enabled.
+
+**Returns:** Bool
+
+### set_csp(policy, report_only?)
+
+Sets the Content-Security-Policy header.
+
+**Parameters:**
+- `policy` (String) - CSP policy string
+- `report_only` (Bool, optional) - Use Content-Security-Policy-Report-Only
+
+**Example:**
+```soli
+set_csp("default-src 'self'; script-src 'self' 'unsafe-inline'")
+```
+
+### set_csp_default_src(...sources)
+
+Builds a CSP header with default-src directive.
+
+**Parameters:**
+- `sources` (String...) - CSP source values
+
+**Example:**
+```soli
+set_csp_default_src("'self'", "'https://trusted-cdn.com'")
+// Generates: default-src 'self' 'https://trusted-cdn.com'
+```
+
+### set_hsts(max_age, include_subdomains?, preload?)
+
+Sets the Strict-Transport-Security header.
+
+**Parameters:**
+- `max_age` (Int) - Max age in seconds
+- `include_subdomains` (Bool, optional) - Include subdomains flag (default: true)
+- `preload` (Bool, optional) - Add preload directive (default: false)
+
+**Example:**
+```soli
+set_hsts(31536000, true, false)  // 1 year, include subdomains
+```
+
+### prevent_clickjacking()
+
+Sets X-Frame-Options: DENY to prevent clickjacking.
+
+### allow_same_origin_frames()
+
+Sets X-Frame-Options: SAMEORIGIN to allow same-origin framing.
+
+### set_xss_protection(mode)
+
+Sets the X-XSS-Protection header.
+
+**Parameters:**
+- `mode` (String) - Protection mode (e.g., "block", "report=...")
+
+### set_content_type_options()
+
+Sets X-Content-Type-Options: nosniff to prevent MIME type sniffing.
+
+### set_referrer_policy(policy)
+
+Sets the Referrer-Policy header.
+
+**Parameters:**
+- `policy` (String) - Policy value (e.g., "strict-origin-when-cross-origin")
+
+### set_permissions_policy(policy)
+
+Sets the Permissions-Policy header.
+
+**Parameters:**
+- `policy` (String) - Policy string
+
+### set_coep(policy)
+
+Sets the Cross-Origin-Embedder-Policy header.
+
+**Parameters:**
+- `policy` (String) - Policy (e.g., "require-corp")
+
+### set_coop(policy)
+
+Sets the Cross-Origin-Opener-Policy header.
+
+**Parameters:**
+- `policy` (String) - Policy (e.g., "same-origin")
+
+### set_corp(policy)
+
+Sets the Cross-Origin-Resource-Policy header.
+
+**Parameters:**
+- `policy` (String) - Policy (e.g., "same-site")
+
+### secure_headers()
+
+Applies recommended security headers for web apps.
+
+### secure_headers_basic()
+
+Applies basic security headers (X-Frame-Options, X-Content-Type-Options).
+
+### secure_headers_strict()
+
+Applies strict security headers including HSTS and CSP.
+
+### secure_headers_api()
+
+Applies minimal security headers suitable for JSON APIs.
+
+### reset_security_headers()
+
+Resets all security header configuration.
+
+### get_security_headers()
+
+Gets the current security headers configuration.
+
+**Returns:** Hash - Current security headers
+
+---
+
+## File Upload Functions
+
+Parse multipart form data and upload files to SolidB.
+
+### parse_multipart(req)
+
+Parses multipart/form-data from a request.
+
+**Parameters:**
+- `req` (Hash) - Request hash with body and headers
+
+**Returns:** Array - Array of file hashes, each containing:
+- `filename` (String) - Original filename
+- `content_type` (String) - MIME type
+- `size` (Int) - File size in bytes
+- `data_base64` (String) - File content as base64
+- `field_name` (String) - Form field name
+
+**Example:**
+```soli
+let files = parse_multipart(req)
+for file in files {
+    println("Uploaded: " + file["filename"] + " (" + str(file["size"]) + " bytes)")
+}
+```
+
+### upload_to_solidb(req, collection, field_name, solidb_addr)
+
+Uploads a file from multipart form data to SolidB blob storage.
+
+**Parameters:**
+- `req` (Hash) - Request hash
+- `collection` (String) - SolidB collection name
+- `field_name` (String) - Form field name to upload
+- `solidb_addr` (String) - SolidB server address
+
+**Returns:** Hash with:
+- `blob_id` (String) - Unique blob identifier
+- `filename` (String) - Original filename
+- `size` (Int) - File size
+- `content_type` (String) - MIME type
+
+**Example:**
+```soli
+let result = upload_to_solidb(req, "uploads", "avatar", "localhost:5678")
+if has_key(result, "blob_id") {
+    println("Uploaded: " + result["filename"])
+    println("Blob ID: " + result["blob_id"])
+}
+```
+
+### upload_all_to_solidb(req, collection, solidb_addr)
+
+Uploads all files from multipart form data to SolidB.
+
+**Parameters:**
+- `req` (Hash) - Request hash
+- `collection` (String) - SolidB collection name
+- `solidb_addr` (String) - SolidB server address
+
+**Returns:** Array - Array of result hashes (one per file, or error hash if failed)
+
+### get_blob_url(collection, blob_id, base_url, expires_in?)
+
+Generates a URL for downloading a blob.
+
+**Parameters:**
+- `collection` (String) - SolidB collection name
+- `blob_id` (String) - Blob ID
+- `base_url` (String) - Base URL for the SolidB server
+- `expires_in` (Int, optional) - Expiration time in seconds (default: 3600)
+
+**Returns:** String - Download URL
+
+---
+
+## SolidB Blob Methods
+
+Methods on Solidb instances for storing and retrieving binary data.
+
+### solidb.store_blob(collection, data_base64, filename, content_type)
+
+Stores a file as a blob in SolidB.
+
+**Parameters:**
+- `collection` (String) - Collection name
+- `data_base64` (String) - File content as base64
+- `filename` (String) - Original filename
+- `content_type` (String) - MIME type
+
+**Returns:** String - Unique blob ID
+
+**Example:**
+```soli
+let db = Solidb("localhost:5678", "myapp")
+let blob_id = db.store_blob("avatars", image_data_base64, "photo.jpg", "image/jpeg")
+```
+
+### solidb.get_blob(collection, blob_id)
+
+Retrieves a blob from SolidB.
+
+**Parameters:**
+- `collection` (String) - Collection name
+- `blob_id` (String) - Blob ID
+
+**Returns:** String - File content as base64
+
+### solidb.get_blob_metadata(collection, blob_id)
+
+Gets metadata for a blob without fetching the data.
+
+**Parameters:**
+- `collection` (String) - Collection name
+- `blob_id` (String) - Blob ID
+
+**Returns:** Hash with:
+- `_key` (String) - Blob ID
+- `filename` (String) - Original filename
+- `content_type` (String) - MIME type
+- `size` (Int) - File size in bytes
+- `created_at` (String) - Creation timestamp
+
+### solidb.delete_blob(collection, blob_id)
+
+Deletes a blob from SolidB.
+
+**Parameters:**
+- `collection` (String) - Collection name
+- `blob_id` (String) - Blob ID
+
+**Returns:** String - "OK" on success
+
+---
+
 ## See Also
 
 - [Soli Language Reference](/docs/soli-language) - Core language syntax and features

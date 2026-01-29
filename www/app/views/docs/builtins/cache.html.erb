@@ -1,0 +1,210 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-yellow-400 via-orange-400 to-amber-400 bg-clip-text text-transparent">Cache Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            In-memory caching with TTL support. Use static methods on the Cache class for a clean API.
+        </p>
+    </div>
+
+    <!-- Cache Static Methods -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Cache Static Methods</h2>
+        <p class="text-gray-400 mb-4">Call methods directly on the Cache class without instantiation.</p>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.set(key, value, ttl_seconds?)</h3>
+                <p class="text-gray-400 mb-4">Stores a value in the cache.</p>
+                <ul class="text-gray-300 space-y-1 ml-4 mb-4">
+                    <li><code class="text-purple-400">key</code> (String) - Cache key</li>
+                    <li><code class="text-purple-400">value</code> (Any) - Value to cache (JSON serialized)</li>
+                    <li><code class="text-purple-400">ttl_seconds</code> (Int, optional) - Time to live (default: 3600)</li>
+                </ul>
+                <p class="text-gray-400">Returns: null</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>Cache.set("user:123", { "name": "Alice" })
+Cache.set("session", data, 1800)  // 30 minute TTL</code></pre>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.get(key)</h3>
+                <p class="text-gray-400 mb-4">Retrieves a value from the cache.</p>
+                <p class="text-gray-400">Returns: Any|null - Cached value or null if not found/expired</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>let user = Cache.get("user:123")
+if user != null {
+    println("Cached user: " + user["name"])
+}</code></pre>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.delete(key)</h3>
+                <p class="text-gray-400">Removes a value from the cache.</p>
+                <p class="text-gray-400">Returns: Bool - true if key was removed</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.has(key)</h3>
+                <p class="text-gray-400">Checks if a key exists and is not expired.</p>
+                <p class="text-gray-400">Returns: Bool</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.clear()</h3>
+                <p class="text-gray-400">Removes all entries from the cache.</p>
+                <p class="text-gray-400">Returns: null</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.clear_expired()</h3>
+                <p class="text-gray-400">Removes only expired entries.</p>
+                <p class="text-gray-400">Returns: null</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.keys()</h3>
+                <p class="text-gray-400">Returns all valid (non-expired) cache keys.</p>
+                <p class="text-gray-400">Returns: Array</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.size()</h3>
+                <p class="text-gray-400">Returns the number of entries in the cache.</p>
+                <p class="text-gray-400">Returns: Int</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.ttl(key)</h3>
+                <p class="text-gray-400">Gets the remaining TTL for a key in seconds.</p>
+                <p class="text-gray-400">Returns: Int|null</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.touch(key, ttl)</h3>
+                <p class="text-gray-400">Extends or sets the TTL for an existing key.</p>
+                <p class="text-gray-400">Returns: Bool</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Cache Instance -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Cache Instance</h2>
+        <p class="text-gray-400 mb-4">Create a Cache instance using <code class="text-purple-400">cache()</code>. All instances share the same underlying store.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let c = cache()
+c.set("key", "value")
+let value = c.get("key")</code></pre>
+        </div>
+    </section>
+
+    <!-- Global Functions -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Global Functions (Backward Compatibility)</h2>
+        <p class="text-gray-400 mb-4">Global cache functions are also available and share the same store.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_set(key, value, ttl?)</h3>
+                <p class="text-gray-400 text-sm">Store a value in cache</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_get(key)</h3>
+                <p class="text-gray-400 text-sm">Retrieve a value from cache</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_delete(key)</h3>
+                <p class="text-gray-400 text-sm">Remove a value from cache</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_has(key)</h3>
+                <p class="text-gray-400 text-sm">Check if key exists</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_clear()</h3>
+                <p class="text-gray-400 text-sm">Clear all entries</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_config(ttl?, max_size?)</h3>
+                <p class="text-gray-400 text-sm">Configure cache defaults</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Complete Example -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// Using static methods (recommended)
+Cache.set("user:123", { "name": "Alice", "email": "alice@example.com" })
+Cache.set("session", session_data, 1800)  // 30 minute TTL
+
+// Retrieve data
+let user = Cache.get("user:123")
+if user != null {
+    println("Cached user: " + user["name"])
+}
+
+// Check existence
+if Cache.has("user:123") {
+    println("User still cached")
+}
+
+// Update TTL
+Cache.touch("user:123", 3600)
+
+// List keys
+let keys = Cache.keys()
+
+// Check size
+let count = Cache.size()
+
+// Clear cache
+Cache.clear()
+
+// Or use a Cache instance
+let c = cache()
+c.set("instance_key", "value")
+
+// Global functions also work (share the same store)
+cache_set("global_key", "value")
+let value = cache_get("global_key")</code></pre>
+        </div>
+    </section>
+
+    <!-- Practical Example -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Practical Example: Database Query Caching</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>fn get_user_cached(user_id) {
+    let cache_key = "user:" + str(user_id)
+    let cached = Cache.get(cache_key)
+
+    if cached != null {
+        println("Cache hit!")
+        return cached
+    }
+
+    println("Cache miss - querying database...")
+    let user = db.query("SELECT * FROM users WHERE id = ?", [user_id])
+
+    // Cache for 5 minutes
+    Cache.set(cache_key, user, 300)
+
+    return user
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- Configuration -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Configuration</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <p class="text-gray-400 mb-4">Configure global cache settings:</p>
+            <ul class="text-gray-300 space-y-2 ml-4 mb-4">
+                <li><strong>Default TTL:</strong> 3600 seconds (1 hour)</li>
+                <li><strong>Max Size:</strong> 10000 entries</li>
+            </ul>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// Configure cache
+cache_config(1800, 5000)  // 30 min TTL, 5000 max entries</code></pre>
+        </div>
+    </section>
+</div>

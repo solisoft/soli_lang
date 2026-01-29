@@ -11,6 +11,7 @@ use crate::interpreter::value::{NativeFunction, Value};
 // Re-export submodules
 pub mod assertions;
 pub mod assigns_helpers;
+pub mod cache;
 pub mod controller;
 pub mod crypto;
 pub mod datetime;
@@ -27,10 +28,12 @@ pub mod i18n;
 pub mod jwt;
 pub mod math;
 pub mod model;
+pub mod rate_limit;
 pub mod regex;
 pub mod request_helpers;
 pub mod response_helpers;
 pub mod router;
+pub mod security_headers;
 pub mod server;
 pub mod session;
 pub mod session_helpers;
@@ -40,6 +43,7 @@ pub mod template;
 pub mod test_dsl;
 pub mod test_server;
 pub mod types;
+pub mod uploads;
 pub mod validation;
 
 /// Register all built-in functions in the given environment.
@@ -277,6 +281,18 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register Error class and error types
     register_error_classes(env);
+
+    // Register cache builtins
+    cache::register_cache_builtins(env);
+
+    // Register rate limit builtins
+    rate_limit::register_rate_limit_builtins(env);
+
+    // Register security headers builtins
+    security_headers::register_security_headers_builtins(env);
+
+    // Register upload builtins
+    uploads::register_upload_builtins(env);
 }
 
 /// Register the Error class and built-in error types.

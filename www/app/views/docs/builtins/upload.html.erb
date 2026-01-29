@@ -1,0 +1,242 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">File Upload Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Parse multipart form data and upload files to SolidB blob storage. Handle file uploads with metadata preservation and easy retrieval.
+        </p>
+    </div>
+
+    <!-- set_solidb_address -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">set_solidb_address(addr)</h2>
+        <p class="text-gray-400 mb-4">Configures the global SoliDB address for upload functions. Call this once during app initialization.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">addr</code> (String) - SoliDB server address (e.g., "http://localhost:8529")</li>
+            </ul>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Null</span>
+            </div>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Example</span>
+            </div>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// Call once during app startup
+set_solidb_address("http://localhost:8529")</code></pre>
+        </div>
+    </section>
+
+    <!-- parse_multipart -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">parse_multipart(req)</h2>
+        <p class="text-gray-400 mb-4">Parses multipart/form-data from a request and extracts file information.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">req</code> (Hash) - Request hash with body and headers</li>
+            </ul>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Array of file hashes with keys: <code class="text-purple-400">filename</code>, <code class="text-purple-400">content_type</code>, <code class="text-purple-400">size</code>, <code class="text-purple-400">data_base64</code>, <code class="text-purple-400">field_name</code></span>
+            </div>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Example</span>
+            </div>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let files = parse_multipart(req)
+for file in files {
+    println("Uploaded: " + file["filename"] + " (" + str(file["size"]) + " bytes)")
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- upload_to_solidb -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">upload_to_solidb(req, collection, field_name)</h2>
+        <p class="text-gray-400 mb-4">Uploads a single file from multipart form data directly to SolidB blob storage. Uses the global SoliDB address set by <code class="text-purple-400">set_solidb_address()</code>.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">req</code> (Hash) - Request hash</li>
+                <li><code class="text-purple-400">collection</code> (String) - SolidB collection name</li>
+                <li><code class="text-purple-400">field_name</code> (String) - Form field name to upload</li>
+            </ul>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Hash with <code class="text-purple-400">blob_id</code>, <code class="text-purple-400">filename</code>, <code class="text-purple-400">size</code>, <code class="text-purple-400">content_type</code></span>
+            </div>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let result = upload_to_solidb(req, "uploads", "avatar")
+if has_key(result, "blob_id") {
+    println("Uploaded: " + result["filename"])
+    println("Blob ID: " + result["blob_id"])
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- upload_all_to_solidb -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">upload_all_to_solidb(req, collection)</h2>
+        <p class="text-gray-400 mb-4">Uploads all files from multipart form data to SolidB. Uses the global SoliDB address set by <code class="text-purple-400">set_solidb_address()</code>.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">req</code> (Hash) - Request hash</li>
+                <li><code class="text-purple-400">collection</code> (String) - SolidB collection name</li>
+            </ul>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Array of result hashes (one per file, or error hash if failed)</span>
+            </div>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let results = upload_all_to_solidb(req, "uploads")
+for result in results {
+    if has_key(result, "blob_id") {
+        println("Uploaded: " + result["filename"])
+    } else {
+        println("Failed: " + result["error"])
+    }
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- get_blob_url -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">get_blob_url(collection, blob_id, base_url?, expires_in?)</h2>
+        <p class="text-gray-400 mb-4">Generates a URL for downloading a blob from SolidB. If <code class="text-purple-400">base_url</code> is not provided, uses the global SoliDB address set by <code class="text-purple-400">set_solidb_address()</code>.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">collection</code> (String) - SolidB collection name</li>
+                <li><code class="text-purple-400">blob_id</code> (String) - Blob ID returned from upload</li>
+                <li><code class="text-purple-400">base_url</code> (String, optional) - Base URL for SolidB server. Uses global address if not provided.</li>
+                <li><code class="text-purple-400">expires_in</code> (Int, optional) - Expiration time in seconds</li>
+            </ul>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">String - Download URL</span>
+            </div>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Example</span>
+            </div>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// Using global address
+let url = get_blob_url("avatars", blob_id)
+
+// With explicit base_url
+let url = get_blob_url("avatars", blob_id, "http://localhost:8529")</code></pre>
+        </div>
+    </section>
+
+    <!-- SolidB Blob Methods -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">SolidB Blob Methods</h2>
+        <p class="text-gray-400 mb-4">Methods available on Solidb instances for blob storage.</p>
+        
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb.store_blob(collection, data_base64, filename, content_type)</h3>
+                <p class="text-gray-400 mb-4">Stores a file as a blob in SolidB.</p>
+                <ul class="text-gray-300 space-y-1 ml-4 mb-4">
+                    <li><code class="text-purple-400">collection</code> (String) - Collection name</li>
+                    <li><code class="text-purple-400">data_base64</code> (String) - File content as base64</li>
+                    <li><code class="text-purple-400">filename</code> (String) - Original filename</li>
+                    <li><code class="text-purple-400">content_type</code> (String) - MIME type</li>
+                </ul>
+                <p class="text-gray-400 mb-2">Returns: String - Unique blob ID</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto"><code>let db = Solidb("localhost:5678", "myapp")
+let blob_id = db.store_blob("avatars", image_data_base64, "photo.jpg", "image/jpeg")</code></pre>
+            </div>
+            
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb.get_blob(collection, blob_id)</h3>
+                <p class="text-gray-400 mb-4">Retrieves a blob from SolidB.</p>
+                <p class="text-gray-400 mb-2">Returns: String - File content as base64</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto"><code>let image_data = db.get_blob("avatars", blob_id)</code></pre>
+            </div>
+            
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb.get_blob_metadata(collection, blob_id)</h3>
+                <p class="text-gray-400 mb-4">Gets metadata for a blob without fetching the data.</p>
+                <p class="text-gray-400 mb-2">Returns: Hash with <code class="text-purple-400">_key</code>, <code class="text-purple-400">filename</code>, <code class="text-purple-400">content_type</code>, <code class="text-purple-400">size</code>, <code class="text-purple-400">created_at</code></p>
+            </div>
+            
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb.delete_blob(collection, blob_id)</h3>
+                <p class="text-gray-400 mb-4">Deletes a blob from SolidB.</p>
+                <p class="text-gray-400 mb-2">Returns: String - "OK" on success</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Complete Example -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// App initialization (call once)
+set_solidb_address("http://localhost:8529")
+
+// Upload controller
+fn upload_avatar(req) {
+    let collection = "avatars"
+
+    // Upload the file
+    let result = upload_to_solidb(req, collection, "avatar")
+
+    if has_key(result, "error") {
+        return {
+            "status": 400,
+            "body": json_stringify({ "error": result["error"] })
+        }
+    }
+
+    // Generate download URL
+    let blob_url = get_blob_url(collection, result["blob_id"])
+
+    return {
+        "status": 201,
+        "body": json_stringify({
+            "message": "File uploaded successfully",
+            "blob_id": result["blob_id"],
+            "filename": result["filename"],
+            "size": result["size"],
+            "content_type": result["content_type"],
+            "url": blob_url
+        })
+    }
+}
+
+// Get file controller
+fn get_file(req) {
+    let blob_id = req["params"]["id"]
+    let db = Solidb("localhost:8529", "myapp")
+
+    let metadata = db.get_blob_metadata("avatars", blob_id)
+    if metadata["_key"] == null {
+        return { "status": 404, "body": "Not found" }
+    }
+
+    let data = db.get_blob("avatars", blob_id)
+
+    return {
+        "status": 200,
+        "headers": {
+            "Content-Type": metadata["content_type"],
+            "Content-Length": str(metadata["size"]),
+            "Content-Disposition": "attachment; filename=\"" + metadata["filename"] + "\""
+        },
+        "body": data
+    }
+}</code></pre>
+        </div>
+    </section>
+</div>

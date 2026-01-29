@@ -3479,6 +3479,14 @@ fn handle_request(
             resp.headers
                 .push(("Set-Cookie".to_string(), create_session_cookie(&session_id)));
         }
+        // Add security headers if enabled
+        {
+            use crate::interpreter::builtins::security_headers::get_security_headers;
+            let security_headers = get_security_headers();
+            for (name, value) in security_headers {
+                resp.headers.push((name, value));
+            }
+        }
         // Log timing (skip health checks to avoid benchmark noise)
         if log_requests && path != "/health" {
             let elapsed = start_time.elapsed();
