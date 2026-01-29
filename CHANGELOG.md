@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/solisoft/soli_lang/compare/v0.2.0...v0.3.0) (2026-01-29)
+
+
+### Features
+
+* Add Base64 utility methods and enhance documentation ([a754f57](https://github.com/solisoft/soli_lang/commit/a754f57ee4163149058a08e56819913a7562c02a))
+* Add blob storage and retrieval functions to SoliDBClient ([6f47f68](https://github.com/solisoft/soli_lang/commit/6f47f68c3b691aadc9a41891d85a80a85f7304df))
+* Add chainable array, hash, and string methods to documentation ([1883788](https://github.com/solisoft/soli_lang/commit/18837886eadd97b171ff5cc74120361c51bacbc2))
+* Implement test DSL and assertion tracking ([4687e57](https://github.com/solisoft/soli_lang/commit/4687e572071c7e23d907fc778f815d473fb73c0b))
+* Refactor HiddenClass methods to accept registry parameter ([cb69911](https://github.com/solisoft/soli_lang/commit/cb69911385997164552c32955d1a2d47dd037b48))
+* Update versioning across the project ([da46354](https://github.com/solisoft/soli_lang/commit/da463543759333c8c3d1e916386d845a9ca8f7ba))
+
 ## [0.2.0](https://github.com/solisoft/soli_lang/compare/v0.1.1...v0.2.0) (2026-01-27)
 
 
