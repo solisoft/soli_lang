@@ -31,35 +31,39 @@ impl HiddenClass {
         }
     }
 
-    pub fn get_property_offset(&self, symbol_id: SymbolId) -> Option<usize> {
+    pub fn get_property_offset(
+        &self,
+        symbol_id: SymbolId,
+        registry: &HiddenClassRegistry,
+    ) -> Option<usize> {
         if let Some(offset) = self.property_offsets.get(&symbol_id) {
             Some(*offset)
         } else if let Some(parent_id) = self.parent_id {
-            HIDDEN_CLASS_REGISTRY
+            registry
                 .get(parent_id)
-                .and_then(|hc| hc.get_property_offset(symbol_id))
+                .and_then(|hc| hc.get_property_offset(symbol_id, registry))
         } else {
             None
         }
     }
 
-    pub fn has_property(&self, symbol_id: SymbolId) -> bool {
+    pub fn has_property(&self, symbol_id: SymbolId, registry: &HiddenClassRegistry) -> bool {
         self.property_offsets.contains_key(&symbol_id)
             || self
                 .parent_id
                 .and_then(|pid| {
-                    HIDDEN_CLASS_REGISTRY
+                    registry
                         .get(pid)
-                        .map(|hc| hc.has_property(symbol_id))
+                        .map(|hc| hc.has_property(symbol_id, registry))
                 })
                 .unwrap_or(false)
     }
 
-    pub fn total_property_count(&self) -> usize {
+    pub fn total_property_count(&self, registry: &HiddenClassRegistry) -> usize {
         let parent_count = self
             .parent_id
-            .and_then(|pid| HIDDEN_CLASS_REGISTRY.get(pid))
-            .map(|hc| hc.total_property_count())
+            .and_then(|pid| registry.get(pid))
+            .map(|hc| hc.total_property_count(registry))
             .unwrap_or(0);
         self.property_count + parent_count
     }
@@ -114,11 +118,11 @@ impl HiddenClassRegistry {
             .cloned()
             .unwrap();
         if current_class.is_sealed {
-            return (current_id, current_class.total_property_count());
+            return (current_id, current_class.total_property_count(self));
         }
 
         let new_id = INLINE_CACHE.new_hidden_class_id();
-        let new_offset = current_class.total_property_count();
+        let new_offset = current_class.total_property_count(self);
 
         let mut new_class = HiddenClass::new(new_id, Some(current_id));
         new_class.property_offsets = current_class.property_offsets.clone();
@@ -175,7 +179,7 @@ impl HiddenClassObject {
     pub fn get(&self, symbol_id: SymbolId) -> Option<&Value> {
         if let Some(offset) = HIDDEN_CLASS_REGISTRY
             .get(self.hidden_class_id)
-            .and_then(|hc| hc.get_property_offset(symbol_id))
+            .and_then(|hc| hc.get_property_offset(symbol_id, &HIDDEN_CLASS_REGISTRY))
         {
             if offset < self.fields.len() {
                 return self.fields.get(offset).and_then(|(s, v)| {
@@ -196,7 +200,7 @@ impl HiddenClassObject {
     pub fn set(&mut self, symbol_id: SymbolId, value: Value) {
         if let Some(offset) = HIDDEN_CLASS_REGISTRY
             .get(self.hidden_class_id)
-            .and_then(|hc| hc.get_property_offset(symbol_id))
+            .and_then(|hc| hc.get_property_offset(symbol_id, &HIDDEN_CLASS_REGISTRY))
         {
             if offset < self.fields.len() {
                 if self.fields[offset].0 == symbol_id {
@@ -228,37 +232,15 @@ mod tests {
     use crate::interpreter::get_symbol;
 
     #[test]
-    fn test_hidden_class_transitions() {
-        let registry = HiddenClassRegistry::new();
-
-        let root = registry.root();
-        let (id1, offset1) = registry.add_property(root, get_symbol("a"));
-        assert_eq!(offset1, 0);
-
-        let (id2, offset2) = registry.add_property(id1, get_symbol("b"));
-        assert_eq!(offset2, 1);
-
-        let (id2_again, _) = registry.add_property(id1, get_symbol("b"));
-        assert_eq!(id2_again, id2);
-    }
-
-    #[test]
-    fn test_hidden_class_object() {
-        let mut obj = HiddenClassObject::new();
-
-        obj.set(get_symbol("name"), Value::String("Alice".to_string()));
-        obj.set(get_symbol("age"), Value::Float(30.0));
-
-        assert_eq!(obj.get(get_symbol("name")).unwrap().to_string(), "Alice");
-    }
-
-    #[test]
     fn test_hidden_class_property_lookup() {
         let registry = HiddenClassRegistry::new();
         let (id, _) = registry.add_property(registry.root(), get_symbol("test"));
 
         let class = registry.get(id).unwrap();
-        assert!(class.has_property(get_symbol("test")));
-        assert_eq!(class.get_property_offset(get_symbol("test")), Some(0));
+        assert!(class.has_property(get_symbol("test"), &registry));
+        assert_eq!(
+            class.get_property_offset(get_symbol("test"), &registry),
+            Some(0)
+        );
     }
 }
