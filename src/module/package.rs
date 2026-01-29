@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+const DEFAULT_VERSION: &str = env!("CARGO_PKG_VERSION", "0.2.0");
+
 /// A Solilang package configuration.
 #[derive(Debug, Clone, Default)]
 pub struct Package {
@@ -59,7 +61,7 @@ impl Package {
     pub fn new(name: &str) -> Self {
         Package {
             name: name.to_string(),
-            version: "0.1.0".to_string(),
+            version: DEFAULT_VERSION.to_string(),
             description: None,
             main: "src/main.sl".to_string(),
             dependencies: HashMap::new(),
@@ -239,7 +241,7 @@ main = "src/main.sl"
         let content = r#"
 [package]
 name = "my-app"
-version = "0.1.0"
+version = "0.2.0"
 
 [dependencies]
 utils = "./lib/utils"

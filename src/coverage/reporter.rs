@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION", "0.2.0");
+
 pub struct CoverageReporter {
     config: CoverageConfig,
 }
@@ -408,7 +410,7 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
         }
 
         let json = serde_json::json!({
-            "version": "0.1.0",
+            "version": VERSION,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "generator": "soli_lang coverage",
             "summary": {

@@ -6,6 +6,8 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 use std::process;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION", "0.2.0");
+
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -70,7 +72,7 @@ struct Options {
 }
 
 fn print_usage() {
-    eprintln!("Soli v0.1.0 - Solilang Interpreter");
+    eprintln!("Soli {} - Solilang Interpreter", VERSION);
     eprintln!();
     eprintln!("Usage: soli [options] [script.sl]");
     eprintln!("       soli new <app_name>");
@@ -641,7 +643,7 @@ fn run_eval(code: &str, _options: &Options) {
 }
 
 fn run_repl() {
-    println!("Soli v0.1.0 - Solilang Interpreter");
+    println!("Soli {} - Solilang Interpreter", VERSION);
     println!("Type 'exit' or Ctrl+D to quit.\n");
 
     let mut rl = match DefaultEditor::new() {
