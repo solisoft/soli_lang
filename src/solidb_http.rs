@@ -151,11 +151,7 @@ impl SoliDBClient {
 
     pub fn ping(&self) -> Result<bool, SoliDBError> {
         // Do a simple query to check connectivity
-        let db = self
-            .database
-            .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or("solidb");
+        let db = self.database.as_deref().unwrap_or("solidb");
         let path = format!("/_api/database/{}/cursor", db);
         let _ = self.request(
             reqwest::Method::POST,

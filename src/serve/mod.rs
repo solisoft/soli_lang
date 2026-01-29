@@ -202,9 +202,7 @@ fn load_env_file(folder: &Path, filename: &str, override_existing: bool) {
         let key = key.trim();
         let value = value.trim().trim_matches('"').trim_matches('\'');
 
-        if override_existing {
-            std::env::set_var(key, value);
-        } else if std::env::var(key).is_err() {
+        if override_existing || std::env::var(key).is_err() {
             std::env::set_var(key, value);
         }
     }

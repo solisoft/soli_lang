@@ -66,7 +66,7 @@ impl InMemorySessionStore {
     fn get_or_create(&self, session_id: &str) -> String {
         // Probabilistic cleanup: only run on 1 in 100 requests to reduce lock contention
         let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
-        if count % 100 == 0 {
+        if count.is_multiple_of(100) {
             self.cleanup();
         }
 

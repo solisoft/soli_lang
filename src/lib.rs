@@ -250,8 +250,7 @@ fn extract_tests_from_block(
     for stmt in statements {
         if let ast::StmtKind::Expression(expr) = &stmt.kind {
             if let ast::ExprKind::Call { callee, arguments } = &expr.kind {
-                match &callee.kind {
-                    ast::ExprKind::Variable(name) => {
+                if let ast::ExprKind::Variable(name) = &callee.kind {
                         if name == "test" || name == "it" || name == "specify" {
                             if let Some(test) = extract_test_from_call(arguments, stmt.span) {
                                 suite.tests.push(test);
@@ -277,8 +276,6 @@ fn extract_tests_from_block(
                                 suite.after_all = Some(ast_expr_to_value(callback));
                             }
                         }
-                    }
-                    _ => {}
                 }
             }
         }
@@ -327,10 +324,10 @@ fn create_function_value(
 
     let decl = ast::FunctionDecl {
         name: "test_fn".to_string(),
-        params: params,
-        return_type: return_type,
-        body: body,
-        span: span,
+        params,
+        return_type,
+        body,
+        span,
     };
     let closure = Rc::new(RefCell::new(env));
     Value::Function(Rc::new(Function::from_decl(&decl, closure, None)))

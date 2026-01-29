@@ -52,7 +52,7 @@ impl RateLimitBucket {
             };
             (true, remaining.saturating_sub(1), wait_time)
         } else {
-            let reset_time = *&self.requests[0] + self.window - now;
+            let reset_time = self.requests[0] + self.window - now;
             (false, 0, reset_time)
         }
     }
