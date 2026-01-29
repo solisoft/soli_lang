@@ -501,6 +501,12 @@ impl<'a> Scanner<'a> {
             self.advance();
         }
 
+        // Check for trailing ! (for methods that raise errors like insert!, delete!, etc.)
+        if self.peek() == Some('!') {
+            value.push('!');
+            self.advance();
+        }
+
         let kind = TokenKind::keyword(&value).unwrap_or(TokenKind::Identifier(value));
         Ok(self.make_token(kind))
     }
@@ -730,6 +736,34 @@ mod tests {
                 TokenKind::IntLiteral(1),
                 TokenKind::RightBracket,
                 TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bang_suffix() {
+        // Methods ending with ! should be valid identifiers
+        assert_eq!(
+            scan("insert! delete! fail!"),
+            vec![
+                TokenKind::Identifier("insert!".to_string()),
+                TokenKind::Identifier("delete!".to_string()),
+                TokenKind::Identifier("fail!".to_string()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bang_suffix_with_operators() {
+        // Ensure ! followed by = is still != operator
+        assert_eq!(
+            scan("x! = y"),
+            vec![
+                TokenKind::Identifier("x!".to_string()),
+                TokenKind::Equal,
+                TokenKind::Identifier("y".to_string()),
+                TokenKind::Eof,
             ]
         );
     }

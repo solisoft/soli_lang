@@ -147,75 +147,6 @@ print(arr);  // [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre
         </div>
     </section>
 
-    <!-- Built-in Functions -->
-    <section id="section-functions" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-            </span>
-            Built-in Functions
-        </h2>
-
-        <div class="space-y-6">
-            <section id="fn-len" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-len" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">len(array)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns the number of elements in the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
-print(len(arr));  // 5
-
-let empty = [];
-print(len(empty));  // 0</code></pre>
-                </div>
-            </section>
-
-            <section id="fn-push" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-push" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">push(array, value)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Add an element to the end of an array (modifies in place).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
-push(arr, 4);
-print(arr);  // [1, 2, 3, 4]
-
-push(arr, 5);
-print(arr);  // [1, 2, 3, 4, 5]</code></pre>
-                </div>
-            </section>
-
-            <section id="fn-pop" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-pop" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">pop(array)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Remove and return the last element from an array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
-let last = pop(arr);
-print(last);   // 5
-print(arr);    // [1, 2, 3, 4]
-
-// Returns null if array is empty
-let empty = [];
-print(pop(empty));  // null</code></pre>
-                </div>
-            </section>
-        </div>
-    </section>
-
     <!-- Array Methods -->
     <section id="section-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
@@ -551,6 +482,26 @@ print(numbers.min());   // 3
 print(numbers.max());   // 12</code></pre>
                 </div>
             </section>
+
+            <section id="method-join" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-join" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.join(delimiter)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Joins array elements into a string using the specified delimiter.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let words = ["Hello", "World"];
+print(words.join(" "));   // "Hello World"
+
+let numbers = [1, 2, 3, 4, 5];
+print(numbers.join("-")); // "1-2-3-4-5"
+
+let paths = ["usr", "local", "bin"];
+print(paths.join("/"));   // "usr/local/bin"</code></pre>
+                </div>
+            </section>
         </div>
     </section>
 
@@ -627,10 +578,8 @@ print(result2);  // 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of elements in the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
-arr.push(1);
-arr.push(2);
-arr.length();  // 2</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
+arr.length();  // 3</code></pre>
                 </div>
             </section>
 
@@ -643,8 +592,8 @@ arr.length();  // 2</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Adds an element to the end or removes and returns the last element.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
-arr.push(1);  // []
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [];
+arr.push(1);  // [1]
 arr.push(2);  // [1, 2]
 let last = arr.pop();  // 2, arr is now [1]</code></pre>
                 </div>
@@ -659,28 +608,11 @@ let last = arr.pop();  // 2, arr is now [1]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the element at the specified index. Supports negative indices for backward access.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
-arr.push("first");
-arr.push("second");
-arr.push("third");
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = ["first", "second", "third"];
 arr.get(0);      // "first"
 arr.get(2);      // "third"
 arr.get(-1);     // "third" (last)
 arr.get(-2);     // "second"</code></pre>
-                </div>
-            </section>
-
-            <section id="array-new" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#array-new" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Array.new()</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Creates a new empty Array instance.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
-arr.length();  // 0</code></pre>
                 </div>
             </section>
 
@@ -693,10 +625,7 @@ arr.length();  // 0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Removes all elements from the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = Array.new();
-arr.push(1);
-arr.push(2);
-arr.push(3);
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
 arr.clear();
 arr.length();  // 0</code></pre>
                 </div>

@@ -84,6 +84,18 @@ impl Parser {
                 ))
             }
 
+            TokenKind::Not => {
+                let operand = self.parse_precedence(Precedence::Unary)?;
+                let span = start_span.merge(&operand.span);
+                Ok(Expr::new(
+                    ExprKind::Unary {
+                        operator: UnaryOp::Not,
+                        operand: Box::new(operand),
+                    },
+                    span,
+                ))
+            }
+
             TokenKind::New => {
                 let class_name = self.expect_identifier()?;
                 self.expect(&TokenKind::LeftParen)?;

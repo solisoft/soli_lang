@@ -10,91 +10,80 @@ describe("Collection Classes", fn() {
             assert_eq(s.to_string(), "hello");
         });
 
-        test("String.to_string() returns wrapped value", fn() {
-            let s = String.new("test");
-            assert_eq(s.to_string(), "test");
-        });
-
         test("String.length() returns string length", fn() {
-            let s = String.new("hello");
+            let s = "hello";
             assert_eq(s.length(), 5);
         });
 
         test("String.upcase() returns uppercase string", fn() {
-            let s = String.new("hello");
+            let s = "hello";
             let upper = s.upcase();
             assert_eq(upper.to_string(), "HELLO");
         });
 
         test("String.downcase() returns lowercase string", fn() {
-            let s = String.new("HELLO");
+            let s = "HELLO";
             let lower = s.downcase();
             assert_eq(lower.to_string(), "hello");
         });
 
         test("String.trim() removes whitespace", fn() {
-            let s = String.new("  hello  ");
+            let s = "  hello  ";
             let trimmed = s.trim();
             assert_eq(trimmed.to_string(), "hello");
         });
 
         test("String.contains() checks for substring", fn() {
-            let s = String.new("hello world");
+            let s = "hello world";
             assert(s.contains("world"));
             assert_not(s.contains("foo"));
         });
 
         test("String.starts_with() checks prefix", fn() {
-            let s = String.new("hello world");
+            let s = "hello world";
             assert(s.starts_with("hello"));
             assert_not(s.starts_with("world"));
         });
 
         test("String.ends_with() checks suffix", fn() {
-            let s = String.new("hello world");
+            let s = "hello world";
             assert(s.ends_with("world"));
             assert_not(s.ends_with("hello"));
         });
 
         test("String.split() returns array of parts", fn() {
-            let s = String.new("a,b,c");
+            let s = "a,b,c";
             let parts = s.split(",");
-            assert_eq(parts.length(), 3);
-        });
-
-        test("String.new() creates string from various types", fn() {
-            assert_eq(String.new(42).to_string(), "42");
-            assert_eq(String.new(3.14).to_string(), "3.14");
-            assert_eq(String.new(true).to_string(), "true");
+            assert_eq(len(parts), 3);
         });
 
         test("String.index_of() returns substring position", fn() {
-            let s = String.new("hello world");
+            let s = "hello world";
             assert_eq(s.index_of("world"), 6);
             assert_eq(s.index_of("hello"), 0);
             assert_eq(s.index_of("foo"), -1);
         });
 
         test("String.substring() extracts part of string", fn() {
-            let s = String.new("hello world");
+            let s = "hello world";
             assert_eq(s.substring(0, 5).to_string(), "hello");
             assert_eq(s.substring(6, 11).to_string(), "world");
         });
 
         test("String.replace() replaces substring", fn() {
-            let s = String.new("hello world");
+            let s = "hello world";
             let replaced = s.replace("world", "soli");
             assert_eq(replaced.to_string(), "hello soli");
         });
 
         test("String.lpad() left pads string", fn() {
-            let s = String.new("hi");
+            let s = "hi";
             assert_eq(s.lpad(5).to_string(), "   hi");
             assert_eq(s.lpad(5, "*").to_string(), "***hi");
         });
 
         test("String.rpad() right pads string", fn() {
-            let s = String.new("hi");
+            let s = "hi";
             assert_eq(s.rpad(5).to_string(), "hi   ");
             assert_eq(s.rpad(5, "*").to_string(), "hi***");
         });
@@ -110,64 +99,121 @@ describe("Collection Classes", fn() {
         });
 
         test("Array.to_string() returns formatted string", fn() {
-            let arr = Array.new();
-            arr.push(1);
-            arr.push(2);
-            arr.push(3);
+            let arr = [1, 2, 3];
             assert_eq(arr.to_string(), "[1, 2, 3]");
         });
 
         test("Array.length() returns array length", fn() {
-            let arr = Array.new();
-            arr.push(1);
-            arr.push(2);
+            let arr = [1, 2];
             assert_eq(arr.length(), 2);
         });
 
         test("Array.push() adds element", fn() {
-            let arr = Array.new();
+            let arr = [];
             arr.push(42);
             assert_eq(arr.get(0), 42);
         });
 
         test("Array.pop() removes and returns last element", fn() {
-            let arr = Array.new();
-            arr.push(1);
-            arr.push(2);
+            let arr = [1, 2];
             let popped = arr.pop();
             assert_eq(popped, 2);
             assert_eq(arr.length(), 1);
         });
 
         test("Array.get() returns element at index", fn() {
-            let arr = Array.new();
-            arr.push("first");
-            arr.push("second");
+            let arr = ["first", "second"];
             assert_eq(arr.get(0), "first");
             assert_eq(arr.get(1), "second");
         });
 
         test("Array.get() supports negative index", fn() {
-            let arr = Array.new();
-            arr.push(1);
-            arr.push(2);
-            arr.push(3);
+            let arr = [1, 2, 3];
             assert_eq(arr.get(-1), 3);
             assert_eq(arr.get(-2), 2);
         });
 
-        test("Array.new() creates empty array", fn() {
-            let arr = Array.new();
+        test("Array.clear() removes all elements", fn() {
+            let arr = [1, 2, 3];
+            arr.clear();
             assert_eq(arr.length(), 0);
         });
 
-        test("Array.clear() removes all elements", fn() {
-            let arr = Array.new();
-            arr.push(1);
-            arr.push(2);
-            arr.push(3);
-            arr.clear();
-            assert_eq(arr.length(), 0);
+        test("Array.first() returns first element", fn() {
+            let arr = [1, 2, 3];
+            assert_eq(arr.first(), 1);
+        });
+
+        test("Array.last() returns last element", fn() {
+            let arr = [1, 2, 3];
+            assert_eq(arr.last(), 3);
+        });
+
+        test("Array.reverse() returns reversed array", fn() {
+            let arr = [1, 2, 3];
+            let rev = arr.reverse();
+            assert_eq(rev.first(), 3);
+            assert_eq(rev.last(), 1);
+        });
+
+        test("Array.uniq() removes duplicates", fn() {
+            let arr = [1, 2, 2, 3, 3, 3];
+            let unique = arr.uniq();
+            assert_eq(unique.length(), 3);
+        });
+
+        test("Array.take() returns first n elements", fn() {
+            let arr = [1, 2, 3, 4, 5];
+            let taken = arr.take(3);
+            assert_eq(taken.length(), 3);
+            assert_eq(taken.last(), 3);
+        });
+
+        test("Array.drop() returns array without first n elements", fn() {
+            let arr = [1, 2, 3, 4, 5];
+            let dropped = arr.drop(2);
+            assert_eq(dropped.length(), 3);
+            assert_eq(dropped.first(), 3);
+        });
+
+        test("Array.sum() returns sum of elements", fn() {
+            let arr = [1, 2, 3, 4, 5];
+            assert_eq(arr.sum(), 15.0);
+        });
+
+        test("Array.min() returns minimum value", fn() {
+            let arr = [3, 1, 4, 1, 5];
+            assert_eq(arr.min(), 1);
+        });
+
+        test("Array.max() returns maximum value", fn() {
+            let arr = [3, 1, 4, 1, 5];
+            assert_eq(arr.max(), 5);
+        });
+
+        test("Array.empty?() checks if array is empty", fn() {
+            let empty = [];
+            let full = [1, 2, 3];
+            assert(empty.empty?());
+            assert_not(full.empty?());
+        });
+
+        test("Array.include?() checks if array contains element", fn() {
+            let arr = [1, 2, 3];
+            assert(arr.include?(2));
+            assert_not(arr.include?(5));
+        });
+
+        test("Array.join() joins elements with delimiter", fn() {
+            let arr = [1, 2, 3];
+            assert_eq(arr.join("-"), "1-2-3");
+        });
+
+        test("Array.zip() pairs elements with another array", fn() {
+            let a = [1, 2, 3];
+            let b = [4, 5, 6];
+            let zipped = a.zip(b);
+            assert_eq(zipped.length(), 3);
         });
     });
 
@@ -179,66 +225,42 @@ describe("Collection Classes", fn() {
             assert(repr.contains("value"));
         });
 
-        test("Hash.to_string() returns formatted string", fn() {
-            let h = Hash.new();
-            h.set("a", 1);
-            h.set("b", 2);
-            let repr = h.to_string();
-            assert(repr.contains("a"));
-            assert(repr.contains("b"));
-        });
-
         test("Hash.length() returns entry count", fn() {
-            let h = Hash.new();
-            h.set("a", 1);
-            h.set("b", 2);
+            let h = {"a": 1, "b": 2};
             assert_eq(h.length(), 2);
         });
 
         test("Hash.get() returns value by key", fn() {
-            let h = Hash.new();
-            h.set("name", "test");
+            let h = {"name": "test"};
             assert_eq(h.get("name"), "test");
         });
 
         test("Hash.set() sets value by key", fn() {
-            let h = Hash.new();
+            let h = {};
             h.set("key", "value");
             assert_eq(h.get("key"), "value");
         });
 
         test("Hash.has_key() checks key existence", fn() {
-            let h = Hash.new();
-            h.set("exists", true);
+            let h = {"exists": true};
             assert(h.has_key("exists"));
             assert_not(h.has_key("missing"));
         });
 
         test("Hash.keys() returns array of keys", fn() {
-            let h = Hash.new();
-            h.set("a", 1);
-            h.set("b", 2);
+            let h = {"a": 1, "b": 2};
             let k = h.keys();
             assert_eq(k.length(), 2);
         });
 
         test("Hash.values() returns array of values", fn() {
-            let h = Hash.new();
-            h.set("a", 1);
-            h.set("b", 2);
+            let h = {"a": 1, "b": 2};
             let v = h.values();
             assert_eq(v.length(), 2);
         });
 
-        test("Hash.new() creates empty hash", fn() {
-            let h = Hash.new();
-            assert_eq(h.length(), 0);
-        });
-
         test("Hash.delete() removes key and returns value", fn() {
-            let h = Hash.new();
-            h.set("a", 1);
-            h.set("b", 2);
+            let h = {"a": 1, "b": 2};
             let deleted = h.delete("a");
             assert_eq(deleted, 1);
             assert_eq(h.length(), 1);
@@ -246,10 +268,8 @@ describe("Collection Classes", fn() {
         });
 
         test("Hash.merge() combines two hashes", fn() {
-            let h1 = Hash.new();
-            h1.set("a", 1);
-            let h2 = Hash.new();
-            h2.set("b", 2);
+            let h1 = {"a": 1};
+            let h2 = {"b": 2};
             let merged = h1.merge(h2);
             assert_eq(merged.length(), 2);
             assert_eq(merged.get("a"), 1);
@@ -257,16 +277,13 @@ describe("Collection Classes", fn() {
         });
 
         test("Hash.entries() returns key-value pairs", fn() {
-            let h = Hash.new();
-            h.set("a", 1);
+            let h = {"a": 1};
             let e = h.entries();
             assert_eq(e.length(), 1);
         });
 
         test("Hash.clear() removes all entries", fn() {
-            let h = Hash.new();
-            h.set("a", 1);
-            h.set("b", 2);
+            let h = {"a": 1, "b": 2};
             h.clear();
             assert_eq(h.length(), 0);
         });
@@ -293,23 +310,19 @@ describe("Collection Classes", fn() {
         });
     });
 
-    describe("Global len() Function with Class Instances", fn() {
-        test("len() works with String class instance", fn() {
-            let s = String.new("hello");
+    describe("Global len() Function with Literals", fn() {
+        test("len() works with string literal", fn() {
+            let s = "hello";
             assert_eq(len(s), 5);
         });
 
-        test("len() works with Array class instance", fn() {
-            let arr = Array.new();
-            arr.push(1);
-            arr.push(2);
+        test("len() works with array literal", fn() {
+            let arr = [1, 2];
             assert_eq(len(arr), 2);
         });
 
-        test("len() works with Hash class instance", fn() {
-            let h = Hash.new();
-            h.set("a", 1);
-            h.set("b", 2);
+        test("len() works with hash literal", fn() {
+            let h = {"a": 1, "b": 2};
             assert_eq(len(h), 2);
         });
     });

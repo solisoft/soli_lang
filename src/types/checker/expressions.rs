@@ -562,14 +562,18 @@ impl TypeChecker {
                         // Optional comparator fn(a, b) -> Int, returns Array
                         Ok(Type::Function {
                             params: vec![],
-                            return_type: Box::new(Type::Array(Box::new(inner_type.as_ref().clone()))),
+                            return_type: Box::new(Type::Array(Box::new(
+                                inner_type.as_ref().clone(),
+                            ))),
                         })
                     }
                     "reverse" | "uniq" | "compact" | "flatten" => {
                         // Returns Array
                         Ok(Type::Function {
                             params: vec![],
-                            return_type: Box::new(Type::Array(Box::new(inner_type.as_ref().clone()))),
+                            return_type: Box::new(Type::Array(Box::new(
+                                inner_type.as_ref().clone(),
+                            ))),
                         })
                     }
                     "first" | "last" => {
@@ -604,21 +608,27 @@ impl TypeChecker {
                         // Returns Array
                         Ok(Type::Function {
                             params: vec![],
-                            return_type: Box::new(Type::Array(Box::new(inner_type.as_ref().clone()))),
+                            return_type: Box::new(Type::Array(Box::new(
+                                inner_type.as_ref().clone(),
+                            ))),
                         })
                     }
                     "take" | "drop" => {
                         // Int -> Array
                         Ok(Type::Function {
                             params: vec![Type::Int],
-                            return_type: Box::new(Type::Array(Box::new(inner_type.as_ref().clone()))),
+                            return_type: Box::new(Type::Array(Box::new(
+                                inner_type.as_ref().clone(),
+                            ))),
                         })
                     }
                     "zip" => {
                         // Array -> Array of [a, b] pairs
                         Ok(Type::Function {
                             params: vec![Type::Any],
-                            return_type: Box::new(Type::Array(Box::new(Type::Array(Box::new(Type::Any))))),
+                            return_type: Box::new(Type::Array(Box::new(Type::Array(Box::new(
+                                Type::Any,
+                            ))))),
                         })
                     }
                     "sum" => {
@@ -633,6 +643,13 @@ impl TypeChecker {
                         Ok(Type::Function {
                             params: vec![],
                             return_type: Box::new(inner_type.as_ref().clone()),
+                        })
+                    }
+                    "join" => {
+                        // String delimiter -> String
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::String),
                         })
                     }
                     _ => Err(TypeError::NoSuchMember {
@@ -753,7 +770,8 @@ impl TypeChecker {
                             return_type: Box::new(Type::Bool),
                         })
                     }
-                    "chomp" | "lstrip" | "rstrip" | "squeeze" | "capitalize" | "swapcase" | "reverse" | "delete_prefix" | "delete_suffix" => {
+                    "chomp" | "lstrip" | "rstrip" | "squeeze" | "capitalize" | "swapcase"
+                    | "reverse" | "delete_prefix" | "delete_suffix" => {
                         // Returns String
                         Ok(Type::Function {
                             params: vec![],

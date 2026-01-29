@@ -150,4 +150,36 @@ mod tests {
             _ => panic!("Expected match expression"),
         }
     }
+
+    #[test]
+    fn test_not_keyword() {
+        let expr = parse_expr("not true;");
+        match expr.kind {
+            ExprKind::Unary {
+                operator: UnaryOp::Not,
+                ..
+            } => {}
+            _ => panic!("Expected unary not expression"),
+        }
+    }
+
+    #[test]
+    fn test_not_keyword_equals_bang() {
+        let bang_expr = parse_expr("!true;");
+        let not_expr = parse_expr("not true;");
+
+        match (&bang_expr.kind, &not_expr.kind) {
+            (
+                ExprKind::Unary {
+                    operator: bang_op, ..
+                },
+                ExprKind::Unary {
+                    operator: not_op, ..
+                },
+            ) => {
+                assert_eq!(bang_op, not_op);
+            }
+            _ => panic!("Expected both to be unary expressions"),
+        }
+    }
 }

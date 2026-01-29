@@ -134,32 +134,6 @@ pub fn register_builtins(env: &mut Environment) {
         })),
     );
 
-    // push(array, value) - Add element to array
-    env.define(
-        "push".to_string(),
-        Value::NativeFunction(NativeFunction::new("push", Some(2), |args| {
-            match &args[0] {
-                Value::Array(arr) => {
-                    arr.borrow_mut().push(args[1].clone());
-                    Ok(Value::Null)
-                }
-                other => Err(format!("push() expects array, got {}", other.type_name())),
-            }
-        })),
-    );
-
-    // pop(array) - Remove and return last element
-    env.define(
-        "pop".to_string(),
-        Value::NativeFunction(NativeFunction::new("pop", Some(1), |args| match &args[0] {
-            Value::Array(arr) => arr
-                .borrow_mut()
-                .pop()
-                .ok_or_else(|| "pop() on empty array".to_string()),
-            other => Err(format!("pop() expects array, got {}", other.type_name())),
-        })),
-    );
-
     // ===== Time function =====
 
     // clock() - Current time in seconds since epoch

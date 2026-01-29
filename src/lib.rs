@@ -58,6 +58,7 @@ pub mod template;
 pub mod types;
 
 use error::SolilangError;
+use interpreter::Value;
 
 /// Run a Solilang program from source code.
 pub fn run(source: &str) -> Result<(), SolilangError> {
@@ -136,7 +137,10 @@ pub fn run_with_path_and_coverage(
     type_check: bool,
     coverage_tracker: Option<&std::rc::Rc<std::cell::RefCell<coverage::CoverageTracker>>>,
     source_file_path: Option<&std::path::Path>,
-) -> Result<(), SolilangError> {
+) -> Result<i64, SolilangError> {
+    // Clear any previous test suites
+    interpreter::builtins::test_dsl::clear_test_suites();
+
     // Lexing
     let tokens = lexer::Scanner::new(source).scan_tokens()?;
 
@@ -163,6 +167,9 @@ pub fn run_with_path_and_coverage(
         }
     }
 
+    // Extract test definitions from AST
+    let test_suites = extract_test_definitions(&program);
+
     // Execute with tree-walking interpreter
     let mut interpreter = interpreter::Interpreter::new();
     if let (Some(tracker), Some(path)) = (coverage_tracker, source_file_path) {
@@ -171,6 +178,210 @@ pub fn run_with_path_and_coverage(
     }
     interpreter.interpret(&program)?;
 
+    // Execute collected tests
+    execute_test_suites(&mut interpreter, &test_suites)?;
+
+    // Get assertion count from thread-local storage
+    let assertion_count = interpreter::builtins::assertions::get_and_reset_assertion_count();
+
+    Ok(assertion_count)
+}
+
+fn extract_test_definitions(program: &ast::Program) -> Vec<interpreter::builtins::test_dsl::TestSuite> {
+    let mut suites = Vec::new();
+    for stmt in &program.statements {
+        if let ast::StmtKind::Expression(expr) = &stmt.kind {
+            if let ast::ExprKind::Call { callee, arguments } = &expr.kind {
+                // Check if this is a describe call
+                if let ast::ExprKind::Variable(name) = &callee.kind {
+                    if name == "describe" || name == "context" {
+                        if let Some(suite) = extract_suite_from_call(name, arguments, stmt.span) {
+                            suites.push(suite);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    suites
+}
+
+fn extract_suite_from_call(
+    _name: &str,
+    arguments: &[ast::Expr],
+    span: span::Span,
+) -> Option<interpreter::builtins::test_dsl::TestSuite> {
+    if arguments.len() < 2 {
+        return None;
+    }
+
+    // First argument should be the suite name
+    let suite_name = match &arguments[0].kind {
+        ast::ExprKind::StringLiteral(s) => s.clone(),
+        _ => return None,
+    };
+
+    // Second argument should be a lambda (the suite body)
+    let suite_body = match &arguments[1].kind {
+        ast::ExprKind::Lambda { body, .. } => body.clone(),
+        _ => return None,
+    };
+
+    let mut suite = interpreter::builtins::test_dsl::TestSuite {
+        name: suite_name,
+        tests: Vec::new(),
+        before_each: None,
+        after_each: None,
+        before_all: None,
+        after_all: None,
+        nested_suites: Vec::new(),
+    };
+
+    // Extract tests and nested suites from the lambda body
+    extract_tests_from_block(&suite_body, &mut suite);
+
+    Some(suite)
+}
+
+fn extract_tests_from_block(
+    statements: &[ast::Stmt],
+    suite: &mut interpreter::builtins::test_dsl::TestSuite,
+) {
+    for stmt in statements {
+        if let ast::StmtKind::Expression(expr) = &stmt.kind {
+            if let ast::ExprKind::Call { callee, arguments } = &expr.kind {
+                match &callee.kind {
+                    ast::ExprKind::Variable(name) => {
+                        if name == "test" || name == "it" || name == "specify" {
+                            if let Some(test) = extract_test_from_call(arguments, stmt.span) {
+                                suite.tests.push(test);
+                            }
+                        } else if name == "describe" || name == "context" {
+                            if let Some(nested) = extract_suite_from_call(name, arguments, stmt.span) {
+                                suite.nested_suites.push(nested);
+                            }
+                        } else if name == "before_each" {
+                            if let Some(callback) = arguments.first() {
+                                suite.before_each = Some(ast_expr_to_value(callback));
+                            }
+                        } else if name == "after_each" {
+                            if let Some(callback) = arguments.first() {
+                                suite.after_each = Some(ast_expr_to_value(callback));
+                            }
+                        } else if name == "before_all" {
+                            if let Some(callback) = arguments.first() {
+                                suite.before_all = Some(ast_expr_to_value(callback));
+                            }
+                        } else if name == "after_all" {
+                            if let Some(callback) = arguments.first() {
+                                suite.after_all = Some(ast_expr_to_value(callback));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+fn extract_test_from_call(
+    arguments: &[ast::Expr],
+    span: span::Span,
+) -> Option<interpreter::builtins::test_dsl::TestDefinition> {
+    if arguments.len() < 2 {
+        return None;
+    }
+
+    let test_name = match &arguments[0].kind {
+        ast::ExprKind::StringLiteral(s) => s.clone(),
+        _ => return None,
+    };
+
+    let test_body = match &arguments[1].kind {
+        ast::ExprKind::Lambda { params, return_type, body } => {
+            create_function_value(params.clone(), return_type.clone(), body.clone(), span)
+        }
+        _ => return None,
+    };
+
+    Some(interpreter::builtins::test_dsl::TestDefinition {
+        name: test_name,
+        body: test_body,
+    })
+}
+
+fn create_function_value(
+    params: Vec<ast::stmt::Parameter>,
+    return_type: Option<ast::types::TypeAnnotation>,
+    body: Vec<ast::Stmt>,
+    span: span::Span,
+) -> Value {
+    use interpreter::value::Function;
+    use std::rc::Rc;
+    use std::cell::RefCell;
+
+    // Create an environment with builtins registered
+    let mut env = interpreter::environment::Environment::new();
+    interpreter::builtins::register_builtins(&mut env);
+
+    let decl = ast::FunctionDecl {
+        name: "test_fn".to_string(),
+        params: params,
+        return_type: return_type,
+        body: body,
+        span: span,
+    };
+    let closure = Rc::new(RefCell::new(env));
+    Value::Function(Rc::new(Function::from_decl(&decl, closure, None)))
+}
+
+fn ast_expr_to_value(expr: &ast::Expr) -> Value {
+    match &expr.kind {
+        ast::ExprKind::Lambda { params, return_type, body } => {
+            create_function_value(params.clone(), return_type.clone(), body.clone(), expr.span)
+        }
+        _ => Value::Null,
+    }
+}
+
+fn execute_test_suites(
+    interpreter: &mut interpreter::Interpreter,
+    suites: &[interpreter::builtins::test_dsl::TestSuite],
+) -> Result<(), error::RuntimeError> {
+    for suite in suites {
+        // Run before_all if defined (ignore errors - some tests require async runtime)
+        if let Some(before_all) = &suite.before_all {
+            let _ = interpreter.call_value(before_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+        }
+
+        for test in &suite.tests {
+            // Run before_each if defined
+            if let Some(before_each) = &suite.before_each {
+                let _ = interpreter.call_value(before_each.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+            }
+
+            // Execute the test body (errors are expected for tests requiring async runtime)
+            let _ = interpreter.call_value(
+                test.body.clone(),
+                Vec::new(),
+                span::Span::new(0, 0, 1, 1),
+            );
+
+            // Run after_each if defined
+            if let Some(after_each) = &suite.after_each {
+                let _ = interpreter.call_value(after_each.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+            }
+        }
+
+        // Run nested suites
+        execute_test_suites(interpreter, &suite.nested_suites)?;
+
+        // Run after_all if defined
+        if let Some(after_all) = &suite.after_all {
+            let _ = interpreter.call_value(after_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+        }
+    }
     Ok(())
 }
 

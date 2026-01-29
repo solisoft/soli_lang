@@ -457,13 +457,7 @@ fn main() {
     }
 }
 
-fn run_serve(
-    folder: &str,
-    port: u16,
-    dev_mode: bool,
-    workers: usize,
-    daemonize: bool,
-) {
+fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemonize: bool) {
     let path = Path::new(folder);
 
     if !path.exists() {
@@ -524,9 +518,7 @@ fn run_serve(
         process::exit(1);
     }
 
-    if let Err(e) =
-        solilang::serve::serve_folder_with_options(path, port, dev_mode, workers)
-    {
+    if let Err(e) = solilang::serve::serve_folder_with_options(path, port, dev_mode, workers) {
         eprintln!("Error: {}", e);
         process::exit(70);
     }
@@ -631,10 +623,7 @@ fn kill_previous_process(pid_file: &Path) {
 fn run_file(path: &str, options: &Options) {
     let path = std::path::Path::new(path);
 
-    let result = solilang::run_file(
-        path,
-        !options.no_type_check,
-    );
+    let result = solilang::run_file(path, !options.no_type_check);
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);
@@ -834,10 +823,20 @@ fn run_test(
         test_path.clone()
     };
 
-    println!("Starting test server...");
-    let _test_server_port = solilang::interpreter::builtins::test_server::start_test_server();
-    println!("Test server running on port {}", _test_server_port);
-    println!();
+    // Only start test server if integration tests are present
+    let needs_test_server = test_files.iter().any(|f| {
+        f.file_name()
+            .map(|n| n.to_string_lossy().contains("integration"))
+            .unwrap_or(false)
+    });
+
+    if needs_test_server {
+        println!("Starting test server...");
+        let _test_server_port = solilang::interpreter::builtins::test_server::start_test_server();
+        println!("Test server running on port {}", _test_server_port);
+        println!();
+        std::io::stdout().flush().unwrap();
+    }
 
     let (tx, rx) = mpsc::channel();
 
@@ -850,31 +849,40 @@ fn run_test(
             let chunk: Vec<std::path::PathBuf> = chunk.to_vec();
 
             handles.push(s.spawn(move || {
-                let mut results: Vec<(std::path::PathBuf, bool, String, std::time::Duration)> =
+                let mut results: Vec<(std::path::PathBuf, bool, String, std::time::Duration, i64)> =
                     Vec::new();
 
                 for file in chunk {
                     let start = std::time::Instant::now();
                     let result = std::fs::read_to_string(&file).map_err(|e| e.to_string());
 
-                    let (passed, error) = match result {
+                    let (passed, error, assertions) = match result {
                         Ok(source) => {
-                            match solilang::run_with_path_and_coverage(
-                                &source,
-                                Some(&file),
-                                false,
-                                None,
-                                Some(&file),
-                            ) {
-                                Ok(_) => (true, String::new()),
-                                Err(e) => (false, e.to_string()),
+                            // Catch panics from async operations (e.g., WebSocket tests)
+                            let panic_result = std::panic::catch_unwind(|| {
+                                solilang::run_with_path_and_coverage(
+                                    &source,
+                                    Some(&file),
+                                    false,
+                                    None,
+                                    Some(&file),
+                                )
+                            });
+                            match panic_result {
+                                Ok(Ok(count)) => (true, String::new(), count),
+                                Ok(Err(e)) => (false, e.to_string(), 0),
+                                Err(_) => (
+                                    false,
+                                    "Test panicked (may require async runtime)".to_string(),
+                                    0,
+                                ),
                             }
                         }
-                        Err(e) => (false, e),
+                        Err(e) => (false, e, 0),
                     };
 
                     let duration = start.elapsed();
-                    results.push((file, passed, error, duration));
+                    results.push((file, passed, error, duration, assertions));
                 }
 
                 let _ = tx.send(results);
@@ -888,16 +896,18 @@ fn run_test(
         }
     });
 
-    let mut all_results: Vec<(std::path::PathBuf, bool, String, std::time::Duration)> = Vec::new();
+    let mut all_results: Vec<(std::path::PathBuf, bool, String, std::time::Duration, i64)> =
+        Vec::new();
     for received in rx {
         all_results.extend(received);
     }
 
     let mut passed = 0;
     let mut failed = 0;
+    let mut total_assertions = 0;
 
     let mut current_dir: Option<std::path::PathBuf> = None;
-    for (path, passed_test, error, duration) in &all_results {
+    for (path, passed_test, error, duration, assertions) in &all_results {
         let parent = path.parent().unwrap_or(path).to_path_buf();
         let relative_to_test_dir = path.strip_prefix(&test_dir).unwrap_or(path);
         let parent_str = relative_to_test_dir
@@ -925,11 +935,19 @@ fn run_test(
         let duration_str = format_duration(*duration);
         if *passed_test {
             passed += 1;
-            println!("  {:40} {:>8} ✓", display_path, duration_str);
+            total_assertions += *assertions;
+            println!(
+                "  {:40} {:>8} {:>6} ✓",
+                display_path, duration_str, assertions
+            );
         } else {
             failed += 1;
-            println!("  {:40} {:>8} ✗ {}", display_path, duration_str, error);
+            println!(
+                "  {:40} {:>8} {:>6} ✗ {}",
+                display_path, duration_str, assertions, error
+            );
         }
+        std::io::stdout().flush().unwrap();
     }
 
     println!();
@@ -940,6 +958,7 @@ fn run_test(
         failed,
         passed + failed
     );
+    println!("  {} assertions", total_assertions);
 
     if failed > 0 {
         process::exit(1);

@@ -44,6 +44,7 @@ pub struct Interpreter {
     pub(crate) coverage_tracker: Option<Rc<RefCell<CoverageTracker>>>,
     pub(crate) current_source_path: Option<PathBuf>,
     pub(crate) call_stack: Vec<StackFrame>,
+    pub assertion_count: i64,
 }
 
 impl Interpreter {
@@ -56,6 +57,7 @@ impl Interpreter {
             coverage_tracker: None,
             current_source_path: None,
             call_stack: Vec::new(),
+            assertion_count: 0,
         }
     }
 
@@ -68,6 +70,7 @@ impl Interpreter {
             coverage_tracker: Some(tracker),
             current_source_path: None,
             call_stack: Vec::new(),
+            assertion_count: 0,
         }
     }
 
@@ -85,6 +88,14 @@ impl Interpreter {
                 tracker.borrow_mut().record_line_hit(path, line);
             }
         }
+    }
+
+    pub fn get_assertion_count(&self) -> i64 {
+        self.assertion_count
+    }
+
+    pub fn increment_assertion_count(&mut self) {
+        self.assertion_count += 1;
     }
 
     /// Serialize the current environment for debugging.
