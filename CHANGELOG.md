@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/solisoft/soli_lang/compare/v0.3.0...v0.4.0) (2026-01-30)
+
+
+### Features
+
+* Add state machine functionality and documentation ([c070c36](https://github.com/solisoft/soli_lang/commit/c070c369cffb68131348825b9ed32ecbe91077cc))
+* Add static block support in class declarations ([0793297](https://github.com/solisoft/soli_lang/commit/0793297d8d5d0e479858b362c20a1e0903b20861))
+* Enhance application creation with custom template support ([d93fa01](https://github.com/solisoft/soli_lang/commit/d93fa019ef63ae58ee03e8bb6119b84b3b4110a9))
+* Enhance parser to support additional statement declarations ([307c605](https://github.com/solisoft/soli_lang/commit/307c605037f82b147d6b287715fdf716404254f4))
+* Implement constant declaration support in the language ([7272dfc](https://github.com/solisoft/soli_lang/commit/7272dfc6cc9488ee7bc91665fc7f4afd5f32234d))
+* Integrate IndexMap for improved hash functionality ([be565a1](https://github.com/solisoft/soli_lang/commit/be565a15c48454ac6c7a86547ea2940521ef717b))
+* Introduce named parameters support in function and constructor calls ([7900827](https://github.com/solisoft/soli_lang/commit/7900827648885f904542efcb9afa0eec5fb3ab8b))
+* Update feature specifications and enhance language documentation ([bc5fde1](https://github.com/solisoft/soli_lang/commit/bc5fde1c0262ca46bde93e927a2a063cab95baca))
+
+
+### Bug Fixes
+
+* failing specs ([1b0ccfa](https://github.com/solisoft/soli_lang/commit/1b0ccfaad8a518bf438337567aff7e719bda1cdf))
+* Update symbolic link for stdlib and remove state_machine.sl file ([6dcd5df](https://github.com/solisoft/soli_lang/commit/6dcd5dfa2aa4f50bd92fd47175d6d562a60be63c))
+
 ## [0.3.0](https://github.com/solisoft/soli_lang/compare/v0.2.0...v0.3.0) (2026-01-29)
 
 
