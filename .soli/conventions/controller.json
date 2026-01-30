@@ -50,6 +50,11 @@
           "type": "string",
           "description": "Callback after each action",
           "examples": ["this.after_action = fn(req, res) { /* logic */ }"]
+        },
+        "asyncSupported": {
+          "type": "boolean",
+          "description": "Controllers support async/await in action methods",
+          "examples": ["async fn action(req: Any) -> Any { /* async code */ }"]
         }
       }
     },
@@ -57,10 +62,27 @@
       "type": "object",
       "properties": {
         "signature": {
-          "type": "string",
-          "pattern": "^fn [a-z_]+\\(req: Any\\) -> Any$",
-          "examples": ["fn index(req: Any) -> Any", "fn show(req: Any) -> Any"],
-          "description": "All public methods take req: Any parameter and return Any"
+          "type": "object",
+          "properties": {
+            "sync": {
+              "type": "string",
+              "pattern": "^fn [a-z_]+\\(req: Any\\) -> Any$",
+              "examples": ["fn index(req: Any) -> Any", "fn show(req: Any) -> Any"],
+              "description": "All public methods take req: Any parameter and return Any"
+            },
+            "async": {
+              "type": "string",
+              "pattern": "^async fn [a-z_]+\\(req: Any\\) -> Any$",
+              "examples": ["async fn fetch_data(req: Any) -> Any"],
+              "description": "Async methods for I/O operations"
+            },
+            "withRestParams": {
+              "type": "string",
+              "pattern": "^fn [a-z_]+\\([^)]*\\.\\.\\.\\w+: \\w+\\[\\]\\) -> \\w+$",
+              "examples": ["fn sum(...numbers: Int[]) -> Int"],
+              "description": "Function with rest parameters"
+            }
+          }
         },
         "privatePrefix": {
           "type": "string",
@@ -82,6 +104,50 @@
               "description": {"type": "string"}
             }
           }
+        }
+      }
+    },
+    "errorHandling": {
+      "type": "object",
+      "properties": {
+        "tryCatch": {
+          "type": "string",
+          "description": "try/catch/throw for error handling",
+          "examples": ["try { /* code */ } catch (e) { /* handle */ }"]
+        },
+        "errorTypes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "examples": ["Error", "ValueError", "TypeError", "KeyError", "IndexError", "RuntimeError"]
+        },
+        "throwSyntax": {
+          "type": "string",
+          "examples": ["throw \"error\"", "throw Error.new(\"message\", { code: 500 })"]
+        }
+      }
+    },
+    "destructuring": {
+      "type": "object",
+      "properties": {
+        "hash": {
+          "type": "string",
+          "description": "Extract fields from hashes",
+          "examples": ["let { id, name, email } = user;"]
+        },
+        "array": {
+          "type": "string",
+          "description": "Extract elements from arrays",
+          "examples": ["let [first, ...rest] = array;"]
+        },
+        "nested": {
+          "type": "string",
+          "description": "Nested destructuring",
+          "examples": ["let { user: { name, email }, posts } = data;"]
+        },
+        "inParams": {
+          "type": "string",
+          "description": "Destructuring in function parameters",
+          "examples": ["fn process({ id, name, email }) -> Any { }"]
         }
       }
     },
@@ -116,6 +182,27 @@
             "headers": {"type": "object"}
           }
         }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "properties": {
+        "import": {
+          "type": "string",
+          "examples": ["import \"modules/helpers\";", "import { func1, func2 } from \"modules/utils\";"]
+        },
+        "pub": {
+          "type": "string",
+          "description": "Export functions/classes from modules",
+          "examples": ["pub fn helper() -> Any { }", "pub class Cache { }"]
+        }
+      }
+    },
+    "hashSpread": {
+      "type": "object",
+      "properties": {
+        "syntax": {"type": "string", "examples": ["{ ...defaults, ...overrides }"]},
+        "description": {"type": "string", "description": "Merge hashes using spread operator"}
       }
     }
   }

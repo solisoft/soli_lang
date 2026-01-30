@@ -421,7 +421,7 @@ pub fn public_fn() { }
 
 ## Implementation Priority
 
-1. **Phase 1 (Foundation)**
+1. **Phase 1 (Foundation) - COMPLETED**
    - Closures/Lambdas
    - Default Parameters
    - String Interpolation
@@ -437,15 +437,345 @@ pub fn public_fn() { }
    - Built-in error types
    - Custom error classes
 
-4. **Phase 4 (Modern Features)**
+4. **Phase 4 (Modern Features) - COMPLETED**
    - Spread/Rest operators
    - Comprehensions
    - Async/Await
+   - Nullish Coalescing Operator (`??`)
 
 5. **Phase 5 (Modules)**
    - Import/Export system
    - Module resolution
    - Module scope
+
+---
+
+## 10. Constants
+
+### Syntax
+```soli
+const PI = 3.14159;
+const GREETING: String = "Hello!";
+const CONFIG = {"host": "localhost", "port": 3000};
+```
+
+### Characteristics
+```soli
+const VALUE = 42;
+// VALUE = 100;  // Error: cannot reassign constant
+
+const ARR = [1, 2, 3];
+// ARR[0] = 100;  // Error: cannot reassign constant
+
+const H = {"key": "value"};
+// H["key"] = "new";  // Error: cannot reassign constant
+
+// const works in function scope
+fn calculate() {
+    const PI = 3.14159;
+    return PI * radius * radius;
+}
+```
+
+### Constants in Expressions
+```soli
+const A = 10;
+const B = 20;
+const SUM = A + B;  // 30
+
+const NAMES = ["Alice", "Bob"];
+const COUNT = len(NAMES);  // 2
+```
+
+---
+
+## 11. Static Blocks
+
+### Syntax
+```soli
+class MyClass {
+    static {
+        this.counter = 0;
+        this.config = {"timeout": 30};
+    }
+}
+```
+
+### Examples
+```soli
+class Config {
+    static {
+        Config.timeout = 30;
+        Config.max_retries = 3;
+        Config.initialized = true;
+    }
+}
+
+class MathHelper {
+    static {
+        MathHelper.result = get_value();
+    }
+}
+```
+
+### Static Block Features
+```soli
+class Processor {
+    static {
+        Processor.initialized = true;
+        Processor.start_time = 100;
+        Processor.end_time = 200;
+    }
+}
+
+// Control flow in static blocks
+class Config {
+    static {
+        if (true) {
+            Config.value = "yes";
+        } else {
+            Config.value = "no";
+        }
+    }
+}
+
+// Loops in static blocks
+class Counter {
+    static {
+        Counter.sum = 0;
+        for (i in [1, 2, 3, 4, 5]) {
+            Counter.sum = Counter.sum + i;
+        }
+    }
+}
+```
+
+---
+
+## 12. Nullish Coalescing Operator
+
+### Syntax
+```soli
+let result = null ?? "default";    // "default"
+let result = "value" ?? "default"; // "value"
+```
+
+### Behavior
+```soli
+// Returns right operand only if left is null
+assert_eq(null ?? "fallback", "fallback");
+assert_eq("value" ?? "fallback", "value");
+
+// Falsy values (0, false, "") are NOT considered null
+assert_eq(0 ?? 100, 0);
+assert_eq(false ?? true, false);
+assert_eq("" ?? "default", "");
+```
+
+### Chaining
+```soli
+let result = null ?? null ?? "final";
+// "final"
+
+let result = null ?? null ?? "third" ?? "fourth";
+// "third"
+```
+
+### With Other Operators
+```soli
+// Combined with arithmetic
+let result = null ?? 5 + 3;  // 8
+
+// Precedence with logical operators
+let result = true && (null ?? "fallback");  // "fallback"
+let result = false || (null ?? "fallback"); // "fallback"
+
+// In function parameters
+fn greet(name) {
+    return "Hello, " + (name ?? "Guest") + "!";
+}
+
+greet(null);   // "Hello, Guest!"
+greet("Alice"); // "Hello, Alice!"
+```
+
+### Nested Usage
+```soli
+// Nested nullish coalescing
+let config = null;
+let result = (config ?? { db: null }).db ?? "sqlite";
+// "sqlite"
+
+let config2 = { db: "postgresql" };
+let result2 = (config2 ?? { db: null }).db ?? "sqlite";
+// "postgresql"
+
+// In array literals
+let arr = [1, null ?? 2, 3];  // [1, 2, 3]
+
+// In hash literals
+let h = { a: null ?? 1, b: "value" ?? 2 };  // {a: 1, b: "value"}
+```
+
+---
+
+## 13. Chainable Collection Methods
+
+### String Methods
+```soli
+let s = "hello world";
+
+s.length();       // 11
+s.upcase();       // "HELLO WORLD"
+s.downcase();     // "hello world"
+s.trim();         // "hello world"
+s.contains("wor"); // true
+s.starts_with("hello"); // true
+s.ends_with("world");   // true
+s.split(" ");     // ["hello", "world"]
+s.index_of("wor"); // 6
+s.substring(0, 5); // "hello"
+s.replace("world", "soli"); // "hello soli"
+s.lpad(10);       // " hello world"
+s.lpad(10, "*");  // "***hello world"
+s.rpad(10);       // "hello world "
+s.rpad(10, "*");  // "hello world***"
+```
+
+### Array Methods
+```soli
+let arr = [1, 2, 3];
+
+arr.to_string();  // "[1, 2, 3]"
+arr.length();     // 3
+arr.push(4);      // [1, 2, 3, 4]
+arr.pop();        // 3, arr is now [1, 2]
+arr.get(0);       // 1
+arr.get(-1);      // 3 (negative index)
+arr.clear();      // []
+arr.first();      // 1
+arr.last();       // 3
+arr.reverse();    // [3, 2, 1]
+arr.uniq();       // removes duplicates
+arr.take(2);      // first 2 elements
+arr.drop(2);      // without first 2 elements
+arr.sum();        // 6
+arr.min();        // 1
+arr.max();        // 3
+arr.empty?();     // false
+arr.include?(2);  // true
+arr.join("-");    // "1-2-3"
+arr.zip([4, 5]);  // [[1, 4], [2, 5]]
+```
+
+### Hash Methods
+```soli
+let h = {"name": "test", "value": 42};
+
+h.to_string();    // hash representation
+h.length();       // 2
+h.get("name");    // "test"
+h.set("key", "new");
+h.has_key("name"); // true
+h.keys();         // ["name", "value"]
+h.values();       // ["test", 42]
+h.delete("name"); // returns deleted value
+h.merge({"extra": 100}); // combines hashes
+h.entries();      // [["name", "test"], ["value", 42]]
+h.clear();        // {}
+```
+
+---
+
+## 14. Base64 Utility
+
+### Functions
+```soli
+let encoded = Base64.encode("hello");
+// "aGVsbG8="
+
+let decoded = Base64.decode("aGVsbG8=");
+// "hello"
+
+// Round-trip
+let original = "Hello, World! 123";
+let encoded = Base64.encode(original);
+let decoded = Base64.decode(encoded);
+assert_eq(decoded, original);
+
+// Special characters
+Base64.encode("Hello\nWorld\t!");
+// "SGVsbG8KV29ybGQhIQ=="
+
+// URL-safe strings
+Base64.encode("foo/bar?query=value");
+// correctly encodes and decodes
+```
+
+---
+
+## 15. State Machines
+
+### StateMachine Class
+```soli
+import "stdlib/state_machine.sl";
+
+let states = ["pending", "processing", "completed", "failed"];
+let transitions = [
+    {"event": "start", "from": "pending", "to": "processing"},
+    {"event": "finish", "from": "processing", "to": "completed"},
+    {"event": "fail", "from": "processing", "to": "failed"},
+    {"event": "retry", "from": "failed", "to": "processing"},
+];
+
+let machine = new StateMachine("pending", states, transitions);
+
+// Check state
+machine.current_state();  // "pending"
+machine.is("pending");    // true
+machine.is_in(["pending", "processing"]); // true
+
+// Check available transitions
+machine.can("start");         // true
+machine.can("finish");        // false
+machine.available_events();   // ["start"]
+
+// Transition
+let result = machine.transition("start");
+// {"success": true, "from": "pending", "to": "processing", "event": "start"}
+machine.current_state();  // "processing"
+
+// Context storage
+machine.set("user_id", "123");
+machine.get("user_id");   // "123"
+
+// History
+machine.history();         // all transitions
+machine.last_transition(); // last transition details
+```
+
+### StateMachineBuilder
+```soli
+import "stdlib/state_machine.sl";
+
+let machine = state_machine()
+    .initial("pending")
+    .states_list(["pending", "active", "done"])
+    .transition("activate", "pending", "active")
+    .transition("complete", "active", "done")
+    .build();
+```
+
+### StateMachineBuilder API
+```soli
+let builder = state_machine();
+
+builder.initial("off");                    // Set initial state
+builder.states_list(["off", "on"]);        // Define all states
+builder.transition("turn_on", "off", "on"); // Single source
+builder.transition(["off", "broken"], "on", "off"); // Multiple sources
+builder.build();                           // Create StateMachine instance
+```
 
 ---
 
@@ -501,4 +831,95 @@ let final_config = {
 };
 
 let debug_keys = [k for (k, v) in final_config if v == true];
+```
+
+### Constants + Nullish Coalescing + Chainable Methods
+```soli
+// Constants for configuration
+const DEFAULT_TIMEOUT = 30;
+const DEFAULT_RETRIES = 3;
+
+fn process_config(user_config) {
+    // Nullish coalescing with defaults
+    let timeout = user_config.timeout ?? DEFAULT_TIMEOUT;
+    let retries = user_config.retries ?? DEFAULT_RETRIES;
+    let debug = user_config.debug ?? false;
+
+    // Chainable methods with null safety
+    let name = user_config.name ?? "Unnamed";
+    let upper_name = name.upcase();
+    let trimmed_name = upper_name.trim();
+
+    // Array methods with defaults
+    let tags = user_config.tags ?? [];
+    let first_tag = tags.first() ?? "general";
+
+    return {
+        "timeout": timeout,
+        "retries": retries,
+        "debug": debug,
+        "name": trimmed_name,
+        "first_tag": first_tag,
+    };
+}
+```
+
+### State Machine + Constants + Nullish Coalescing
+```soli
+import "stdlib/state_machine.sl";
+
+// Constants for state machine configuration
+const INITIAL_STATE = "idle";
+const FINAL_STATES = ["completed", "cancelled"];
+
+fn create_order_machine() {
+    let states = ["idle", "pending", "processing", "shipped", "completed", "cancelled"];
+    let transitions = [
+        {"event": "submit", "from": "idle", "to": "pending"},
+        {"event": "process", "from": "pending", "to": "processing"},
+        {"event": "ship", "from": "processing", "to": "shipped"},
+        {"event": "deliver", "from": "shipped", "to": "completed"},
+        {"event": "cancel", "from": ["idle", "pending"], "to": "cancelled"},
+    ];
+
+    let machine = new StateMachine(INITIAL_STATE, states, transitions);
+    machine.set("order_id", generate_order_id());
+    machine.set("created_at", current_timestamp());
+
+    return machine;
+}
+
+// Usage with nullish coalescing
+fn get_order_status(machine) {
+    let state = machine.current_state();
+    let order_id = machine.get("order_id") ?? "unknown";
+
+    return "Order \(order_id) is \(state)";
+}
+```
+
+### Base64 + String Methods + Constants
+```soli
+const API_BASE_URL = "https://api.example.com";
+
+fn encode_auth_header(username, password) {
+    let credentials = username + ":" + password;
+    let encoded = Base64.encode(credentials);
+    return "Basic " + encoded;
+}
+
+fn decode_token(token) {
+    // Remove "Bearer " prefix if present
+    let clean_token = token.starts_with("Bearer ")
+        ? token.substring(7, len(token))
+        : token;
+
+    let decoded = Base64.decode(clean_token);
+    let parts = decoded.split(":");
+
+    return {
+        "username": parts[0] ?? "",
+        "password": parts[1] ?? "",
+    };
+}
 ```

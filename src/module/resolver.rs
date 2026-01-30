@@ -115,7 +115,7 @@ impl ModuleResolver {
                 let module = self.resolve_import(import, &canonical)?;
 
                 // Add the imported definitions to the combined program
-                let imported_stmts = self.get_imported_statements(&module, import)?;
+                let imported_stmts = get_imported_statements(&module, import)?;
                 combined_statements.extend(imported_stmts);
             }
         }
@@ -189,7 +189,7 @@ impl ModuleResolver {
         self.resolving.pop();
 
         // Collect exports from the original program
-        let exports = self.collect_exports(&program);
+        let exports = collect_exports(&program);
 
         let module = ResolvedModule {
             path: module_path.clone(),
@@ -244,25 +244,29 @@ impl ModuleResolver {
 
     /// Find the actual module file (handles .sl extension).
     fn find_module_file(&self, path: &Path) -> Result<PathBuf, ResolveError> {
+        // Normalize the path to resolve . and .. components
+        // This is needed because paths like "../stdlib/file.sl" don't exist as-is
+        let normalized = normalize_path(path);
+
         // Try exact path
-        if path.exists() && path.is_file() {
-            return self.canonicalize(path);
+        if normalized.exists() && normalized.is_file() {
+            return self.canonicalize(&normalized);
         }
 
         // Try with .sl extension
-        let with_ext = path.with_extension("sl");
+        let with_ext = normalized.with_extension("sl");
         if with_ext.exists() && with_ext.is_file() {
             return self.canonicalize(&with_ext);
         }
 
         // Try as directory with index.sl
-        let index = path.join("index.sl");
+        let index = normalized.join("index.sl");
         if index.exists() && index.is_file() {
             return self.canonicalize(&index);
         }
 
         // Try as directory with mod.sl
-        let mod_file = path.join("mod.sl");
+        let mod_file = normalized.join("mod.sl");
         if mod_file.exists() && mod_file.is_file() {
             return self.canonicalize(&mod_file);
         }
@@ -275,84 +279,118 @@ impl ModuleResolver {
         path.canonicalize()
             .map_err(|_| ResolveError::NotFound(path.display().to_string()))
     }
+}
 
-    /// Collect exported names from a program.
-    fn collect_exports(&self, program: &Program) -> HashSet<String> {
-        let mut exports = HashSet::new();
-
-        for stmt in &program.statements {
-            if let StmtKind::Export(inner) = &stmt.kind {
-                if let Some(name) = get_declaration_name(inner) {
-                    exports.insert(name);
+/// Normalize a path string by resolving . and .. components.
+fn normalize_path(path: &Path) -> PathBuf {
+    if let Some(s) = path.to_str() {
+        let mut result = Vec::new();
+        let starts_with_slash = s.starts_with('/');
+        for component in s.split('/') {
+            match component {
+                "" => {
+                    // Keep leading slash marker
+                    if starts_with_slash && result.is_empty() {
+                        // Don't add empty component for leading slash
+                    }
                 }
+                "." => {}
+                ".." => {
+                    if !result.is_empty() && result.last() != Some(&"..") {
+                        result.pop();
+                    } else {
+                        result.push("..");
+                    }
+                }
+                _ => result.push(component),
             }
         }
+        let normalized_str = if starts_with_slash {
+            format!("/{}", result.join("/"))
+        } else {
+            result.join("/")
+        };
+        PathBuf::from(normalized_str)
+    } else {
+        path.to_path_buf()
+    }
+}
 
-        exports
+/// Collect exported names from a program.
+fn collect_exports(program: &Program) -> HashSet<String> {
+    let mut exports = HashSet::new();
+
+    for stmt in &program.statements {
+        if let StmtKind::Export(inner) = &stmt.kind {
+            if let Some(name) = get_declaration_name(inner) {
+                exports.insert(name);
+            }
+        }
     }
 
-    /// Get the statements to import from a module based on the import specifier.
-    fn get_imported_statements(
-        &self,
-        module: &ResolvedModule,
-        import: &ImportDecl,
-    ) -> Result<Vec<Stmt>, ResolveError> {
-        match &import.specifier {
-            ImportSpecifier::All => {
-                // Import all exported definitions
-                let mut stmts = Vec::new();
+    exports
+}
+
+/// Get the statements to import from a module based on the import specifier.
+fn get_imported_statements(
+    module: &ResolvedModule,
+    import: &ImportDecl,
+) -> Result<Vec<Stmt>, ResolveError> {
+    match &import.specifier {
+        ImportSpecifier::All => {
+            // Import all exported definitions
+            let mut stmts = Vec::new();
+            for stmt in &module.original_program.statements {
+                if let StmtKind::Export(inner) = &stmt.kind {
+                    stmts.push((**inner).clone());
+                }
+            }
+            Ok(stmts)
+        }
+
+        ImportSpecifier::Named(items) => {
+            // Import specific named items
+            let mut stmts = Vec::new();
+            for item in items {
+                if !module.exports.contains(&item.name) {
+                    return Err(ResolveError::ImportError(format!(
+                        "'{}' is not exported from '{}'",
+                        item.name, import.path
+                    )));
+                }
+
+                // Find the exported statement in the original program
                 for stmt in &module.original_program.statements {
                     if let StmtKind::Export(inner) = &stmt.kind {
-                        stmts.push((**inner).clone());
-                    }
-                }
-                Ok(stmts)
-            }
-
-            ImportSpecifier::Named(items) => {
-                // Import specific named items
-                let mut stmts = Vec::new();
-                for item in items {
-                    if !module.exports.contains(&item.name) {
-                        return Err(ResolveError::ImportError(format!(
-                            "'{}' is not exported from '{}'",
-                            item.name, import.path
-                        )));
-                    }
-
-                    // Find the exported statement in the original program
-                    for stmt in &module.original_program.statements {
-                        if let StmtKind::Export(inner) = &stmt.kind {
-                            if let Some(name) = get_declaration_name(inner) {
-                                if name == item.name {
-                                    if let Some(ref alias) = item.alias {
-                                        // Rename the declaration
-                                        let renamed = rename_declaration(inner, alias);
-                                        stmts.push(renamed);
-                                    } else {
-                                        stmts.push((**inner).clone());
-                                    }
-                                    break;
+                        if let Some(name) = get_declaration_name(inner) {
+                            if name == item.name {
+                                if let Some(ref alias) = item.alias {
+                                    // Rename the declaration
+                                    let renamed = rename_declaration(inner, alias);
+                                    stmts.push(renamed);
+                                } else {
+                                    stmts.push((**inner).clone());
                                 }
+                                break;
                             }
                         }
                     }
                 }
-                Ok(stmts)
             }
+            Ok(stmts)
+        }
 
-            ImportSpecifier::Namespace(_name) => {
-                // Namespace imports create a module object
-                // For now, we just import all exports
-                // TODO: Implement proper namespace object
-                let mut stmts = Vec::new();
-                for stmt in &module.original_program.statements {
-                    if let StmtKind::Export(inner) = &stmt.kind {
-                        stmts.push((**inner).clone());
-                    }
+        ImportSpecifier::Namespace(_name) => {
+            // Namespace imports create a module object
+            // For now, we just import all exports
+            // TODO: Implement proper namespace object
+            let mut stmts = Vec::new();
+            for stmt in &module.original_program.statements {
+                if let StmtKind::Export(inner) = &stmt.kind {
+                    stmts.push((**inner).clone());
                 }
-                Ok(stmts)
             }
+            Ok(stmts)
         }
     }
 }

@@ -383,7 +383,7 @@ fn execute_test_suites(
 }
 
 /// Check if a program has any import statements.
-fn has_imports(program: &ast::Program) -> bool {
+pub(crate) fn has_imports(program: &ast::Program) -> bool {
     program
         .statements
         .iter()

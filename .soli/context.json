@@ -4,19 +4,108 @@
   "description": "A web programming language with built-in MVC framework",
   "language": "Soli",
   "fileExtension": ".sl",
-  
+
   "projectStructure": {
     "app": {
       "controllers": "Request handlers, extend Controller base class",
       "middleware": "HTTP middleware functions (global and scoped)",
       "models": "Data models with SoliDB/SolidB integration",
       "views": "ERB-style templates and layouts",
-      "helpers": "View helper functions"
+      "helpers": "View helper functions",
+      "modules": "Reusable modules with import/export"
     },
     "config": {
       "routes.sl": "Route definitions (get, post, put, delete, resources)"
     },
     "public": "Static assets (CSS, JS, images)"
+  },
+
+  "languageFeatures": {
+    "asyncAwait": {
+      "description": "Asynchronous programming with async/await syntax",
+      "syntax": {
+        "asyncFunction": "async fn function_name(req: Any) -> Any",
+        "await": "await promise_expression",
+        "promiseReturn": "return promise(value)",
+        "promiseAll": "promise_all(array_of_promises)"
+      },
+      "examples": [
+        "async fn fetch_data(req: Any) -> Any { let data = await http_get(url); return data; }",
+        "async fn fetch_all(req: Any) -> Any { return await promise_all([fetch_a(), fetch_b()]); }"
+      ]
+    },
+    "exceptionHandling": {
+      "description": "Exception handling with try/catch/throw",
+      "syntax": {
+        "tryCatch": "try { /* code */ } catch (error) { /* handle */ }",
+        "tryCatchFinally": "try { /* code */ } catch (error) { /* handle */ } finally { /* cleanup */ }",
+        "throw": "throw \"error message\"",
+        "throwError": "throw Error.new(\"message\", { code: 500 })"
+      },
+      "errorTypes": ["Error", "ValueError", "TypeError", "KeyError", "IndexError", "RuntimeError"],
+      "examples": [
+        "try { let result = risky_operation(); } catch (e) { print(\"Error:\", e); }",
+        "try { validate(data); } catch (e: ValueError) { return {\"error\": e.message}; } finally { cleanup(); }"
+      ]
+    },
+    "moduleSystem": {
+      "description": "Module system with import/export for code organization",
+      "syntax": {
+        "import": "import \"module_name\";",
+        "importWithAlias": "import \"module_name\" as alias;",
+        "importSpecific": "import { function1, function2 } from \"module_name\";",
+        "exportPublic": "pub fn public_function() -> Any { }",
+        "exportDefault": "pub (default) fn default_function() -> Any { }",
+        "reExport": "pub import \"other_module\";"
+      },
+      "filePaths": {
+        "modules": "app/modules/",
+        "extension": ".sl"
+      },
+      "examples": [
+        "import \"utils/string_helpers\";",
+        "import { format_date, parse_number } from \"helpers/parsers\";",
+        "pub fn helper() -> Any { }"
+      ]
+    },
+    "destructuring": {
+      "description": "Extract values from hashes and arrays using destructuring syntax",
+      "syntax": {
+        "hashDestructuring": "let { key1, key2 } = hash_object;",
+        "arrayDestructuring": "let [first, second, ...rest] = array;",
+        "nestedDestructuring": "let { user: { name, email }, posts } = data;",
+        "withRenaming": "let { old_name: new_name } = object;"
+      },
+      "examples": [
+        "let { id, title, author } = post;",
+        "let [first, second] = items;",
+        "let { items: [first_item], metadata: { count } } = response;"
+      ]
+    },
+    "restOperator": {
+      "description": "Collect multiple arguments into an array using rest operator",
+      "syntax": {
+        "restParams": "fn sum(...numbers: Int[]) -> Int",
+        "restInDestructuring": "let [first, ...rest] = array;",
+        "restInHash": "fn configure(options: { ... }) -> Any"
+      },
+      "examples": [
+        "fn sum(...numbers: Int[]) -> Int { return numbers.reduce(0, fn(acc, n) { acc + n }); }",
+        "fn log(message: String, ...args: Any[]) -> Any { /* args collected */ }"
+      ]
+    },
+    "hashSpread": {
+      "description": "Merge hashes using spread operator",
+      "syntax": {
+        "hashSpread": "let merged = { ...defaults, overrides };",
+        "nestedSpread": "let config = { ...base_config, ...user_config, \"new_key\": value };"
+      },
+      "examples": [
+        "let default_options = { timeout: 30, retries: 3 };",
+        "let options = { ...default_options, timeout: 60 };",
+        "let user = { ...base_user, avatar: new_avatar };"
+      ]
+    }
   },
 
   "databases": {
@@ -193,7 +282,13 @@
     "solidbLuaScript": "Create Lua script for {purpose} in SoliDB scripting module",
     "generateLiveView": "Create a LiveView component with state management, event handlers, and reactive template",
     "generateLiveViewEvents": "Implement event handlers for LiveView component with state updates",
-    "generateLiveViewRoute": "Register LiveView component with router_live() in routes configuration"
+    "generateLiveViewRoute": "Register LiveView component with router_live() in routes configuration",
+    "generateAsyncController": "Generate an async controller with async/await patterns for {operation}. Include proper error handling with try/catch.",
+    "generateErrorHandling": "Implement error handling with try/catch/throw for {function}. Handle specific error types (ValueError, TypeError, KeyError, IndexError).",
+    "generateModule": "Create a reusable module {module_name} with pub/export functions for {purpose}. Include proper module structure with import statements.",
+    "generateDestructuring": "Refactor code to use destructuring syntax for extracting {data_structure}. Use let {key1, key2} for hashes and let [first, ...rest] for arrays.",
+    "generateRestParams": "Create a function with rest parameters for {purpose}. Use fn function_name(...args: Type[]) syntax.",
+    "generateHashSpread": "Implement hash spreading for {purpose}. Use { ...defaults, overrides } pattern to merge configurations."
   },
 
   "filePaths": {
@@ -204,6 +299,7 @@
     "middleware": "app/middleware/*.sl",
     "views": "app/views/*/",
     "models": "app/models/*.sl",
+    "modules": "app/modules/*.sl",
     "scripts": "app/scripts/*.lua",
     "solidb": "../solidb/"
   }

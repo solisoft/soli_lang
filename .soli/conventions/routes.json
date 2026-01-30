@@ -119,7 +119,27 @@
       "type": "object",
       "properties": {
         "path": {"type": "string", "pattern": "config/routes.sl"},
-        "format": {"type": "string", "description": "One statement per line, terminated with semicolon"}
+        "format": {"type": "string", "description": "One statement per line, terminated with semicolon"},
+        "imports": {
+          "type": "string",
+          "description": "Routes can import modules",
+          "examples": ["import \"modules/config\";", "import \"modules/helpers\" as Helpers;"]
+        }
+      }
+    },
+    "asyncSupport": {
+      "type": "object",
+      "properties": {
+        "description": {"type": "string", "description": "Controllers can have async actions for I/O operations"},
+        "examples": ["async fn fetch_data(req: Any) -> Any { let data = await http_get(url); return data; }"],
+        "usage": {"type": "string", "description": "Use async/await for database queries, HTTP requests, file operations"}
+      }
+    },
+    "errorHandling": {
+      "type": "object",
+      "properties": {
+        "tryCatch": {"type": "string", "description": "Actions can use try/catch/throw for error handling"},
+        "examples": ["try { let data = await fetch_data(); } catch (e) { return {\"error\": e}; }"]
       }
     }
   }

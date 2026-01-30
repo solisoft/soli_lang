@@ -734,13 +734,25 @@ fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result<(), Runtim
         })?;
 
     // Parse
-    let program =
+    let mut program =
         crate::parser::Parser::new(tokens)
             .parse()
             .map_err(|e| RuntimeError::General {
                 message: format!("Parser error in {}: {}", path.display(), e),
                 span: Span::default(),
             })?;
+
+    // Module resolution (if the file has imports)
+    if crate::has_imports(&program) {
+        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let mut resolver = crate::module::ModuleResolver::new(base_dir);
+        program = resolver
+            .resolve(program, path)
+            .map_err(|e| RuntimeError::General {
+                message: format!("Module resolution error in {}: {}", path.display(), e),
+                span: Span::default(),
+            })?;
+    }
 
     // Execute (skip type checking for flexibility)
     interpreter.set_source_path(path.to_path_buf());

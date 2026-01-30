@@ -41,7 +41,7 @@ fn create(req: Any) -> Any {
     }
     
     // Generate unique ID
-    let id = "sm_" + str(clock()) + "_" + str(rand() * 10000);
+    let id = "sm_" + str(clock()) + "_" + str(clock() % 10000);
     
     // Create state machine
     let sm = create_state_machine(
@@ -98,7 +98,10 @@ fn get(req: Any) -> Any {
 // List all state machines
 fn list(req: Any) -> Any {
     let list = [];
-    for id, sm in state_machines {
+    let entries = state_machines.entries();
+    for entry in entries {
+        let id = entry[0];
+        let sm = entry[1];
         list = [...list, {
             "id": id,
             "current_state": sm.current_state(),
