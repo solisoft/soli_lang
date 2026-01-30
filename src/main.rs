@@ -27,7 +27,10 @@ enum Command {
     /// Start the REPL
     Repl,
     /// Create a new MVC application
-    New { name: String },
+    New {
+        name: String,
+        template: Option<String>,
+    },
     /// Generate scaffold (model, controller, views)
     Generate {
         scaffold_name: String,
@@ -84,6 +87,7 @@ fn print_usage() {
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
+    eprintln!("  new <app_name> --template <url>  Create from custom template URL");
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
@@ -107,6 +111,7 @@ fn print_usage() {
     eprintln!("  soli                          Start interactive REPL");
     eprintln!("  soli script.sl                Run a script file");
     eprintln!("  soli new my_app               Create a new MVC application");
+    eprintln!("  soli new my_app --template https://github.com/user/template/archive/main.tar.gz  Create from custom template");
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
     eprintln!("  soli serve my_app             Start production server (no hot reload)");
@@ -145,7 +150,33 @@ fn parse_args() -> Options {
                     process::exit(64);
                 }
                 let name = args[i].clone();
-                options.command = Command::New { name };
+                i += 1;
+                let mut template = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--template" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--template requires a URL");
+                                print_usage();
+                                process::exit(64);
+                            }
+                            template = Some(args[i].clone());
+                        }
+                        arg if arg.starts_with("-") => {
+                            eprintln!("Unknown option for new command: {}", arg);
+                            print_usage();
+                            process::exit(64);
+                        }
+                        _ => {
+                            eprintln!("Unexpected argument: {}", args[i]);
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                options.command = Command::New { name, template };
                 return options;
             }
             "generate" => {
@@ -429,7 +460,7 @@ fn main() {
         Command::Repl => run_repl(),
         Command::Run { file } => run_file(file, &options),
         Command::Eval { code } => run_eval(code, &options),
-        Command::New { name } => run_new(name),
+        Command::New { name, template } => run_new(name, template.as_deref()),
         Command::Generate {
             scaffold_name,
             fields,
@@ -526,8 +557,8 @@ fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemonize:
     }
 }
 
-fn run_new(name: &str) {
-    match solilang::scaffold::create_app(name) {
+fn run_new(name: &str, template: Option<&str>) {
+    match solilang::scaffold::create_app(name, template) {
         Ok(()) => {
             solilang::scaffold::print_success_message(name);
         }

@@ -1,0 +1,12 @@
+{
+  "name": "app_name",
+  "version": "1.0.0",
+  "description": "A Soli MVC application",
+  "scripts": {
+    "build:css": "npx tailwindcss -i ./public/css/app.css -o ./public/css/output.css",
+    "watch:css": "npx tailwindcss -i ./public/css/app.css -o ./public/css/output.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}

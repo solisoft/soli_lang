@@ -677,6 +677,7 @@ fn authenticate(req: Any) -> Any {
     write_file(&app_path.join("app/middleware/auth.sl"), auth_content)
 }
 
+#[allow(dead_code)]
 fn create_stdlib(app_path: &Path) -> Result<(), String> {
     let state_machine_content = r#"
 export class StateMachine {
@@ -1049,8 +1050,150 @@ pub fn print_success_message(name: &str) {
     println!();
 }
 
+/// Replace app_name placeholder in all files within a directory
+fn replace_placeholders(app_path: &Path, name: &str) -> Result<(), String> {
+    use std::fs;
+    use walkdir::WalkDir;
+
+    let walker = WalkDir::new(app_path).follow_links(false);
+
+    for entry in walker {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        if path.is_file() {
+            // Skip hidden files and git directories
+            if let Some(file_name) = path.file_name() {
+                if file_name.to_string_lossy().starts_with('.') {
+                    continue;
+                }
+            }
+
+            // Skip binary files (based on extension)
+            if let Some(ext) = path.extension() {
+                let ext_str = ext.to_string_lossy();
+                if ext_str == "png"
+                    || ext_str == "jpg"
+                    || ext_str == "jpeg"
+                    || ext_str == "gif"
+                    || ext_str == "ico"
+                    || ext_str == "woff"
+                    || ext_str == "woff2"
+                    || ext_str == "ttf"
+                    || ext_str == "eot"
+                    || ext_str == "svg"
+                {
+                    continue;
+                }
+            }
+
+            // Read, replace, and write back
+            let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+            let new_content = content.replace("app_name", name);
+            if content != new_content {
+                fs::write(path, new_content).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Create a new Soli MVC application from a template archive
+fn create_from_template(name: &str, app_path: &Path, template_url: &str) -> Result<(), String> {
+    use flate2::read::GzDecoder;
+    use std::fs;
+    use std::process::Command;
+    use tar;
+    use tempdir::TempDir;
+
+    let temp_dir = TempDir::new("soli-template").map_err(|e| e.to_string())?;
+    let archive_path = temp_dir.path().join("template.tar.gz");
+
+    println!();
+    println!("  Downloading template from {}...", template_url);
+
+    // Download the archive
+    let response = ureq::get(template_url)
+        .set("Accept", "application/vnd.github.v3.raw")
+        .call()
+        .map_err(|e| format!("Failed to download template: {}", e))?;
+
+    let mut file = File::create(&archive_path).map_err(|e| e.to_string())?;
+    let mut reader = response.into_reader();
+    io::copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
+
+    // Extract the archive
+    let file = File::open(&archive_path).map_err(|e| e.to_string())?;
+    let decoder = GzDecoder::new(file);
+    let mut archive = tar::Archive::new(decoder);
+
+    // Create app directory
+    fs::create_dir_all(app_path).map_err(|e| e.to_string())?;
+
+    // Extract files
+    for entry in archive.entries().map_err(|e| e.to_string())? {
+        let mut entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path().map_err(|e| e.to_string())?.into_owned();
+
+        // Skip root-level files that shouldn't be in the extracted content
+        if path.iter().count() == 0 {
+            continue;
+        }
+
+        let mut out_path = app_path.to_path_buf();
+        for component in path.iter() {
+            out_path.push(component);
+        }
+
+        if entry.header().entry_type() == tar::EntryType::Directory {
+            fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut out_file = File::create(&out_path).map_err(|e| e.to_string())?;
+            io::copy(&mut entry, &mut out_file).map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Replace placeholders in all files
+    replace_placeholders(app_path, name)?;
+
+    // Initialize git repository
+    println!("  Initializing git repository...");
+    if Command::new("git")
+        .args(["init"])
+        .current_dir(app_path)
+        .output()
+        .is_ok()
+    {
+        if Command::new("git")
+            .args(["add", "."])
+            .current_dir(app_path)
+            .output()
+            .is_ok()
+        {
+            if Command::new("git")
+                .args(["commit", "-m", "Initial commit from Soli template"])
+                .current_dir(app_path)
+                .output()
+                .is_ok()
+            {
+                println!("  ✓ Git repository initialized");
+            }
+        }
+    }
+
+    println!("  ✓ Template extracted");
+    println!();
+
+    print_success_message(name);
+    Ok(())
+}
+
 /// Create a new Soli MVC application
-pub fn create_app(name: &str) -> Result<(), String> {
+pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     let app_path = Path::new(name);
 
     if app_path.exists() {
@@ -1060,6 +1203,12 @@ pub fn create_app(name: &str) -> Result<(), String> {
     // Display header
     ProgressDisplay::header(name);
 
+    if let Some(template_url) = template {
+        // Use custom template from git archive
+        return create_from_template(name, app_path, template_url);
+    }
+
+    // Use default template generation
     let mut progress = ProgressDisplay::new(7);
 
     // Step 1: Create directory structure
