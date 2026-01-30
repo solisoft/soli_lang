@@ -1243,6 +1243,8 @@ impl Model {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
         };
         env.define("Model".to_string(), Value::Class(Rc::new(model_class)));
     }

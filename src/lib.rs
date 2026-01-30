@@ -132,6 +132,7 @@ pub fn run_with_path(
 }
 
 /// Run a Solilang program with optional coverage tracking.
+#[cfg(feature = "coverage")]
 pub fn run_with_path_and_coverage(
     source: &str,
     source_path: Option<&std::path::Path>,
@@ -175,6 +176,76 @@ pub fn run_with_path_and_coverage(
     let mut interpreter = interpreter::Interpreter::new();
     if let (Some(tracker), Some(path)) = (coverage_tracker, source_file_path) {
         interpreter.set_coverage_tracker(tracker.clone());
+        interpreter.set_source_path(path.to_path_buf());
+    }
+    interpreter.interpret(&program)?;
+
+    // Execute collected tests
+    let (failed_count, failed_tests) = execute_test_suites(&mut interpreter, &test_suites)?;
+
+    // Get assertion count from thread-local storage
+    let assertion_count = interpreter::builtins::assertions::get_and_reset_assertion_count();
+
+    // Return error if any tests failed
+    if failed_count > 0 {
+        let error_msg = if failed_tests.len() == 1 {
+            format!("Test failed: {}", failed_tests[0])
+        } else {
+            format!("{} tests failed:\n  - {}", failed_count, failed_tests.join("\n  - "))
+        };
+        return Err(SolilangError::Runtime(error::RuntimeError::General {
+            message: error_msg,
+            span: span::Span::new(0, 0, 1, 1),
+        }));
+    }
+
+    Ok(assertion_count)
+}
+
+/// Run a Solilang program (coverage disabled at compile time).
+#[cfg(not(feature = "coverage"))]
+pub fn run_with_path_and_coverage(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    type_check: bool,
+    _coverage_tracker: Option<&std::rc::Rc<std::cell::RefCell<coverage::CoverageTracker>>>,
+    source_file_path: Option<&std::path::Path>,
+) -> Result<i64, SolilangError> {
+    // Clear any previous test suites
+    interpreter::builtins::test_dsl::clear_test_suites();
+
+    // Lexing
+    let tokens = lexer::Scanner::new(source).scan_tokens()?;
+
+    // Parsing
+    let mut program = parser::Parser::new(tokens).parse()?;
+
+    // Module resolution (if we have imports and a source path)
+    if let Some(path) = source_path.filter(|_| has_imports(&program)) {
+        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let mut resolver = module::ModuleResolver::new(base_dir);
+        program = resolver
+            .resolve(program, path)
+            .map_err(|e| error::RuntimeError::General {
+                message: format!("Module resolution error: {}", e),
+                span: span::Span::new(0, 0, 1, 1),
+            })?;
+    }
+
+    // Type checking (optional)
+    if type_check {
+        let mut checker = types::TypeChecker::new();
+        if let Err(errors) = checker.check(&program) {
+            return Err(errors.into_iter().next().unwrap().into());
+        }
+    }
+
+    // Extract test definitions from AST
+    let test_suites = extract_test_definitions(&program);
+
+    // Execute with tree-walking interpreter
+    let mut interpreter = interpreter::Interpreter::new();
+    if let Some(path) = source_file_path {
         interpreter.set_source_path(path.to_path_buf());
     }
     interpreter.interpret(&program)?;

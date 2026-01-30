@@ -619,15 +619,14 @@ impl Interpreter {
             Value::Array(ref _arr) => {
                 // Handle array methods: map, filter, each, reduce, find, any?, all?, sort, reverse, uniq, compact, flatten, first, last, empty?, include?, sample, shuffle, take, drop, zip, sum, min, max
                 match name {
-                    "length" | "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?" | "sort"
-                    | "reverse" | "uniq" | "compact" | "flatten" | "first" | "last" | "empty?"
-                    | "include?" | "sample" | "shuffle" | "take" | "drop" | "zip" | "sum"
-                    | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string" | "join" => {
-                        Ok(Value::Method(ValueMethod {
-                            receiver: Box::new(obj_val),
-                            method_name: name.to_string(),
-                        }))
-                    }
+                    "length" | "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?"
+                    | "sort" | "reverse" | "uniq" | "compact" | "flatten" | "first" | "last"
+                    | "empty?" | "include?" | "sample" | "shuffle" | "take" | "drop" | "zip"
+                    | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string"
+                    | "join" => Ok(Value::Method(ValueMethod {
+                        receiver: Box::new(obj_val),
+                        method_name: name.to_string(),
+                    })),
                     _ => Err(RuntimeError::NoSuchProperty {
                         value_type: "Array".to_string(),
                         property: name.to_string(),
@@ -638,13 +637,15 @@ impl Interpreter {
             Value::Hash(ref hash) => {
                 // First check if it's a known method
                 match name {
-                    "length" | "map" | "filter" | "each" | "get" | "fetch" | "invert" | "transform_values"
-                    | "transform_keys" | "select" | "reject" | "slice" | "except" | "compact"
-                    | "dig" | "to_string" | "keys" | "values" | "has_key" | "delete" | "merge"
-                    | "entries" | "clear" | "set" | "empty?" => Ok(Value::Method(ValueMethod {
-                        receiver: Box::new(obj_val),
-                        method_name: name.to_string(),
-                    })),
+                    "length" | "map" | "filter" | "each" | "get" | "fetch" | "invert"
+                    | "transform_values" | "transform_keys" | "select" | "reject" | "slice"
+                    | "except" | "compact" | "dig" | "to_string" | "keys" | "values"
+                    | "has_key" | "delete" | "merge" | "entries" | "clear" | "set" | "empty?" => {
+                        Ok(Value::Method(ValueMethod {
+                            receiver: Box::new(obj_val),
+                            method_name: name.to_string(),
+                        }))
+                    }
                     _ => {
                         // Try to access as a hash key (dot notation for hash access) - O(1)
                         let hash_key = HashKey::String(name.to_string());
@@ -1074,14 +1075,22 @@ impl Interpreter {
                         match method.method_name.as_str() {
                             "push" => {
                                 if positional_args.len() != 1 {
-                                    return Err(RuntimeError::wrong_arity(1, positional_args.len(), span));
+                                    return Err(RuntimeError::wrong_arity(
+                                        1,
+                                        positional_args.len(),
+                                        span,
+                                    ));
                                 }
                                 arr.borrow_mut().push(positional_args[0].clone());
                                 Ok(Value::Null)
                             }
                             "pop" => {
                                 if !positional_args.is_empty() {
-                                    return Err(RuntimeError::wrong_arity(0, positional_args.len(), span));
+                                    return Err(RuntimeError::wrong_arity(
+                                        0,
+                                        positional_args.len(),
+                                        span,
+                                    ));
                                 }
                                 arr.borrow_mut().pop().ok_or_else(|| {
                                     RuntimeError::type_error("pop on empty array", span)
@@ -1089,14 +1098,23 @@ impl Interpreter {
                             }
                             "clear" => {
                                 if !positional_args.is_empty() {
-                                    return Err(RuntimeError::wrong_arity(0, positional_args.len(), span));
+                                    return Err(RuntimeError::wrong_arity(
+                                        0,
+                                        positional_args.len(),
+                                        span,
+                                    ));
                                 }
                                 arr.borrow_mut().clear();
                                 Ok(Value::Null)
                             }
                             _ => {
                                 let items = arr.borrow().clone();
-                                self.call_array_method(&items, &method.method_name, positional_args, span)
+                                self.call_array_method(
+                                    &items,
+                                    &method.method_name,
+                                    positional_args,
+                                    span,
+                                )
                             }
                         }
                     }
@@ -1105,7 +1123,11 @@ impl Interpreter {
                         match method.method_name.as_str() {
                             "set" => {
                                 if positional_args.len() != 2 {
-                                    return Err(RuntimeError::wrong_arity(2, positional_args.len(), span));
+                                    return Err(RuntimeError::wrong_arity(
+                                        2,
+                                        positional_args.len(),
+                                        span,
+                                    ));
                                 }
                                 let key = &positional_args[0];
                                 let value = positional_args[1].clone();
@@ -1121,7 +1143,11 @@ impl Interpreter {
                             }
                             "delete" => {
                                 if positional_args.len() != 1 {
-                                    return Err(RuntimeError::wrong_arity(1, positional_args.len(), span));
+                                    return Err(RuntimeError::wrong_arity(
+                                        1,
+                                        positional_args.len(),
+                                        span,
+                                    ));
                                 }
                                 let key = &positional_args[0];
                                 let hash_key = match key.to_hash_key() {
@@ -1134,14 +1160,27 @@ impl Interpreter {
                             }
                             "clear" => {
                                 if !positional_args.is_empty() {
-                                    return Err(RuntimeError::wrong_arity(0, positional_args.len(), span));
+                                    return Err(RuntimeError::wrong_arity(
+                                        0,
+                                        positional_args.len(),
+                                        span,
+                                    ));
                                 }
                                 hash.borrow_mut().clear();
                                 Ok(Value::Null)
                             }
                             _ => {
-                                let entries: Vec<(HashKey, Value)> = hash.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                                self.call_hash_method(&entries, &method.method_name, positional_args, span)
+                                let entries: Vec<(HashKey, Value)> = hash
+                                    .borrow()
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                    .collect();
+                                self.call_hash_method(
+                                    &entries,
+                                    &method.method_name,
+                                    positional_args,
+                                    span,
+                                )
                             }
                         }
                     }
@@ -1429,7 +1468,8 @@ impl Interpreter {
                     let required_arity = ctor.arity();
                     let full_arity = ctor.full_arity();
 
-                    let param_names: Vec<String> = ctor.params.iter().map(|p| p.name.clone()).collect();
+                    let param_names: Vec<String> =
+                        ctor.params.iter().map(|p| p.name.clone()).collect();
 
                     // Check for unknown named arguments
                     for name in named_args.keys() {
@@ -1620,7 +1660,11 @@ impl Interpreter {
                         self.call_array_method(&items, &method.method_name, arguments, span)
                     }
                     Value::Hash(ref hash) => {
-                        let entries: Vec<(HashKey, Value)> = hash.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                        let entries: Vec<(HashKey, Value)> = hash
+                            .borrow()
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
                         self.call_hash_method(&entries, &method.method_name, arguments, span)
                     }
                     Value::QueryBuilder(qb) => {
@@ -2865,10 +2909,8 @@ impl Interpreter {
                 };
 
                 // Build set of keys to exclude for O(1) lookups
-                let exclude_keys: std::collections::HashSet<HashKey> = keys_arr
-                    .iter()
-                    .filter_map(|k| k.to_hash_key())
-                    .collect();
+                let exclude_keys: std::collections::HashSet<HashKey> =
+                    keys_arr.iter().filter_map(|k| k.to_hash_key()).collect();
 
                 let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (k, v) in entries {
@@ -3000,7 +3042,9 @@ impl Interpreter {
                 }
                 let pairs: Vec<Value> = entries
                     .iter()
-                    .map(|(k, v)| Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()]))))
+                    .map(|(k, v)| {
+                        Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])))
+                    })
                     .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(pairs))))
             }
@@ -3906,7 +3950,10 @@ impl Interpreter {
                         ))
                     }
                 };
-                let parts: Vec<Value> = s.split(delim).map(|p| Value::String(p.to_string())).collect();
+                let parts: Vec<Value> = s
+                    .split(delim)
+                    .map(|p| Value::String(p.to_string()))
+                    .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(parts))))
             }
             "index_of" => {
@@ -3951,7 +3998,11 @@ impl Interpreter {
                     }
                 };
                 let start_usize = if start < 0 { 0 } else { start as usize };
-                let end_usize = if end > s.len() as i64 { s.len() } else { end as usize };
+                let end_usize = if end > s.len() as i64 {
+                    s.len()
+                } else {
+                    end as usize
+                };
                 if start_usize >= end_usize || start_usize >= s.len() {
                     Ok(Value::String(String::new()))
                 } else {
@@ -3973,12 +4024,7 @@ impl Interpreter {
                 };
                 let to = match &arguments[1] {
                     Value::String(t) => t,
-                    _ => {
-                        return Err(RuntimeError::type_error(
-                            "replace expects string to",
-                            span,
-                        ))
-                    }
+                    _ => return Err(RuntimeError::type_error("replace expects string to", span)),
                 };
                 Ok(Value::String(s.replace(from, to)))
             }
@@ -4033,7 +4079,9 @@ impl Interpreter {
                     Ok(Value::String(s.to_string()))
                 } else {
                     let padding = width - s.len();
-                    Ok(Value::String(s.to_string() + &pad_char.to_string().repeat(padding)))
+                    Ok(Value::String(
+                        s.to_string() + &pad_char.to_string().repeat(padding),
+                    ))
                 }
             }
             "join" => {

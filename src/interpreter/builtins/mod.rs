@@ -354,6 +354,8 @@ fn register_error_classes(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
     env.define("Error".to_string(), Value::Class(Rc::new(error_class)));
 
@@ -370,6 +372,8 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -378,6 +382,8 @@ fn register_error_classes(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
     env.define(
         "ValueError".to_string(),
@@ -397,6 +403,8 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -405,6 +413,8 @@ fn register_error_classes(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
     env.define(
         "TypeError".to_string(),
@@ -424,6 +434,8 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -432,6 +444,8 @@ fn register_error_classes(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
     env.define(
         "KeyError".to_string(),
@@ -451,6 +465,8 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -459,6 +475,8 @@ fn register_error_classes(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
     env.define(
         "IndexError".to_string(),
@@ -478,6 +496,8 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -486,6 +506,8 @@ fn register_error_classes(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
     env.define(
         "RuntimeError".to_string(),

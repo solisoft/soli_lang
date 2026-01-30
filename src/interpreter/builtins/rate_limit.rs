@@ -221,10 +221,22 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
 
             let mut result: IndexMap<HashKey, Value> = IndexMap::new();
             result.insert(HashKey::String("allowed".to_string()), Value::Bool(allowed));
-            result.insert(HashKey::String("remaining".to_string()), Value::Int(remaining as i64));
-            result.insert(HashKey::String("reset_in".to_string()), Value::Int(reset.as_secs() as i64));
-            result.insert(HashKey::String("limit".to_string()), Value::Int(limit as i64));
-            result.insert(HashKey::String("window".to_string()), Value::Int(window as i64));
+            result.insert(
+                HashKey::String("remaining".to_string()),
+                Value::Int(remaining as i64),
+            );
+            result.insert(
+                HashKey::String("reset_in".to_string()),
+                Value::Int(reset.as_secs() as i64),
+            );
+            result.insert(
+                HashKey::String("limit".to_string()),
+                Value::Int(limit as i64),
+            );
+            result.insert(
+                HashKey::String("window".to_string()),
+                Value::Int(window as i64),
+            );
 
             Ok(Value::Hash(Rc::new(RefCell::new(result))))
         })),
@@ -287,9 +299,18 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                 };
 
                 let mut headers: IndexMap<HashKey, Value> = IndexMap::new();
-                headers.insert(HashKey::String("X-RateLimit-Limit".to_string()), Value::String(limit.to_string()));
-                headers.insert(HashKey::String("X-RateLimit-Remaining".to_string()), Value::String(remaining.to_string()));
-                headers.insert(HashKey::String("X-RateLimit-Reset".to_string()), Value::String(reset.to_string()));
+                headers.insert(
+                    HashKey::String("X-RateLimit-Limit".to_string()),
+                    Value::String(limit.to_string()),
+                );
+                headers.insert(
+                    HashKey::String("X-RateLimit-Remaining".to_string()),
+                    Value::String(remaining.to_string()),
+                );
+                headers.insert(
+                    HashKey::String("X-RateLimit-Reset".to_string()),
+                    Value::String(reset.to_string()),
+                );
 
                 Ok(Value::Hash(Rc::new(RefCell::new(headers))))
             },
@@ -358,6 +379,8 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
 
     let rate_limiter_class = Rc::new(class);

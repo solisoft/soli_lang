@@ -109,37 +109,52 @@ fn register_math_class(env: &mut Environment) {
     // Math.floor(n) - Round down to nearest integer
     math_static_methods.insert(
         "floor".to_string(),
-        Rc::new(NativeFunction::new("Math.floor", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.floor",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Int(*n)),
                 Value::Float(n) => Ok(Value::Int(n.floor() as i64)),
-                other => Err(format!("Math.floor() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.floor() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Math.ceil(n) - Round up to nearest integer
     math_static_methods.insert(
         "ceil".to_string(),
-        Rc::new(NativeFunction::new("Math.ceil", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.ceil",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Int(*n)),
                 Value::Float(n) => Ok(Value::Int(n.ceil() as i64)),
-                other => Err(format!("Math.ceil() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.ceil() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Math.round(n) - Round to nearest integer
     math_static_methods.insert(
         "round".to_string(),
-        Rc::new(NativeFunction::new("Math.round", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.round",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Int(*n)),
                 Value::Float(n) => Ok(Value::Int(n.round() as i64)),
-                other => Err(format!("Math.round() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.round() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Math.random() - Random float between 0 and 1
@@ -155,79 +170,113 @@ fn register_math_class(env: &mut Environment) {
     // Math.log(n) - Natural logarithm
     math_static_methods.insert(
         "log".to_string(),
-        Rc::new(NativeFunction::new("Math.log", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.log",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Float((*n as f64).ln())),
                 Value::Float(n) => Ok(Value::Float(n.ln())),
-                other => Err(format!("Math.log() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.log() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Math.log10(n) - Base-10 logarithm
     math_static_methods.insert(
         "log10".to_string(),
-        Rc::new(NativeFunction::new("Math.log10", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.log10",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Float((*n as f64).log10())),
                 Value::Float(n) => Ok(Value::Float(n.log10())),
-                other => Err(format!("Math.log10() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.log10() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Math.sin(n) - Sine
     math_static_methods.insert(
         "sin".to_string(),
-        Rc::new(NativeFunction::new("Math.sin", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.sin",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Float((*n as f64).sin())),
                 Value::Float(n) => Ok(Value::Float(n.sin())),
-                other => Err(format!("Math.sin() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.sin() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Math.cos(n) - Cosine
     math_static_methods.insert(
         "cos".to_string(),
-        Rc::new(NativeFunction::new("Math.cos", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.cos",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Float((*n as f64).cos())),
                 Value::Float(n) => Ok(Value::Float(n.cos())),
-                other => Err(format!("Math.cos() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.cos() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Math.tan(n) - Tangent
     math_static_methods.insert(
         "tan".to_string(),
-        Rc::new(NativeFunction::new("Math.tan", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.tan",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Float((*n as f64).tan())),
                 Value::Float(n) => Ok(Value::Float(n.tan())),
-                other => Err(format!("Math.tan() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.tan() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Math.exp(n) - e^n
     math_static_methods.insert(
         "exp".to_string(),
-        Rc::new(NativeFunction::new("Math.exp", Some(1), |args| {
-            match &args[0] {
+        Rc::new(NativeFunction::new(
+            "Math.exp",
+            Some(1),
+            |args| match &args[0] {
                 Value::Int(n) => Ok(Value::Float((*n as f64).exp())),
                 Value::Float(n) => Ok(Value::Float(n.exp())),
-                other => Err(format!("Math.exp() expects number, got {}", other.type_name())),
-            }
-        })),
+                other => Err(format!(
+                    "Math.exp() expects number, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
     );
 
     // Create static fields for constants
     let static_fields: Rc<RefCell<HashMap<String, Value>>> = Rc::new(RefCell::new(HashMap::new()));
-    static_fields.borrow_mut().insert("pi".to_string(), Value::Float(std::f64::consts::PI));
-    static_fields.borrow_mut().insert("e".to_string(), Value::Float(std::f64::consts::E));
+    static_fields
+        .borrow_mut()
+        .insert("pi".to_string(), Value::Float(std::f64::consts::PI));
+    static_fields
+        .borrow_mut()
+        .insert("e".to_string(), Value::Float(std::f64::consts::E));
 
     let math_class = Class {
         name: "Math".to_string(),
@@ -239,6 +288,8 @@ fn register_math_class(env: &mut Environment) {
         static_fields,
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
 
     env.define("Math".to_string(), Value::Class(Rc::new(math_class)));

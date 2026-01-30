@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::ast::*;
+#[cfg(feature = "coverage")]
 use crate::coverage::CoverageTracker;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::register_builtins;
@@ -41,6 +42,7 @@ pub(crate) enum ControlFlow {
 /// The Solilang interpreter.
 pub struct Interpreter {
     pub(crate) environment: Rc<RefCell<Environment>>,
+    #[cfg(feature = "coverage")]
     pub(crate) coverage_tracker: Option<Rc<RefCell<CoverageTracker>>>,
     pub(crate) current_source_path: Option<PathBuf>,
     pub(crate) call_stack: Vec<StackFrame>,
@@ -54,6 +56,7 @@ impl Interpreter {
 
         Self {
             environment: globals,
+            #[cfg(feature = "coverage")]
             coverage_tracker: None,
             current_source_path: None,
             call_stack: Vec::new(),
@@ -61,6 +64,7 @@ impl Interpreter {
         }
     }
 
+    #[cfg(feature = "coverage")]
     pub fn with_coverage_tracker(tracker: Rc<RefCell<CoverageTracker>>) -> Self {
         let globals = Rc::new(RefCell::new(Environment::new()));
         register_builtins(&mut globals.borrow_mut());
@@ -74,6 +78,7 @@ impl Interpreter {
         }
     }
 
+    #[cfg(feature = "coverage")]
     pub fn set_coverage_tracker(&mut self, tracker: Rc<RefCell<CoverageTracker>>) {
         self.coverage_tracker = Some(tracker);
     }
@@ -82,12 +87,20 @@ impl Interpreter {
         self.current_source_path = Some(path);
     }
 
+    #[cfg(feature = "coverage")]
+    #[inline(always)]
     pub fn record_coverage(&self, line: usize) {
         if let Some(ref tracker) = self.coverage_tracker {
             if let Some(ref path) = self.current_source_path {
                 tracker.borrow_mut().record_line_hit(path, line);
             }
         }
+    }
+
+    #[cfg(not(feature = "coverage"))]
+    #[inline(always)]
+    pub fn record_coverage(&self, _line: usize) {
+        // No-op when coverage feature is disabled - optimized away completely
     }
 
     pub fn get_assertion_count(&self) -> i64 {

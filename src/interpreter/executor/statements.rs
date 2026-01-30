@@ -371,6 +371,8 @@ impl Interpreter {
             constructor,
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
         };
 
         let class_rc = Rc::new(class);

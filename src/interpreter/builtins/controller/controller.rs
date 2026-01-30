@@ -75,6 +75,8 @@ fn register_controller_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
     env.define(
         "Controller".to_string(),

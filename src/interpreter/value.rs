@@ -306,9 +306,7 @@ impl PartialEq for Value {
                     return false;
                 }
                 // Check that all key-value pairs in a exist in b with same values
-                a_ref
-                    .iter()
-                    .all(|(k, v_a)| b_ref.get(k) == Some(v_a))
+                a_ref.iter().all(|(k, v_a)| b_ref.get(k) == Some(v_a))
             }
             (Value::Instance(a), Value::Instance(b)) => Rc::ptr_eq(a, b),
             (Value::Method(a), Value::Method(b)) => {
@@ -542,9 +540,61 @@ pub struct Class {
     pub static_fields: Rc<RefCell<HashMap<String, Value>>>,
     pub fields: HashMap<String, Option<Expr>>,
     pub constructor: Option<Rc<Function>>,
+    /// Flattened method cache for O(1) lookups including inherited methods.
+    /// This is computed lazily on first access and includes all methods from the inheritance chain.
+    /// NOTE: Should not be manually set; use Class::new() constructor instead.
+    pub all_methods_cache: RefCell<Option<HashMap<String, Rc<Function>>>>,
+    /// Flattened native method cache for O(1) lookups.
+    /// NOTE: Should not be manually set; use Class::new() constructor instead.
+    pub all_native_methods_cache: RefCell<Option<HashMap<String, Rc<NativeFunction>>>>,
+}
+
+impl Default for Class {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            superclass: None,
+            methods: HashMap::new(),
+            static_methods: HashMap::new(),
+            native_static_methods: HashMap::new(),
+            native_methods: HashMap::new(),
+            static_fields: Rc::new(RefCell::new(HashMap::new())),
+            fields: HashMap::new(),
+            constructor: None,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
+        }
+    }
 }
 
 impl Class {
+    /// Create a new class with all fields initialized, including caches.
+    pub fn new(
+        name: String,
+        superclass: Option<Rc<Class>>,
+        methods: HashMap<String, Rc<Function>>,
+        static_methods: HashMap<String, Rc<Function>>,
+        native_static_methods: HashMap<String, Rc<NativeFunction>>,
+        native_methods: HashMap<String, Rc<NativeFunction>>,
+        static_fields: Rc<RefCell<HashMap<String, Value>>>,
+        fields: HashMap<String, Option<Expr>>,
+        constructor: Option<Rc<Function>>,
+    ) -> Self {
+        Self {
+            name,
+            superclass,
+            methods,
+            static_methods,
+            native_static_methods,
+            native_methods,
+            static_fields,
+            fields,
+            constructor,
+            all_methods_cache: RefCell::new(None),
+            all_native_methods_cache: RefCell::new(None),
+        }
+    }
+
     /// Find a constructor in this class or its superclass chain.
     pub fn find_constructor(&self) -> Option<Rc<Function>> {
         if let Some(ref ctor) = self.constructor {
@@ -556,24 +606,72 @@ impl Class {
         None
     }
 
-    pub fn find_method(&self, name: &str) -> Option<Rc<Function>> {
-        if let Some(method) = self.methods.get(name) {
-            return Some(method.clone());
+    /// Build the flattened method cache if not already built.
+    fn ensure_methods_cached(&self) {
+        // Fast path: check if already cached without borrowing mutably
+        if self.all_methods_cache.borrow().is_some() {
+            return;
         }
+
+        // Build flattened method map
+        let mut all_methods = HashMap::new();
+
+        // First, get methods from superclass (if any)
         if let Some(ref superclass) = self.superclass {
-            return superclass.find_method(name);
+            superclass.ensure_methods_cached();
+            if let Some(ref parent_cache) = *superclass.all_methods_cache.borrow() {
+                all_methods.extend(parent_cache.iter().map(|(k, v)| (k.clone(), v.clone())));
+            }
         }
-        None
+
+        // Then, override with methods from this class
+        all_methods.extend(self.methods.clone());
+
+        // Store in cache
+        *self.all_methods_cache.borrow_mut() = Some(all_methods);
+    }
+
+    /// Build the flattened native method cache if not already built.
+    fn ensure_native_methods_cached(&self) {
+        // Fast path: check if already cached without borrowing mutably
+        if self.all_native_methods_cache.borrow().is_some() {
+            return;
+        }
+
+        // Build flattened native method map
+        let mut all_native_methods = HashMap::new();
+
+        // First, get native methods from superclass (if any)
+        if let Some(ref superclass) = self.superclass {
+            superclass.ensure_native_methods_cached();
+            if let Some(ref parent_cache) = *superclass.all_native_methods_cache.borrow() {
+                all_native_methods.extend(parent_cache.iter().map(|(k, v)| (k.clone(), v.clone())));
+            }
+        }
+
+        // Then, override with native methods from this class
+        all_native_methods.extend(self.native_methods.clone());
+
+        // Store in cache
+        *self.all_native_methods_cache.borrow_mut() = Some(all_native_methods);
+    }
+
+    pub fn find_method(&self, name: &str) -> Option<Rc<Function>> {
+        // Ensure cache is built, then do O(1) lookup
+        self.ensure_methods_cached();
+        self.all_methods_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.get(name).cloned())
     }
 
     pub fn find_native_method(&self, name: &str) -> Option<Rc<NativeFunction>> {
-        if let Some(method) = self.native_methods.get(name) {
-            return Some(method.clone());
-        }
-        if let Some(ref superclass) = self.superclass {
-            return superclass.find_native_method(name);
-        }
-        None
+        // Ensure cache is built, then do O(1) lookup
+        self.ensure_native_methods_cached();
+        self.all_native_methods_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.get(name).cloned())
     }
 
     /// Find a static method in this class or its superclass chain.

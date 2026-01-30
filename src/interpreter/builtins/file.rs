@@ -218,9 +218,12 @@ fn register_file_class(env: &mut Environment) {
                 Value::String(s) => s.clone(),
                 _ => return Err("File.lines() expects string path".to_string()),
             };
-            let content = fs::read_to_string(&path)
-                .map_err(|e| format!("File.lines() failed: {}", e))?;
-            let lines: Vec<Value> = content.lines().map(|l| Value::String(l.to_string())).collect();
+            let content =
+                fs::read_to_string(&path).map_err(|e| format!("File.lines() failed: {}", e))?;
+            let lines: Vec<Value> = content
+                .lines()
+                .map(|l| Value::String(l.to_string()))
+                .collect();
             Ok(Value::Array(Rc::new(RefCell::new(lines))))
         })),
     );
@@ -271,6 +274,8 @@ fn register_file_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
 
     env.define("File".to_string(), Value::Class(Rc::new(file_class)));

@@ -72,6 +72,10 @@ fn oop_benchmarks(c: &mut Criterion) {
         b.iter(|| run_benchmark_file(black_box("class_ops")))
     });
 
+    group.bench_function("deep_inheritance_1000", |b| {
+        b.iter(|| run_benchmark_file(black_box("inheritance_deep")))
+    });
+
     group.finish();
 }
 

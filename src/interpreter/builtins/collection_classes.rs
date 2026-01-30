@@ -34,6 +34,8 @@ fn register_string_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     });
 
     env.define("String".to_string(), Value::Class(empty_class.clone()));
@@ -477,6 +479,8 @@ fn register_string_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
 
     env.assign("String", Value::Class(Rc::new(string_class)));
@@ -493,6 +497,8 @@ fn register_array_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     });
 
     env.define("Array".to_string(), Value::Class(empty_class.clone()));
@@ -1050,6 +1056,8 @@ fn register_array_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
 
     env.assign("Array", Value::Class(Rc::new(array_class)));
@@ -1066,6 +1074,8 @@ fn register_hash_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     });
 
     env.define("Hash".to_string(), Value::Class(empty_class.clone()));
@@ -1153,7 +1163,10 @@ fn register_hash_class(env: &mut Environment) {
                     if let Some(hash_key) = HashKey::from_value(&key) {
                         hash.insert(hash_key, value.clone());
                     } else {
-                        return Err("Hash key must be a hashable value (int, string, bool, or null)".to_string());
+                        return Err(
+                            "Hash key must be a hashable value (int, string, bool, or null)"
+                                .to_string(),
+                        );
                     }
                     Ok(value)
                 }
@@ -1356,6 +1369,8 @@ fn register_hash_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
 
     env.assign("Hash", Value::Class(Rc::new(hash_class)));
@@ -1398,59 +1413,61 @@ pub fn wrap_hash(value: IndexMap<HashKey, Value>, env: &Environment) -> Value {
 }
 
 fn register_base64_class(env: &mut Environment) {
-    let base64_class = Rc::new(Class {
-        name: "Base64".to_string(),
-        superclass: None,
-        methods: HashMap::new(),
-        static_methods: HashMap::new(),
-        native_static_methods: HashMap::new(),
-        native_methods: HashMap::new(),
-        static_fields: Rc::new(RefCell::new(HashMap::new())),
-        fields: HashMap::new(),
-        constructor: None,
-    });
-
-    env.define("Base64".to_string(), Value::Class(base64_class.clone()));
-
     let mut base64_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
+    // Base64.encode(data) - Encode bytes to base64
     base64_static_methods.insert(
         "encode".to_string(),
         Rc::new(NativeFunction::new("Base64.encode", Some(1), |args| {
-            let input = match args.first() {
-                Some(Value::String(s)) => s.clone(),
-                Some(Value::Instance(inst)) => match inst.borrow().fields.get("__value").cloned() {
-                    Some(Value::String(s)) => s,
-                    _ => return Err("Base64.encode() requires string argument".to_string()),
-                },
-                _ => return Err("Base64.encode() requires string argument".to_string()),
+            let data = match &args[0] {
+                Value::String(s) => s.as_bytes().to_vec(),
+                Value::Array(arr) => {
+                    let bytes: Result<Vec<u8>, String> = arr
+                        .borrow()
+                        .iter()
+                        .map(|v| match v {
+                            Value::Int(n) if (*n >= 0 && *n <= 255) => Ok(*n as u8),
+                            Value::Int(n) => Err(format!("byte value {} out of range", n)),
+                            other => Err(format!("expected byte, got {}", other.type_name())),
+                        })
+                        .collect();
+                    bytes?
+                }
+                other => {
+                    return Err(format!(
+                        "Base64.encode() expects string or array, got {}",
+                        other.type_name()
+                    ))
+                }
             };
-            let encoded = general_purpose::STANDARD.encode(input.as_bytes());
-            Ok(Value::String(encoded))
+            Ok(Value::String(general_purpose::STANDARD.encode(&data)))
         })),
     );
 
+    // Base64.decode(data) - Decode base64 to bytes
     base64_static_methods.insert(
         "decode".to_string(),
         Rc::new(NativeFunction::new("Base64.decode", Some(1), |args| {
-            let input = match args.first() {
-                Some(Value::String(s)) => s.clone(),
-                Some(Value::Instance(inst)) => match inst.borrow().fields.get("__value").cloned() {
-                    Some(Value::String(s)) => s,
-                    _ => return Err("Base64.decode() requires string argument".to_string()),
-                },
-                _ => return Err("Base64.decode() requires string argument".to_string()),
+            let data = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Base64.decode() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
             };
-            let decoded = general_purpose::STANDARD
-                .decode(&input)
-                .map_err(|e| format!("Invalid Base64: {}", e))?;
-            let decoded_str = String::from_utf8(decoded)
-                .map_err(|e| format!("Decoded bytes are not valid UTF-8: {}", e))?;
-            Ok(Value::String(decoded_str))
+            match general_purpose::STANDARD.decode(&data) {
+                Ok(bytes) => {
+                    let values: Vec<Value> = bytes.iter().map(|&b| Value::Int(b as i64)).collect();
+                    Ok(Value::Array(Rc::new(RefCell::new(values))))
+                }
+                Err(e) => Err(format!("Base64 decode error: {}", e)),
+            }
         })),
     );
 
-    let base64_class_final = Class {
+    let base64_class = Class {
         name: "Base64".to_string(),
         superclass: None,
         methods: HashMap::new(),
@@ -1460,7 +1477,9 @@ fn register_base64_class(env: &mut Environment) {
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
+        all_methods_cache: RefCell::new(None),
+        all_native_methods_cache: RefCell::new(None),
     };
 
-    env.assign("Base64", Value::Class(Rc::new(base64_class_final)));
+    env.define("Base64".to_string(), Value::Class(Rc::new(base64_class)));
 }
