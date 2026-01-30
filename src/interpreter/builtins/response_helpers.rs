@@ -3,12 +3,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
 use serde_json;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
 
-type HashPairs = Vec<(Value, Value)>;
+type HashPairs = IndexMap<HashKey, Value>;
 
 pub fn register_response_helpers(env: &mut Environment) {
     env.define(
@@ -144,7 +145,7 @@ fn extract_status(response: &Value) -> Result<Value, String> {
         Value::Hash(h) => {
             let hash = h.borrow();
             for (k, v) in hash.iter() {
-                if let Value::String(key) = k {
+                if let HashKey::String(key) = k {
                     if key == "status" {
                         return Ok(v.clone());
                     }
@@ -161,7 +162,7 @@ fn extract_body(response: &Value) -> Result<Value, String> {
         Value::Hash(h) => {
             let hash = h.borrow();
             for (k, v) in hash.iter() {
-                if let Value::String(key) = k {
+                if let HashKey::String(key) = k {
                     if key == "body" {
                         return Ok(v.clone());
                     }
@@ -189,12 +190,12 @@ fn extract_header(response: &Value, name: &str) -> Result<Value, String> {
         Value::Hash(h) => {
             let hash = h.borrow();
             for (k, v) in hash.iter() {
-                if let Value::String(key) = k {
+                if let HashKey::String(key) = k {
                     if key == "headers" {
                         if let Value::Hash(headers) = v {
                             let headers_hash = headers.borrow();
                             for (hk, hv) in headers_hash.iter() {
-                                if let Value::String(header_name) = hk {
+                                if let HashKey::String(header_name) = hk {
                                     if header_name == name {
                                         if let Value::String(s) = hv {
                                             return Ok(Value::String(s.clone()));
@@ -217,13 +218,13 @@ fn extract_all_headers(response: &Value) -> Result<Value, String> {
         Value::Hash(h) => {
             let hash = h.borrow();
             for (k, v) in hash.iter() {
-                if let Value::String(key) = k {
+                if let HashKey::String(key) = k {
                     if key == "headers" {
                         return Ok(v.clone());
                     }
                 }
             }
-            Ok(Value::Hash(Rc::new(RefCell::new(Vec::new()))))
+            Ok(Value::Hash(Rc::new(RefCell::new(IndexMap::new()))))
         }
         _ => Err("res_headers() expects hash argument".to_string()),
     }
@@ -291,9 +292,9 @@ fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
             Ok(Value::Array(Rc::new(RefCell::new(values?))))
         }
         serde_json::Value::Object(obj) => {
-            let mut pairs: HashPairs = Vec::new();
+            let mut pairs: HashPairs = IndexMap::new();
             for (k, v) in obj {
-                pairs.push((Value::String(k), json_to_value(v)?));
+                pairs.insert(HashKey::String(k), json_to_value(v)?);
             }
             Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
         }

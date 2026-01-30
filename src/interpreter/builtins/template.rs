@@ -12,12 +12,14 @@ use std::time::SystemTime;
 
 use std::path::Path;
 
+use indexmap::IndexMap;
+
 use crate::ast::stmt::StmtKind;
 use crate::interpreter::builtins::datetime::helpers as datetime_helpers;
 use crate::interpreter::builtins::html;
 use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{value_to_json, Function, NativeFunction, Value};
+use crate::interpreter::value::{value_to_json, Function, HashKey, NativeFunction, Value};
 use crate::template::{html_response, TemplateCache};
 
 // Thread-local template cache
@@ -240,20 +242,20 @@ pub fn render_error_template(status_code: u16, message: &str, request_id: &str) 
     let template_name = format!("errors/{}", status_code);
 
     // Create error context for the template
-    let error_data = Value::Hash(Rc::new(RefCell::new(vec![
-        (
-            Value::String("status".to_string()),
-            Value::Int(status_code as i64),
-        ),
-        (
-            Value::String("message".to_string()),
-            Value::String(message.to_string()),
-        ),
-        (
-            Value::String("request_id".to_string()),
-            Value::String(request_id.to_string()),
-        ),
-    ])));
+    let mut error_map: IndexMap<HashKey, Value> = IndexMap::new();
+    error_map.insert(
+        HashKey::String("status".to_string()),
+        Value::Int(status_code as i64),
+    );
+    error_map.insert(
+        HashKey::String("message".to_string()),
+        Value::String(message.to_string()),
+    );
+    error_map.insert(
+        HashKey::String("request_id".to_string()),
+        Value::String(request_id.to_string()),
+    );
+    let error_data = Value::Hash(Rc::new(RefCell::new(error_map)));
 
     // Try to render the template without layout (error pages should be standalone)
     match template_cache.render(&template_name, &error_data, Some(None)) {
@@ -275,7 +277,7 @@ fn resolve_futures_in_value(value: Value) -> Value {
             }
         }
         Value::Hash(hash) => {
-            let resolved_pairs: Vec<(Value, Value)> = hash
+            let resolved_pairs: IndexMap<HashKey, Value> = hash
                 .borrow()
                 .iter()
                 .map(|(k, v)| {
@@ -337,31 +339,27 @@ fn get_file_mtime_cached(path: &PathBuf) -> Result<String, String> {
 fn inject_template_helpers(data: &Value) -> Value {
     match data {
         Value::Hash(hash) => {
-            let mut new_hash: Vec<(Value, Value)> = hash.borrow().clone();
+            let mut new_hash: IndexMap<HashKey, Value> = hash.borrow().clone();
 
             // Inject user-defined view helpers from app/helpers/*.sl
             VIEW_HELPERS.with(|helpers| {
                 let helpers_map = helpers.borrow();
                 for (name, value) in helpers_map.iter() {
-                    let key = Value::String(name.clone());
+                    let key = HashKey::String(name.clone());
                     // Only add if not already present in data (allow override)
-                    let exists = hash.borrow().iter().any(|(k, _)| k.hash_eq(&key));
-                    if !exists {
-                        new_hash.push((key, value.clone()));
+                    if !new_hash.contains_key(&key) {
+                        new_hash.insert(key, value.clone());
                     }
                 }
             });
 
             // Check if public_path already exists
-            let public_path_key = Value::String("public_path".to_string());
-            let has_public_path = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&public_path_key));
+            let public_path_key = HashKey::String("public_path".to_string());
+            let has_public_path = new_hash.contains_key(&public_path_key);
 
             // Add range() function if not present
-            let range_key = Value::String("range".to_string());
-            let has_range = hash.borrow().iter().any(|(k, _)| k.hash_eq(&range_key));
+            let range_key = HashKey::String("range".to_string());
+            let has_range = new_hash.contains_key(&range_key);
 
             if !has_range {
                 let range_func =
@@ -389,7 +387,7 @@ fn inject_template_helpers(data: &Value) -> Value {
                         Ok(Value::Array(Rc::new(RefCell::new(values))))
                     }));
 
-                new_hash.push((range_key, range_func));
+                new_hash.insert(range_key, range_func);
             }
 
             if !has_public_path {
@@ -441,15 +439,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         }
                     }));
 
-                new_hash.push((public_path_key, public_path_func));
+                new_hash.insert(public_path_key, public_path_func);
             }
 
             // Add strip_html() function if not present
-            let strip_html_key = Value::String("strip_html".to_string());
-            let has_strip_html = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&strip_html_key));
+            let strip_html_key = HashKey::String("strip_html".to_string());
+            let has_strip_html = new_hash.contains_key(&strip_html_key);
 
             if !has_strip_html {
                 let strip_html_func =
@@ -462,12 +457,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                             )),
                         }
                     }));
-                new_hash.push((strip_html_key, strip_html_func));
+                new_hash.insert(strip_html_key, strip_html_func);
             }
 
             // Add substring() function if not present
-            let substring_key = Value::String("substring".to_string());
-            let has_substring = hash.borrow().iter().any(|(k, _)| k.hash_eq(&substring_key));
+            let substring_key = HashKey::String("substring".to_string());
+            let has_substring = new_hash.contains_key(&substring_key);
 
             if !has_substring {
                 let substring_func =
@@ -501,15 +496,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         };
                         Ok(Value::String(html::substring(&s, start, end)))
                     }));
-                new_hash.push((substring_key, substring_func));
+                new_hash.insert(substring_key, substring_func);
             }
 
             // Add html_escape() function if not present
-            let html_escape_key = Value::String("html_escape".to_string());
-            let has_html_escape = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&html_escape_key));
+            let html_escape_key = HashKey::String("html_escape".to_string());
+            let has_html_escape = new_hash.contains_key(&html_escape_key);
 
             if !has_html_escape {
                 let html_escape_func =
@@ -520,15 +512,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         };
                         Ok(Value::String(html::html_escape(&s)))
                     }));
-                new_hash.push((html_escape_key, html_escape_func));
+                new_hash.insert(html_escape_key, html_escape_func);
             }
 
             // Add html_unescape() function if not present
-            let html_unescape_key = Value::String("html_unescape".to_string());
-            let has_html_unescape = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&html_unescape_key));
+            let html_unescape_key = HashKey::String("html_unescape".to_string());
+            let has_html_unescape = new_hash.contains_key(&html_unescape_key);
 
             if !has_html_unescape {
                 let html_unescape_func =
@@ -541,15 +530,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                             )),
                         }
                     }));
-                new_hash.push((html_unescape_key, html_unescape_func));
+                new_hash.insert(html_unescape_key, html_unescape_func);
             }
 
             // Add sanitize_html() function if not present
-            let sanitize_html_key = Value::String("sanitize_html".to_string());
-            let has_sanitize_html = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&sanitize_html_key));
+            let sanitize_html_key = HashKey::String("sanitize_html".to_string());
+            let has_sanitize_html = new_hash.contains_key(&sanitize_html_key);
 
             if !has_sanitize_html {
                 let sanitize_html_func =
@@ -562,30 +548,24 @@ fn inject_template_helpers(data: &Value) -> Value {
                             )),
                         }
                     }));
-                new_hash.push((sanitize_html_key, sanitize_html_func));
+                new_hash.insert(sanitize_html_key, sanitize_html_func);
             }
 
             // Add datetime_now() function if not present
-            let datetime_now_key = Value::String("datetime_now".to_string());
-            let has_datetime_now = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&datetime_now_key));
+            let datetime_now_key = HashKey::String("datetime_now".to_string());
+            let has_datetime_now = new_hash.contains_key(&datetime_now_key);
 
             if !has_datetime_now {
                 let datetime_now_func =
                     Value::NativeFunction(NativeFunction::new("datetime_now", Some(0), |_args| {
                         Ok(Value::Int(datetime_helpers::datetime_now()))
                     }));
-                new_hash.push((datetime_now_key, datetime_now_func));
+                new_hash.insert(datetime_now_key, datetime_now_func);
             }
 
             // Add datetime_format() function if not present
-            let datetime_format_key = Value::String("datetime_format".to_string());
-            let has_datetime_format = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&datetime_format_key));
+            let datetime_format_key = HashKey::String("datetime_format".to_string());
+            let has_datetime_format = new_hash.contains_key(&datetime_format_key);
 
             if !has_datetime_format {
                 let datetime_format_func = Value::NativeFunction(NativeFunction::new(
@@ -619,15 +599,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         )))
                     },
                 ));
-                new_hash.push((datetime_format_key, datetime_format_func));
+                new_hash.insert(datetime_format_key, datetime_format_func);
             }
 
             // Add datetime_parse() function if not present
-            let datetime_parse_key = Value::String("datetime_parse".to_string());
-            let has_datetime_parse = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&datetime_parse_key));
+            let datetime_parse_key = HashKey::String("datetime_parse".to_string());
+            let has_datetime_parse = new_hash.contains_key(&datetime_parse_key);
 
             if !has_datetime_parse {
                 let datetime_parse_func =
@@ -646,15 +623,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                             None => Ok(Value::Null),
                         }
                     }));
-                new_hash.push((datetime_parse_key, datetime_parse_func));
+                new_hash.insert(datetime_parse_key, datetime_parse_func);
             }
 
             // Add datetime_add_days() function if not present
-            let datetime_add_days_key = Value::String("datetime_add_days".to_string());
-            let has_datetime_add_days = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&datetime_add_days_key));
+            let datetime_add_days_key = HashKey::String("datetime_add_days".to_string());
+            let has_datetime_add_days = new_hash.contains_key(&datetime_add_days_key);
 
             if !has_datetime_add_days {
                 let datetime_add_days_func = Value::NativeFunction(NativeFunction::new(
@@ -684,15 +658,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         )))
                     },
                 ));
-                new_hash.push((datetime_add_days_key, datetime_add_days_func));
+                new_hash.insert(datetime_add_days_key, datetime_add_days_func);
             }
 
             // Add datetime_add_hours() function if not present
-            let datetime_add_hours_key = Value::String("datetime_add_hours".to_string());
-            let has_datetime_add_hours = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&datetime_add_hours_key));
+            let datetime_add_hours_key = HashKey::String("datetime_add_hours".to_string());
+            let has_datetime_add_hours = new_hash.contains_key(&datetime_add_hours_key);
 
             if !has_datetime_add_hours {
                 let datetime_add_hours_func = Value::NativeFunction(NativeFunction::new(
@@ -722,15 +693,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         )))
                     },
                 ));
-                new_hash.push((datetime_add_hours_key, datetime_add_hours_func));
+                new_hash.insert(datetime_add_hours_key, datetime_add_hours_func);
             }
 
             // Add datetime_diff() function if not present
-            let datetime_diff_key = Value::String("datetime_diff".to_string());
-            let has_datetime_diff = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&datetime_diff_key));
+            let datetime_diff_key = HashKey::String("datetime_diff".to_string());
+            let has_datetime_diff = new_hash.contains_key(&datetime_diff_key);
 
             if !has_datetime_diff {
                 let datetime_diff_func = Value::NativeFunction(NativeFunction::new(
@@ -758,12 +726,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         Ok(Value::Int(datetime_helpers::datetime_diff(t1, t2)))
                     },
                 ));
-                new_hash.push((datetime_diff_key, datetime_diff_func));
+                new_hash.insert(datetime_diff_key, datetime_diff_func);
             }
 
             // Add time_ago() function if not present
-            let time_ago_key = Value::String("time_ago".to_string());
-            let has_time_ago = hash.borrow().iter().any(|(k, _)| k.hash_eq(&time_ago_key));
+            let time_ago_key = HashKey::String("time_ago".to_string());
+            let has_time_ago = new_hash.contains_key(&time_ago_key);
 
             if !has_time_ago {
                 let time_ago_func =
@@ -787,27 +755,24 @@ fn inject_template_helpers(data: &Value) -> Value {
                             timestamp, &locale,
                         )))
                     }));
-                new_hash.push((time_ago_key, time_ago_func));
+                new_hash.insert(time_ago_key, time_ago_func);
             }
 
             // Add locale() function if not present
-            let locale_key = Value::String("locale".to_string());
-            let has_locale = hash.borrow().iter().any(|(k, _)| k.hash_eq(&locale_key));
+            let locale_key = HashKey::String("locale".to_string());
+            let has_locale = new_hash.contains_key(&locale_key);
 
             if !has_locale {
                 let locale_func =
                     Value::NativeFunction(NativeFunction::new("locale", Some(0), |_args| {
                         Ok(Value::String(i18n_helpers::get_locale()))
                     }));
-                new_hash.push((locale_key, locale_func));
+                new_hash.insert(locale_key, locale_func);
             }
 
             // Add set_locale() function if not present
-            let set_locale_key = Value::String("set_locale".to_string());
-            let has_set_locale = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&set_locale_key));
+            let set_locale_key = HashKey::String("set_locale".to_string());
+            let has_set_locale = new_hash.contains_key(&set_locale_key);
 
             if !has_set_locale {
                 let set_locale_func =
@@ -824,12 +789,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         i18n_helpers::set_locale(&locale);
                         Ok(Value::String(locale))
                     }));
-                new_hash.push((set_locale_key, set_locale_func));
+                new_hash.insert(set_locale_key, set_locale_func);
             }
 
             // Add t() function (translate alias) if not present
-            let t_key = Value::String("t".to_string());
-            let has_t = hash.borrow().iter().any(|(k, _)| k.hash_eq(&t_key));
+            let t_key = HashKey::String("t".to_string());
+            let has_t = new_hash.contains_key(&t_key);
 
             if !has_t {
                 let t_func = Value::NativeFunction(NativeFunction::new("t", Some(1), |args| {
@@ -845,12 +810,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                     // Return the key itself as fallback (translations loaded elsewhere)
                     Ok(Value::String(key))
                 }));
-                new_hash.push((t_key, t_func));
+                new_hash.insert(t_key, t_func);
             }
 
             // Add l() function (localize date) if not present
-            let l_key = Value::String("l".to_string());
-            let has_l = hash.borrow().iter().any(|(k, _)| k.hash_eq(&l_key));
+            let l_key = HashKey::String("l".to_string());
+            let has_l = new_hash.contains_key(&l_key);
 
             if !has_l {
                 let l_func = Value::NativeFunction(NativeFunction::new("l", None, |args| {
@@ -887,15 +852,12 @@ fn inject_template_helpers(data: &Value) -> Value {
                         timestamp, &locale, &format,
                     )))
                 }));
-                new_hash.push((l_key, l_func));
+                new_hash.insert(l_key, l_func);
             }
 
             // Add render_partial() function if not present
-            let render_partial_key = Value::String("render_partial".to_string());
-            let has_render_partial = hash
-                .borrow()
-                .iter()
-                .any(|(k, _)| k.hash_eq(&render_partial_key));
+            let render_partial_key = HashKey::String("render_partial".to_string());
+            let has_render_partial = new_hash.contains_key(&render_partial_key);
 
             if !has_render_partial {
                 let render_partial_func =
@@ -922,7 +884,7 @@ fn inject_template_helpers(data: &Value) -> Value {
                         let data = if args.len() > 1 {
                             args[1].clone()
                         } else {
-                            Value::Hash(Rc::new(RefCell::new(vec![])))
+                            Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
                         };
 
                         // Resolve any futures in the data before rendering
@@ -938,7 +900,7 @@ fn inject_template_helpers(data: &Value) -> Value {
                             .render_partial(&partial_name, &data_with_helpers)
                             .map(Value::String)
                     }));
-                new_hash.push((render_partial_key, render_partial_func));
+                new_hash.insert(render_partial_key, render_partial_func);
             }
 
             Value::Hash(Rc::new(RefCell::new(new_hash)))
@@ -973,7 +935,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             let data = if args.len() > 1 {
                 args[1].clone()
             } else {
-                Value::Hash(Rc::new(RefCell::new(vec![])))
+                Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
             };
 
             // Validate data is a hash
@@ -1006,15 +968,8 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Extract layout option - check options hash first, then data hash
             let layout = if let Some(opts) = &options {
                 let opts = opts.borrow();
-                let layout_key = Value::String("layout".to_string());
-                let mut layout_value = None;
-                for (k, v) in opts.iter() {
-                    if k.hash_eq(&layout_key) {
-                        layout_value = Some(v.clone());
-                        break;
-                    }
-                }
-                layout_value
+                let layout_key = HashKey::String("layout".to_string());
+                opts.get(&layout_key).cloned()
             } else {
                 None
             };
@@ -1023,15 +978,8 @@ pub fn register_template_builtins(env: &mut Environment) {
             let layout = if layout.is_none() {
                 if let Value::Hash(data_hash) = &data {
                     let data_hash = data_hash.borrow();
-                    let layout_key = Value::String("layout".to_string());
-                    let mut layout_value = None;
-                    for (k, v) in data_hash.iter() {
-                        if k.hash_eq(&layout_key) {
-                            layout_value = Some(v.clone());
-                            break;
-                        }
-                    }
-                    layout_value
+                    let layout_key = HashKey::String("layout".to_string());
+                    data_hash.get(&layout_key).cloned()
                 } else {
                     None
                 }
@@ -1051,17 +999,12 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Extract status option (default 200)
             let status = if let Some(opts) = &options {
                 let opts = opts.borrow();
-                let status_key = Value::String("status".to_string());
-                let mut status_value = 200i64;
-                for (k, v) in opts.iter() {
-                    if k.hash_eq(&status_key) {
-                        if let Value::Int(n) = v {
-                            status_value = *n;
-                        }
-                        break;
-                    }
+                let status_key = HashKey::String("status".to_string());
+                if let Some(Value::Int(n)) = opts.get(&status_key) {
+                    *n
+                } else {
+                    200
                 }
-                status_value
             } else {
                 200
             };
@@ -1123,7 +1066,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             let data = if args.len() > 1 {
                 args[1].clone()
             } else {
-                Value::Hash(Rc::new(RefCell::new(vec![])))
+                Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
             };
 
             // Resolve any futures in the data before rendering
@@ -1180,19 +1123,19 @@ pub fn register_template_builtins(env: &mut Environment) {
                 }
             };
 
-            let headers = Value::Hash(Rc::new(RefCell::new(vec![(
-                Value::String("Location".to_string()),
-                Value::String(url),
-            )])));
+            let mut headers_map: IndexMap<HashKey, Value> = IndexMap::new();
+            headers_map.insert(HashKey::String("Location".to_string()), Value::String(url));
+            let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
 
-            Ok(Value::Hash(Rc::new(RefCell::new(vec![
-                (Value::String("status".to_string()), Value::Int(302)),
-                (Value::String("headers".to_string()), headers),
-                (
-                    Value::String("body".to_string()),
-                    Value::String(String::new()),
-                ),
-            ]))))
+            let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
+            response_map.insert(HashKey::String("status".to_string()), Value::Int(302));
+            response_map.insert(HashKey::String("headers".to_string()), headers);
+            response_map.insert(
+                HashKey::String("body".to_string()),
+                Value::String(String::new()),
+            );
+
+            Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
         })),
     );
 
@@ -1220,16 +1163,19 @@ pub fn register_template_builtins(env: &mut Environment) {
                 _ => value_to_json(&data)?.to_string(),
             };
 
-            let headers = Value::Hash(Rc::new(RefCell::new(vec![(
-                Value::String("Content-Type".to_string()),
+            let mut headers_map: IndexMap<HashKey, Value> = IndexMap::new();
+            headers_map.insert(
+                HashKey::String("Content-Type".to_string()),
                 Value::String("application/json; charset=utf-8".to_string()),
-            )])));
+            );
+            let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
 
-            Ok(Value::Hash(Rc::new(RefCell::new(vec![
-                (Value::String("status".to_string()), Value::Int(status)),
-                (Value::String("headers".to_string()), headers),
-                (Value::String("body".to_string()), Value::String(json_body)),
-            ]))))
+            let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
+            response_map.insert(HashKey::String("status".to_string()), Value::Int(status));
+            response_map.insert(HashKey::String("headers".to_string()), headers);
+            response_map.insert(HashKey::String("body".to_string()), Value::String(json_body));
+
+            Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
         })),
     );
 
@@ -1255,16 +1201,19 @@ pub fn register_template_builtins(env: &mut Environment) {
                 200
             };
 
-            let headers = Value::Hash(Rc::new(RefCell::new(vec![(
-                Value::String("Content-Type".to_string()),
+            let mut headers_map: IndexMap<HashKey, Value> = IndexMap::new();
+            headers_map.insert(
+                HashKey::String("Content-Type".to_string()),
                 Value::String("text/plain; charset=utf-8".to_string()),
-            )])));
+            );
+            let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
 
-            Ok(Value::Hash(Rc::new(RefCell::new(vec![
-                (Value::String("status".to_string()), Value::Int(status)),
-                (Value::String("headers".to_string()), headers),
-                (Value::String("body".to_string()), Value::String(text)),
-            ]))))
+            let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
+            response_map.insert(HashKey::String("status".to_string()), Value::Int(status));
+            response_map.insert(HashKey::String("headers".to_string()), headers);
+            response_map.insert(HashKey::String("body".to_string()), Value::String(text));
+
+            Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
         })),
     );
 }

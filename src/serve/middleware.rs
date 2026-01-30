@@ -93,7 +93,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{HashKey, Value};
 use crate::span::Span;
 
 /// A registered middleware with its handler function.
@@ -216,7 +216,7 @@ pub fn extract_middleware_result(result: &Value) -> MiddlewareResult {
         let mut response = None;
 
         for (k, v) in hash.iter() {
-            if let Value::String(key) = k {
+            if let HashKey::String(key) = k {
                 match key.as_str() {
                     "continue" => {
                         if let Value::Bool(b) = v {
@@ -364,6 +364,7 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indexmap::IndexMap;
     use std::rc::Rc;
 
     #[test]
@@ -402,15 +403,14 @@ fn _private_helper() {
 
     #[test]
     fn test_middleware_result_continue() {
-        let request = Value::Hash(Rc::new(RefCell::new(vec![(
-            Value::String("path".to_string()),
-            Value::String("/test".to_string()),
-        )])));
+        let mut request_map: IndexMap<HashKey, Value> = IndexMap::new();
+        request_map.insert(HashKey::String("path".to_string()), Value::String("/test".to_string()));
+        let request = Value::Hash(Rc::new(RefCell::new(request_map)));
 
-        let result = Value::Hash(Rc::new(RefCell::new(vec![
-            (Value::String("continue".to_string()), Value::Bool(true)),
-            (Value::String("request".to_string()), request.clone()),
-        ])));
+        let mut result_map: IndexMap<HashKey, Value> = IndexMap::new();
+        result_map.insert(HashKey::String("continue".to_string()), Value::Bool(true));
+        result_map.insert(HashKey::String("request".to_string()), request.clone());
+        let result = Value::Hash(Rc::new(RefCell::new(result_map)));
 
         match extract_middleware_result(&result) {
             MiddlewareResult::Continue(_) => {}
@@ -420,18 +420,15 @@ fn _private_helper() {
 
     #[test]
     fn test_middleware_result_response() {
-        let response = Value::Hash(Rc::new(RefCell::new(vec![
-            (Value::String("status".to_string()), Value::Int(401)),
-            (
-                Value::String("body".to_string()),
-                Value::String("Unauthorized".to_string()),
-            ),
-        ])));
+        let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
+        response_map.insert(HashKey::String("status".to_string()), Value::Int(401));
+        response_map.insert(HashKey::String("body".to_string()), Value::String("Unauthorized".to_string()));
+        let response = Value::Hash(Rc::new(RefCell::new(response_map)));
 
-        let result = Value::Hash(Rc::new(RefCell::new(vec![
-            (Value::String("continue".to_string()), Value::Bool(false)),
-            (Value::String("response".to_string()), response),
-        ])));
+        let mut result_map: IndexMap<HashKey, Value> = IndexMap::new();
+        result_map.insert(HashKey::String("continue".to_string()), Value::Bool(false));
+        result_map.insert(HashKey::String("response".to_string()), response);
+        let result = Value::Hash(Rc::new(RefCell::new(result_map)));
 
         match extract_middleware_result(&result) {
             MiddlewareResult::Response(_) => {}

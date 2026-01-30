@@ -6,12 +6,13 @@
 //! the appropriate class instance.
 
 use base64::{engine::general_purpose, Engine as _};
+use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value};
 
 /// Register the String, Array, and Hash classes.
 pub fn register_collection_classes(env: &mut Environment) {
@@ -1121,8 +1122,8 @@ fn register_hash_class(env: &mut Environment) {
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::Hash(hash)) => {
                     let hash = hash.borrow();
-                    for (k, v) in hash.iter() {
-                        if key.hash_eq(k) {
+                    if let Some(hash_key) = HashKey::from_value(&key) {
+                        if let Some(v) = hash.get(&hash_key) {
                             return Ok(v.clone());
                         }
                     }
@@ -1149,16 +1150,10 @@ fn register_hash_class(env: &mut Environment) {
             match value_opt {
                 Some(Value::Hash(hash)) => {
                     let mut hash = hash.borrow_mut();
-                    let mut found = false;
-                    for (k, v) in hash.iter_mut() {
-                        if key.hash_eq(k) {
-                            *v = value.clone();
-                            found = true;
-                            break;
-                        }
-                    }
-                    if !found {
-                        hash.push((key, value.clone()));
+                    if let Some(hash_key) = HashKey::from_value(&key) {
+                        hash.insert(hash_key, value.clone());
+                    } else {
+                        return Err("Hash key must be a hashable value (int, string, bool, or null)".to_string());
                     }
                     Ok(value)
                 }
@@ -1181,12 +1176,11 @@ fn register_hash_class(env: &mut Environment) {
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::Hash(hash)) => {
                     let hash = hash.borrow();
-                    for (k, _) in hash.iter() {
-                        if key.hash_eq(k) {
-                            return Ok(Value::Bool(true));
-                        }
+                    if let Some(hash_key) = HashKey::from_value(&key) {
+                        Ok(Value::Bool(hash.contains_key(&hash_key)))
+                    } else {
+                        Ok(Value::Bool(false))
                     }
-                    Ok(Value::Bool(false))
                 }
                 _ => Err("Hash missing internal value".to_string()),
             }
@@ -1203,7 +1197,7 @@ fn register_hash_class(env: &mut Environment) {
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::Hash(hash)) => {
                     let hash = hash.borrow();
-                    let keys: Vec<Value> = hash.iter().map(|(k, _)| k.clone()).collect();
+                    let keys: Vec<Value> = hash.keys().map(|k| k.to_value()).collect();
                     Ok(Value::Array(Rc::new(RefCell::new(keys))))
                 }
                 _ => Err("Hash missing internal value".to_string()),
@@ -1243,17 +1237,13 @@ fn register_hash_class(env: &mut Environment) {
             let value_opt = this.borrow().fields.get("__value").cloned();
             match value_opt {
                 Some(Value::Hash(hash)) => {
-                    let mut removed_value = Value::Null;
                     let mut hash = hash.borrow_mut();
-                    hash.retain(|(k, v)| {
-                        if key.hash_eq(k) {
-                            removed_value = v.clone();
-                            false
-                        } else {
-                            true
-                        }
-                    });
-                    Ok(removed_value)
+                    if let Some(hash_key) = HashKey::from_value(&key) {
+                        let removed_value = hash.shift_remove(&hash_key).unwrap_or(Value::Null);
+                        Ok(removed_value)
+                    } else {
+                        Ok(Value::Null)
+                    }
                 }
                 _ => Err("Hash missing internal value".to_string()),
             }
@@ -1281,19 +1271,9 @@ fn register_hash_class(env: &mut Environment) {
                 };
                 match this.borrow().fields.get("__value").cloned() {
                     Some(Value::Hash(hash1)) => {
-                        let mut result: Vec<(Value, Value)> = hash1.borrow().clone();
+                        let mut result: IndexMap<HashKey, Value> = hash1.borrow().clone();
                         for (k2, v2) in other.borrow().iter() {
-                            let mut found = false;
-                            for (k1, v1) in result.iter_mut() {
-                                if k2.hash_eq(k1) {
-                                    *v1 = v2.clone();
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            if !found {
-                                result.push((k2.clone(), v2.clone()));
-                            }
+                            result.insert(k2.clone(), v2.clone());
                         }
                         let mut inst = Instance::new(class_ref.clone());
                         inst.set(
@@ -1321,7 +1301,7 @@ fn register_hash_class(env: &mut Environment) {
                     let pairs: Vec<Value> = hash
                         .iter()
                         .map(|(k, v)| {
-                            Value::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()])))
+                            Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])))
                         })
                         .collect();
                     Ok(Value::Array(Rc::new(RefCell::new(pairs))))
@@ -1359,7 +1339,7 @@ fn register_hash_class(env: &mut Environment) {
                 let mut inst = Instance::new(class_ref.clone());
                 inst.set(
                     "__value".to_string(),
-                    Value::Hash(Rc::new(RefCell::new(Vec::new()))),
+                    Value::Hash(Rc::new(RefCell::new(IndexMap::new()))),
                 );
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             }
@@ -1404,7 +1384,7 @@ pub fn wrap_array(value: Vec<Value>, env: &Environment) -> Value {
     }
 }
 
-pub fn wrap_hash(value: Vec<(Value, Value)>, env: &Environment) -> Value {
+pub fn wrap_hash(value: IndexMap<HashKey, Value>, env: &Environment) -> Value {
     if let Some(Value::Class(class)) = env.get("Hash") {
         let mut inst = Instance::new(class.clone());
         inst.set(

@@ -2039,6 +2039,7 @@ dependencies = [
  "hyper",
  "hyper-tungstenite",
  "hyper-util",
+ "indexmap",
  "jsonwebtoken",
  "lazy_static",
  "md-5",

@@ -1,6 +1,7 @@
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::value_to_json;
-use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value};
+use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -90,11 +91,11 @@ fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
             Ok(Value::Array(Rc::new(RefCell::new(values?))))
         }
         serde_json::Value::Object(obj) => {
-            let pairs: Result<Vec<(Value, Value)>, String> = obj
-                .iter()
-                .map(|(k, v)| Ok((Value::String(k.clone()), json_to_value(v)?)))
-                .collect();
-            Ok(Value::Hash(Rc::new(RefCell::new(pairs?))))
+            let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+            for (k, v) in obj.iter() {
+                result.insert(HashKey::String(k.clone()), json_to_value(v)?);
+            }
+            Ok(Value::Hash(Rc::new(RefCell::new(result))))
         }
     }
 }

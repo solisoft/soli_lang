@@ -1,7 +1,7 @@
 //! Test assertions for the Soli test DSL.
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
 use regex::Regex;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -207,7 +207,11 @@ pub fn register_assertions(env: &mut Environment) {
             |args| {
                 if let Value::Hash(h) = &args[0] {
                     let key = &args[1];
-                    let found = h.borrow().iter().any(|(k, _)| k.hash_eq(key));
+                    let found = if let Some(hash_key) = HashKey::from_value(key) {
+                        h.borrow().contains_key(&hash_key)
+                    } else {
+                        false
+                    };
                     if found {
                         ASSERTION_COUNT.with(|count| {
                             *count.borrow_mut() += 1;

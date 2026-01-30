@@ -12,8 +12,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
 
 fn get_locale() -> String {
     helpers::get_locale()
@@ -73,19 +75,19 @@ pub fn register_i18n_class(env: &mut Environment) {
                 get_locale()
             };
 
-            let translations = if args.len() > 2 {
+            let translations: IndexMap<HashKey, Value> = if args.len() > 2 {
                 match &args[2] {
                     Value::Hash(h) => h.borrow().clone(),
                     _ => return Err("I18n.translate translations must be a Hash".to_string()),
                 }
             } else {
-                Vec::new()
+                IndexMap::new()
             };
 
             // Simple translation lookup
             let locale_key = format!("{}.{}", locale, key);
             if let Some(trans) = translations.iter().find(|(k, _)| {
-                if let Value::String(s) = k {
+                if let HashKey::String(s) = k {
                     s == &locale_key
                 } else {
                     false
@@ -93,7 +95,7 @@ pub fn register_i18n_class(env: &mut Environment) {
             }) {
                 Ok(trans.1.clone())
             } else if let Some(trans) = translations.iter().find(|(k, _)| {
-                if let Value::String(s) = k {
+                if let HashKey::String(s) = k {
                     s == &format!("en.{}", key)
                 } else {
                     false
@@ -132,13 +134,13 @@ pub fn register_i18n_class(env: &mut Environment) {
                 get_locale()
             };
 
-            let translations = if args.len() > 3 {
+            let translations: IndexMap<HashKey, Value> = if args.len() > 3 {
                 match &args[3] {
                     Value::Hash(h) => h.borrow().clone(),
                     _ => return Err("I18n.plural translations must be a Hash".to_string()),
                 }
             } else {
-                Vec::new()
+                IndexMap::new()
             };
 
             // Simple pluralization: use _zero for 0, _one for 1, _other for plural
@@ -151,7 +153,7 @@ pub fn register_i18n_class(env: &mut Environment) {
             };
 
             if let Some(trans) = translations.iter().find(|(k, _)| {
-                if let Value::String(s) = k {
+                if let HashKey::String(s) = k {
                     s == &plural_key
                 } else {
                     false

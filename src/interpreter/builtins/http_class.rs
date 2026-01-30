@@ -23,10 +23,13 @@ use std::rc::Rc;
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 
+use indexmap::IndexMap;
 use reqwest::Client;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, FutureState, HttpFutureKind, NativeFunction, Value};
+use crate::interpreter::value::{
+    hash_from_pairs, Class, FutureState, HashKey, HttpFutureKind, NativeFunction, Value,
+};
 use crate::serve::get_tokio_handle;
 
 const BLOCKED_SCHEMES: &[&str] = &["javascript", "file", "ftp", "ssh", "telnet", "gopher"];
@@ -788,7 +791,7 @@ pub fn register_http_class(env: &mut Environment) {
                 if let Value::Hash(headers) = &args[2] {
                     for (key, value) in headers.borrow().iter() {
                         let key_str = match key {
-                            Value::String(s) => s.clone(),
+                            HashKey::String(s) => s.clone(),
                             _ => continue,
                         };
                         let value_str = match value {
@@ -993,10 +996,7 @@ pub fn register_http_class(env: &mut Environment) {
                 .into_iter()
                 .map(|r| match r {
                     Ok(body) => Value::String(body),
-                    Err(e) => Value::Hash(Rc::new(RefCell::new(vec![(
-                        Value::String("error".to_string()),
-                        Value::String(e),
-                    )]))),
+                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e))]),
                 })
                 .collect();
 
@@ -1030,10 +1030,7 @@ pub fn register_http_class(env: &mut Environment) {
                 .into_iter()
                 .map(|r| match r {
                     Ok(response) => response_to_value(response),
-                    Err(e) => Value::Hash(Rc::new(RefCell::new(vec![(
-                        Value::String("error".to_string()),
-                        Value::String(e),
-                    )]))),
+                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e))]),
                 })
                 .collect();
 
@@ -1062,31 +1059,24 @@ fn create_http_response(
     headers_map: serde_json::Map<String, serde_json::Value>,
     body: String,
 ) -> Result<Value, String> {
-    let response_headers: Vec<(Value, Value)> = headers_map
+    let response_headers: IndexMap<HashKey, Value> = headers_map
         .into_iter()
         .map(|(k, v)| {
             (
-                Value::String(k),
+                HashKey::String(k),
                 Value::String(v.as_str().unwrap_or("").to_string()),
             )
         })
         .collect();
 
-    let result: Vec<(Value, Value)> = vec![
-        (
-            Value::String("status".to_string()),
-            Value::Int(status as i64),
-        ),
-        (
-            Value::String("status_text".to_string()),
-            Value::String(status_text),
-        ),
-        (
-            Value::String("headers".to_string()),
-            Value::Hash(Rc::new(RefCell::new(response_headers))),
-        ),
-        (Value::String("body".to_string()), Value::String(body)),
-    ];
+    let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+    result.insert(HashKey::String("status".to_string()), Value::Int(status as i64));
+    result.insert(HashKey::String("status_text".to_string()), Value::String(status_text));
+    result.insert(
+        HashKey::String("headers".to_string()),
+        Value::Hash(Rc::new(RefCell::new(response_headers))),
+    );
+    result.insert(HashKey::String("body".to_string()), Value::String(body));
 
     Ok(Value::Hash(Rc::new(RefCell::new(result))))
 }
@@ -1122,7 +1112,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
             let mut body = None;
 
             for (k, v) in hash.iter() {
-                if let Value::String(key) = k {
+                if let HashKey::String(key) = k {
                     match key.as_str() {
                         "url" => {
                             if let Value::String(s) = v {
@@ -1137,7 +1127,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
                         "headers" => {
                             if let Value::Hash(h) = v {
                                 for (hk, hv) in h.borrow().iter() {
-                                    if let (Value::String(k), Value::String(v)) = (hk, hv) {
+                                    if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
                                         headers.push((k.clone(), v.clone()));
                                     }
                                 }
@@ -1266,30 +1256,29 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
 }
 
 fn response_to_value(response: HttpResponse) -> Value {
-    let headers: Vec<(Value, Value)> = response
+    let headers: IndexMap<HashKey, Value> = response
         .headers
         .into_iter()
-        .map(|(k, v)| (Value::String(k), Value::String(v)))
+        .map(|(k, v)| (HashKey::String(k), Value::String(v)))
         .collect();
 
-    let result: Vec<(Value, Value)> = vec![
-        (
-            Value::String("status".to_string()),
-            Value::Int(response.status as i64),
-        ),
-        (
-            Value::String("status_text".to_string()),
-            Value::String(response.status_text),
-        ),
-        (
-            Value::String("headers".to_string()),
-            Value::Hash(Rc::new(RefCell::new(headers))),
-        ),
-        (
-            Value::String("body".to_string()),
-            Value::String(response.body),
-        ),
-    ];
+    let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+    result.insert(
+        HashKey::String("status".to_string()),
+        Value::Int(response.status as i64),
+    );
+    result.insert(
+        HashKey::String("status_text".to_string()),
+        Value::String(response.status_text),
+    );
+    result.insert(
+        HashKey::String("headers".to_string()),
+        Value::Hash(Rc::new(RefCell::new(headers))),
+    );
+    result.insert(
+        HashKey::String("body".to_string()),
+        Value::String(response.body),
+    );
 
     Value::Hash(Rc::new(RefCell::new(result)))
 }

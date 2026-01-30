@@ -4,8 +4,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
 
 /// A registered route with its handler.
 /// For worker threads, we use a separate struct without middleware Values.
@@ -324,9 +326,9 @@ pub fn parse_form_urlencoded_body(body: &str) -> Option<Value> {
     if form_data.is_empty() {
         return None;
     }
-    let pairs: Vec<(Value, Value)> = form_data
+    let pairs: IndexMap<HashKey, Value> = form_data
         .into_iter()
-        .map(|(k, v)| (Value::String(k), Value::String(v)))
+        .map(|(k, v)| (HashKey::String(k), Value::String(v)))
         .collect();
     Some(Value::Hash(Rc::new(RefCell::new(pairs))))
 }
@@ -366,30 +368,30 @@ pub fn build_request_hash_with_parsed(
     parsed: ParsedBody,
 ) -> Value {
     // Pre-allocate with known capacity
-    let params_pairs: Vec<(Value, Value)> = if params.is_empty() {
-        Vec::new()
+    let params_pairs: IndexMap<HashKey, Value> = if params.is_empty() {
+        IndexMap::new()
     } else {
         params
             .into_iter()
-            .map(|(k, v)| (Value::String(k), Value::String(v)))
+            .map(|(k, v)| (HashKey::String(k), Value::String(v)))
             .collect()
     };
 
-    let query_pairs: Vec<(Value, Value)> = if query.is_empty() {
-        Vec::new()
+    let query_pairs: IndexMap<HashKey, Value> = if query.is_empty() {
+        IndexMap::new()
     } else {
         query
             .into_iter()
-            .map(|(k, v)| (Value::String(k), Value::String(v)))
+            .map(|(k, v)| (HashKey::String(k), Value::String(v)))
             .collect()
     };
 
-    let header_pairs: Vec<(Value, Value)> = if headers.is_empty() {
-        Vec::new()
+    let header_pairs: IndexMap<HashKey, Value> = if headers.is_empty() {
+        IndexMap::new()
     } else {
         headers
             .into_iter()
-            .map(|(k, v)| (Value::String(k), Value::String(v)))
+            .map(|(k, v)| (HashKey::String(k), Value::String(v)))
             .collect()
     };
 
@@ -397,7 +399,7 @@ pub fn build_request_hash_with_parsed(
     let all_pairs = build_unified_params(&params_pairs, &query_pairs, &parsed);
 
     // Build request hash using cached keys
-    let request_pairs: Vec<(Value, Value)> = KEY_METHOD.with(|key_method| {
+    let request_pairs: IndexMap<HashKey, Value> = KEY_METHOD.with(|key_method| {
         KEY_PATH.with(|key_path| {
             KEY_PARAMS.with(|key_params| {
                 KEY_QUERY.with(|key_query| {
@@ -407,48 +409,54 @@ pub fn build_request_hash_with_parsed(
                                 KEY_FORM.with(|key_form| {
                                     KEY_FILES.with(|key_files| {
                                         KEY_ALL.with(|key_all| {
-                                            vec![
-                                                (
-                                                    key_method.clone(),
-                                                    Value::String(method.to_string()),
-                                                ),
-                                                (key_path.clone(), Value::String(path.to_string())),
-                                                (
-                                                    key_params.clone(),
-                                                    Value::Hash(Rc::new(RefCell::new(
-                                                        params_pairs,
-                                                    ))),
-                                                ),
-                                                (
-                                                    key_query.clone(),
-                                                    Value::Hash(Rc::new(RefCell::new(query_pairs))),
-                                                ),
-                                                (
-                                                    key_headers.clone(),
-                                                    Value::Hash(Rc::new(RefCell::new(
-                                                        header_pairs,
-                                                    ))),
-                                                ),
-                                                (key_body.clone(), Value::String(body)),
-                                                (
-                                                    key_json.clone(),
-                                                    parsed.json.unwrap_or(Value::Null),
-                                                ),
-                                                (
-                                                    key_form.clone(),
-                                                    parsed.form.unwrap_or(Value::Null),
-                                                ),
-                                                (
-                                                    key_files.clone(),
-                                                    parsed.files.unwrap_or(Value::Array(Rc::new(
-                                                        RefCell::new(Vec::new()),
-                                                    ))),
-                                                ),
-                                                (
-                                                    key_all.clone(),
-                                                    Value::Hash(Rc::new(RefCell::new(all_pairs))),
-                                                ),
-                                            ]
+                                            let mut map = IndexMap::new();
+                                            map.insert(
+                                                HashKey::from_value(key_method).unwrap(),
+                                                Value::String(method.to_string()),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_path).unwrap(),
+                                                Value::String(path.to_string()),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_params).unwrap(),
+                                                Value::Hash(Rc::new(RefCell::new(
+                                                    params_pairs,
+                                                ))),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_query).unwrap(),
+                                                Value::Hash(Rc::new(RefCell::new(query_pairs))),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_headers).unwrap(),
+                                                Value::Hash(Rc::new(RefCell::new(
+                                                    header_pairs,
+                                                ))),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_body).unwrap(),
+                                                Value::String(body),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_json).unwrap(),
+                                                parsed.json.unwrap_or(Value::Null),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_form).unwrap(),
+                                                parsed.form.unwrap_or(Value::Null),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_files).unwrap(),
+                                                parsed.files.unwrap_or(Value::Array(Rc::new(
+                                                    RefCell::new(Vec::new()),
+                                                ))),
+                                            );
+                                            map.insert(
+                                                HashKey::from_value(key_all).unwrap(),
+                                                Value::Hash(Rc::new(RefCell::new(all_pairs))),
+                                            );
+                                            map
                                         })
                                     })
                                 })
@@ -466,31 +474,27 @@ pub fn build_request_hash_with_parsed(
 /// Build unified params by merging route params, query params, and body params.
 /// Body params take precedence, followed by query params, then route params.
 fn build_unified_params(
-    route_params: &[(Value, Value)],
-    query_params: &[(Value, Value)],
+    route_params: &IndexMap<HashKey, Value>,
+    query_params: &IndexMap<HashKey, Value>,
     parsed: &ParsedBody,
-) -> Vec<(Value, Value)> {
-    let mut all: Vec<(Value, Value)> = Vec::new();
+) -> IndexMap<HashKey, Value> {
+    let mut all: IndexMap<HashKey, Value> = IndexMap::new();
 
     // Start with route params
-    for pair in route_params {
-        all.push(pair.clone());
+    for (k, v) in route_params {
+        all.insert(k.clone(), v.clone());
     }
 
     // Add query params (override route params)
-    for pair in query_params {
-        // Remove existing key if present
-        all.retain(|(k, _)| *k != pair.0);
-        all.push(pair.clone());
+    for (k, v) in query_params {
+        all.insert(k.clone(), v.clone());
     }
 
     // Add body params from JSON (highest priority)
     if let Some(ref json) = parsed.json {
         if let Value::Hash(hash) = json {
             for (k, v) in hash.borrow().iter() {
-                // Remove existing key if present
-                all.retain(|(key, _)| *key != *k);
-                all.push((k.clone(), v.clone()));
+                all.insert(k.clone(), v.clone());
             }
         }
     }
@@ -500,9 +504,7 @@ fn build_unified_params(
         if let Some(ref form) = parsed.form {
             if let Value::Hash(hash) = form {
                 for (k, v) in hash.borrow().iter() {
-                    // Remove existing key if present
-                    all.retain(|(key, _)| *key != *k);
-                    all.push((k.clone(), v.clone()));
+                    all.insert(k.clone(), v.clone());
                 }
             }
         }
@@ -519,7 +521,7 @@ pub fn extract_response(response: &Value) -> (u16, HashMap<String, String>, Stri
 
     if let Value::Hash(hash) = response {
         for (k, v) in hash.borrow().iter() {
-            if let Value::String(key) = k {
+            if let HashKey::String(key) = k {
                 match key.as_str() {
                     "status" => {
                         if let Value::Int(s) = v {
@@ -529,7 +531,7 @@ pub fn extract_response(response: &Value) -> (u16, HashMap<String, String>, Stri
                     "headers" => {
                         if let Value::Hash(h) = v {
                             for (hk, hv) in h.borrow().iter() {
-                                if let (Value::String(k), Value::String(v)) = (hk, hv) {
+                                if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
                                     headers.insert(k.clone(), v.clone());
                                 }
                             }
@@ -729,13 +731,12 @@ pub fn register_server_builtins(env: &mut Environment) {
             };
 
             // Return a special marker hash that the executor will recognize
-            let marker: Vec<(Value, Value)> = vec![
-                (
-                    Value::String("__server_listen__".to_string()),
-                    Value::Bool(true),
-                ),
-                (Value::String("port".to_string()), Value::Int(port as i64)),
-            ];
+            let mut marker: IndexMap<HashKey, Value> = IndexMap::new();
+            marker.insert(
+                HashKey::String("__server_listen__".to_string()),
+                Value::Bool(true),
+            );
+            marker.insert(HashKey::String("port".to_string()), Value::Int(port as i64));
 
             Ok(Value::Hash(Rc::new(RefCell::new(marker))))
         })),
@@ -747,12 +748,12 @@ pub fn is_server_listen_marker(value: &Value) -> Option<u16> {
     if let Value::Hash(hash) = value {
         let hash = hash.borrow();
         for (k, v) in hash.iter() {
-            if let Value::String(key) = k {
+            if let HashKey::String(key) = k {
                 if key == "__server_listen__" {
                     if let Value::Bool(true) = v {
                         // Find the port
                         for (k2, v2) in hash.iter() {
-                            if let Value::String(key2) = k2 {
+                            if let HashKey::String(key2) = k2 {
                                 if key2 == "port" {
                                     if let Value::Int(port) = v2 {
                                         return Some(*port as u16);
@@ -919,7 +920,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
         "ws_clients".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_clients", Some(0), |_args| {
             // Return an empty hash for now
-            let pairs: Vec<(Value, Value)> = Vec::new();
+            let pairs: IndexMap<HashKey, Value> = IndexMap::new();
             Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
         })),
     );
@@ -939,7 +940,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
             };
 
             // Return empty for now since this requires async
-            let pairs: Vec<(Value, Value)> = Vec::new();
+            let pairs: IndexMap<HashKey, Value> = IndexMap::new();
             Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
         })),
     );

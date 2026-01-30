@@ -1,10 +1,9 @@
 //! View assigns helper functions for Rails-like E2E controller testing.
 
 use std::cell::RefCell;
-use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{empty_hash, NativeFunction, Value};
 
 thread_local! {
     static LAST_ASSIGNS: RefCell<Option<Value>> = const { RefCell::new(None) };
@@ -82,7 +81,7 @@ fn get_assigns() -> Result<Value, String> {
         let assigns = cell.borrow();
         match &*assigns {
             Some(a) => Ok(a.clone()),
-            None => Ok(Value::Hash(Rc::new(RefCell::new(Vec::new())))),
+            None => Ok(empty_hash()),
         }
     })
 }

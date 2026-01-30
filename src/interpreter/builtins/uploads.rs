@@ -1,6 +1,7 @@
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -30,7 +31,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
                 Value::Hash(hash) => {
                     let borrowed = hash.borrow();
                     borrowed.iter()
-                        .find(|(k, _)| matches!(k, Value::String(s) if s == "body"))
+                        .find(|(k, _)| matches!(k, HashKey::String(s) if s == "body"))
                         .map(|(_, v)| {
                             if let Value::String(s) = v { s.clone() } else { String::new() }
                         })
@@ -43,12 +44,12 @@ pub fn register_upload_builtins(env: &mut Environment) {
                 Value::Hash(hash) => {
                     let borrowed = hash.borrow();
                     borrowed.iter()
-                        .find(|(k, _)| matches!(k, Value::String(s) if s == "headers"))
+                        .find(|(k, _)| matches!(k, HashKey::String(s) if s == "headers"))
                         .and_then(|(_, h)| {
                             if let Value::Hash(headers) = h {
                                 let h_borrowed = headers.borrow();
                                 h_borrowed.iter()
-                                    .find(|(k, _)| matches!(k, Value::String(s) if s == "content-type" || s == "Content-Type"))
+                                    .find(|(k, _)| matches!(k, HashKey::String(s) if s == "content-type" || s == "Content-Type"))
                                     .map(|(_, v)| {
                                         if let Value::String(s) = v { s.clone() } else { String::new() }
                                     })
@@ -74,13 +75,13 @@ pub fn register_upload_builtins(env: &mut Environment) {
             let files = parse_multipart_data(&body, &boundary)?;
 
             let file_values: Vec<Value> = files.into_iter().map(|file| {
-                Value::Hash(Rc::new(RefCell::new(vec![
-                    (Value::String("filename".to_string()), Value::String(file.filename)),
-                    (Value::String("content_type".to_string()), Value::String(file.content_type)),
-                    (Value::String("size".to_string()), Value::Int(file.size as i64)),
-                    (Value::String("data_base64".to_string()), Value::String(file.data_base64)),
-                    (Value::String("field_name".to_string()), Value::String(file.field_name)),
-                ])))
+                let mut file_map: IndexMap<HashKey, Value> = IndexMap::new();
+                file_map.insert(HashKey::String("filename".to_string()), Value::String(file.filename));
+                file_map.insert(HashKey::String("content_type".to_string()), Value::String(file.content_type));
+                file_map.insert(HashKey::String("size".to_string()), Value::Int(file.size as i64));
+                file_map.insert(HashKey::String("data_base64".to_string()), Value::String(file.data_base64));
+                file_map.insert(HashKey::String("field_name".to_string()), Value::String(file.field_name));
+                Value::Hash(Rc::new(RefCell::new(file_map)))
             }).collect();
 
             Ok(Value::Array(Rc::new(RefCell::new(file_values))))
@@ -142,24 +143,23 @@ pub fn register_upload_builtins(env: &mut Environment) {
 
             let result = upload_blob_to_solidb(&solidb_addr, &collection, &target_file)?;
 
-            let result_hash: Vec<(Value, Value)> = vec![
-                (
-                    Value::String("blob_id".to_string()),
-                    Value::String(result.blob_id),
-                ),
-                (
-                    Value::String("filename".to_string()),
-                    Value::String(target_file.filename),
-                ),
-                (
-                    Value::String("size".to_string()),
-                    Value::Int(target_file.size as i64),
-                ),
-                (
-                    Value::String("content_type".to_string()),
-                    Value::String(target_file.content_type),
-                ),
-            ];
+            let mut result_hash: IndexMap<HashKey, Value> = IndexMap::new();
+            result_hash.insert(
+                HashKey::String("blob_id".to_string()),
+                Value::String(result.blob_id),
+            );
+            result_hash.insert(
+                HashKey::String("filename".to_string()),
+                Value::String(target_file.filename),
+            );
+            result_hash.insert(
+                HashKey::String("size".to_string()),
+                Value::Int(target_file.size as i64),
+            );
+            result_hash.insert(
+                HashKey::String("content_type".to_string()),
+                Value::String(target_file.content_type),
+            );
 
             Ok(Value::Hash(Rc::new(RefCell::new(result_hash))))
         })),
@@ -194,42 +194,40 @@ pub fn register_upload_builtins(env: &mut Environment) {
                 for file in files {
                     match upload_blob_to_solidb(&solidb_addr, &collection, &file) {
                         Ok(result) => {
-                            let result_hash: Vec<(Value, Value)> = vec![
-                                (
-                                    Value::String("blob_id".to_string()),
-                                    Value::String(result.blob_id),
-                                ),
-                                (
-                                    Value::String("filename".to_string()),
-                                    Value::String(file.filename),
-                                ),
-                                (
-                                    Value::String("size".to_string()),
-                                    Value::Int(file.size as i64),
-                                ),
-                                (
-                                    Value::String("content_type".to_string()),
-                                    Value::String(file.content_type),
-                                ),
-                                (
-                                    Value::String("field_name".to_string()),
-                                    Value::String(file.field_name),
-                                ),
-                            ];
+                            let mut result_hash: IndexMap<HashKey, Value> = IndexMap::new();
+                            result_hash.insert(
+                                HashKey::String("blob_id".to_string()),
+                                Value::String(result.blob_id),
+                            );
+                            result_hash.insert(
+                                HashKey::String("filename".to_string()),
+                                Value::String(file.filename),
+                            );
+                            result_hash.insert(
+                                HashKey::String("size".to_string()),
+                                Value::Int(file.size as i64),
+                            );
+                            result_hash.insert(
+                                HashKey::String("content_type".to_string()),
+                                Value::String(file.content_type),
+                            );
+                            result_hash.insert(
+                                HashKey::String("field_name".to_string()),
+                                Value::String(file.field_name),
+                            );
                             results.push(Value::Hash(Rc::new(RefCell::new(result_hash))));
                         }
                         Err(e) => {
-                            let error_hash: Vec<(Value, Value)> = vec![
-                                (Value::String("error".to_string()), Value::String(e)),
-                                (
-                                    Value::String("filename".to_string()),
-                                    Value::String(file.filename),
-                                ),
-                                (
-                                    Value::String("field_name".to_string()),
-                                    Value::String(file.field_name),
-                                ),
-                            ];
+                            let mut error_hash: IndexMap<HashKey, Value> = IndexMap::new();
+                            error_hash.insert(HashKey::String("error".to_string()), Value::String(e));
+                            error_hash.insert(
+                                HashKey::String("filename".to_string()),
+                                Value::String(file.filename),
+                            );
+                            error_hash.insert(
+                                HashKey::String("field_name".to_string()),
+                                Value::String(file.field_name),
+                            );
                             results.push(Value::Hash(Rc::new(RefCell::new(error_hash))));
                         }
                     }
@@ -375,7 +373,7 @@ fn parse_multipart_from_req(req: &Value) -> Result<Vec<ParsedFile>, String> {
             let borrowed = hash.borrow();
             borrowed
                 .iter()
-                .find(|(k, _)| matches!(k, Value::String(s) if s == "body"))
+                .find(|(k, _)| matches!(k, HashKey::String(s) if s == "body"))
                 .map(|(_, v)| {
                     if let Value::String(s) = v {
                         s.clone()
@@ -392,12 +390,12 @@ fn parse_multipart_from_req(req: &Value) -> Result<Vec<ParsedFile>, String> {
         Value::Hash(hash) => {
             let borrowed = hash.borrow();
             borrowed.iter()
-                .find(|(k, _)| matches!(k, Value::String(s) if s == "headers"))
+                .find(|(k, _)| matches!(k, HashKey::String(s) if s == "headers"))
                 .and_then(|(_, h)| {
                     if let Value::Hash(headers) = h {
                         let h_borrowed = headers.borrow();
                         h_borrowed.iter()
-                            .find(|(k, _)| matches!(k, Value::String(s) if s == "content-type" || s == "Content-Type"))
+                            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "content-type" || s == "Content-Type"))
                             .map(|(_, v)| {
                                 if let Value::String(s) = v { s.clone() } else { String::new() }
                             })

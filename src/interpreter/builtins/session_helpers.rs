@@ -3,14 +3,16 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
 
 use super::request_helpers::{
     clear_authorization_inner, clear_cookies_inner, set_authorization_inner, set_cookie_inner,
 };
 
-type HashPairs = Vec<(Value, Value)>;
+type HashPairs = IndexMap<HashKey, Value>;
 
 thread_local! {
     static TEST_USER: RefCell<Option<Value>> = const { RefCell::new(None) };
@@ -130,7 +132,8 @@ fn extract_string(value: &Value, context: &str) -> Result<String, String> {
 fn set_test_user_id(user_id: i64) {
     TEST_USER.with(|cell| {
         let mut user = cell.borrow_mut();
-        let pairs: HashPairs = vec![(Value::String("id".to_string()), Value::Int(user_id))];
+        let mut pairs: HashPairs = IndexMap::new();
+        pairs.insert(HashKey::String("id".to_string()), Value::Int(user_id));
         *user = Some(Value::Hash(Rc::new(RefCell::new(pairs))));
     });
 }
@@ -168,21 +171,15 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     let status = response.status().as_u16();
     let body = response.text().map_err(|e| e.to_string())?;
 
-    let response_hash: HashPairs = vec![
-        (
-            Value::String("status".to_string()),
-            Value::Int(status as i64),
-        ),
-        (Value::String("body".to_string()), Value::String(body)),
-    ];
+    let mut response_hash: HashPairs = IndexMap::new();
+    response_hash.insert(HashKey::String("status".to_string()), Value::Int(status as i64));
+    response_hash.insert(HashKey::String("body".to_string()), Value::String(body));
 
     if status == 200 {
         clear_auth();
         set_cookie_inner("session_id".to_string(), "test_session_123".to_string());
-        let pairs: HashPairs = vec![(
-            Value::String("email".to_string()),
-            Value::String(email.to_string()),
-        )];
+        let mut pairs: HashPairs = IndexMap::new();
+        pairs.insert(HashKey::String("email".to_string()), Value::String(email.to_string()));
         TEST_USER.with(|cell| {
             *cell.borrow_mut() = Some(Value::Hash(Rc::new(RefCell::new(pairs))));
         });

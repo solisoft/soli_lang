@@ -1,5 +1,6 @@
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value};
+use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -218,22 +219,12 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
             let (allowed, remaining, reset) =
                 store.status(&key, limit, Duration::from_secs(window));
 
-            let result: Vec<(Value, Value)> = vec![
-                (Value::String("allowed".to_string()), Value::Bool(allowed)),
-                (
-                    Value::String("remaining".to_string()),
-                    Value::Int(remaining as i64),
-                ),
-                (
-                    Value::String("reset_in".to_string()),
-                    Value::Int(reset.as_secs() as i64),
-                ),
-                (Value::String("limit".to_string()), Value::Int(limit as i64)),
-                (
-                    Value::String("window".to_string()),
-                    Value::Int(window as i64),
-                ),
-            ];
+            let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+            result.insert(HashKey::String("allowed".to_string()), Value::Bool(allowed));
+            result.insert(HashKey::String("remaining".to_string()), Value::Int(remaining as i64));
+            result.insert(HashKey::String("reset_in".to_string()), Value::Int(reset.as_secs() as i64));
+            result.insert(HashKey::String("limit".to_string()), Value::Int(limit as i64));
+            result.insert(HashKey::String("window".to_string()), Value::Int(window as i64));
 
             Ok(Value::Hash(Rc::new(RefCell::new(result))))
         })),
@@ -295,20 +286,10 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                     }
                 };
 
-                let headers: Vec<(Value, Value)> = vec![
-                    (
-                        Value::String("X-RateLimit-Limit".to_string()),
-                        Value::String(limit.to_string()),
-                    ),
-                    (
-                        Value::String("X-RateLimit-Remaining".to_string()),
-                        Value::String(remaining.to_string()),
-                    ),
-                    (
-                        Value::String("X-RateLimit-Reset".to_string()),
-                        Value::String(reset.to_string()),
-                    ),
-                ];
+                let mut headers: IndexMap<HashKey, Value> = IndexMap::new();
+                headers.insert(HashKey::String("X-RateLimit-Limit".to_string()), Value::String(limit.to_string()));
+                headers.insert(HashKey::String("X-RateLimit-Remaining".to_string()), Value::String(remaining.to_string()));
+                headers.insert(HashKey::String("X-RateLimit-Reset".to_string()), Value::String(reset.to_string()));
 
                 Ok(Value::Hash(Rc::new(RefCell::new(headers))))
             },
@@ -479,18 +460,18 @@ fn extract_client_ip(req: &Value) -> Option<String> {
         Value::Hash(hash) => {
             let borrowed = hash.borrow();
             borrowed.iter()
-                .find(|(k, _)| matches!(k, Value::String(s) if s == "headers"))
+                .find(|(k, _)| matches!(k, HashKey::String(s) if s == "headers"))
                 .and_then(|(_, h)| {
                     if let Value::Hash(headers) = h {
                         let h_borrowed = headers.borrow();
                         h_borrowed.iter()
-                            .find(|(k, _)| matches!(k, Value::String(s) if s == "x-forwarded-for" || s == "X-Forwarded-For"))
+                            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "x-forwarded-for" || s == "X-Forwarded-For"))
                             .map(|(_, v)| {
                                 if let Value::String(s) = v { s.clone() } else { String::new() }
                             })
                             .or_else(|| {
                                 h_borrowed.iter()
-                                    .find(|(k, _)| matches!(k, Value::String(s) if s == "remote_addr" || s == "Remote-Addr"))
+                                    .find(|(k, _)| matches!(k, HashKey::String(s) if s == "remote_addr" || s == "Remote-Addr"))
                                     .map(|(_, v)| {
                                         if let Value::String(s) = v { s.clone() } else { String::new() }
                                     })

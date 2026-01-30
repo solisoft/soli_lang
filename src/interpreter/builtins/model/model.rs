@@ -91,12 +91,13 @@ use std::time::Duration;
 use crate::interpreter::builtins::http_class::get_http_client;
 use crate::serve::get_tokio_handle;
 use crate::solidb_http::SoliDBClient;
+use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use reqwest;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::symbol::SymbolId;
-use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
 
 
 // ============================================================================
@@ -160,16 +161,9 @@ impl ValidationError {
     }
 
     pub fn to_value(&self) -> Value {
-        let pairs = vec![
-            (
-                Value::String("field".into()),
-                Value::String(self.field.clone()),
-            ),
-            (
-                Value::String("message".into()),
-                Value::String(self.message.clone()),
-            ),
-        ];
+        let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+        pairs.insert(HashKey::String("field".into()), Value::String(self.field.clone()));
+        pairs.insert(HashKey::String("message".into()), Value::String(self.message.clone()));
         Value::Hash(Rc::new(RefCell::new(pairs)))
     }
 }
@@ -462,7 +456,7 @@ pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<
         // Find the field value
         let field_value = hash
             .iter()
-            .find(|(k, _)| matches!(k, Value::String(s) if s == &rule.field))
+            .find(|(k, _)| matches!(k, HashKey::String(s) if s == &rule.field))
             .map(|(_, v)| v.clone());
 
         // Presence validation
@@ -571,18 +565,16 @@ pub fn build_validation_result(
     errors: Vec<ValidationError>,
     record: Option<Value>,
 ) -> Value {
-    let mut pairs = vec![(Value::String("valid".into()), Value::Bool(valid))];
+    let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+    pairs.insert(HashKey::String("valid".into()), Value::Bool(valid));
 
     if !valid {
         let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
-        pairs.push((
-            Value::String("errors".into()),
-            Value::Array(Rc::new(RefCell::new(error_values))),
-        ));
+        pairs.insert(HashKey::String("errors".into()), Value::Array(Rc::new(RefCell::new(error_values))));
     }
 
     if let Some(rec) = record {
-        pairs.push((Value::String("record".into()), rec));
+        pairs.insert(HashKey::String("record".into()), rec);
     }
 
     Value::Hash(Rc::new(RefCell::new(pairs)))
@@ -644,10 +636,10 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             Value::Array(Rc::new(RefCell::new(values)))
         }
         serde_json::Value::Object(obj) => {
-            let pairs: Vec<(Value, Value)> = obj
-                .iter()
-                .map(|(k, v)| (Value::String(k.clone()), json_to_value(v)))
-                .collect();
+            let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+            for (k, v) in obj.iter() {
+                pairs.insert(HashKey::String(k.clone()), json_to_value(v));
+            }
             Value::Hash(Rc::new(RefCell::new(pairs)))
         }
     }
@@ -883,7 +875,7 @@ impl Model {
 
                 // Parse options
                 for (key, value) in options {
-                    if let Value::String(key_str) = key {
+                    if let HashKey::String(key_str) = key {
                         match key_str.as_str() {
                             "presence" => {
                                 if let Value::Bool(b) = value {
@@ -1005,7 +997,7 @@ impl Model {
                     Value::Hash(hash) => {
                         let mut map = serde_json::Map::new();
                         for (k, v) in hash.borrow().iter() {
-                            if let Value::String(key) = k {
+                            if let HashKey::String(key) = k {
                                 map.insert(key.clone(), value_to_json(v)?);
                             }
                         }
@@ -1096,7 +1088,7 @@ impl Model {
                     Some(Value::Hash(hash)) => {
                         let mut map = HashMap::new();
                         for (k, v) in hash.borrow().iter() {
-                            if let Value::String(key) = k {
+                            if let HashKey::String(key) = k {
                                 map.insert(key.clone(), value_to_json(v)?);
                             }
                         }
@@ -1160,7 +1152,7 @@ impl Model {
                     Some(Value::Hash(hash)) => {
                         let mut map = serde_json::Map::new();
                         for (k, v) in hash.borrow().iter() {
-                            if let Value::String(key) = k {
+                            if let HashKey::String(key) = k {
                                 map.insert(key.clone(), value_to_json(v)?);
                             }
                         }
@@ -1294,7 +1286,7 @@ pub fn register_model_builtins(env: &mut Environment) {
 
             // Parse options
             for (key, value) in options {
-                if let Value::String(key_str) = key {
+                if let HashKey::String(key_str) = key {
                     match key_str.as_str() {
                         "presence" => {
                             if let Value::Bool(b) = value {

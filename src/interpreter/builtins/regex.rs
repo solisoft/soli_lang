@@ -2,10 +2,11 @@
 //!
 //! Provides regex functions with ReDoS protection via regex crate limits.
 
+use indexmap::IndexMap;
 use regex::RegexBuilder;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{HashKey, Value};
 
 /// Maximum regex complexity (nesting level) to prevent ReDoS.
 const REGEX_NEST_LIMIT: u32 = 10;
@@ -49,17 +50,10 @@ pub fn register_regex_builtins(env: &mut Environment) {
                 (Value::String(pattern), Value::String(s)) => {
                     let re = create_safe_regex(pattern)?;
                     if let Some(m) = re.find(s) {
-                        let matches: Vec<(Value, Value)> = vec![
-                            (
-                                Value::String("match".to_string()),
-                                Value::String(m.as_str().to_string()),
-                            ),
-                            (
-                                Value::String("start".to_string()),
-                                Value::Int(m.start() as i64),
-                            ),
-                            (Value::String("end".to_string()), Value::Int(m.end() as i64)),
-                        ];
+                        let mut matches: IndexMap<HashKey, Value> = IndexMap::new();
+                        matches.insert(HashKey::String("match".to_string()), Value::String(m.as_str().to_string()));
+                        matches.insert(HashKey::String("start".to_string()), Value::Int(m.start() as i64));
+                        matches.insert(HashKey::String("end".to_string()), Value::Int(m.end() as i64));
                         Ok(Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(
                             matches,
                         ))))
@@ -84,17 +78,10 @@ pub fn register_regex_builtins(env: &mut Environment) {
                     let matches: Vec<Value> = re
                         .find_iter(s)
                         .map(|m| {
-                            let match_hash: Vec<(Value, Value)> = vec![
-                                (
-                                    Value::String("match".to_string()),
-                                    Value::String(m.as_str().to_string()),
-                                ),
-                                (
-                                    Value::String("start".to_string()),
-                                    Value::Int(m.start() as i64),
-                                ),
-                                (Value::String("end".to_string()), Value::Int(m.end() as i64)),
-                            ];
+                            let mut match_hash: IndexMap<HashKey, Value> = IndexMap::new();
+                            match_hash.insert(HashKey::String("match".to_string()), Value::String(m.as_str().to_string()));
+                            match_hash.insert(HashKey::String("start".to_string()), Value::Int(m.start() as i64));
+                            match_hash.insert(HashKey::String("end".to_string()), Value::Int(m.end() as i64));
                             Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(match_hash)))
                         })
                         .collect();
@@ -171,30 +158,29 @@ pub fn register_regex_builtins(env: &mut Environment) {
                 (Value::String(pattern), Value::String(s)) => {
                     let re = create_safe_regex(pattern)?;
                     if let Some(caps) = re.captures(s) {
-                        let mut result: Vec<(Value, Value)> = vec![
-                            (
-                                Value::String("match".to_string()),
-                                Value::String(
-                                    caps.get(0)
-                                        .map(|m| m.as_str().to_string())
-                                        .unwrap_or_default(),
-                                ),
+                        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+                        result.insert(
+                            HashKey::String("match".to_string()),
+                            Value::String(
+                                caps.get(0)
+                                    .map(|m| m.as_str().to_string())
+                                    .unwrap_or_default(),
                             ),
-                            (
-                                Value::String("start".to_string()),
-                                Value::Int(caps.get(0).map(|m| m.start() as i64).unwrap_or(-1)),
-                            ),
-                            (
-                                Value::String("end".to_string()),
-                                Value::Int(caps.get(0).map(|m| m.end() as i64).unwrap_or(-1)),
-                            ),
-                        ];
+                        );
+                        result.insert(
+                            HashKey::String("start".to_string()),
+                            Value::Int(caps.get(0).map(|m| m.start() as i64).unwrap_or(-1)),
+                        );
+                        result.insert(
+                            HashKey::String("end".to_string()),
+                            Value::Int(caps.get(0).map(|m| m.end() as i64).unwrap_or(-1)),
+                        );
                         for name in re.capture_names().flatten() {
                             if let Some(cap) = caps.name(name) {
-                                result.push((
-                                    Value::String(name.to_string()),
+                                result.insert(
+                                    HashKey::String(name.to_string()),
                                     Value::String(cap.as_str().to_string()),
-                                ));
+                                );
                             }
                         }
                         Ok(Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(

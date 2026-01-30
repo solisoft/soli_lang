@@ -6,11 +6,13 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::RwLock;
 
+use indexmap::IndexMap;
+
 use crate::solidb_http::SoliDBClient;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Instance, NativeFunction, Value};
+use crate::interpreter::value::{HashKey, Instance, NativeFunction, Value};
 
 // Execute DB operation synchronously and return result directly
 fn exec_db_sync<F>(f: F) -> Value
@@ -60,9 +62,9 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             Value::Array(Rc::new(RefCell::new(values)))
         }
         serde_json::Value::Object(obj) => {
-            let pairs: Vec<(Value, Value)> = obj
+            let pairs: IndexMap<HashKey, Value> = obj
                 .iter()
-                .map(|(k, v)| (Value::String(k.clone()), json_to_value(v)))
+                .map(|(k, v)| (HashKey::String(k.clone()), json_to_value(v)))
                 .collect();
             Value::Hash(Rc::new(RefCell::new(pairs)))
         }
@@ -234,7 +236,7 @@ fn register_global_solidb_functions(env: &mut Environment) {
                     Value::Hash(hash) => {
                         let mut map = std::collections::HashMap::new();
                         for (k, v) in hash.borrow().iter() {
-                            if let Value::String(key) = k {
+                            if let HashKey::String(key) = k {
                                 map.insert(key.clone(), value_to_json(v)?);
                             }
                         }
@@ -438,7 +440,7 @@ fn register_solidb_class(env: &mut Environment) {
                                     Value::Hash(hash) => {
                                         let mut map = std::collections::HashMap::new();
                                         for (k, v) in hash.borrow().iter() {
-                                            if let Value::String(key) = k {
+                                            if let HashKey::String(key) = k {
                                                 map.insert(key.clone(), value_to_json(v)?);
                                             }
                                         }
@@ -655,7 +657,7 @@ fn register_solidb_class(env: &mut Environment) {
                                     Value::Hash(hash) => {
                                         let mut map = std::collections::HashMap::new();
                                         for (k, v) in hash.borrow().iter() {
-                                            if let Value::String(key) = k {
+                                            if let HashKey::String(key) = k {
                                                 map.insert(key.clone(), value_to_json(v)?);
                                             }
                                         }
@@ -864,12 +866,12 @@ fn register_solidb_class(env: &mut Environment) {
                                         let borrowed = hash.borrow();
                                         let unique = borrowed
                                             .iter()
-                                            .find(|(k, _)| matches!(k, Value::String(s) if s == "unique"))
+                                            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "unique"))
                                             .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
                                             .unwrap_or(false);
                                         let sparse = borrowed
                                             .iter()
-                                            .find(|(k, _)| matches!(k, Value::String(s) if s == "sparse"))
+                                            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "sparse"))
                                             .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
                                             .unwrap_or(false);
                                         (unique, sparse)

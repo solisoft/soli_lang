@@ -17,7 +17,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::interpreter::value::Value;
+use indexmap::IndexMap;
+
+use crate::interpreter::value::{HashKey, Value};
 use parser::parse_template;
 use renderer::render_nodes_with_path;
 use std::rc::Rc;
@@ -301,16 +303,21 @@ pub fn html_response(body: String, status: i64) -> Value {
         body
     };
 
-    let headers = Value::Hash(Rc::new(RefCell::new(vec![(
-        Value::String("Content-Type".to_string()),
+    let mut headers: IndexMap<HashKey, Value> = IndexMap::new();
+    headers.insert(
+        HashKey::String("Content-Type".to_string()),
         Value::String("text/html; charset=utf-8".to_string()),
-    )])));
+    );
 
-    Value::Hash(Rc::new(RefCell::new(vec![
-        (Value::String("status".to_string()), Value::Int(status)),
-        (Value::String("headers".to_string()), headers),
-        (Value::String("body".to_string()), Value::String(body)),
-    ])))
+    let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+    result.insert(HashKey::String("status".to_string()), Value::Int(status));
+    result.insert(
+        HashKey::String("headers".to_string()),
+        Value::Hash(Rc::new(RefCell::new(headers))),
+    );
+    result.insert(HashKey::String("body".to_string()), Value::String(body));
+
+    Value::Hash(Rc::new(RefCell::new(result)))
 }
 
 // Integration tests requiring filesystem would go here.

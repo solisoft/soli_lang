@@ -1,5 +1,6 @@
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
+use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::sync::RwLock;
 
@@ -472,19 +473,19 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 let config = SECURITY_HEADERS_CONFIG
                     .read()
                     .map_err(|e| format!("Security headers error: {}", e))?;
-                let mut headers: Vec<(Value, Value)> = Vec::new();
+                let mut headers: IndexMap<HashKey, Value> = IndexMap::new();
 
                 if let Some(ref csp) = config.csp {
-                    headers.push((
-                        Value::String("Content-Security-Policy".to_string()),
+                    headers.insert(
+                        HashKey::String("Content-Security-Policy".to_string()),
                         Value::String(csp.clone()),
-                    ));
+                    );
                 }
                 if let Some(ref csp_ro) = config.csp_report_only {
-                    headers.push((
-                        Value::String("Content-Security-Policy-Report-Only".to_string()),
+                    headers.insert(
+                        HashKey::String("Content-Security-Policy-Report-Only".to_string()),
                         Value::String(csp_ro.clone()),
-                    ));
+                    );
                 }
                 if let Some(ref hsts) = config.hsts {
                     let mut hsts_val = format!("max-age={}", hsts.max_age);
@@ -494,58 +495,58 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     if hsts.preload {
                         hsts_val.push_str("; preload");
                     }
-                    headers.push((
-                        Value::String("Strict-Transport-Security".to_string()),
+                    headers.insert(
+                        HashKey::String("Strict-Transport-Security".to_string()),
                         Value::String(hsts_val),
-                    ));
+                    );
                 }
                 if let Some(ref xfo) = config.x_frame_options {
-                    headers.push((
-                        Value::String("X-Frame-Options".to_string()),
+                    headers.insert(
+                        HashKey::String("X-Frame-Options".to_string()),
                         Value::String(xfo.clone()),
-                    ));
+                    );
                 }
                 if config.x_content_type_options {
-                    headers.push((
-                        Value::String("X-Content-Type-Options".to_string()),
+                    headers.insert(
+                        HashKey::String("X-Content-Type-Options".to_string()),
                         Value::String("nosniff".to_string()),
-                    ));
+                    );
                 }
                 if let Some(ref xss) = config.xss_protection {
-                    headers.push((
-                        Value::String("X-XSS-Protection".to_string()),
+                    headers.insert(
+                        HashKey::String("X-XSS-Protection".to_string()),
                         Value::String(xss.clone()),
-                    ));
+                    );
                 }
                 if let Some(ref rp) = config.referrer_policy {
-                    headers.push((
-                        Value::String("Referrer-Policy".to_string()),
+                    headers.insert(
+                        HashKey::String("Referrer-Policy".to_string()),
                         Value::String(rp.clone()),
-                    ));
+                    );
                 }
                 if let Some(ref pp) = config.permissions_policy {
-                    headers.push((
-                        Value::String("Permissions-Policy".to_string()),
+                    headers.insert(
+                        HashKey::String("Permissions-Policy".to_string()),
                         Value::String(pp.clone()),
-                    ));
+                    );
                 }
                 if let Some(ref coep) = config.cross_origin_embedder_policy {
-                    headers.push((
-                        Value::String("Cross-Origin-Embedder-Policy".to_string()),
+                    headers.insert(
+                        HashKey::String("Cross-Origin-Embedder-Policy".to_string()),
                         Value::String(coep.clone()),
-                    ));
+                    );
                 }
                 if let Some(ref coop) = config.cross_origin_opener_policy {
-                    headers.push((
-                        Value::String("Cross-Origin-Opener-Policy".to_string()),
+                    headers.insert(
+                        HashKey::String("Cross-Origin-Opener-Policy".to_string()),
                         Value::String(coop.clone()),
-                    ));
+                    );
                 }
                 if let Some(ref corp) = config.cross_origin_resource_policy {
-                    headers.push((
-                        Value::String("Cross-Origin-Resource-Policy".to_string()),
+                    headers.insert(
+                        HashKey::String("Cross-Origin-Resource-Policy".to_string()),
                         Value::String(corp.clone()),
-                    ));
+                    );
                 }
 
                 Ok(Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(

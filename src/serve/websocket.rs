@@ -9,9 +9,13 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
+
+use indexmap::IndexMap;
 use tokio::sync::Mutex as AsyncMutex;
 use tungstenite::Message;
 use uuid::Uuid;
+
+use crate::interpreter::value::{HashKey, Value};
 
 /// A WebSocket connection with its sender and metadata.
 #[derive(Clone)]
@@ -251,36 +255,21 @@ impl WebSocketEvent {
 
     /// Convert to a Value for the Soli interpreter.
     pub fn to_value(&self) -> Value {
-        let mut pairs: Vec<(Value, Value)> = vec![
-            (
-                Value::String("type".to_string()),
-                Value::String(self.event_type.clone()),
-            ),
-            (
-                Value::String("connection_id".to_string()),
-                Value::String(self.connection_id.clone()),
-            ),
-        ];
+        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        result.insert(HashKey::String("type".to_string()), Value::String(self.event_type.clone()));
+        result.insert(HashKey::String("connection_id".to_string()), Value::String(self.connection_id.clone()));
 
         if let Some(ref msg) = self.message {
-            pairs.push((
-                Value::String("message".to_string()),
-                Value::String(msg.clone()),
-            ));
+            result.insert(HashKey::String("message".to_string()), Value::String(msg.clone()));
         }
 
         if let Some(ref channel) = self.channel {
-            pairs.push((
-                Value::String("channel".to_string()),
-                Value::String(channel.clone()),
-            ));
+            result.insert(HashKey::String("channel".to_string()), Value::String(channel.clone()));
         }
 
-        Value::Hash(Rc::new(RefCell::new(pairs)))
+        Value::Hash(Rc::new(RefCell::new(result)))
     }
 }
-
-use crate::interpreter::value::Value;
 
 /// Actions that a WebSocket handler can return.
 #[derive(Clone)]
@@ -318,7 +307,7 @@ impl WebSocketHandlerAction {
 
         if let Value::Hash(hash) = value {
             for (k, v) in hash.borrow().iter() {
-                if let Value::String(key) = k {
+                if let HashKey::String(key) = k {
                     match key.as_str() {
                         "join" => {
                             if let Value::String(s) = v {

@@ -5,8 +5,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
 
 /// Register all hash operation built-in functions.
 pub fn register_hash_builtins(env: &mut Environment) {
@@ -14,7 +16,7 @@ pub fn register_hash_builtins(env: &mut Environment) {
     env.define(
         "hash".to_string(),
         Value::NativeFunction(NativeFunction::new("hash", Some(0), |_args| {
-            Ok(Value::Hash(Rc::new(RefCell::new(Vec::new()))))
+            Ok(Value::Hash(Rc::new(RefCell::new(IndexMap::new()))))
         })),
     );
 
@@ -24,7 +26,8 @@ pub fn register_hash_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("keys", Some(1), |args| {
             match &args[0] {
                 Value::Hash(hash) => {
-                    let keys: Vec<Value> = hash.borrow().iter().map(|(k, _)| k.clone()).collect();
+                    let keys: Vec<Value> =
+                        hash.borrow().keys().map(|k| k.to_value()).collect();
                     Ok(Value::Array(Rc::new(RefCell::new(keys))))
                 }
                 other => Err(format!("keys() expects hash, got {}", other.type_name())),
@@ -38,7 +41,7 @@ pub fn register_hash_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("values", Some(1), |args| {
             match &args[0] {
                 Value::Hash(hash) => {
-                    let values: Vec<Value> = hash.borrow().iter().map(|(_, v)| v.clone()).collect();
+                    let values: Vec<Value> = hash.borrow().values().cloned().collect();
                     Ok(Value::Array(Rc::new(RefCell::new(values))))
                 }
                 other => Err(format!("values() expects hash, got {}", other.type_name())),
@@ -46,7 +49,7 @@ pub fn register_hash_builtins(env: &mut Environment) {
         })),
     );
 
-    // has_key(hash, key) - Check if key exists
+    // has_key(hash, key) - Check if key exists (O(1) with IndexMap)
     env.define(
         "has_key".to_string(),
         Value::NativeFunction(NativeFunction::new(
@@ -55,10 +58,10 @@ pub fn register_hash_builtins(env: &mut Environment) {
             |args| match &args[0] {
                 Value::Hash(hash) => {
                     let key = &args[1];
-                    if !key.is_hashable() {
-                        return Err(format!("{} cannot be used as a hash key", key.type_name()));
-                    }
-                    let exists = hash.borrow().iter().any(|(k, _)| key.hash_eq(k));
+                    let hash_key = key.to_hash_key().ok_or_else(|| {
+                        format!("{} cannot be used as a hash key", key.type_name())
+                    })?;
+                    let exists = hash.borrow().contains_key(&hash_key);
                     Ok(Value::Bool(exists))
                 }
                 other => Err(format!(
@@ -69,27 +72,18 @@ pub fn register_hash_builtins(env: &mut Environment) {
         )),
     );
 
-    // delete(hash, key) - Remove key and return its value (or null)
+    // delete(hash, key) - Remove key and return its value (or null) - O(1)
     env.define(
         "delete".to_string(),
         Value::NativeFunction(NativeFunction::new("delete", Some(2), |args| {
             match &args[0] {
                 Value::Hash(hash) => {
                     let key = &args[1];
-                    if !key.is_hashable() {
-                        return Err(format!("{} cannot be used as a hash key", key.type_name()));
-                    }
-                    let mut hash = hash.borrow_mut();
-                    let mut removed_value = Value::Null;
-                    hash.retain(|(k, v)| {
-                        if key.hash_eq(k) {
-                            removed_value = v.clone();
-                            false
-                        } else {
-                            true
-                        }
-                    });
-                    Ok(removed_value)
+                    let hash_key = key.to_hash_key().ok_or_else(|| {
+                        format!("{} cannot be used as a hash key", key.type_name())
+                    })?;
+                    let removed_value = hash.borrow_mut().shift_remove(&hash_key);
+                    Ok(removed_value.unwrap_or(Value::Null))
                 }
                 other => Err(format!(
                     "delete() expects hash as first argument, got {}",
@@ -105,19 +99,9 @@ pub fn register_hash_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("merge", Some(2), |args| {
             match (&args[0], &args[1]) {
                 (Value::Hash(hash1), Value::Hash(hash2)) => {
-                    let mut result: Vec<(Value, Value)> = hash1.borrow().clone();
-                    for (k2, v2) in hash2.borrow().iter() {
-                        let mut found = false;
-                        for (k1, v1) in result.iter_mut() {
-                            if k2.hash_eq(k1) {
-                                *v1 = v2.clone();
-                                found = true;
-                                break;
-                            }
-                        }
-                        if !found {
-                            result.push((k2.clone(), v2.clone()));
-                        }
+                    let mut result = hash1.borrow().clone();
+                    for (k, v) in hash2.borrow().iter() {
+                        result.insert(k.clone(), v.clone());
                     }
                     Ok(Value::Hash(Rc::new(RefCell::new(result))))
                 }
@@ -138,7 +122,7 @@ pub fn register_hash_builtins(env: &mut Environment) {
                         .borrow()
                         .iter()
                         .map(|(k, v)| {
-                            Value::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()])))
+                            Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])))
                         })
                         .collect();
                     Ok(Value::Array(Rc::new(RefCell::new(pairs))))
@@ -156,7 +140,7 @@ pub fn register_hash_builtins(env: &mut Environment) {
             Some(1),
             |args| match &args[0] {
                 Value::Array(arr) => {
-                    let mut result: Vec<(Value, Value)> = Vec::new();
+                    let mut result: IndexMap<HashKey, Value> = IndexMap::new();
 
                     for entry in arr.borrow().iter() {
                         match entry {
@@ -169,24 +153,10 @@ pub fn register_hash_builtins(env: &mut Environment) {
                                     ));
                                 }
                                 let key = &borrowed[0];
-                                if !key.is_hashable() {
-                                    return Err(format!(
-                                        "{} cannot be used as a hash key",
-                                        key.type_name()
-                                    ));
-                                }
-                                // Update existing key or add new one
-                                let mut found = false;
-                                for (k, v) in result.iter_mut() {
-                                    if k.hash_eq(key) {
-                                        *v = borrowed[1].clone();
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                                if !found {
-                                    result.push((key.clone(), borrowed[1].clone()));
-                                }
+                                let hash_key = key.to_hash_key().ok_or_else(|| {
+                                    format!("{} cannot be used as a hash key", key.type_name())
+                                })?;
+                                result.insert(hash_key, borrowed[1].clone());
                             }
                             other => {
                                 return Err(format!(

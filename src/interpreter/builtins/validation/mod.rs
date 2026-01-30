@@ -11,8 +11,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
 
 pub use coercion::coerce_value;
 pub use rules::*;
@@ -128,18 +130,18 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
 
     let data_hash = match data {
         Value::Hash(h) => h.borrow().clone(),
-        Value::Null => Vec::new(),
+        Value::Null => IndexMap::new(),
         _ => return Err("validate() expects data to be a hash or null".to_string()),
     };
 
-    let mut validated_data: Vec<(Value, Value)> = Vec::new();
+    let mut validated_data: IndexMap<HashKey, Value> = IndexMap::new();
     let mut errors: Vec<Value> = Vec::new();
 
     // Build a map from data for faster lookup
     let data_map: HashMap<String, Value> = data_hash
         .iter()
         .filter_map(|(k, v)| {
-            if let Value::String(key) = k {
+            if let HashKey::String(key) = k {
                 Some((key.clone(), v.clone()))
             } else {
                 None
@@ -150,7 +152,7 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
     // Validate each field in the schema
     for (field_key, validator_value) in schema_hash.iter() {
         let field_name = match field_key {
-            Value::String(s) => s.clone(),
+            HashKey::String(s) => s.clone(),
             _ => continue,
         };
 
@@ -158,7 +160,7 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
 
         match validate_field(&field_name, field_value, validator_value) {
             Ok(Some(validated_value)) => {
-                validated_data.push((Value::String(field_name), validated_value));
+                validated_data.insert(HashKey::String(field_name), validated_value);
             }
             Ok(None) => {
                 // Field is optional and not present, skip it
@@ -171,17 +173,16 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
 
     // Build result hash
     let is_valid = errors.is_empty();
-    let result_pairs: Vec<(Value, Value)> = vec![
-        (Value::String("valid".to_string()), Value::Bool(is_valid)),
-        (
-            Value::String("data".to_string()),
-            Value::Hash(Rc::new(RefCell::new(validated_data))),
-        ),
-        (
-            Value::String("errors".to_string()),
-            Value::Array(Rc::new(RefCell::new(errors))),
-        ),
-    ];
+    let mut result_pairs: IndexMap<HashKey, Value> = IndexMap::new();
+    result_pairs.insert(HashKey::String("valid".to_string()), Value::Bool(is_valid));
+    result_pairs.insert(
+        HashKey::String("data".to_string()),
+        Value::Hash(Rc::new(RefCell::new(validated_data))),
+    );
+    result_pairs.insert(
+        HashKey::String("errors".to_string()),
+        Value::Array(Rc::new(RefCell::new(errors))),
+    );
 
     Ok(Value::Hash(Rc::new(RefCell::new(result_pairs))))
 }
@@ -240,12 +241,12 @@ fn validate_field(
                 // Check if nested validation passed
                 if let Value::Hash(h) = &result {
                     for (k, v) in h.borrow().iter() {
-                        if let Value::String(key) = k {
+                        if let HashKey::String(key) = k {
                             if key == "valid" {
                                 if let Value::Bool(false) = v {
                                     // Extract nested errors
                                     for (k2, v2) in h.borrow().iter() {
-                                        if let Value::String(key2) = k2 {
+                                        if let HashKey::String(key2) = k2 {
                                             if key2 == "errors" {
                                                 if let Value::Array(errors) = v2 {
                                                     for err in errors.borrow().iter() {
@@ -295,34 +296,39 @@ fn validate_array_elements(array: &Value, element_schema: &Value) -> Result<Valu
 
 /// Create an error hash.
 fn create_error(field: &str, message: &str, code: &str) -> Value {
-    let pairs: Vec<(Value, Value)> = vec![
-        (
-            Value::String("field".to_string()),
-            Value::String(field.to_string()),
-        ),
-        (
-            Value::String("message".to_string()),
-            Value::String(message.to_string()),
-        ),
-        (
-            Value::String("code".to_string()),
-            Value::String(code.to_string()),
-        ),
-    ];
+    let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+    pairs.insert(
+        HashKey::String("field".to_string()),
+        Value::String(field.to_string()),
+    );
+    pairs.insert(
+        HashKey::String("message".to_string()),
+        Value::String(message.to_string()),
+    );
+    pairs.insert(
+        HashKey::String("code".to_string()),
+        Value::String(code.to_string()),
+    );
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }
 
 /// Prefix an error with a field name for nested validation.
 fn prefix_error(prefix: &str, error: &Value) -> Value {
     if let Value::Hash(h) = error {
-        let mut pairs = h.borrow().clone();
-        for (k, v) in pairs.iter_mut() {
-            if let Value::String(key) = k {
+        let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+        for (k, v) in h.borrow().iter() {
+            if let HashKey::String(key) = k {
                 if key == "field" {
                     if let Value::String(field) = v {
-                        *v = Value::String(format!("{}.{}", prefix, field));
+                        pairs.insert(k.clone(), Value::String(format!("{}.{}", prefix, field)));
+                    } else {
+                        pairs.insert(k.clone(), v.clone());
                     }
+                } else {
+                    pairs.insert(k.clone(), v.clone());
                 }
+            } else {
+                pairs.insert(k.clone(), v.clone());
             }
         }
         return Value::Hash(Rc::new(RefCell::new(pairs)));

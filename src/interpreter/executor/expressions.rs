@@ -3,6 +3,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::ast::expr::Argument;
 use crate::ast::*;
 use crate::error::RuntimeError;
@@ -11,7 +13,7 @@ use crate::interpreter::builtins::model::{
 };
 use crate::interpreter::builtins::server::is_server_listen_marker;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Function, Instance, NativeFunction, Value, ValueMethod};
+use crate::interpreter::value::{Function, HashKey, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
 use super::{ControlFlow, Interpreter, RuntimeResult};
@@ -243,8 +245,9 @@ impl Interpreter {
             } => {
                 // Evaluate the iterable
                 let iter_value = self.evaluate(iterable)?;
-                let array = match iter_value {
-                    Value::Array(arr) => arr.borrow().clone(),
+                // Clone items once to avoid holding borrow across loop body
+                let items: Vec<Value> = match iter_value {
+                    Value::Array(arr) => arr.borrow().iter().cloned().collect(),
                     _ => {
                         return Err(RuntimeError::type_error("expected array", iterable.span));
                     }
@@ -252,14 +255,12 @@ impl Interpreter {
 
                 // Create a new environment for the comprehension
                 let mut result = Vec::new();
-                for item in array {
-                    // Create a new scope for each iteration (like for loops)
-                    let loop_env = Environment::with_enclosing(self.environment.clone());
+                for item in items {
+                    // Create a new scope for each iteration with the loop variable already defined
+                    let mut loop_env = Environment::with_enclosing(self.environment.clone());
+                    loop_env.define(variable.clone(), item);
                     let prev_env =
                         std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
-
-                    // Define the loop variable
-                    self.environment.borrow_mut().define(variable.clone(), item);
 
                     // Check condition if present and evaluate element
                     let pass_condition = if let Some(cond) = condition {
@@ -295,23 +296,22 @@ impl Interpreter {
             } => {
                 // Evaluate the iterable
                 let iter_value = self.evaluate(iterable)?;
-                let array = match iter_value {
-                    Value::Array(arr) => arr.borrow().clone(),
+                // Clone items once to avoid holding borrow across loop body
+                let items: Vec<Value> = match iter_value {
+                    Value::Array(arr) => arr.borrow().iter().cloned().collect(),
                     _ => {
                         return Err(RuntimeError::type_error("expected array", iterable.span));
                     }
                 };
 
                 // Create a new environment for the comprehension
-                let mut result = Vec::new();
-                for item in array {
-                    // Create a new scope for each iteration (like for loops)
-                    let loop_env = Environment::with_enclosing(self.environment.clone());
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+                for item in items {
+                    // Create a new scope for each iteration with the loop variable already defined
+                    let mut loop_env = Environment::with_enclosing(self.environment.clone());
+                    loop_env.define(variable.clone(), item);
                     let prev_env =
                         std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
-
-                    // Define the loop variable
-                    self.environment.borrow_mut().define(variable.clone(), item);
 
                     // Check condition if present and evaluate key/value
                     let should_include = if let Some(cond) = condition {
@@ -333,7 +333,14 @@ impl Interpreter {
                     self.environment = prev_env;
 
                     if should_include {
-                        result.push((key_value, val_value));
+                        if let Some(hash_key) = key_value.to_hash_key() {
+                            result.insert(hash_key, val_value);
+                        } else {
+                            return Err(RuntimeError::type_error(
+                                format!("{} cannot be used as a hash key", key_value.type_name()),
+                                key.span,
+                            ));
+                        }
                     }
                 }
 
@@ -436,17 +443,24 @@ impl Interpreter {
         let obj_val = self.evaluate(object)?;
         match obj_val {
             Value::Instance(inst) => {
+                // Single borrow for all member access checks
+                let inst_ref = inst.borrow();
+
                 // First check for field
-                if let Some(value) = inst.borrow().get(name) {
+                if let Some(value) = inst_ref.get(name) {
                     return Ok(value);
                 }
+
                 // Then check for native method
-                if let Some(native_method) = inst.borrow().class.find_native_method(name) {
+                if let Some(native_method) = inst_ref.class.find_native_method(name) {
                     // Create a wrapper that will call the native method with 'this'
-                    let instance_clone = inst.clone();
+                    let class_name = inst_ref.class.name.clone();
                     let native_method_clone = native_method.clone();
+                    // Drop borrow before capturing inst in closure
+                    drop(inst_ref);
+                    let instance_clone = inst.clone();
                     return Ok(Value::NativeFunction(NativeFunction::new(
-                        &format!("{}.{}", inst.borrow().class.name, name),
+                        &format!("{}.{}", class_name, name),
                         None,
                         move |args| {
                             // Prepend 'this' as first argument (the instance)
@@ -456,11 +470,16 @@ impl Interpreter {
                         },
                     )));
                 }
+
                 // Then check for user-defined method
-                if let Some(method) = inst.borrow().class.find_method(name) {
+                if let Some(method) = inst_ref.class.find_method(name) {
+                    // Get class name for potential error before dropping borrow
+                    let _class_name = inst_ref.class.name.clone();
+                    // Drop borrow before creating new environment with inst
+                    drop(inst_ref);
+
                     // Bind 'this'
-                    let bound_env = Environment::with_enclosing(method.closure.clone());
-                    let mut bound_env = bound_env;
+                    let mut bound_env = Environment::with_enclosing(method.closure.clone());
                     bound_env.define("this".to_string(), Value::Instance(inst.clone()));
 
                     let bound_method = Function {
@@ -475,8 +494,11 @@ impl Interpreter {
                     };
                     return Ok(Value::Function(Rc::new(bound_method)));
                 }
+
+                // Get class name for error before borrow ends
+                let class_name = inst_ref.class.name.clone();
                 Err(RuntimeError::NoSuchProperty {
-                    value_type: inst.borrow().class.name.clone(),
+                    value_type: class_name,
                     property: name.to_string(),
                     span,
                 })
@@ -624,12 +646,10 @@ impl Interpreter {
                         method_name: name.to_string(),
                     })),
                     _ => {
-                        // Try to access as a hash key (dot notation for hash access)
-                        let key = Value::String(name.to_string());
-                        for (k, v) in hash.borrow().iter() {
-                            if key.hash_eq(k) {
-                                return Ok(v.clone());
-                            }
+                        // Try to access as a hash key (dot notation for hash access) - O(1)
+                        let hash_key = HashKey::String(name.to_string());
+                        if let Some(v) = hash.borrow().get(&hash_key) {
+                            return Ok(v.clone());
                         }
                         // Key not found, return null (like JavaScript undefined)
                         Ok(Value::Null)
@@ -725,20 +745,15 @@ impl Interpreter {
                     })
             }
             (Value::Hash(hash), key) => {
-                if !key.is_hashable() {
-                    return Err(RuntimeError::type_error(
+                let hash_key = key.to_hash_key().ok_or_else(|| {
+                    RuntimeError::type_error(
                         format!("{} cannot be used as a hash key", key.type_name()),
                         index.span,
-                    ));
-                }
+                    )
+                })?;
+                // O(1) lookup
                 let hash = hash.borrow();
-                for (k, v) in hash.iter() {
-                    if key.hash_eq(k) {
-                        return Ok(v.clone());
-                    }
-                }
-                // Return null for missing keys (like Ruby)
-                Ok(Value::Null)
+                Ok(hash.get(&hash_key).cloned().unwrap_or(Value::Null))
             }
             _ => Err(RuntimeError::type_error(
                 format!(
@@ -877,28 +892,18 @@ impl Interpreter {
     }
 
     fn evaluate_hash(&mut self, pairs: &[(Expr, Expr)]) -> RuntimeResult<Value> {
-        let mut entries = Vec::new();
+        let mut entries: IndexMap<HashKey, Value> = IndexMap::new();
         for (key_expr, value_expr) in pairs {
             let key = self.evaluate(key_expr)?;
-            if !key.is_hashable() {
-                return Err(RuntimeError::type_error(
+            let hash_key = key.to_hash_key().ok_or_else(|| {
+                RuntimeError::type_error(
                     format!("{} cannot be used as a hash key", key.type_name()),
                     key_expr.span,
-                ));
-            }
+                )
+            })?;
             let value = self.evaluate(value_expr)?;
-            // Check if key already exists and update, otherwise add
-            let mut found = false;
-            for (k, v) in &mut entries {
-                if key.hash_eq(k) {
-                    *v = value.clone();
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                entries.push((key, value));
-            }
+            // Insert or update (IndexMap handles this automatically)
+            entries.insert(hash_key, value);
         }
         Ok(Value::Hash(Rc::new(RefCell::new(entries))))
     }
@@ -985,22 +990,14 @@ impl Interpreter {
                 Ok(new_value)
             }
             (Value::Hash(hash), key) => {
-                if !key.is_hashable() {
-                    return Err(RuntimeError::type_error(
+                let hash_key = key.to_hash_key().ok_or_else(|| {
+                    RuntimeError::type_error(
                         format!("{} cannot be used as a hash key", key.type_name()),
                         index.span,
-                    ));
-                }
-                let mut hash = hash.borrow_mut();
-                // Find existing key or add new entry
-                for (k, v) in hash.iter_mut() {
-                    if key.hash_eq(k) {
-                        *v = new_value.clone();
-                        return Ok(new_value);
-                    }
-                }
-                // Key not found, add new entry
-                hash.push((idx_val.clone(), new_value.clone()));
+                    )
+                })?;
+                // O(1) insert/update
+                hash.borrow_mut().insert(hash_key, new_value.clone());
                 Ok(new_value)
             }
             _ => Err(RuntimeError::type_error("invalid assignment target", span)),
@@ -1110,20 +1107,16 @@ impl Interpreter {
                                 if positional_args.len() != 2 {
                                     return Err(RuntimeError::wrong_arity(2, positional_args.len(), span));
                                 }
-                                let key = positional_args[0].clone();
+                                let key = &positional_args[0];
                                 let value = positional_args[1].clone();
-                                let mut hash_ref = hash.borrow_mut();
-                                let mut found = false;
-                                for (k, v) in hash_ref.iter_mut() {
-                                    if key.hash_eq(k) {
-                                        *v = value.clone();
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                                if !found {
-                                    hash_ref.push((key, value.clone()));
-                                }
+                                let hash_key = key.to_hash_key().ok_or_else(|| {
+                                    RuntimeError::type_error(
+                                        format!("{} cannot be used as a hash key", key.type_name()),
+                                        span,
+                                    )
+                                })?;
+                                // O(1) insert
+                                hash.borrow_mut().insert(hash_key, value.clone());
                                 Ok(value)
                             }
                             "delete" => {
@@ -1131,16 +1124,13 @@ impl Interpreter {
                                     return Err(RuntimeError::wrong_arity(1, positional_args.len(), span));
                                 }
                                 let key = &positional_args[0];
-                                let mut deleted_value = Value::Null;
-                                hash.borrow_mut().retain(|(k, v)| {
-                                    if key.hash_eq(k) {
-                                        deleted_value = v.clone();
-                                        false
-                                    } else {
-                                        true
-                                    }
-                                });
-                                Ok(deleted_value)
+                                let hash_key = match key.to_hash_key() {
+                                    Some(k) => k,
+                                    None => return Ok(Value::Null),
+                                };
+                                // O(1) removal
+                                let deleted_value = hash.borrow_mut().shift_remove(&hash_key);
+                                Ok(deleted_value.unwrap_or(Value::Null))
                             }
                             "clear" => {
                                 if !positional_args.is_empty() {
@@ -1150,7 +1140,7 @@ impl Interpreter {
                                 Ok(Value::Null)
                             }
                             _ => {
-                                let entries = hash.borrow().clone();
+                                let entries: Vec<(HashKey, Value)> = hash.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                                 self.call_hash_method(&entries, &method.method_name, positional_args, span)
                             }
                         }
@@ -1630,7 +1620,7 @@ impl Interpreter {
                         self.call_array_method(&items, &method.method_name, arguments, span)
                     }
                     Value::Hash(ref hash) => {
-                        let entries = hash.borrow().clone();
+                        let entries: Vec<(HashKey, Value)> = hash.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                         self.call_hash_method(&entries, &method.method_name, arguments, span)
                     }
                     Value::QueryBuilder(qb) => {
@@ -1739,19 +1729,18 @@ impl Interpreter {
                     }
                 };
 
+                // Pre-compute param name once outside the loop
+                let param_name = func
+                    .params
+                    .first()
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "it".to_string());
+
                 let mut result = Vec::new();
                 for item in items {
-                    // Create new environment with the closure
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
-
-                    // Define the parameter (use first param name or default)
-                    let param_name = func
-                        .params
-                        .first()
-                        .map(|p| p.name.clone())
-                        .unwrap_or_else(|| "it".to_string());
-                    call_env.define(param_name, item.clone());
+                    // Create new environment with the closure and define param in one step
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
+                    call_env.define(param_name.clone(), item.clone());
 
                     // Call the function
                     match self.execute_block(&func.body, call_env)? {
@@ -1787,19 +1776,18 @@ impl Interpreter {
                     }
                 };
 
+                // Pre-compute param name once outside the loop
+                let param_name = func
+                    .params
+                    .first()
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "it".to_string());
+
                 let mut result = Vec::new();
                 for item in items {
-                    // Create new environment with the closure
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
-
-                    // Define the parameter
-                    let param_name = func
-                        .params
-                        .first()
-                        .map(|p| p.name.clone())
-                        .unwrap_or_else(|| "it".to_string());
-                    call_env.define(param_name, item.clone());
+                    // Create new environment with the closure and define param in one step
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
+                    call_env.define(param_name.clone(), item.clone());
 
                     // Call the function and check if result is truthy
                     let result_value = match self.execute_block(&func.body, call_env)? {
@@ -1838,18 +1826,17 @@ impl Interpreter {
                     }
                 };
 
-                for item in items {
-                    // Create new environment with the closure
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                // Pre-compute param name once outside the loop
+                let param_name = func
+                    .params
+                    .first()
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "it".to_string());
 
-                    // Define the parameter
-                    let param_name = func
-                        .params
-                        .first()
-                        .map(|p| p.name.clone())
-                        .unwrap_or_else(|| "it".to_string());
-                    call_env.define(param_name, item.clone());
+                for item in items {
+                    // Create new environment with the closure and define param in one step
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
+                    call_env.define(param_name.clone(), item.clone());
 
                     // Call the function (discard return value)
                     match self.execute_block(&func.body, call_env)? {
@@ -1892,8 +1879,8 @@ impl Interpreter {
                 let start_idx = if arguments.len() == 2 { 0 } else { 1 };
 
                 for item in items.iter().skip(start_idx) {
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                    // Create new environment with the closure and define params in one step
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
 
                     if func.params.len() >= 2 {
                         call_env.define(func.params[0].name.clone(), acc.clone());
@@ -2423,7 +2410,7 @@ impl Interpreter {
     /// Handle hash methods: map, filter, each
     fn call_hash_method(
         &mut self,
-        entries: &[(Value, Value)],
+        entries: &[(HashKey, Value)],
         method_name: &str,
         arguments: Vec<Value>,
         span: Span,
@@ -2450,20 +2437,20 @@ impl Interpreter {
                     }
                 };
 
-                let mut result = Vec::new();
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (key, value) in entries {
                     // Create new environment with the closure
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
 
                     // Define parameters: key and value
+                    let key_value = key.to_value();
                     if func.params.len() >= 2 {
-                        call_env.define(func.params[0].name.clone(), key.clone());
+                        call_env.define(func.params[0].name.clone(), key_value.clone());
                         call_env.define(func.params[1].name.clone(), value.clone());
                     } else if func.params.len() == 1 {
                         // If only one param, pass [key, value] array
                         let pair =
-                            Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
+                            Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
                         call_env.define(func.params[0].name.clone(), pair);
                     }
 
@@ -2476,13 +2463,10 @@ impl Interpreter {
                                 if arr.len() == 2 {
                                     let new_key = arr[0].clone();
                                     let new_val = arr[1].clone();
-                                    if !new_key.is_hashable() {
-                                        return Err(RuntimeError::type_error(
-                                            "hash key must be hashable",
-                                            span,
-                                        ));
-                                    }
-                                    result.push((new_key, new_val));
+                                    let hash_key = new_key.to_hash_key().ok_or_else(|| {
+                                        RuntimeError::type_error("hash key must be hashable", span)
+                                    })?;
+                                    result.insert(hash_key, new_val);
                                 }
                             }
                         }
@@ -2516,20 +2500,20 @@ impl Interpreter {
                     }
                 };
 
-                let mut result = Vec::new();
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (key, value) in entries {
                     // Create new environment with the closure
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
 
                     // Define parameters: key and value
+                    let key_value = key.to_value();
                     if func.params.len() >= 2 {
-                        call_env.define(func.params[0].name.clone(), key.clone());
+                        call_env.define(func.params[0].name.clone(), key_value.clone());
                         call_env.define(func.params[1].name.clone(), value.clone());
                     } else if func.params.len() == 1 {
                         // If only one param, pass [key, value] array
                         let pair =
-                            Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
+                            Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
                         call_env.define(func.params[0].name.clone(), pair);
                     }
 
@@ -2543,7 +2527,7 @@ impl Interpreter {
                     };
 
                     if result_value.is_truthy() {
-                        result.push((key.clone(), value.clone()));
+                        result.insert(key.clone(), value.clone());
                     }
                 }
 
@@ -2572,17 +2556,17 @@ impl Interpreter {
 
                 for (key, value) in entries {
                     // Create new environment with the closure
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
 
                     // Define parameters: key and value
+                    let key_value = key.to_value();
                     if func.params.len() >= 2 {
-                        call_env.define(func.params[0].name.clone(), key.clone());
+                        call_env.define(func.params[0].name.clone(), key_value.clone());
                         call_env.define(func.params[1].name.clone(), value.clone());
                     } else if func.params.len() == 1 {
                         // If only one param, pass [key, value] array
                         let pair =
-                            Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
+                            Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
                         call_env.define(func.params[0].name.clone(), pair);
                     }
 
@@ -2596,28 +2580,26 @@ impl Interpreter {
                 }
 
                 // Return the original hash for chaining
-                Ok(Value::Hash(Rc::new(RefCell::new(entries.to_vec()))))
+                let result: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "get" => {
-                // get(key) or get(key, default)
+                // get(key) or get(key, default) - O(1) lookup
                 if arguments.is_empty() || arguments.len() > 2 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
                 let key = &arguments[0];
-                if !key.is_hashable() {
-                    return Err(RuntimeError::type_error(
+                let hash_key = key.to_hash_key().ok_or_else(|| {
+                    RuntimeError::type_error(
                         format!("{} cannot be used as a hash key", key.type_name()),
                         span,
-                    ));
-                }
+                    )
+                })?;
                 let default = arguments.get(1).cloned().unwrap_or(Value::Null);
 
-                for (k, v) in entries {
-                    if key.hash_eq(k) {
-                        return Ok(v.clone());
-                    }
-                }
-                Ok(default)
+                // O(1) lookup using IndexMap
+                let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                Ok(entries_map.get(&hash_key).cloned().unwrap_or(default))
             }
             "fetch" => {
                 // fetch(key) or fetch(key, default) - raises error if key not found and no default
@@ -2625,20 +2607,18 @@ impl Interpreter {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
                 let key = &arguments[0];
-                if !key.is_hashable() {
-                    return Err(RuntimeError::type_error(
+                let hash_key = key.to_hash_key().ok_or_else(|| {
+                    RuntimeError::type_error(
                         format!("{} cannot be used as a hash key", key.type_name()),
                         span,
-                    ));
-                }
+                    )
+                })?;
 
-                for (k, v) in entries {
-                    if key.hash_eq(k) {
-                        return Ok(v.clone());
-                    }
-                }
-
-                if let Some(default) = arguments.get(1) {
+                // O(1) lookup using IndexMap
+                let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                if let Some(v) = entries_map.get(&hash_key) {
+                    Ok(v.clone())
+                } else if let Some(default) = arguments.get(1) {
                     Ok(default.clone())
                 } else {
                     Err(RuntimeError::type_error(
@@ -2651,15 +2631,15 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                let mut result = Vec::new();
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (k, v) in entries {
-                    if !v.is_hashable() {
-                        return Err(RuntimeError::type_error(
+                    let new_key = v.to_hash_key().ok_or_else(|| {
+                        RuntimeError::type_error(
                             format!("{} cannot be used as a hash key", v.type_name()),
                             span,
-                        ));
-                    }
-                    result.push((v.clone(), k.clone()));
+                        )
+                    })?;
+                    result.insert(new_key, k.to_value());
                 }
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
@@ -2678,10 +2658,9 @@ impl Interpreter {
                     }
                 };
 
-                let mut result = Vec::new();
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (key, value) in entries {
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
 
                     let param_name = func
                         .params
@@ -2700,7 +2679,7 @@ impl Interpreter {
                             ));
                         }
                     };
-                    result.push((key.clone(), new_value));
+                    result.insert(key.clone(), new_value);
                 }
 
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
@@ -2720,17 +2699,16 @@ impl Interpreter {
                     }
                 };
 
-                let mut result = Vec::new();
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (key, value) in entries {
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
 
                     let param_name = func
                         .params
                         .first()
                         .map(|p| p.name.clone())
                         .unwrap_or_else(|| "it".to_string());
-                    call_env.define(param_name, key.clone());
+                    call_env.define(param_name, key.to_value());
 
                     let new_key = match self.execute_block(&func.body, call_env)? {
                         ControlFlow::Return(v) => v,
@@ -2743,13 +2721,10 @@ impl Interpreter {
                         }
                     };
 
-                    if !new_key.is_hashable() {
-                        return Err(RuntimeError::type_error(
-                            "transformed key must be hashable",
-                            span,
-                        ));
-                    }
-                    result.push((new_key, value.clone()));
+                    let new_hash_key = new_key.to_hash_key().ok_or_else(|| {
+                        RuntimeError::type_error("transformed key must be hashable", span)
+                    })?;
+                    result.insert(new_hash_key, value.clone());
                 }
 
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
@@ -2769,17 +2744,17 @@ impl Interpreter {
                     }
                 };
 
-                let mut result = Vec::new();
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (key, value) in entries {
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
 
+                    let key_value = key.to_value();
                     if func.params.len() >= 2 {
-                        call_env.define(func.params[0].name.clone(), key.clone());
+                        call_env.define(func.params[0].name.clone(), key_value.clone());
                         call_env.define(func.params[1].name.clone(), value.clone());
                     } else if func.params.len() == 1 {
                         let pair =
-                            Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
+                            Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
                         call_env.define(func.params[0].name.clone(), pair);
                     }
 
@@ -2792,7 +2767,7 @@ impl Interpreter {
                     };
 
                     if result_value.is_truthy() {
-                        result.push((key.clone(), value.clone()));
+                        result.insert(key.clone(), value.clone());
                     }
                 }
 
@@ -2813,17 +2788,17 @@ impl Interpreter {
                     }
                 };
 
-                let mut result = Vec::new();
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (key, value) in entries {
-                    let call_env = Environment::with_enclosing(func.closure.clone());
-                    let mut call_env = call_env;
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
 
+                    let key_value = key.to_value();
                     if func.params.len() >= 2 {
-                        call_env.define(func.params[0].name.clone(), key.clone());
+                        call_env.define(func.params[0].name.clone(), key_value.clone());
                         call_env.define(func.params[1].name.clone(), value.clone());
                     } else if func.params.len() == 1 {
                         let pair =
-                            Value::Array(Rc::new(RefCell::new(vec![key.clone(), value.clone()])));
+                            Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
                         call_env.define(func.params[0].name.clone(), pair);
                     }
 
@@ -2836,14 +2811,14 @@ impl Interpreter {
                     };
 
                     if !result_value.is_truthy() {
-                        result.push((key.clone(), value.clone()));
+                        result.insert(key.clone(), value.clone());
                     }
                 }
 
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "slice" => {
-                // slice([key1, key2, ...]) - get subset with specified keys
+                // slice([key1, key2, ...]) - get subset with specified keys - O(n) with O(1) lookups
                 if arguments.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
@@ -2857,26 +2832,25 @@ impl Interpreter {
                     }
                 };
 
-                let mut result = Vec::new();
+                // Build an IndexMap from entries for O(1) lookups
+                let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for key in keys_arr {
-                    if !key.is_hashable() {
-                        return Err(RuntimeError::type_error(
+                    let hash_key = key.to_hash_key().ok_or_else(|| {
+                        RuntimeError::type_error(
                             format!("{} cannot be used as a hash key", key.type_name()),
                             span,
-                        ));
-                    }
-                    for (k, v) in entries {
-                        if key.hash_eq(k) {
-                            result.push((k.clone(), v.clone()));
-                            break;
-                        }
+                        )
+                    })?;
+                    if let Some(v) = entries_map.get(&hash_key) {
+                        result.insert(hash_key, v.clone());
                     }
                 }
 
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "except" => {
-                // except([key1, key2, ...]) - get hash without specified keys
+                // except([key1, key2, ...]) - get hash without specified keys - O(n) with O(1) lookups
                 if arguments.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
@@ -2890,17 +2864,16 @@ impl Interpreter {
                     }
                 };
 
-                let mut result = Vec::new();
+                // Build set of keys to exclude for O(1) lookups
+                let exclude_keys: std::collections::HashSet<HashKey> = keys_arr
+                    .iter()
+                    .filter_map(|k| k.to_hash_key())
+                    .collect();
+
+                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
                 for (k, v) in entries {
-                    let mut found = false;
-                    for key in &keys_arr {
-                        if key.is_hashable() && k.hash_eq(key) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if !found {
-                        result.push((k.clone(), v.clone()));
+                    if !exclude_keys.contains(k) {
+                        result.insert(k.clone(), v.clone());
                     }
                 }
 
@@ -2910,7 +2883,7 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                let result: Vec<(Value, Value)> = entries
+                let result: IndexMap<HashKey, Value> = entries
                     .iter()
                     .filter(|(_, v)| !matches!(v, Value::Null))
                     .cloned()
@@ -2918,23 +2891,26 @@ impl Interpreter {
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "dig" => {
-                // dig(key, key2, ...) - navigate nested hashes
+                // dig(key, key2, ...) - navigate nested hashes with O(1) lookups
                 if arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
 
-                let mut current = Value::Hash(Rc::new(RefCell::new(entries.to_vec())));
+                let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                let mut current = Value::Hash(Rc::new(RefCell::new(entries_map)));
                 for key in arguments {
                     match current {
                         Value::Hash(ref hash) => {
+                            let hash_key = match key.to_hash_key() {
+                                Some(k) => k,
+                                None => return Ok(Value::Null),
+                            };
                             let hash_ref = hash.borrow();
-                            let found = hash_ref
-                                .iter()
-                                .find(|(k, _)| key.hash_eq(k))
-                                .map(|(_, v)| v.clone());
-                            drop(hash_ref); // Release the borrow early
-                            match found {
-                                Some(v) => current = v,
+                            match hash_ref.get(&hash_key).cloned() {
+                                Some(v) => {
+                                    drop(hash_ref);
+                                    current = v;
+                                }
                                 None => return Ok(Value::Null),
                             }
                         }
@@ -2955,7 +2931,7 @@ impl Interpreter {
                 }
                 let parts: Vec<String> = entries
                     .iter()
-                    .map(|(k, v)| format!("{} => {}", k, v))
+                    .map(|(k, v)| format!("{} => {}", k.to_value(), v))
                     .collect();
                 Ok(Value::String(format!("{{{}}}", parts.join(", "))))
             }
@@ -2963,7 +2939,7 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                let keys: Vec<Value> = entries.iter().map(|(k, _)| k.clone()).collect();
+                let keys: Vec<Value> = entries.iter().map(|(k, _)| k.to_value()).collect();
                 Ok(Value::Array(Rc::new(RefCell::new(keys))))
             }
             "values" => {
@@ -2974,33 +2950,30 @@ impl Interpreter {
                 Ok(Value::Array(Rc::new(RefCell::new(values))))
             }
             "has_key" => {
+                // O(1) lookup
                 if arguments.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
                 let key = &arguments[0];
-                for (k, _) in entries {
-                    if key.hash_eq(k) {
-                        return Ok(Value::Bool(true));
-                    }
-                }
-                Ok(Value::Bool(false))
+                let hash_key = match key.to_hash_key() {
+                    Some(k) => k,
+                    None => return Ok(Value::Bool(false)),
+                };
+                let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                Ok(Value::Bool(entries_map.contains_key(&hash_key)))
             }
             "delete" => {
+                // O(1) lookup and removal
                 if arguments.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
                 let key = &arguments[0];
-                let mut result: Vec<(Value, Value)> = Vec::new();
-                let mut deleted_value = Value::Null;
-                for (k, v) in entries {
-                    if key.hash_eq(k) {
-                        deleted_value = v.clone();
-                    } else {
-                        result.push((k.clone(), v.clone()));
-                    }
-                }
-                // Return the deleted value (like Ruby)
-                Ok(deleted_value)
+                let hash_key = match key.to_hash_key() {
+                    Some(k) => k,
+                    None => return Ok(Value::Null),
+                };
+                let mut entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                Ok(entries_map.shift_remove(&hash_key).unwrap_or(Value::Null))
             }
             "merge" => {
                 if arguments.len() != 1 {
@@ -3015,19 +2988,9 @@ impl Interpreter {
                         ))
                     }
                 };
-                let mut result: Vec<(Value, Value)> = entries.to_vec();
-                for (k2, v2) in other {
-                    let mut found = false;
-                    for (k1, v1) in result.iter_mut() {
-                        if k2.hash_eq(k1) {
-                            *v1 = v2.clone();
-                            found = true;
-                            break;
-                        }
-                    }
-                    if !found {
-                        result.push((k2, v2));
-                    }
+                let mut result: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                for (k, v) in other {
+                    result.insert(k, v);
                 }
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
@@ -3037,7 +3000,7 @@ impl Interpreter {
                 }
                 let pairs: Vec<Value> = entries
                     .iter()
-                    .map(|(k, v)| Value::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()]))))
+                    .map(|(k, v)| Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()]))))
                     .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(pairs))))
             }
@@ -3045,26 +3008,23 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                Ok(Value::Hash(Rc::new(RefCell::new(Vec::new()))))
+                Ok(Value::Hash(Rc::new(RefCell::new(IndexMap::new()))))
             }
             "set" => {
+                // O(1) insert
                 if arguments.len() != 2 {
                     return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
                 }
-                let key = arguments[0].clone();
+                let key = &arguments[0];
                 let value = arguments[1].clone();
-                let mut result: Vec<(Value, Value)> = entries.to_vec();
-                let mut found = false;
-                for (k, v) in result.iter_mut() {
-                    if key.hash_eq(k) {
-                        *v = value.clone();
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
-                    result.push((key, value.clone()));
-                }
+                let hash_key = key.to_hash_key().ok_or_else(|| {
+                    RuntimeError::type_error(
+                        format!("{} cannot be used as a hash key", key.type_name()),
+                        span,
+                    )
+                })?;
+                let mut result: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+                result.insert(hash_key, value);
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
             }
             "empty?" => {
@@ -3108,7 +3068,7 @@ impl Interpreter {
                     Value::Hash(ref hash) => {
                         let mut map = std::collections::HashMap::new();
                         for (k, v) in hash.borrow().iter() {
-                            if let Value::String(key) = k {
+                            if let HashKey::String(key) = k {
                                 map.insert(
                                     key.clone(),
                                     crate::interpreter::builtins::model::value_to_json(v)
@@ -4195,47 +4155,31 @@ impl Interpreter {
                     _ => return Ok(None),
                 };
 
-                let hash_vec: Vec<(Value, Value)> = hash;
-
                 let mut bindings = Vec::new();
 
                 for (field_name, field_pattern) in fields {
-                    let mut found = false;
-                    for (key, val) in &hash_vec {
-                        if let Value::String(s) = key {
-                            if s == field_name {
-                                found = true;
-                                if let Some(field_bindings) =
-                                    self.match_pattern(val, field_pattern)?
-                                {
-                                    bindings.extend(field_bindings);
-                                } else {
-                                    return Ok(None);
-                                }
-                                break;
-                            }
+                    let hash_key = HashKey::String(field_name.clone());
+                    if let Some(val) = hash.get(&hash_key) {
+                        if let Some(field_bindings) = self.match_pattern(val, field_pattern)? {
+                            bindings.extend(field_bindings);
+                        } else {
+                            return Ok(None);
                         }
-                    }
-                    if !found {
+                    } else {
                         return Ok(None);
                     }
                 }
 
                 if let Some(rest_name) = rest {
-                    let mut rest_vec = Vec::new();
-                    for (key, val) in hash_vec {
-                        let is_matched = fields.iter().any(|(f, _)| {
-                            if let Value::String(s) = &key {
-                                s == f
-                            } else {
-                                false
-                            }
-                        });
-                        if !is_matched {
-                            rest_vec.push((key, val));
-                        }
-                    }
-                    let rest_values = Value::Hash(Rc::new(RefCell::new(rest_vec)));
+                    let matched_keys: std::collections::HashSet<HashKey> = fields
+                        .iter()
+                        .map(|(f, _)| HashKey::String(f.clone()))
+                        .collect();
+                    let rest_map: IndexMap<HashKey, Value> = hash
+                        .into_iter()
+                        .filter(|(k, _)| !matched_keys.contains(k))
+                        .collect();
+                    let rest_values = Value::Hash(Rc::new(RefCell::new(rest_map)));
                     bindings.push((rest_name.clone(), rest_values));
                 }
 

@@ -7,12 +7,13 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use indexmap::IndexMap;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
 
 /// JWT claims structure.
 #[derive(Debug, Serialize, Deserialize)]
@@ -80,7 +81,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             if args.len() > 2 {
                 if let Value::Hash(opts) = &args[2] {
                     for (k, v) in opts.borrow().iter() {
-                        if let Value::String(key) = k {
+                        if let HashKey::String(key) = k {
                             match key.as_str() {
                                 "expires_in" => {
                                     if let Value::Int(secs) = v {
@@ -113,7 +114,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             let mut data = HashMap::new();
             if let Value::Hash(hash) = payload {
                 for (k, v) in hash.borrow().iter() {
-                    if let Value::String(key) = k {
+                    if let HashKey::String(key) = k {
                         // Skip reserved claims
                         if key != "exp" && key != "iat" && key != "sub" {
                             data.insert(key.clone(), value_to_json(v)?);
@@ -179,34 +180,33 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 Ok(token_data) => {
                     // Convert claims to Soli Value
                     let claims = token_data.claims;
-                    let mut pairs: Vec<(Value, Value)> = Vec::new();
+                    let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
 
                     if let Some(sub) = claims.sub {
-                        pairs.push((Value::String("sub".to_string()), Value::String(sub)));
+                        pairs.insert(HashKey::String("sub".to_string()), Value::String(sub));
                     }
                     if let Some(exp) = claims.exp {
-                        pairs.push((Value::String("exp".to_string()), Value::Int(exp as i64)));
+                        pairs.insert(HashKey::String("exp".to_string()), Value::Int(exp as i64));
                     }
                     if let Some(iat) = claims.iat {
-                        pairs.push((Value::String("iat".to_string()), Value::Int(iat as i64)));
+                        pairs.insert(HashKey::String("iat".to_string()), Value::Int(iat as i64));
                     }
 
                     // Add custom data
                     for (key, value) in claims.data {
-                        pairs.push((Value::String(key), json_to_value(&value)?));
+                        pairs.insert(HashKey::String(key), json_to_value(&value)?);
                     }
 
                     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
                 }
                 Err(e) => {
                     // Return error hash instead of throwing
-                    let error_pairs: Vec<(Value, Value)> = vec![
-                        (Value::String("error".to_string()), Value::Bool(true)),
-                        (
-                            Value::String("message".to_string()),
-                            Value::String(format!("{}", e)),
-                        ),
-                    ];
+                    let mut error_pairs: IndexMap<HashKey, Value> = IndexMap::new();
+                    error_pairs.insert(HashKey::String("error".to_string()), Value::Bool(true));
+                    error_pairs.insert(
+                        HashKey::String("message".to_string()),
+                        Value::String(format!("{}", e)),
+                    );
                     Ok(Value::Hash(Rc::new(RefCell::new(error_pairs))))
                 }
             }
@@ -239,32 +239,31 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             ) {
                 Ok(token_data) => {
                     let claims = token_data.claims;
-                    let mut pairs: Vec<(Value, Value)> = Vec::new();
+                    let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
 
                     if let Some(sub) = claims.sub {
-                        pairs.push((Value::String("sub".to_string()), Value::String(sub)));
+                        pairs.insert(HashKey::String("sub".to_string()), Value::String(sub));
                     }
                     if let Some(exp) = claims.exp {
-                        pairs.push((Value::String("exp".to_string()), Value::Int(exp as i64)));
+                        pairs.insert(HashKey::String("exp".to_string()), Value::Int(exp as i64));
                     }
                     if let Some(iat) = claims.iat {
-                        pairs.push((Value::String("iat".to_string()), Value::Int(iat as i64)));
+                        pairs.insert(HashKey::String("iat".to_string()), Value::Int(iat as i64));
                     }
 
                     for (key, value) in claims.data {
-                        pairs.push((Value::String(key), json_to_value(&value)?));
+                        pairs.insert(HashKey::String(key), json_to_value(&value)?);
                     }
 
                     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
                 }
                 Err(e) => {
-                    let error_pairs: Vec<(Value, Value)> = vec![
-                        (Value::String("error".to_string()), Value::Bool(true)),
-                        (
-                            Value::String("message".to_string()),
-                            Value::String(format!("{}", e)),
-                        ),
-                    ];
+                    let mut error_pairs: IndexMap<HashKey, Value> = IndexMap::new();
+                    error_pairs.insert(HashKey::String("error".to_string()), Value::Bool(true));
+                    error_pairs.insert(
+                        HashKey::String("message".to_string()),
+                        Value::String(format!("{}", e)),
+                    );
                     Ok(Value::Hash(Rc::new(RefCell::new(error_pairs))))
                 }
             }
@@ -276,7 +275,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
 fn extract_string_claim(payload: &Value, key: &str) -> Option<String> {
     if let Value::Hash(hash) = payload {
         for (k, v) in hash.borrow().iter() {
-            if let Value::String(k_str) = k {
+            if let HashKey::String(k_str) = k {
                 if k_str == key {
                     if let Value::String(s) = v {
                         return Some(s.clone());

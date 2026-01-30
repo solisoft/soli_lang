@@ -38,6 +38,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use indexmap::IndexMap;
+
 use bytes::Bytes;
 use crossbeam::channel;
 use futures_util::SinkExt;
@@ -84,6 +86,7 @@ use crate::interpreter::builtins::session::{
     create_session_cookie, ensure_session, extract_session_id_from_cookie, set_current_session_id,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
+use crate::interpreter::value::HashKey;
 use crate::interpreter::{Interpreter, Value};
 use crate::live::socket::{extract_session_id as extract_live_session_id, handle_live_connection};
 use crate::span::Span;
@@ -2411,32 +2414,19 @@ fn handle_websocket_event(
         };
 
     // Build event hash: {type, connection_id, message, channel?}
-    let mut event_pairs: Vec<(Value, Value)> = vec![
-        (
-            Value::String("type".to_string()),
-            Value::String(data.event_type.clone()),
-        ),
-        (
-            Value::String("connection_id".to_string()),
-            Value::String(connection_id.clone()),
-        ),
-    ];
+    let mut event_map: IndexMap<HashKey, Value> = IndexMap::new();
+    event_map.insert(HashKey::String("type".to_string()), Value::String(data.event_type.clone()));
+    event_map.insert(HashKey::String("connection_id".to_string()), Value::String(connection_id.clone()));
 
     if let Some(ref msg) = data.message {
-        event_pairs.push((
-            Value::String("message".to_string()),
-            Value::String(msg.clone()),
-        ));
+        event_map.insert(HashKey::String("message".to_string()), Value::String(msg.clone()));
     }
 
     if let Some(ref channel) = data.channel {
-        event_pairs.push((
-            Value::String("channel".to_string()),
-            Value::String(channel.clone()),
-        ));
+        event_map.insert(HashKey::String("channel".to_string()), Value::String(channel.clone()));
     }
 
-    let event_value = Value::Hash(Rc::new(RefCell::new(event_pairs)));
+    let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
 
     // Call the handler function
     match interpreter.call_value(handler, vec![event_value], Span::default()) {
@@ -2444,7 +2434,7 @@ fn handle_websocket_event(
             // Handle broadcast response from handler
             if let Value::Hash(hash) = &result {
                 for (k, v) in hash.borrow().iter() {
-                    if let (Value::String(key), Value::String(value)) = (k, v) {
+                    if let (HashKey::String(key), Value::String(value)) = (k, v) {
                         match key.as_str() {
                             "broadcast" => {
                                 // Broadcast to all clients
@@ -2500,15 +2490,11 @@ fn handle_liveview_event(
     let state_value = json_to_value(&instance.state);
     let params_value = json_to_value(&data.params);
 
-    let event_pairs: Vec<(Value, Value)> = vec![
-        (
-            Value::String("event".to_string()),
-            Value::String(data.event.clone()),
-        ),
-        (Value::String("params".to_string()), params_value),
-        (Value::String("state".to_string()), state_value),
-    ];
-    let event_value = Value::Hash(Rc::new(RefCell::new(event_pairs)));
+    let mut event_map: IndexMap<HashKey, Value> = IndexMap::new();
+    event_map.insert(HashKey::String("event".to_string()), Value::String(data.event.clone()));
+    event_map.insert(HashKey::String("params".to_string()), params_value);
+    event_map.insert(HashKey::String("state".to_string()), state_value);
+    let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
 
     // If we have a registered handler, call it
     if let Some(handler_name) = handler_name {
@@ -2664,11 +2650,11 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             Value::Array(Rc::new(RefCell::new(values)))
         }
         serde_json::Value::Object(obj) => {
-            let pairs: Vec<(Value, Value)> = obj
+            let map: IndexMap<HashKey, Value> = obj
                 .iter()
-                .map(|(k, v)| (Value::String(k.clone()), json_to_value(v)))
+                .map(|(k, v)| (HashKey::String(k.clone()), json_to_value(v)))
                 .collect();
-            Value::Hash(Rc::new(RefCell::new(pairs)))
+            Value::Hash(Rc::new(RefCell::new(map)))
         }
     }
 }
@@ -2688,7 +2674,7 @@ fn value_to_json(value: &Value) -> serde_json::Value {
         Value::Hash(hash) => {
             let mut obj = serde_json::Map::new();
             for (k, v) in hash.borrow().iter() {
-                if let Value::String(key) = k {
+                if let HashKey::String(key) = k {
                     obj.insert(key.clone(), value_to_json(v));
                 }
             }
@@ -3063,12 +3049,8 @@ fn call_class_method(
 fn get_hash_field(hash: &Value, field: &str) -> Option<Value> {
     match hash {
         Value::Hash(fields) => {
-            let key = Value::String(field.to_string());
-            fields
-                .borrow()
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, v)| v.clone())
+            let key = HashKey::String(field.to_string());
+            fields.borrow().get(&key).cloned()
         }
         _ => None,
     }
@@ -3124,26 +3106,16 @@ fn execute_after_actions(
     req: Value,
     response: &ResponseData,
 ) -> ResponseData {
-    let response_value = Value::Hash(Rc::new(RefCell::new(vec![
-        (
-            Value::String("status".to_string()),
-            Value::Int(response.status as i64),
-        ),
-        (
-            Value::String("headers".to_string()),
-            Value::Hash(Rc::new(RefCell::new(
-                response
-                    .headers
-                    .iter()
-                    .map(|(k, v)| (Value::String(k.clone()), Value::String(v.clone())))
-                    .collect(),
-            ))),
-        ),
-        (
-            Value::String("body".to_string()),
-            Value::String(response.body.clone()),
-        ),
-    ])));
+    let headers_map: IndexMap<HashKey, Value> = response
+        .headers
+        .iter()
+        .map(|(k, v)| (HashKey::String(k.clone()), Value::String(v.clone())))
+        .collect();
+    let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
+    response_map.insert(HashKey::String("status".to_string()), Value::Int(response.status as i64));
+    response_map.insert(HashKey::String("headers".to_string()), Value::Hash(Rc::new(RefCell::new(headers_map))));
+    response_map.insert(HashKey::String("body".to_string()), Value::String(response.body.clone()));
+    let response_value = Value::Hash(Rc::new(RefCell::new(response_map)));
 
     for after_action in &controller_info.after_actions {
         // Check if this after_action applies to this action
@@ -3185,7 +3157,7 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
         // Check if this is a response hash by looking for "status" field
         let has_status = fields
             .iter()
-            .any(|(k, _)| matches!(k, Value::String(s) if s == "status"));
+            .any(|(k, _)| matches!(k, HashKey::String(s) if s == "status"));
 
         // If no status field, this is a modified request, not a response
         if !has_status {
@@ -3197,7 +3169,7 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
         let mut headers = Vec::new();
 
         for (key, val) in fields.iter() {
-            if let Value::String(k) = key {
+            if let HashKey::String(k) = key {
                 match k.as_str() {
                     "status" => {
                         if let Value::Int(s) = val {
@@ -3212,7 +3184,7 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
                     "headers" => {
                         if let Value::Hash(h) = val {
                             for (hk, hv) in h.borrow().iter() {
-                                if let (Value::String(key_str), Value::String(val_str)) = (hk, hv) {
+                                if let (HashKey::String(key_str), Value::String(val_str)) = (hk, hv) {
                                     headers.push((key_str.clone(), val_str.clone()));
                                 }
                             }
@@ -3304,31 +3276,18 @@ fn uploaded_files_to_value(files: &[UploadedFile]) -> Value {
     let file_values: Vec<Value> = files
         .iter()
         .map(|f| {
-            let pairs: Vec<(Value, Value)> = vec![
-                (
-                    Value::String("name".to_string()),
-                    Value::String(f.name.clone()),
-                ),
-                (
-                    Value::String("filename".to_string()),
-                    Value::String(f.filename.clone()),
-                ),
-                (
-                    Value::String("content_type".to_string()),
-                    Value::String(f.content_type.clone()),
-                ),
-                (
-                    Value::String("size".to_string()),
-                    Value::Int(f.data.len() as i64),
-                ),
-                (
-                    Value::String("data".to_string()),
-                    Value::Array(Rc::new(RefCell::new(
-                        f.data.iter().map(|&b| Value::Int(b as i64)).collect(),
-                    ))),
-                ),
-            ];
-            Value::Hash(Rc::new(RefCell::new(pairs)))
+            let mut file_map: IndexMap<HashKey, Value> = IndexMap::new();
+            file_map.insert(HashKey::String("name".to_string()), Value::String(f.name.clone()));
+            file_map.insert(HashKey::String("filename".to_string()), Value::String(f.filename.clone()));
+            file_map.insert(HashKey::String("content_type".to_string()), Value::String(f.content_type.clone()));
+            file_map.insert(HashKey::String("size".to_string()), Value::Int(f.data.len() as i64));
+            file_map.insert(
+                HashKey::String("data".to_string()),
+                Value::Array(Rc::new(RefCell::new(
+                    f.data.iter().map(|&b| Value::Int(b as i64)).collect(),
+                ))),
+            );
+            Value::Hash(Rc::new(RefCell::new(file_map)))
         })
         .collect();
     Value::Array(Rc::new(RefCell::new(file_values)))
@@ -3346,11 +3305,11 @@ fn parse_request_body(
     // Handle multipart data if available (parsed in async context)
     if let Some(form_fields) = multipart_form {
         if !form_fields.is_empty() {
-            let pairs: Vec<(Value, Value)> = form_fields
+            let form_map: IndexMap<HashKey, Value> = form_fields
                 .iter()
-                .map(|(k, v)| (Value::String(k.clone()), Value::String(v.clone())))
+                .map(|(k, v)| (HashKey::String(k.clone()), Value::String(v.clone())))
                 .collect();
-            parsed.form = Some(Value::Hash(Rc::new(RefCell::new(pairs))));
+            parsed.form = Some(Value::Hash(Rc::new(RefCell::new(form_map))));
         }
     }
 

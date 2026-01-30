@@ -95,9 +95,31 @@ impl Environment {
         false
     }
 
-    /// Check if a variable exists in the current scope only.
+    /// Check if a variable exists in the current scope only (values or consts).
     pub fn contains_local(&self, name: &str) -> bool {
-        self.values.contains_key(name)
+        self.values.contains_key(name) || self.consts.contains_key(name)
+    }
+
+    /// Get a variable from local scope only (no parent chain traversal).
+    /// Useful when you know the variable should be in the current scope.
+    #[inline]
+    pub fn get_local(&self, name: &str) -> Option<Value> {
+        self.consts
+            .get(name)
+            .or_else(|| self.values.get(name))
+            .cloned()
+    }
+
+    /// Assign a value to a variable, or define it if not found.
+    /// This is useful for loop variables that need to be reassigned each iteration.
+    /// Returns false only if the variable is a constant.
+    pub fn assign_or_define(&mut self, name: &str, value: Value) -> bool {
+        if self.consts.contains_key(name) {
+            return false;
+        }
+        // Always define in local scope - this is for loop variables
+        self.values.insert(name.to_string(), value);
+        true
     }
 
     /// Get the enclosing environment.

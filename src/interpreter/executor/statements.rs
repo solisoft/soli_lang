@@ -243,13 +243,14 @@ impl Interpreter {
         let iter_value = self.evaluate(iterable)?;
         match iter_value {
             Value::Array(arr) => {
-                for item in arr.borrow().iter().cloned().collect::<Vec<_>>() {
-                    let loop_env = Environment::with_enclosing(self.environment.clone());
+                // Clone items once outside the loop to avoid holding borrow across loop body
+                let items: Vec<Value> = arr.borrow().iter().cloned().collect();
+                for item in items {
+                    // Create loop environment with variable already defined (avoids extra borrow_mut)
+                    let mut loop_env = Environment::with_enclosing(self.environment.clone());
+                    loop_env.define(variable.to_string(), item);
                     let prev_env =
                         std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
-                    self.environment
-                        .borrow_mut()
-                        .define(variable.to_string(), item);
                     let result = self.execute(body);
                     self.environment = prev_env;
                     match result? {

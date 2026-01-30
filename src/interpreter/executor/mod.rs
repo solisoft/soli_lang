@@ -17,7 +17,7 @@ use crate::interpreter::builtins::server::{
     build_request_hash, extract_response, get_routes, match_path, parse_query_string,
 };
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Function, Value};
+use crate::interpreter::value::{Function, HashKey, Value};
 use crate::span::Span;
 
 pub(crate) type RuntimeResult<T> = Result<T, RuntimeError>;
@@ -160,7 +160,7 @@ impl Interpreter {
             // But ONLY if they don't already exist in the environment
             if let Value::Hash(hash) = &view_data {
                 for (key, value) in hash.borrow().iter() {
-                    if let Value::String(key_str) = key {
+                    if let HashKey::String(key_str) = key {
                         // Skip if this key already exists in the environment
                         if existing_names.contains(key_str) {
                             continue;
@@ -238,7 +238,7 @@ impl Interpreter {
                     .iter()
                     .map(|(k, v)| {
                         let key = match k {
-                            Value::String(s) => s.clone(),
+                            HashKey::String(s) => s.clone(),
                             other => format!("{}", other),
                         };
                         let escaped_key = key.replace('\\', "\\\\").replace('"', "\\\"");

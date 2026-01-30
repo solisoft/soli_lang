@@ -16,7 +16,7 @@ use rand_core::RngCore;
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::interpreter::value::{hash_from_pairs, Class, NativeFunction, Value};
 
 const X25519_PRIVATE_KEY_LENGTH: usize = 32;
 const X25519_PUBLIC_KEY_LENGTH: usize = 32;
@@ -288,11 +288,10 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         "x25519_keypair".to_string(),
         Rc::new(NativeFunction::new("Crypto.x25519_keypair", Some(0), |_args| {
             let (private, public) = do_x25519_keypair();
-            let result = vec![
-                (Value::String("private".to_string()), Value::String(private)),
-                (Value::String("public".to_string()), Value::String(public)),
-            ];
-            Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            Ok(hash_from_pairs([
+                ("private".to_string(), Value::String(private)),
+                ("public".to_string(), Value::String(public)),
+            ]))
         })),
     );
 
@@ -355,11 +354,10 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         "ed25519_keypair".to_string(),
         Rc::new(NativeFunction::new("Crypto.ed25519_keypair", Some(0), |_args| {
             let (private, public) = do_ed25519_keypair();
-            let result = vec![
-                (Value::String("private".to_string()), Value::String(private)),
-                (Value::String("public".to_string()), Value::String(public)),
-            ];
-            Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            Ok(hash_from_pairs([
+                ("private".to_string(), Value::String(private)),
+                ("public".to_string(), Value::String(public)),
+            ]))
         })),
     );
 
@@ -549,11 +547,10 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         "x25519_keypair".to_string(),
         Value::NativeFunction(NativeFunction::new("x25519_keypair", Some(0), |_args| {
             let (private, public) = do_x25519_keypair();
-            let result = vec![
-                (Value::String("private".to_string()), Value::String(private)),
-                (Value::String("public".to_string()), Value::String(public)),
-            ];
-            Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            Ok(hash_from_pairs([
+                ("private".to_string(), Value::String(private)),
+                ("public".to_string(), Value::String(public)),
+            ]))
         })),
     );
 
@@ -645,11 +642,10 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         "ed25519_keypair".to_string(),
         Value::NativeFunction(NativeFunction::new("ed25519_keypair", Some(0), |_args| {
             let (private, public) = do_ed25519_keypair();
-            let result = vec![
-                (Value::String("private".to_string()), Value::String(private)),
-                (Value::String("public".to_string()), Value::String(public)),
-            ];
-            Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            Ok(hash_from_pairs([
+                ("private".to_string(), Value::String(private)),
+                ("public".to_string(), Value::String(public)),
+            ]))
         })),
     );
 }

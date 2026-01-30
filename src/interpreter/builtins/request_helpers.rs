@@ -4,12 +4,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, NativeFunction, Value};
 
 use super::test_server::get_test_server_port;
 
-type HashPairs = Vec<(Value, Value)>;
+type HashPairs = IndexMap<HashKey, Value>;
 
 thread_local! {
     #[allow(clippy::missing_const_for_thread_local)]
@@ -262,30 +264,29 @@ fn http_request(
 
     let body = response.text().map_err(|e| e.to_string())?;
 
-    let mut header_pairs: HashPairs = Vec::new();
+    let mut header_pairs: HashPairs = IndexMap::new();
     for (name, value) in response_headers {
-        header_pairs.push((Value::String(name), Value::String(value)));
+        header_pairs.insert(HashKey::String(name), Value::String(value));
     }
 
-    let response_hash: HashPairs = vec![
-        (
-            Value::String("status".to_string()),
-            Value::Int(status as i64),
-        ),
-        (
-            Value::String("headers".to_string()),
-            Value::Hash(Rc::new(RefCell::new(header_pairs))),
-        ),
-        (
-            Value::String("body".to_string()),
-            Value::String(body.clone()),
-        ),
-        (Value::String("url".to_string()), Value::String(full_url)),
-        (
-            Value::String("method".to_string()),
-            Value::String(method.to_string()),
-        ),
-    ];
+    let mut response_hash: HashPairs = IndexMap::new();
+    response_hash.insert(
+        HashKey::String("status".to_string()),
+        Value::Int(status as i64),
+    );
+    response_hash.insert(
+        HashKey::String("headers".to_string()),
+        Value::Hash(Rc::new(RefCell::new(header_pairs))),
+    );
+    response_hash.insert(
+        HashKey::String("body".to_string()),
+        Value::String(body.clone()),
+    );
+    response_hash.insert(HashKey::String("url".to_string()), Value::String(full_url));
+    response_hash.insert(
+        HashKey::String("method".to_string()),
+        Value::String(method.to_string()),
+    );
 
     Ok(Value::Hash(Rc::new(RefCell::new(response_hash))))
 }

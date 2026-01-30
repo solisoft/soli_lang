@@ -5,7 +5,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::interpreter::value::Value;
+use indexmap::IndexMap;
+
+use crate::interpreter::value::{HashKey, Value};
 use crate::interpreter::Interpreter;
 use crate::template::parser::{parse_template, BinaryOp, CompareOp, Expr, TemplateNode};
 
@@ -153,7 +155,7 @@ pub fn render_layout_nodes_with_path(
                         Value::Hash(hash) => {
                             for (k, v) in hash.borrow().iter() {
                                 let pair =
-                                    Value::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()])));
+                                    Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])));
                                 let loop_data = with_variable(data, var, pair)?;
                                 output.push_str(&render_layout_nodes_with_path(
                                     body,
@@ -344,8 +346,8 @@ fn index_value(base: &Value, key: &Value) -> Result<Value, String> {
         }
         (Value::Hash(hash), key) => {
             let hash = hash.borrow();
-            for (k, v) in hash.iter() {
-                if k.hash_eq(key) {
+            if let Some(hash_key) = HashKey::from_value(key) {
+                if let Some(v) = hash.get(&hash_key) {
                     return Ok(v.clone());
                 }
             }
@@ -362,14 +364,11 @@ fn get_hash_value(value: &Value, key: &str) -> Result<Value, String> {
     match value {
         Value::Hash(hash) => {
             let hash = hash.borrow();
-            // Direct string comparison without allocating Value::String
-            for (k, v) in hash.iter() {
-                if let Value::String(k_str) = k {
-                    if k_str == key {
-                        // Auto-resolve Futures when retrieving values from template data
-                        return resolve_if_future(v.clone());
-                    }
-                }
+            // Direct lookup using HashKey
+            let hash_key = HashKey::String(key.to_string());
+            if let Some(v) = hash.get(&hash_key) {
+                // Auto-resolve Futures when retrieving values from template data
+                return resolve_if_future(v.clone());
             }
             Ok(Value::Null)
         }
@@ -555,44 +554,15 @@ fn with_variable(data: &Value, name: &str, value: Value) -> Result<Value, String
             if Rc::strong_count(hash) == 1 {
                 // We have exclusive access - mutate in place
                 let mut hash_ref = hash.borrow_mut();
-                let key = Value::String(name.to_string());
-
-                // Find and update existing key, or append
-                let mut found = false;
-                for (k, v) in hash_ref.iter_mut() {
-                    if let Value::String(k_str) = k {
-                        if k_str == name {
-                            *v = value.clone();
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-                if !found {
-                    hash_ref.push((key, value));
-                }
+                let key = HashKey::String(name.to_string());
+                hash_ref.insert(key, value);
                 drop(hash_ref);
                 Ok(data.clone())
             } else {
                 // Multiple references - need to clone
-                let mut new_hash: Vec<(Value, Value)> = hash.borrow().clone();
-                let key = Value::String(name.to_string());
-
-                // Find and update existing key, or append
-                let mut found = false;
-                for (k, v) in new_hash.iter_mut() {
-                    if let Value::String(k_str) = k {
-                        if k_str == name {
-                            *v = value.clone();
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-                if !found {
-                    new_hash.push((key, value));
-                }
-
+                let mut new_hash: IndexMap<HashKey, Value> = hash.borrow().clone();
+                let key = HashKey::String(name.to_string());
+                new_hash.insert(key, value);
                 Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
             }
         }
@@ -644,9 +614,9 @@ mod tests {
     use super::*;
 
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
-        let hash: Vec<(Value, Value)> = pairs
+        let hash: IndexMap<HashKey, Value> = pairs
             .into_iter()
-            .map(|(k, v)| (Value::String(k.to_string()), v))
+            .map(|(k, v)| (HashKey::String(k.to_string()), v))
             .collect();
         Value::Hash(Rc::new(RefCell::new(hash)))
     }

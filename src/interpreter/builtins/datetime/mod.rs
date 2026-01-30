@@ -5,11 +5,9 @@ use crate::interpreter::value::{NativeFunction, Value};
 use crate::span::Span;
 
 mod datetime_inner {
-    use crate::interpreter::value::Value;
+    use crate::interpreter::value::{hash_from_pairs, Value};
     use crate::span::Span;
     use chrono::{Datelike, Timelike};
-    use std::cell::RefCell;
-    use std::rc::Rc;
 
     fn weekday_name(wday: chrono::Weekday) -> String {
         match wday {
@@ -130,51 +128,28 @@ mod datetime_inner {
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
                 let local = datetime.with_timezone(&chrono::Local);
 
-                let components: Vec<(Value, Value)> = vec![
+                Ok(hash_from_pairs([
+                    ("year".to_string(), Value::Int(local.year() as i64)),
+                    ("month".to_string(), Value::Int(local.month() as i64)),
+                    ("day".to_string(), Value::Int(local.day() as i64)),
+                    ("hour".to_string(), Value::Int(local.hour() as i64)),
+                    ("minute".to_string(), Value::Int(local.minute() as i64)),
+                    ("second".to_string(), Value::Int(local.second() as i64)),
                     (
-                        Value::String("year".to_string()),
-                        Value::Int(local.year() as i64),
-                    ),
-                    (
-                        Value::String("month".to_string()),
-                        Value::Int(local.month() as i64),
-                    ),
-                    (
-                        Value::String("day".to_string()),
-                        Value::Int(local.day() as i64),
-                    ),
-                    (
-                        Value::String("hour".to_string()),
-                        Value::Int(local.hour() as i64),
-                    ),
-                    (
-                        Value::String("minute".to_string()),
-                        Value::Int(local.minute() as i64),
-                    ),
-                    (
-                        Value::String("second".to_string()),
-                        Value::Int(local.second() as i64),
-                    ),
-                    (
-                        Value::String("millisecond".to_string()),
+                        "millisecond".to_string(),
                         Value::Int(local.timestamp_subsec_millis() as i64),
                     ),
                     (
-                        Value::String("nanosecond".to_string()),
+                        "nanosecond".to_string(),
                         Value::Int(local.nanosecond() as i64),
                     ),
                     (
-                        Value::String("weekday".to_string()),
+                        "weekday".to_string(),
                         Value::String(weekday_name(local.weekday())),
                     ),
-                    (
-                        Value::String("ordinal".to_string()),
-                        Value::Int(local.ordinal() as i64),
-                    ),
-                    (Value::String("is_dst".to_string()), Value::Bool(false)),
-                ];
-
-                Ok(Value::Hash(Rc::new(RefCell::new(components))))
+                    ("ordinal".to_string(), Value::Int(local.ordinal() as i64)),
+                    ("is_dst".to_string(), Value::Bool(false)),
+                ]))
             }
             _ => Err("datetime_components requires a timestamp".to_string()),
         }

@@ -3,14 +3,92 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
+
+use indexmap::IndexMap;
 
 use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt};
 use crate::interpreter::builtins::model::QueryBuilder;
 use crate::interpreter::environment::Environment;
 use crate::span::Span;
+
+/// A hashable key type for use in IndexMap.
+/// This wraps primitive Value types that can be used as hash keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HashKey {
+    Int(i64),
+    String(String),
+    Bool(bool),
+    Null,
+}
+
+impl Hash for HashKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            HashKey::Int(n) => n.hash(state),
+            HashKey::String(s) => s.hash(state),
+            HashKey::Bool(b) => b.hash(state),
+            HashKey::Null => {}
+        }
+    }
+}
+
+impl HashKey {
+    /// Convert a Value to a HashKey if possible.
+    pub fn from_value(value: &Value) -> Option<HashKey> {
+        match value {
+            Value::Int(n) => Some(HashKey::Int(*n)),
+            Value::String(s) => Some(HashKey::String(s.clone())),
+            Value::Bool(b) => Some(HashKey::Bool(*b)),
+            Value::Null => Some(HashKey::Null),
+            // Floats are not hashable due to NaN != NaN issues
+            _ => None,
+        }
+    }
+
+    /// Convert back to a Value.
+    pub fn to_value(&self) -> Value {
+        match self {
+            HashKey::Int(n) => Value::Int(*n),
+            HashKey::String(s) => Value::String(s.clone()),
+            HashKey::Bool(b) => Value::Bool(*b),
+            HashKey::Null => Value::Null,
+        }
+    }
+}
+
+impl std::fmt::Display for HashKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HashKey::Int(n) => write!(f, "{}", n),
+            HashKey::String(s) => write!(f, "{}", s),
+            HashKey::Bool(b) => write!(f, "{}", b),
+            HashKey::Null => write!(f, "null"),
+        }
+    }
+}
+
+/// Helper function to create a hash Value from string key-value pairs.
+/// This is a convenience function for creating hashes in builtin functions.
+pub fn hash_from_pairs<I>(pairs: I) -> Value
+where
+    I: IntoIterator<Item = (String, Value)>,
+{
+    let map: IndexMap<HashKey, Value> = pairs
+        .into_iter()
+        .map(|(k, v)| (HashKey::String(k), v))
+        .collect();
+    Value::Hash(Rc::new(RefCell::new(map)))
+}
+
+/// Helper function to create an empty hash Value.
+pub fn empty_hash() -> Value {
+    Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
+}
 
 /// A runtime value in Solilang.
 #[derive(Debug, Clone)]
@@ -27,8 +105,8 @@ pub enum Value {
     Null,
     /// Array value
     Array(Rc<RefCell<Vec<Value>>>),
-    /// Hash/Map value (ordered, like Ruby)
-    Hash(Rc<RefCell<Vec<(Value, Value)>>>),
+    /// Hash/Map value (ordered, O(1) lookup using IndexMap)
+    Hash(Rc<RefCell<IndexMap<HashKey, Value>>>),
     /// Function value (closure)
     Function(Rc<Function>),
     /// Native/builtin function
@@ -173,14 +251,20 @@ impl Value {
     }
 
     /// Check if this value can be used as a hash key (must be comparable).
+    /// Note: Floats are excluded because NaN != NaN breaks hash map invariants.
     pub fn is_hashable(&self) -> bool {
         matches!(
             self,
-            Value::Int(_) | Value::Float(_) | Value::String(_) | Value::Bool(_) | Value::Null
+            Value::Int(_) | Value::String(_) | Value::Bool(_) | Value::Null
         )
     }
 
-    /// Value equality for hash key comparison.
+    /// Convert this value to a HashKey if possible.
+    pub fn to_hash_key(&self) -> Option<HashKey> {
+        HashKey::from_value(self)
+    }
+
+    /// Value equality for hash key comparison (legacy method, kept for compatibility).
     pub fn hash_eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => a == b,
@@ -215,16 +299,16 @@ impl PartialEq for Value {
                 a_ref.iter().zip(b_ref.iter()).all(|(x, y)| x == y)
             }
             (Value::Hash(a), Value::Hash(b)) => {
-                // Use structural equality for hashes
+                // Use structural equality for hashes (O(n) with IndexMap)
                 let a_ref = a.borrow();
                 let b_ref = b.borrow();
                 if a_ref.len() != b_ref.len() {
                     return false;
                 }
-                // Check that all key-value pairs in a exist in b
-                a_ref.iter().all(|(k_a, v_a)| {
-                    b_ref.iter().any(|(k_b, v_b)| k_a == k_b && v_a == v_b)
-                })
+                // Check that all key-value pairs in a exist in b with same values
+                a_ref
+                    .iter()
+                    .all(|(k, v_a)| b_ref.get(k) == Some(v_a))
             }
             (Value::Instance(a), Value::Instance(b)) => Rc::ptr_eq(a, b),
             (Value::Method(a), Value::Method(b)) => {
@@ -261,7 +345,7 @@ impl fmt::Display for Value {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{} => {}", key, val)?;
+                    write!(f, "{} => {}", key.to_value(), val)?;
                 }
                 write!(f, "}}")
             }
@@ -604,11 +688,11 @@ pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
             Ok(Value::Array(Rc::new(RefCell::new(items?))))
         }
         serde_json::Value::Object(obj) => {
-            let pairs: Result<Vec<(Value, Value)>, String> = obj
-                .iter()
-                .map(|(k, v)| Ok((Value::String(k.clone()), json_to_value(v)?)))
-                .collect();
-            Ok(Value::Hash(Rc::new(RefCell::new(pairs?))))
+            let mut map = IndexMap::new();
+            for (k, v) in obj {
+                map.insert(HashKey::String(k.clone()), json_to_value(v)?);
+            }
+            Ok(Value::Hash(Rc::new(RefCell::new(map))))
         }
     }
 }
@@ -633,7 +717,7 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             let borrow = hash.borrow();
             let mut map = serde_json::Map::new();
             for (k, v) in borrow.iter() {
-                if let Value::String(key) = k {
+                if let HashKey::String(key) = k {
                     map.insert(key.clone(), value_to_json(v)?);
                 }
             }

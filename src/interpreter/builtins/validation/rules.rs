@@ -3,9 +3,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
 use regex::Regex;
 
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{HashKey, Value};
 
 use super::create_error;
 
@@ -227,13 +228,12 @@ impl ValidationRule {
             }
         };
 
-        let pairs: Vec<(Value, Value)> = vec![
-            (
-                Value::String("type".to_string()),
-                Value::String(rule_type.to_string()),
-            ),
-            (Value::String("value".to_string()), rule_value),
-        ];
+        let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+        pairs.insert(
+            HashKey::String("type".to_string()),
+            Value::String(rule_type.to_string()),
+        );
+        pairs.insert(HashKey::String("value".to_string()), rule_value);
         Value::Hash(Rc::new(RefCell::new(pairs)))
     }
 
@@ -248,7 +248,7 @@ impl ValidationRule {
         let mut rule_value = None;
 
         for (k, v) in hash.iter() {
-            if let Value::String(key) = k {
+            if let HashKey::String(key) = k {
                 match key.as_str() {
                     "type" => {
                         if let Value::String(t) = v {
