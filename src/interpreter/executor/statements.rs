@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::ast::expr::Argument;
 use crate::ast::*;
 use crate::error::RuntimeError;
 use crate::interpreter::environment::Environment;
@@ -397,7 +398,17 @@ impl Interpreter {
                         // Build arguments with class as first argument
                         let mut args = vec![Value::Class(class_rc.clone())];
                         for arg in arguments {
-                            args.push(self.evaluate(arg)?);
+                            match arg {
+                                Argument::Positional(expr) => {
+                                    args.push(self.evaluate(expr)?);
+                                }
+                                Argument::Named(_) => {
+                                    return Err(RuntimeError::type_error(
+                                        "model validation does not support named arguments",
+                                        stmt.span,
+                                    ));
+                                }
+                            }
                         }
 
                         // Call the function with the class

@@ -1,5 +1,6 @@
 //! Expression type checking.
 
+use crate::ast::expr::Argument;
 use crate::ast::*;
 use crate::error::TypeError;
 use crate::span::Span;
@@ -79,7 +80,15 @@ impl TypeChecker {
                 if let Some(class) = self.env.get_class(class_name).cloned() {
                     // Check constructor arguments if available
                     for arg in arguments {
-                        self.check_expr(arg)?;
+                        match arg {
+                            Argument::Positional(expr) => {
+                                self.check_expr(expr)?;
+                            }
+                            Argument::Named(named) => {
+                                // Named arguments - runtime will validate param names
+                                self.check_expr(&named.value)?;
+                            }
+                        }
                     }
                     Ok(Type::Class(class))
                 } else {
@@ -342,7 +351,7 @@ impl TypeChecker {
         &mut self,
         expr: &Expr,
         callee: &Expr,
-        arguments: &[Expr],
+        arguments: &[Argument],
     ) -> TypeResult<Type> {
         let callee_type = self.check_expr(callee)?;
 
@@ -351,32 +360,67 @@ impl TypeChecker {
                 params,
                 return_type,
             } => {
+                let total_args = arguments.len();
+
                 // Check argument count (allow fewer args for default parameters)
                 // Note: We only check upper bound since we can't easily know which params have defaults
                 // The runtime will handle default parameter filling
-                if arguments.len() > params.len() && !params.iter().any(|p| matches!(p, Type::Any))
-                {
+                if total_args > params.len() && !params.iter().any(|p| matches!(p, Type::Any)) {
                     return Err(TypeError::WrongArity {
                         expected: params.len(),
-                        got: arguments.len(),
+                        got: total_args,
                         span: expr.span,
                     });
                 }
 
+                // Get parameter names for named argument validation
+                // For now, we use index-based matching since we can't resolve callee name
+                let _param_count = params.len();
+                let param_names: Vec<String> = params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("param_{}", i))
+                    .collect();
+
                 // Check argument types
                 for (i, arg) in arguments.iter().enumerate() {
-                    let arg_type = self.check_expr(arg)?;
-                    if let Some(param_type) = params.get(i) {
-                        // Allow Any param type to accept any argument (for map/filter/each)
-                        if matches!(param_type, Type::Any) {
-                            continue;
+                    match arg {
+                        Argument::Positional(expr) => {
+                            let arg_type = self.check_expr(expr)?;
+                            if let Some(param_type) = params.get(i) {
+                                // Allow Any param type to accept any argument (for map/filter/each)
+                                if matches!(param_type, Type::Any) {
+                                    continue;
+                                }
+                                if !arg_type.is_assignable_to(param_type) {
+                                    return Err(TypeError::mismatch(
+                                        format!("{}", param_type),
+                                        format!("{}", arg_type),
+                                        expr.span,
+                                    ));
+                                }
+                            }
                         }
-                        if !arg_type.is_assignable_to(param_type) {
-                            return Err(TypeError::mismatch(
-                                format!("{}", param_type),
-                                format!("{}", arg_type),
-                                arg.span,
-                            ));
+                        Argument::Named(named) => {
+                            // For named arguments, find the corresponding parameter
+                            if let Some(param_idx) =
+                                param_names.iter().position(|n| n == &named.name)
+                            {
+                                if let Some(param_type) = params.get(param_idx) {
+                                    let arg_type = self.check_expr(&named.value)?;
+                                    if matches!(param_type, Type::Any) {
+                                        continue;
+                                    }
+                                    if !arg_type.is_assignable_to(param_type) {
+                                        return Err(TypeError::mismatch(
+                                            format!("{}", param_type),
+                                            format!("{}", arg_type),
+                                            named.span,
+                                        ));
+                                    }
+                                }
+                            }
+                            // Unknown named argument - runtime will catch this
                         }
                     }
                 }
@@ -434,14 +478,22 @@ impl TypeChecker {
 
                         // Check remaining arguments
                         for (i, arg) in arguments.iter().enumerate() {
-                            let arg_type = self.check_expr(arg)?;
-                            if let Some(param_type) = params.get(i + 1) {
-                                if !arg_type.is_assignable_to(param_type) {
-                                    return Err(TypeError::mismatch(
-                                        format!("{}", param_type),
-                                        format!("{}", arg_type),
-                                        arg.span,
-                                    ));
+                            match arg {
+                                Argument::Positional(expr) => {
+                                    let arg_type = self.check_expr(expr)?;
+                                    if let Some(param_type) = params.get(i + 1) {
+                                        if !arg_type.is_assignable_to(param_type) {
+                                            return Err(TypeError::mismatch(
+                                                format!("{}", param_type),
+                                                format!("{}", arg_type),
+                                                expr.span,
+                                            ));
+                                        }
+                                    }
+                                }
+                                Argument::Named(_) => {
+                                    // Named arguments in pipeline - skip type checking
+                                    // Runtime will validate these
                                 }
                             }
                         }

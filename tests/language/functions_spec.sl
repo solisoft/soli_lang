@@ -39,6 +39,25 @@ describe("Functions", fn() {
         assert_eq(greet("Alice"), "Hello Alice");
     });
 
+    test("function with named parameters", fn() {
+        fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) {
+            return host + ":" + str(port) + " (debug: " + str(debug) + ")";
+        }
+        assert_eq(configure(), "localhost:8080 (debug: false)");
+        assert_eq(configure(port: 3000), "localhost:3000 (debug: false)");
+        assert_eq(configure(host: "example.com", port: 443), "example.com:443 (debug: false)");
+        assert_eq(configure(port: 9000, debug: true, host: "api.example.com"), "api.example.com:9000 (debug: true)");
+    });
+
+    test("function with mixed positional and named parameters", fn() {
+        fn sum(a: Int, b: Int = 10, c: Int = 20) {
+            return a + b + c;
+        }
+        assert_eq(sum(1), 31);
+        assert_eq(sum(1, 2), 23);
+        assert_eq(sum(1, c: 5), 16);
+    });
+
     test("function returning null implicitly", fn() {
         fn nothing() {
             let x = 1;

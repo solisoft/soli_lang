@@ -105,6 +105,26 @@
         "let options = { ...default_options, timeout: 60 };",
         "let user = { ...base_user, avatar: new_avatar };"
       ]
+    },
+    "namedParameters": {
+      "description": "Call functions with named parameters using colon syntax for improved readability and flexibility",
+      "syntax": {
+        "namedArg": "function_name(param_name: value)",
+        "mixedArgs": "function_name(positional, named: value, another_named: value)",
+        "defaults": "Named parameters use function's default values if not provided"
+      },
+      "rules": [
+        "Named arguments use colon syntax: parameter_name: value",
+        "Named arguments must come after all positional arguments",
+        "Duplicate named arguments cause runtime error",
+        "Unknown parameter names cause runtime error"
+      ],
+      "examples": [
+        "fn configure(host: String = \"localhost\", port: Int = 8080, debug: Bool = false) -> Void { }",
+        "configure(port: 3000, debug: true);",
+        "configure(\"example.com\", debug: true);",
+        "new User(name: \"Alice\", age: 30);"
+      ]
     }
   },
 
@@ -288,7 +308,8 @@
     "generateModule": "Create a reusable module {module_name} with pub/export functions for {purpose}. Include proper module structure with import statements.",
     "generateDestructuring": "Refactor code to use destructuring syntax for extracting {data_structure}. Use let {key1, key2} for hashes and let [first, ...rest] for arrays.",
     "generateRestParams": "Create a function with rest parameters for {purpose}. Use fn function_name(...args: Type[]) syntax.",
-    "generateHashSpread": "Implement hash spreading for {purpose}. Use { ...defaults, overrides } pattern to merge configurations."
+    "generateHashSpread": "Implement hash spreading for {purpose}. Use { ...defaults, overrides } pattern to merge configurations.",
+    "generateNamedParams": "Create a function with named parameters for {purpose}. Use colon syntax: fn function_name(param1: Type = default1, param2: Type = default2). Call with function_name(param2: value) pattern."
   },
 
   "filePaths": {

@@ -170,7 +170,57 @@ fn create_user(name: String, role: String = "user", active: Bool = true) {
 
 ---
 
-## 5. Spread / Rest Operators
+## 5. Named Parameters
+
+### Syntax
+```soli
+fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Void {
+    print("host: " + host + ", port: " + str(port) + ", debug: " + str(debug));
+}
+```
+
+### Usage
+```soli
+// All positional (existing behavior)
+configure("localhost", 8080, true);
+
+// All named
+configure(port: 3000, debug: true);
+
+// Mixed: positional then named
+configure("example.com", debug: true);
+
+// Only some named (defaults fill rest)
+configure(port: 443);
+```
+
+### Error Cases
+```soli
+// Duplicate named argument - runtime error
+configure(port: 3000, port: 8080);  // Error: duplicate named argument 'port'
+
+// Unknown parameter name - runtime error
+configure(unknown: 123);  // Error: undefined variable 'unknown'
+
+// Named before positional - parser error
+configure(port: 3000, "localhost");  // Error: positional argument cannot follow named argument
+```
+
+### With Default Values
+```soli
+fn connect(database: String = "sqlite", host: String = "localhost", port: Int = 5432, ssl: Bool = true) {
+    let scheme = if ssl { "postgres+ssl" } else { "postgres" };
+    return scheme + "://\(host):\(port)/\(database)";
+}
+
+// Only specify what changes
+connect(database: "users_db", ssl: false);
+// "postgres://localhost:5432/users_db"
+```
+
+---
+
+## 6. Spread / Rest Operators
 
 ### Spread in Arrays
 ```soli
@@ -209,7 +259,7 @@ let {name, ...rest} = {"name": "Alice", "age": 30, "city": "Paris"};
 
 ---
 
-## 6. String Interpolation
+## 7. String Interpolation
 
 ### Syntax
 ```soli
@@ -238,7 +288,7 @@ Total: $\(total)
 
 ---
 
-## 7. Async/Await
+## 8. Async/Await
 
 ### Syntax
 ```soli
@@ -265,7 +315,7 @@ let data = await fetch_data("https://api.example.com/data");
 
 ---
 
-## 8. Comprehensions
+## 9. Comprehensions
 
 ### List Comprehensions
 ```soli
@@ -282,7 +332,7 @@ let filtered = {k: v for (k, v) in hash.items() if v > 0};
 
 ---
 
-## 8. Iteration Methods (map, filter, each)
+## 10. Iteration Methods (map, filter, each)
 
 Array and hash methods for functional-style iteration.
 
@@ -377,7 +427,7 @@ user.each(fn(pair) {
 
 ---
 
-## 9. Modules / Imports
+## 11. Modules / Imports
 
 ### File Structure
 ```
@@ -424,6 +474,7 @@ pub fn public_fn() { }
 1. **Phase 1 (Foundation) - COMPLETED**
    - Closures/Lambdas
    - Default Parameters
+   - Named Parameters
    - String Interpolation
    - Iteration Methods (map, filter, each)
 
@@ -450,7 +501,7 @@ pub fn public_fn() { }
 
 ---
 
-## 10. Constants
+## 12. Constants
 
 ### Syntax
 ```soli
@@ -489,7 +540,7 @@ const COUNT = len(NAMES);  // 2
 
 ---
 
-## 11. Static Blocks
+## 13. Static Blocks
 
 ### Syntax
 ```soli
@@ -552,7 +603,7 @@ class Counter {
 
 ---
 
-## 12. Nullish Coalescing Operator
+## 14. Nullish Coalescing Operator
 
 ### Syntax
 ```soli
@@ -619,7 +670,7 @@ let h = { a: null ?? 1, b: "value" ?? 2 };  // {a: 1, b: "value"}
 
 ---
 
-## 13. Chainable Collection Methods
+## 15. Chainable Collection Methods
 
 ### String Methods
 ```soli
@@ -687,7 +738,7 @@ h.clear();        // {}
 
 ---
 
-## 14. Base64 Utility
+## 16. Base64 Utility
 
 ### Functions
 ```soli
@@ -714,7 +765,7 @@ Base64.encode("foo/bar?query=value");
 
 ---
 
-## 15. State Machines
+## 17. State Machines
 
 ### StateMachine Class
 ```soli

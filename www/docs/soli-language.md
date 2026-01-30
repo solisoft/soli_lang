@@ -819,6 +819,67 @@ let user2 = create_user("Bob", "bob@example.com");
 let user3 = create_user("Charlie", "charlie@example.com", "admin");
 ```
 
+### Named Parameters
+
+You can call functions using named parameters with the colon syntax:
+
+```soli
+fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Void {
+    print("Connecting to \(host):\(port) with debug=\(debug)");
+}
+
+configure();                              // Using all defaults
+configure(host: "example.com");           // Only specify host
+configure(port: 3000, debug: true);       // Named parameters in any order
+configure("example.com", port: 443);      // Mixed: positional then named
+configure(host: "api.example.com", port: 443, debug: true);  // All named
+```
+
+#### Rules
+
+1. Named arguments use the colon syntax: `parameter_name: value`
+2. Named arguments must come after all positional arguments
+3. Duplicate named arguments cause a runtime error
+4. Unknown parameter names cause a runtime error
+5. Default values are used for any parameters not provided
+
+```soli
+// Error: positional argument after named argument
+configure(port: 3000, "example.com");  // Parser error
+
+// Error: duplicate named argument
+configure(port: 3000, port: 8080);     // Runtime error
+
+// Error: unknown parameter name
+configure(unknown: 123);               // Runtime error
+```
+
+#### Use Cases
+
+Named parameters are useful when:
+
+- A function has many parameters with defaults
+- You want to skip optional parameters in the middle
+- Code readability is important (named params are self-documenting)
+- API calls where parameter order might change
+
+```soli
+fn http_request(
+    method: String = "GET",
+    url: String,
+    headers: Hash = {},
+    body: Any = null,
+    timeout: Int = 30
+) -> Any { ... }
+
+// Clear and readable - specify only what changes
+http_request(
+    method: "POST",
+    url: "https://api.example.com/users",
+    body: {"name": "Alice"}
+);
+```
+
 ### Variadic Functions
 
 ```soli

@@ -385,3 +385,98 @@ describe("Native Static Methods", fn() {
         assert_not_null(dur);
     });
 });
+
+describe("Constructor Named Parameters", fn() {
+    test("constructor with all named parameters", fn() {
+        class User {
+            name: String;
+            age: Int;
+            active: Bool;
+
+            new(name: String = "Guest", age: Int = 0, active: Bool = true) {
+                this.name = name;
+                this.age = age;
+                this.active = active;
+            }
+        }
+        let user = new User(name: "Alice", age: 30, active: false);
+        assert_eq(user.name, "Alice");
+        assert_eq(user.age, 30);
+        assert_eq(user.active, false);
+    });
+
+    test("constructor with mixed positional and named parameters", fn() {
+        class Config {
+            host: String;
+            port: Int;
+            ssl: Bool;
+            debug: Bool;
+
+            new(host: String, port: Int = 80, ssl: Bool = false, debug: Bool = false) {
+                this.host = host;
+                this.port = port;
+                this.ssl = ssl;
+                this.debug = debug;
+            }
+        }
+        let config = new Config("example.com", ssl: true);
+        assert_eq(config.host, "example.com");
+        assert_eq(config.port, 80);
+        assert_eq(config.ssl, true);
+        assert_eq(config.debug, false);
+    });
+
+    test("constructor with some named parameters", fn() {
+        class Server {
+            name: String;
+            port: Int;
+            workers: Int;
+
+            new(name: String, port: Int = 8080, workers: Int = 4) {
+                this.name = name;
+                this.port = port;
+                this.workers = workers;
+            }
+        }
+        let server = new Server("api-server", workers: 8);
+        assert_eq(server.name, "api-server");
+        assert_eq(server.port, 8080);
+        assert_eq(server.workers, 8);
+    });
+
+    test("constructor duplicate named parameter throws error", fn() {
+        class Point {
+            x: Int;
+            y: Int;
+
+            new(x: Int = 0, y: Int = 0) {
+                this.x = x;
+                this.y = y;
+            }
+        }
+        let error_thrown = false;
+        try {
+            new Point(x: 5, x: 10);
+        } catch e {
+            error_thrown = true;
+        }
+        assert_eq(error_thrown, true);
+    });
+
+    test("constructor unknown parameter name throws error", fn() {
+        class Circle {
+            radius: Int;
+
+            new(radius: Int = 1) {
+                this.radius = radius;
+            }
+        }
+        let error_thrown = false;
+        try {
+            new Circle(diameter: 10);
+        } catch e {
+            error_thrown = true;
+        }
+        assert_eq(error_thrown, true);
+    });
+});

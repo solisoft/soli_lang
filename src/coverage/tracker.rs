@@ -1,3 +1,4 @@
+use crate::ast::expr::Argument;
 use crate::coverage::data::*;
 use crate::lexer::Scanner;
 use crate::parser::Parser;
@@ -467,7 +468,14 @@ impl CoverageTracker {
             }
             Call { arguments, .. } => {
                 for arg in arguments {
-                    self.collect_lines_from_expr(path, lines, arg);
+                    match arg {
+                        Argument::Positional(expr) => {
+                            self.collect_lines_from_expr(path, lines, expr);
+                        }
+                        Argument::Named(named) => {
+                            self.collect_lines_from_expr(path, lines, &named.value);
+                        }
+                    }
                 }
             }
             Member { object, .. } => {
@@ -480,7 +488,14 @@ impl CoverageTracker {
             This | Super => {}
             New { arguments, .. } => {
                 for arg in arguments {
-                    self.collect_lines_from_expr(path, lines, arg);
+                    match arg {
+                        Argument::Positional(expr) => {
+                            self.collect_lines_from_expr(path, lines, expr);
+                        }
+                        Argument::Named(named) => {
+                            self.collect_lines_from_expr(path, lines, &named.value);
+                        }
+                    }
                 }
             }
             Array(elements) => {

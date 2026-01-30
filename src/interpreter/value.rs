@@ -492,6 +492,18 @@ impl Instance {
     pub fn set(&mut self, name: String, value: Value) {
         self.fields.insert(name, value);
     }
+
+    pub fn get_method(&self, name: &str) -> Option<Value> {
+        // Check instance fields first
+        if let Some(value) = self.fields.get(name) {
+            return Some(value.clone());
+        }
+        // Then check class methods - convert Rc<Function> to Value::Function
+        if let Some(func) = self.class.methods.get(name) {
+            return Some(Value::Function(func.clone()));
+        }
+        None
+    }
 }
 
 /// Convert raw HTTP response data to a Value based on the future kind.

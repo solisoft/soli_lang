@@ -17,6 +17,21 @@ impl Expr {
     }
 }
 
+/// A named argument in a function call: `name: value`
+#[derive(Debug, Clone, PartialEq)]
+pub struct NamedArgument {
+    pub name: String,
+    pub value: Expr,
+    pub span: Span,
+}
+
+/// An argument in a function call (positional or named)
+#[derive(Debug, Clone, PartialEq)]
+pub enum Argument {
+    Positional(Expr),
+    Named(NamedArgument),
+}
+
 /// All expression variants.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
@@ -52,10 +67,10 @@ pub enum ExprKind {
     /// Grouping expression: (expr)
     Grouping(Box<Expr>),
 
-    /// Function call: foo(a, b)
+    /// Function call: foo(a, b) or foo(named: value)
     Call {
         callee: Box<Expr>,
-        arguments: Vec<Expr>,
+        arguments: Vec<Argument>,
     },
 
     /// Pipeline expression: x |> foo()
@@ -73,10 +88,10 @@ pub enum ExprKind {
     /// super reference (for method calls)
     Super,
 
-    /// Object instantiation: new ClassName(args)
+    /// Object instantiation: new ClassName(args) or new ClassName(named: value)
     New {
         class_name: String,
-        arguments: Vec<Expr>,
+        arguments: Vec<Argument>,
     },
 
     /// Array literal: [1, 2, 3]

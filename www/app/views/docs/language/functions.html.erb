@@ -11,9 +11,9 @@
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
             <span class="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Functions</span>
         </h1>
-        <p class="text-xl text-gray-300 leading-8">
-            Function declarations, closures, higher-order functions, and default parameters in Soli.
-        </p>
+            <p class="text-xl text-gray-300 leading-8">
+                Function declarations, closures, higher-order functions, default parameters, and named parameters in Soli.
+            </p>
     </div>
 
     <!-- Function Declaration -->
@@ -221,16 +221,62 @@ fn create_user(name: String, email: String = null, role: String = "user") -> Has
 let user1 = create_user("Alice");
 let user2 = create_user("Bob", "bob@example.com");
 let user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
+            </div>
+        </div>
+    </section>
 
-                <pre data-filename="Example"><code class="language-soli text-sm">fn add(a, b) {
-    return a + b
+    <!-- Named Parameters -->
+    <section id="section-named-params" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Named Parameters</h2>
+        <p class="text-gray-400 mb-4">Call functions with named parameters using colon syntax for improved readability:</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Hash {
+    return {"host": host, "port": port, "debug": debug};
 }
 
-println(add(1, 2)) // 3</code></pre>
+// All named parameters
+let config1 = configure(host: "example.com", port: 3000, debug: true);
+// {"host": "example.com", "port": 3000, "debug": true}
 
-                <p class="text-gray-400 mb-3">Anonymous functions (closures).</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let add = fn(a, b) { a + b }
-println(add(1, 2)) // 3</code></pre>
+// Mixed positional and named
+let config2 = configure("api.example.com", debug: true);
+// {"host": "api.example.com", "port": 8080, "debug": true}
+
+// Only some named (defaults fill rest)
+let config3 = configure(port: 443);
+// {"host": "localhost", "port": 443, "debug": false}</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Rules</h3>
+        <ul class="list-disc list-inside text-gray-400 space-y-2 mb-6">
+            <li>Named arguments use colon syntax: <code class="text-indigo-400">parameter_name: value</code></li>
+            <li>Named arguments must come after all positional arguments</li>
+            <li>Duplicate named arguments cause a runtime error</li>
+            <li>Unknown parameter names cause a runtime error</li>
+        </ul>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Constructor Named Parameters</h3>
+        <p class="text-gray-400 mb-4">Named parameters also work with class constructors:</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User {
+    name: String;
+    age: Int;
+    role: String;
+
+    new(name: String = "Guest", age: Int = 0, role: String = "user") {
+        this.name = name;
+        this.age = age;
+        this.role = role;
+    }
+}
+
+let user1 = new User(name: "Alice", age: 30, role: "admin");
+let user2 = new User("Bob", age: 25);
+let user3 = new User(name: "Charlie", role: "moderator");</code></pre>
+            </div>
         </div>
     </section>
 

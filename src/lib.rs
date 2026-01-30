@@ -57,6 +57,7 @@ pub mod span;
 pub mod template;
 pub mod types;
 
+use ast::expr::Argument;
 use error::SolilangError;
 use interpreter::Value;
 
@@ -208,7 +209,7 @@ fn extract_test_definitions(program: &ast::Program) -> Vec<interpreter::builtins
 
 fn extract_suite_from_call(
     _name: &str,
-    arguments: &[ast::Expr],
+    arguments: &[Argument],
     _span: span::Span,
 ) -> Option<interpreter::builtins::test_dsl::TestSuite> {
     if arguments.len() < 2 {
@@ -216,13 +217,21 @@ fn extract_suite_from_call(
     }
 
     // First argument should be the suite name
-    let suite_name = match &arguments[0].kind {
+    let first_arg = match &arguments[0] {
+        Argument::Positional(expr) => expr,
+        Argument::Named(_) => return None,
+    };
+    let suite_name = match &first_arg.kind {
         ast::ExprKind::StringLiteral(s) => s.clone(),
         _ => return None,
     };
 
     // Second argument should be a lambda (the suite body)
-    let suite_body = match &arguments[1].kind {
+    let second_arg = match &arguments[1] {
+        Argument::Positional(expr) => expr,
+        Argument::Named(_) => return None,
+    };
+    let suite_body = match &second_arg.kind {
         ast::ExprKind::Lambda { body, .. } => body.clone(),
         _ => return None,
     };
@@ -260,19 +269,19 @@ fn extract_tests_from_block(
                                 suite.nested_suites.push(nested);
                             }
                         } else if name == "before_each" {
-                            if let Some(callback) = arguments.first() {
+                            if let Some(Argument::Positional(callback)) = arguments.first() {
                                 suite.before_each = Some(ast_expr_to_value(callback));
                             }
                         } else if name == "after_each" {
-                            if let Some(callback) = arguments.first() {
+                            if let Some(Argument::Positional(callback)) = arguments.first() {
                                 suite.after_each = Some(ast_expr_to_value(callback));
                             }
                         } else if name == "before_all" {
-                            if let Some(callback) = arguments.first() {
+                            if let Some(Argument::Positional(callback)) = arguments.first() {
                                 suite.before_all = Some(ast_expr_to_value(callback));
                             }
                         } else if name == "after_all" {
-                            if let Some(callback) = arguments.first() {
+                            if let Some(Argument::Positional(callback)) = arguments.first() {
                                 suite.after_all = Some(ast_expr_to_value(callback));
                             }
                         }
@@ -283,19 +292,27 @@ fn extract_tests_from_block(
 }
 
 fn extract_test_from_call(
-    arguments: &[ast::Expr],
+    arguments: &[Argument],
     span: span::Span,
 ) -> Option<interpreter::builtins::test_dsl::TestDefinition> {
     if arguments.len() < 2 {
         return None;
     }
 
-    let test_name = match &arguments[0].kind {
+    let first_arg = match &arguments[0] {
+        Argument::Positional(expr) => expr,
+        Argument::Named(_) => return None,
+    };
+    let test_name = match &first_arg.kind {
         ast::ExprKind::StringLiteral(s) => s.clone(),
         _ => return None,
     };
 
-    let test_body = match &arguments[1].kind {
+    let second_arg = match &arguments[1] {
+        Argument::Positional(expr) => expr,
+        Argument::Named(_) => return None,
+    };
+    let test_body = match &second_arg.kind {
         ast::ExprKind::Lambda { params, return_type, body } => {
             create_function_value(params.clone(), return_type.clone(), body.clone(), span)
         }

@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::ast::expr::Argument;
 use crate::ast::*;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::model::{
@@ -329,7 +330,17 @@ impl Interpreter {
                             // Evaluate the function argument
                             let mut args = Vec::new();
                             for arg in arguments {
-                                args.push(self.evaluate(arg)?);
+                                match arg {
+                                    Argument::Positional(expr) => {
+                                        args.push(self.evaluate(expr)?);
+                                    }
+                                    Argument::Named(_) => {
+                                        return Err(RuntimeError::type_error(
+                                            "pipeline method does not support named arguments",
+                                            span,
+                                        ));
+                                    }
+                                }
                             }
                             return self.call_array_method(&items, name, args, span);
                         } else {
@@ -344,7 +355,17 @@ impl Interpreter {
                 // Prepend left_val to arguments
                 let mut new_args = vec![left_val];
                 for arg in arguments {
-                    new_args.push(self.evaluate(arg)?);
+                    match arg {
+                        Argument::Positional(expr) => {
+                            new_args.push(self.evaluate(expr)?);
+                        }
+                        Argument::Named(_) => {
+                            return Err(RuntimeError::type_error(
+                                "pipeline method does not support named arguments",
+                                span,
+                            ));
+                        }
+                    }
                 }
 
                 let callee_val = self.evaluate(callee)?;
@@ -598,9 +619,11 @@ impl Interpreter {
     fn evaluate_new(
         &mut self,
         class_name: &str,
-        arguments: &[Expr],
+        arguments: &[Argument],
         span: Span,
     ) -> RuntimeResult<Value> {
+        use std::collections::{HashMap, HashSet};
+
         let class = match self.environment.borrow().get(class_name) {
             Some(Value::Class(c)) => c,
             Some(_) => return Err(RuntimeError::NotAClass(class_name.to_string(), span)),
@@ -612,18 +635,70 @@ impl Interpreter {
 
         // Call constructor if present
         if let Some(ref ctor) = class.constructor {
-            let mut arg_values = Vec::new();
+            let mut positional_args = Vec::new();
+            let mut named_args = HashMap::new();
+
             for arg in arguments {
-                arg_values.push(self.evaluate(arg)?);
+                match arg {
+                    Argument::Positional(expr) => {
+                        positional_args.push(self.evaluate(expr)?);
+                    }
+                    Argument::Named(named) => {
+                        if named_args.contains_key(&named.name) {
+                            return Err(RuntimeError::type_error(
+                                format!("duplicate named argument '{}'", named.name),
+                                named.span,
+                            ));
+                        }
+                        named_args.insert(named.name.clone(), self.evaluate(&named.value)?);
+                    }
+                }
             }
 
-            // Check arity
-            if arg_values.len() != ctor.arity() {
-                return Err(RuntimeError::wrong_arity(
-                    ctor.arity(),
-                    arg_values.len(),
-                    span,
-                ));
+            let param_names: Vec<String> = ctor.params.iter().map(|p| p.name.clone()).collect();
+
+            // Check for unknown named arguments
+            for name in named_args.keys() {
+                if !param_names.contains(name) {
+                    return Err(RuntimeError::undefined_variable(name.clone(), span));
+                }
+            }
+
+            // Build constructor arguments
+            let mut ctor_args = Vec::new();
+            let mut used_params = HashSet::new();
+
+            // Positional arguments first
+            for (i, arg_val) in positional_args.iter().enumerate() {
+                if i < param_names.len() {
+                    ctor_args.push(arg_val.clone());
+                    used_params.insert(param_names[i].clone());
+                } else {
+                    return Err(RuntimeError::wrong_arity(
+                        ctor.full_arity(),
+                        positional_args.len() + named_args.len(),
+                        span,
+                    ));
+                }
+            }
+
+            // Named arguments and defaults
+            for (i, param_name) in param_names.iter().enumerate() {
+                if used_params.contains(param_name) {
+                    continue;
+                }
+                if let Some(named_val) = named_args.get(param_name) {
+                    ctor_args.push(named_val.clone());
+                } else if let Some(default_expr) = ctor.param_default_value(i) {
+                    let default_value = self.evaluate(default_expr)?;
+                    ctor_args.push(default_value);
+                } else {
+                    return Err(RuntimeError::wrong_arity(
+                        ctor.arity(),
+                        ctor_args.len(),
+                        span,
+                    ));
+                }
             }
 
             // Create constructor environment
@@ -631,8 +706,8 @@ impl Interpreter {
             let mut ctor_env = ctor_env;
             ctor_env.define("this".to_string(), Value::Instance(instance.clone()));
 
-            for (param, value) in ctor.params.iter().zip(arg_values) {
-                ctor_env.define(param.name.clone(), value);
+            for (param, value) in ctor.params.iter().zip(ctor_args.iter()) {
+                ctor_env.define(param.name.clone(), value.clone());
             }
 
             // Execute constructor body
@@ -789,17 +864,298 @@ impl Interpreter {
     fn evaluate_call(
         &mut self,
         callee: &Expr,
-        arguments: &[Expr],
+        arguments: &[Argument],
         span: Span,
     ) -> RuntimeResult<Value> {
         let callee_val = self.evaluate(callee)?;
 
         let mut arg_values = Vec::new();
+        let mut named_args = std::collections::HashMap::new();
+
         for arg in arguments {
-            arg_values.push(self.evaluate(arg)?);
+            match arg {
+                Argument::Positional(expr) => {
+                    arg_values.push(self.evaluate(expr)?);
+                }
+                Argument::Named(named) => {
+                    if named_args.contains_key(&named.name) {
+                        return Err(RuntimeError::type_error(
+                            format!("duplicate named argument '{}'", named.name),
+                            named.span,
+                        ));
+                    }
+                    named_args.insert(named.name.clone(), self.evaluate(&named.value)?);
+                }
+            }
         }
 
-        self.call_value(callee_val, arg_values, span)
+        self.call_value_with_named(callee_val, arg_values, named_args, span)
+    }
+
+    /// Helper function to call a value with both positional and named arguments.
+    fn call_value_with_named(
+        &mut self,
+        callee: Value,
+        positional_args: Vec<Value>,
+        named_args: std::collections::HashMap<String, Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        match callee {
+            Value::Function(func) => {
+                let required_arity = func.arity();
+                let full_arity = func.full_arity();
+
+                // Get parameter names for named argument matching
+                let param_names: Vec<String> = func.params.iter().map(|p| p.name.clone()).collect();
+
+                // Check for unknown named arguments
+                for name in named_args.keys() {
+                    if !param_names.contains(name) {
+                        return Err(RuntimeError::undefined_variable(name.clone(), span));
+                    }
+                }
+
+                // Build the final argument list in parameter order
+                let mut final_args = Vec::new();
+                let mut used_params = std::collections::HashSet::new();
+
+                // First, add positional arguments
+                for (i, arg_val) in positional_args.iter().enumerate() {
+                    if i < param_names.len() {
+                        final_args.push(arg_val.clone());
+                        used_params.insert(param_names[i].clone());
+                    } else {
+                        // Too many positional arguments
+                        return Err(RuntimeError::wrong_arity(
+                            full_arity,
+                            positional_args.len() + named_args.len(),
+                            span,
+                        ));
+                    }
+                }
+
+                // Then, fill in named arguments and defaults
+                for (i, param_name) in param_names.iter().enumerate() {
+                    if used_params.contains(param_name) {
+                        // Already provided as positional
+                        continue;
+                    }
+
+                    if let Some(named_val) = named_args.get(param_name) {
+                        // Named argument provided
+                        final_args.push(named_val.clone());
+                    } else if let Some(default_expr) = func.param_default_value(i) {
+                        // Use default value
+                        let default_value = self.evaluate(default_expr)?;
+                        final_args.push(default_value);
+                    } else {
+                        // Required parameter missing
+                        return Err(RuntimeError::wrong_arity(
+                            required_arity,
+                            final_args.len(),
+                            span,
+                        ));
+                    }
+                }
+
+                // Final arity check
+                if final_args.len() != full_arity {
+                    return Err(RuntimeError::wrong_arity(
+                        full_arity,
+                        final_args.len(),
+                        span,
+                    ));
+                }
+
+                self.call_function(&func, final_args)
+            }
+
+            Value::NativeFunction(native) => {
+                // Native functions only support positional arguments for now
+                if positional_args.len() + named_args.len()
+                    != native.arity.unwrap_or(positional_args.len())
+                {
+                    return Err(RuntimeError::wrong_arity(
+                        native.arity.unwrap_or(0),
+                        positional_args.len() + named_args.len(),
+                        span,
+                    ));
+                }
+                if !named_args.is_empty() {
+                    return Err(RuntimeError::type_error(
+                        "native functions do not support named arguments".to_string(),
+                        span,
+                    ));
+                }
+                let result = (native.func)(positional_args)
+                    .map_err(|msg| RuntimeError::General { message: msg, span })?;
+
+                // Check if this is the http_server_listen marker
+                if let Some(port) = is_server_listen_marker(&result) {
+                    // Only start server in main thread, not in worker threads
+                    let thread_name = std::thread::current().name().map(|s| s.to_string());
+                    let is_main_thread = thread_name
+                        .as_ref()
+                        .is_some_and(|n| n == "main" || n.starts_with("tokio-runtime"));
+                    if is_main_thread {
+                        // Run the HTTP server (this blocks until server stops)
+                        return self.run_http_server(port);
+                    }
+                }
+
+                Ok(result)
+            }
+
+            Value::Class(class) => {
+                // Class instantiation with named arguments
+                let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+
+                if let Some(ref ctor) = class.constructor {
+                    let required_arity = ctor.arity();
+                    let full_arity = ctor.full_arity();
+
+                    // Get parameter names
+                    let param_names: Vec<String> =
+                        ctor.params.iter().map(|p| p.name.clone()).collect();
+
+                    // Check for unknown named arguments
+                    for name in named_args.keys() {
+                        if !param_names.contains(name) {
+                            return Err(RuntimeError::undefined_variable(name.clone(), span));
+                        }
+                    }
+
+                    // Build constructor arguments
+                    let mut ctor_args = Vec::new();
+                    let mut used_params = std::collections::HashSet::new();
+
+                    // Positional arguments first
+                    for (i, arg_val) in positional_args.iter().enumerate() {
+                        if i < param_names.len() {
+                            ctor_args.push(arg_val.clone());
+                            used_params.insert(param_names[i].clone());
+                        } else {
+                            return Err(RuntimeError::wrong_arity(
+                                full_arity,
+                                positional_args.len() + named_args.len(),
+                                span,
+                            ));
+                        }
+                    }
+
+                    // Named arguments and defaults
+                    for (i, param_name) in param_names.iter().enumerate() {
+                        if used_params.contains(param_name) {
+                            continue;
+                        }
+                        if let Some(named_val) = named_args.get(param_name) {
+                            ctor_args.push(named_val.clone());
+                        } else if let Some(default_expr) = ctor.param_default_value(i) {
+                            let default_value = self.evaluate(default_expr)?;
+                            ctor_args.push(default_value);
+                        } else {
+                            return Err(RuntimeError::wrong_arity(
+                                required_arity,
+                                ctor_args.len(),
+                                span,
+                            ));
+                        }
+                    }
+
+                    // Create constructor environment
+                    let ctor_env = Environment::with_enclosing(ctor.closure.clone());
+                    let mut ctor_env = ctor_env;
+                    ctor_env.define("this".to_string(), Value::Instance(instance.clone()));
+
+                    for (param, value) in ctor.params.iter().zip(ctor_args.iter()) {
+                        ctor_env.define(param.name.clone(), value.clone());
+                    }
+
+                    // Execute constructor body
+                    let _ = self.execute_block(&ctor.body, ctor_env);
+                }
+
+                Ok(Value::Instance(instance))
+            }
+
+            Value::Instance(inst) => {
+                // Call method on instance with named arguments
+                if let Some(method) = inst.borrow().get_method("call") {
+                    match method {
+                        Value::Function(func) => {
+                            let required_arity = func.arity();
+                            let full_arity = func.full_arity();
+
+                            // Get parameter names
+                            let param_names: Vec<String> =
+                                func.params.iter().map(|p| p.name.clone()).collect();
+
+                            // Check for unknown named arguments
+                            for name in named_args.keys() {
+                                if !param_names.contains(name) {
+                                    return Err(RuntimeError::undefined_variable(
+                                        name.clone(),
+                                        span,
+                                    ));
+                                }
+                            }
+
+                            // Build method arguments
+                            let mut method_args = vec![Value::Instance(inst.clone())];
+                            let mut used_params = std::collections::HashSet::new();
+
+                            for (i, arg_val) in positional_args.iter().enumerate() {
+                                if i + 1 < param_names.len() {
+                                    method_args.push(arg_val.clone());
+                                    used_params.insert(param_names[i + 1].clone());
+                                } else {
+                                    return Err(RuntimeError::wrong_arity(
+                                        full_arity,
+                                        positional_args.len() + named_args.len() + 1,
+                                        span,
+                                    ));
+                                }
+                            }
+
+                            for (i, param_name) in param_names.iter().enumerate() {
+                                if i == 0 {
+                                    // Skip 'this' parameter - already added
+                                    continue;
+                                }
+                                if used_params.contains(param_name) {
+                                    continue;
+                                }
+                                if let Some(named_val) = named_args.get(param_name) {
+                                    method_args.push(named_val.clone());
+                                } else if let Some(default_expr) = func.param_default_value(i) {
+                                    let default_value = self.evaluate(default_expr)?;
+                                    method_args.push(default_value);
+                                } else {
+                                    return Err(RuntimeError::wrong_arity(
+                                        required_arity,
+                                        method_args.len() - 1,
+                                        span,
+                                    ));
+                                }
+                            }
+
+                            self.call_function(&func, method_args)
+                        }
+                        _ => Err(RuntimeError::type_error(
+                            "callable object method is not a function",
+                            span,
+                        )),
+                    }
+                } else {
+                    Err(RuntimeError::type_error("instance is not callable", span))
+                }
+            }
+
+            _ => Err(RuntimeError::type_error(
+                format!("{} is not callable", callee.type_name()),
+                span,
+            )),
+        }
     }
 
     pub(crate) fn call_value(

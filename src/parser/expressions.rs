@@ -1,5 +1,6 @@
 //! Expression parsing using Pratt precedence.
 
+use crate::ast::expr::{Argument, NamedArgument};
 use crate::ast::*;
 use crate::error::ParserError;
 use crate::lexer::TokenKind;
@@ -511,13 +512,53 @@ impl Parser {
         ))
     }
 
-    pub(crate) fn parse_arguments(&mut self) -> ParseResult<Vec<Expr>> {
+    pub(crate) fn parse_arguments(&mut self) -> ParseResult<Vec<Argument>> {
         let mut arguments = Vec::new();
+        let mut seen_named = false;
 
         if !self.check(&TokenKind::RightParen) {
-            arguments.push(self.expression()?);
-            while self.match_token(&TokenKind::Comma) {
-                arguments.push(self.expression()?);
+            loop {
+                let start_span = self.current_span();
+
+                // Check for named argument: identifier followed by colon
+                if let TokenKind::Identifier(name) = &self.peek().kind {
+                    let name = name.clone();
+                    // Look ahead to see if next token is colon
+                    let next_token = self.peek_nth(1);
+                    if next_token.kind == TokenKind::Colon {
+                        // This is a named argument
+                        self.advance(); // consume identifier
+                        self.advance(); // consume colon
+                        let value = self.expression()?;
+                        let span = start_span.merge(&value.span);
+                        arguments.push(Argument::Named(NamedArgument { name, value, span }));
+                        seen_named = true;
+                    } else {
+                        // This is a positional argument
+                        let expr = self.expression()?;
+                        if seen_named {
+                            return Err(ParserError::general(
+                                "positional argument cannot follow named argument".to_string(),
+                                expr.span,
+                            ));
+                        }
+                        arguments.push(Argument::Positional(expr));
+                    }
+                } else {
+                    // Positional argument (expression starting with literal, etc.)
+                    let expr = self.expression()?;
+                    if seen_named {
+                        return Err(ParserError::general(
+                            "positional argument cannot follow named argument".to_string(),
+                            expr.span,
+                        ));
+                    }
+                    arguments.push(Argument::Positional(expr));
+                }
+
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
             }
         }
 
