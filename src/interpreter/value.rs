@@ -45,6 +45,8 @@ pub enum Value {
     Breakpoint,
     /// Query builder for chainable database queries
     QueryBuilder(Rc<RefCell<QueryBuilder>>),
+    /// Super reference - used for super.method() calls, carries the superclass
+    Super(Rc<Class>),
 }
 
 /// The type of HTTP future result
@@ -92,23 +94,24 @@ impl std::fmt::Debug for HttpFutureKind {
 }
 
 impl Value {
-    pub fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> String {
         match self {
-            Value::Int(_) => "Int",
-            Value::Float(_) => "Float",
-            Value::String(_) => "String",
-            Value::Bool(_) => "Bool",
-            Value::Null => "Null",
-            Value::Array(_) => "Array",
-            Value::Hash(_) => "Hash",
-            Value::Function(_) => "Function",
-            Value::NativeFunction(_) => "Function",
-            Value::Class(_) => "Class",
-            Value::Instance(_) => "Instance",
-            Value::Future(_) => "Future",
-            Value::Method(_) => "Method",
-            Value::Breakpoint => "Breakpoint",
-            Value::QueryBuilder(_) => "QueryBuilder",
+            Value::Int(_) => "int".to_string(),
+            Value::Float(_) => "float".to_string(),
+            Value::String(_) => "string".to_string(),
+            Value::Bool(_) => "bool".to_string(),
+            Value::Null => "null".to_string(),
+            Value::Array(_) => "array".to_string(),
+            Value::Hash(_) => "hash".to_string(),
+            Value::Function(_) => "Function".to_string(),
+            Value::NativeFunction(_) => "Function".to_string(),
+            Value::Class(_) => "Class".to_string(),
+            Value::Instance(inst) => inst.borrow().class.name.clone(),
+            Value::Future(_) => "Future".to_string(),
+            Value::Method(_) => "Method".to_string(),
+            Value::Breakpoint => "Breakpoint".to_string(),
+            Value::QueryBuilder(_) => "QueryBuilder".to_string(),
+            Value::Super(_) => "Super".to_string(),
         }
     }
 
@@ -202,8 +205,27 @@ impl PartialEq for Value {
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Null, Value::Null) => true,
-            (Value::Array(a), Value::Array(b)) => Rc::ptr_eq(a, b),
-            (Value::Hash(a), Value::Hash(b)) => Rc::ptr_eq(a, b),
+            (Value::Array(a), Value::Array(b)) => {
+                // Use structural equality for arrays
+                let a_ref = a.borrow();
+                let b_ref = b.borrow();
+                if a_ref.len() != b_ref.len() {
+                    return false;
+                }
+                a_ref.iter().zip(b_ref.iter()).all(|(x, y)| x == y)
+            }
+            (Value::Hash(a), Value::Hash(b)) => {
+                // Use structural equality for hashes
+                let a_ref = a.borrow();
+                let b_ref = b.borrow();
+                if a_ref.len() != b_ref.len() {
+                    return false;
+                }
+                // Check that all key-value pairs in a exist in b
+                a_ref.iter().all(|(k_a, v_a)| {
+                    b_ref.iter().any(|(k_b, v_b)| k_a == k_b && v_a == v_b)
+                })
+            }
             (Value::Instance(a), Value::Instance(b)) => Rc::ptr_eq(a, b),
             (Value::Method(a), Value::Method(b)) => {
                 *a.receiver == *b.receiver && a.method_name == b.method_name
@@ -271,6 +293,7 @@ impl fmt::Display for Value {
                     write!(f, "<QueryBuilder for {}>", qb.class_name)
                 }
             }
+            Value::Super(class) => write!(f, "<super of {}>", class.name),
         }
     }
 }
@@ -285,6 +308,24 @@ pub struct Function {
     pub is_method: bool,
     pub span: Option<Span>,
     pub source_path: Option<String>,
+    /// The superclass of the class where this method was defined.
+    /// Used for super calls to resolve to the correct parent class.
+    pub defining_superclass: Option<Rc<Class>>,
+}
+
+impl Default for Function {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            params: Vec::new(),
+            body: Vec::new(),
+            closure: Rc::new(RefCell::new(Environment::new())),
+            is_method: false,
+            span: None,
+            source_path: None,
+            defining_superclass: None,
+        }
+    }
 }
 
 impl Function {
@@ -301,6 +342,7 @@ impl Function {
             is_method: false,
             span: Some(decl.span),
             source_path,
+            defining_superclass: None,
         }
     }
 
@@ -317,6 +359,7 @@ impl Function {
             is_method: true,
             span: Some(decl.span),
             source_path,
+            defining_superclass: None,
         }
     }
 
@@ -412,10 +455,23 @@ pub struct Class {
     pub static_methods: HashMap<String, Rc<Function>>,
     pub native_static_methods: HashMap<String, Rc<NativeFunction>>,
     pub native_methods: HashMap<String, Rc<NativeFunction>>,
+    pub static_fields: Rc<RefCell<HashMap<String, Value>>>,
+    pub fields: HashMap<String, Option<Expr>>,
     pub constructor: Option<Rc<Function>>,
 }
 
 impl Class {
+    /// Find a constructor in this class or its superclass chain.
+    pub fn find_constructor(&self) -> Option<Rc<Function>> {
+        if let Some(ref ctor) = self.constructor {
+            return Some(ctor.clone());
+        }
+        if let Some(ref superclass) = self.superclass {
+            return superclass.find_constructor();
+        }
+        None
+    }
+
     pub fn find_method(&self, name: &str) -> Option<Rc<Function>> {
         if let Some(method) = self.methods.get(name) {
             return Some(method.clone());
@@ -592,5 +648,21 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             Ok(serde_json::Value::Object(map))
         }
         _ => Err(format!("Cannot convert {} to JSON", value.type_name())),
+    }
+}
+
+/// Unwrap a value, extracting the underlying value from class instances.
+/// For String/Array/Hash class instances, returns the __value field.
+/// For other values, returns the value as-is.
+pub fn unwrap_value(value: &Value) -> Value {
+    match value {
+        Value::Instance(inst) => {
+            if let Some(inner) = inst.borrow().fields.get("__value").cloned() {
+                unwrap_value(&inner)
+            } else {
+                value.clone()
+            }
+        }
+        _ => value.clone(),
     }
 }

@@ -158,76 +158,69 @@ impl Interpreter {
                 catch_block,
                 finally_block,
             } => {
-                // Execute try block
-                match self.execute(try_block)? {
-                    ControlFlow::Normal => {
-                        // Try block completed normally
-                    }
-                    ControlFlow::Return(v) => {
-                        // Execute finally if present, then return
-                        if let Some(finally_blk) = finally_block {
-                            self.execute(finally_blk)?;
-                        }
-                        return Ok(ControlFlow::Return(v));
-                    }
-                    ControlFlow::Throw(error) => {
-                        // Exception occurred in try block
-                        if let Some(catch_blk) = catch_block {
-                            // Create new environment for catch block
-                            let mut catch_env =
-                                Environment::with_enclosing(self.environment.clone());
+                let try_result = self.execute(try_block);
 
-                            // If catch variable is specified, define it
-                            if let Some(var_name) = catch_var {
-                                catch_env.define(var_name.clone(), error.clone());
-                            }
-
-                            // Execute catch block in new environment
-                            let previous = std::mem::replace(
-                                &mut self.environment,
-                                Rc::new(RefCell::new(catch_env)),
-                            );
-                            let catch_result = self.execute(catch_blk);
-                            self.environment = previous;
-
-                            match catch_result {
-                                Ok(ControlFlow::Normal) => {
-                                    // Catch block completed normally
-                                }
-                                Ok(ControlFlow::Return(v)) => {
-                                    // Execute finally if present, then return
-                                    if let Some(finally_blk) = finally_block {
-                                        self.execute(finally_blk)?;
-                                    }
-                                    return Ok(ControlFlow::Return(v));
-                                }
-                                Ok(ControlFlow::Throw(new_error)) => {
-                                    // Rethrow from catch block
-                                    if let Some(finally_blk) = finally_block {
-                                        self.execute(finally_blk)?;
-                                    }
-                                    return Ok(ControlFlow::Throw(new_error));
-                                }
-                                Err(e) => {
-                                    // Error in catch block
-                                    if let Some(finally_blk) = finally_block {
-                                        self.execute(finally_blk)?;
-                                    }
-                                    return Err(e);
-                                }
-                            }
-                        } else {
-                            // No catch block - rethrow
+                let throw_value = match try_result {
+                    Ok(control_flow) => match control_flow {
+                        ControlFlow::Normal => None,
+                        ControlFlow::Return(v) => {
                             if let Some(finally_blk) = finally_block {
                                 self.execute(finally_blk)?;
                             }
-                            return Ok(ControlFlow::Throw(error));
+                            return Ok(ControlFlow::Return(v));
                         }
+                        ControlFlow::Throw(error) => Some(error),
+                    },
+                    Err(e) => {
+                        let error_value = Value::String(format!("{}", e));
+                        Some(error_value)
+                    }
+                };
+
+                if let Some(error) = throw_value {
+                    if let Some(catch_blk) = catch_block {
+                        let mut catch_env = Environment::with_enclosing(self.environment.clone());
+
+                        if let Some(var_name) = catch_var {
+                            catch_env.define(var_name.clone(), error.clone());
+                        }
+
+                        let previous = std::mem::replace(
+                            &mut self.environment,
+                            Rc::new(RefCell::new(catch_env)),
+                        );
+                        let catch_result = self.execute(catch_blk);
+                        self.environment = previous;
+
+                        match catch_result {
+                            Ok(ControlFlow::Normal) => {}
+                            Ok(ControlFlow::Return(v)) => {
+                                if let Some(finally_blk) = finally_block {
+                                    self.execute(finally_blk)?;
+                                }
+                                return Ok(ControlFlow::Return(v));
+                            }
+                            Ok(ControlFlow::Throw(new_error)) => {
+                                if let Some(finally_blk) = finally_block {
+                                    self.execute(finally_blk)?;
+                                }
+                                return Ok(ControlFlow::Throw(new_error));
+                            }
+                            Err(e) => {
+                                if let Some(finally_blk) = finally_block {
+                                    self.execute(finally_blk)?;
+                                }
+                                return Err(e);
+                            }
+                        }
+                    } else {
+                        if let Some(finally_blk) = finally_block {
+                            self.execute(finally_blk)?;
+                        }
+                        return Ok(ControlFlow::Throw(error));
                     }
                 }
 
-                // If we get here, try block completed normally (or catch handled exception)
-                // Execute finally if present
                 if let Some(finally_blk) = finally_block {
                     match self.execute(finally_blk)? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
@@ -299,8 +292,13 @@ impl Interpreter {
         });
 
         // Create environment for methods (with potential super binding)
-        let method_env = if superclass.is_some() {
-            let env = Environment::with_enclosing(self.environment.clone());
+        let method_env = if let Some(ref sc) = superclass {
+            let mut env = Environment::with_enclosing(self.environment.clone());
+            // Store the superclass for super calls within methods of this class
+            env.define(
+                "__defining_superclass__".to_string(),
+                Value::Class(sc.clone()),
+            );
             Rc::new(RefCell::new(env))
         } else {
             self.environment.clone()
@@ -337,6 +335,7 @@ impl Interpreter {
                     .current_source_path
                     .as_ref()
                     .map(|p| p.to_string_lossy().to_string()),
+                defining_superclass: None,
             })
         });
 
@@ -351,6 +350,16 @@ impl Interpreter {
             HashMap::new()
         };
 
+        let mut fields = HashMap::new();
+        let mut static_field_initializers = HashMap::new();
+        for field in &decl.fields {
+            if field.is_static {
+                static_field_initializers.insert(field.name.clone(), field.initializer.clone());
+            } else {
+                fields.insert(field.name.clone(), field.initializer.clone());
+            }
+        }
+
         let class = Class {
             name: decl.name.clone(),
             superclass,
@@ -359,12 +368,27 @@ impl Interpreter {
             native_static_methods,
             native_methods: HashMap::new(),
             constructor,
+            static_fields: Rc::new(RefCell::new(HashMap::new())),
+            fields,
         };
 
         let class_rc = Rc::new(class);
         self.environment
             .borrow_mut()
             .define(decl.name.clone(), Value::Class(class_rc.clone()));
+
+        // Initialize static fields
+        for (field_name, field_initializer) in static_field_initializers {
+            let value = if let Some(init_expr) = field_initializer {
+                self.evaluate(&init_expr)?
+            } else {
+                Value::Null
+            };
+            class_rc
+                .static_fields
+                .borrow_mut()
+                .insert(field_name, value);
+        }
 
         // Execute static block if present
         if let Some(ref static_block) = decl.static_block {

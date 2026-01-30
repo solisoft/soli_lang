@@ -43,6 +43,9 @@ crossbeam = "0.8"
 argon2 = { version = "0.5", features = ["std", "rand"] }
 curve25519-dalek = "4"
 rand_core = "0.6"
+sha2 = "0.10"
+md-5 = "0.10"
+hmac = "0.12"
 
 # Data encoding
 base64 = "0.22"

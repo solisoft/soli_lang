@@ -1248,6 +1248,8 @@ impl Model {
             static_methods: HashMap::new(),
             native_static_methods,
             native_methods: HashMap::new(),
+            static_fields: Rc::new(RefCell::new(HashMap::new())),
+            fields: HashMap::new(),
             constructor: None,
         };
         env.define("Model".to_string(), Value::Class(Rc::new(model_class)));

@@ -12,9 +12,179 @@
             <span class="bg-gradient-to-r from-red-400 to-rose-400 bg-clip-text text-transparent">Cryptography Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Password hashing with Argon2, X25519 key exchange, Ed25519 signatures.
+            Hash functions (SHA-256, SHA-512, MD5, HMAC), password hashing with Argon2, X25519 key exchange, Ed25519 signatures, and Base64 encoding.
         </p>
     </div>
+
+    <!-- Crypto Class Overview -->
+    <section id="section-crypto-class" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+            </span>
+            Crypto Class
+        </h2>
+        <p class="text-gray-400 mb-4">All cryptographic functions are available as static methods on the <code class="text-indigo-400">Crypto</code> class. Standalone function aliases are also provided for convenience.</p>
+    </section>
+
+    <!-- Hash Functions -->
+    <section id="section-hash-functions" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Hash Functions
+        </h2>
+
+        <section id="fn-sha256" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-sha256" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.sha256(data)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Compute SHA-256 hash of a string. Also available as <code class="text-indigo-400">sha256()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - 64-character hex string (32 bytes)
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.sha256("hello")
+// "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-sha512" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-sha512" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.sha512(data)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Compute SHA-512 hash of a string. Also available as <code class="text-indigo-400">sha512()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - 128-character hex string (64 bytes)
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.sha512("hello")
+// 128-character hex string</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-md5" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-md5" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.md5(data)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Compute MD5 hash of a string. Also available as <code class="text-indigo-400">md5()</code>. <span class="text-yellow-500">Note: MD5 is cryptographically broken. Use only for checksums, not security.</span></p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - 32-character hex string (16 bytes)
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.md5("hello")
+// "5d41402abc4b2a76b9719d911017c592"</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-hmac" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-hmac" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.hmac(message, key)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Compute HMAC-SHA256 message authentication code. Also available as <code class="text-indigo-400">hmac()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">message</code> : <code class="text-purple-400">String</code> - The message to authenticate</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The secret key</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - 64-character hex string (32 bytes)
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let mac = Crypto.hmac("message", "secret_key")
+// Use for API signature verification, webhook validation, etc.</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Base64 Encoding -->
+    <section id="section-base64" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+            </span>
+            Base64 Encoding
+        </h2>
+
+        <section id="fn-base64-encode" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-base64-encode" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.base64_encode(data)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Encode a string to Base64. Also available as <code class="text-indigo-400">base64_encode()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to encode
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - Base64-encoded string
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let encoded = Crypto.base64_encode("hello world")
+// "aGVsbG8gd29ybGQ="</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-base64-decode" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-base64-decode" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.base64_decode(data)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Decode a Base64 string. Also available as <code class="text-indigo-400">base64_decode()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The Base64-encoded string
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - Decoded string
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let decoded = Crypto.base64_decode("aGVsbG8gd29ybGQ=")
+// "hello world"</code></pre>
+            </div>
+        </section>
+    </section>
 
     <!-- Password Hashing -->
     <section id="section-password-hashing" class="scroll-mt-20 mb-12">
@@ -30,12 +200,12 @@
         <section id="fn-argon2-hash" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-argon2-hash" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">argon2_hash(password)</code>
+                    <code class="text-lg font-mono text-indigo-400">Crypto.argon2_hash(password)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Hash a password using Argon2id (recommended algorithm). Also available as <code class="text-indigo-400">password_hash</code>.</p>
+                <p class="text-gray-400 mb-3">Hash a password using Argon2id (recommended algorithm). Also available as <code class="text-indigo-400">argon2_hash()</code> and <code class="text-indigo-400">password_hash()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">password</code> : <code class="text-purple-400">String</code> - The plain text password to hash
@@ -44,7 +214,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The Argon2id hash string
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let hash = argon2_hash("secretpassword")
+                <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.argon2_hash("secretpassword")
 // $argon2id$v=19$m=19456,t=2,p=1$...</code></pre>
             </div>
         </section>
@@ -52,12 +222,12 @@
         <section id="fn-argon2-verify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-argon2-verify" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">argon2_verify(password, hash)</code>
+                    <code class="text-lg font-mono text-indigo-400">Crypto.argon2_verify(password, hash)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Verify a password against an Argon2id hash. Also available as <code class="text-indigo-400">password_verify</code>.</p>
+                <p class="text-gray-400 mb-3">Verify a password against an Argon2id hash. Also available as <code class="text-indigo-400">argon2_verify()</code> and <code class="text-indigo-400">password_verify()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">password</code> : <code class="text-purple-400">String</code> - The plain text password to verify</div>
@@ -67,7 +237,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Bool</code> - true if password matches, false otherwise
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">if argon2_verify(user_input, stored_hash) {
+                <pre data-filename="Example"><code class="language-soli text-sm">if Crypto.argon2_verify(user_input, stored_hash) {
     println("Password correct!")
 } else {
     println("Invalid password")
@@ -83,38 +253,70 @@
         <section id="fn-x25519-keypair" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-x25519-keypair" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">x25519_keypair()</code>
+                    <code class="text-lg font-mono text-indigo-400">Crypto.x25519_keypair()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate an X25519 key pair for Diffie-Hellman key exchange.</p>
+                <p class="text-gray-400 mb-3">Generate an X25519 key pair for Diffie-Hellman key exchange. Also available as <code class="text-indigo-400">x25519_keypair()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code>
+                    <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = x25519_keypair()
-println(keypair["public"])   // Base64 public key
-println(keypair["private"])  // Base64 private key</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair()
+println(keypair["public"])   // Hex-encoded public key
+println(keypair["private"])  // Hex-encoded private key</code></pre>
             </div>
         </section>
 
         <section id="fn-x25519-shared-secret" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-x25519-shared-secret" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">x25519_shared_secret(private_key, public_key)</code>
+                    <code class="text-lg font-mono text-indigo-400">Crypto.x25519_shared_secret(private_key, public_key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute a shared secret from your private key and another party's public key.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let alice = x25519_keypair()
-let bob = x25519_keypair()
+                <p class="text-gray-400 mb-3">Compute a shared secret from your private key and another party's public key. Also available as <code class="text-indigo-400">x25519_shared_secret()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">private_key</code> : <code class="text-purple-400">String</code> - Your hex-encoded private key</div>
+                    <div><code class="text-amber-400">public_key</code> : <code class="text-purple-400">String</code> - Their hex-encoded public key</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - Hex-encoded shared secret
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let alice = Crypto.x25519_keypair()
+let bob = Crypto.x25519_keypair()
 
 // Both compute the same shared secret
-let alice_secret = x25519_shared_secret(alice["private"], bob["public"])
-let bob_secret = x25519_shared_secret(bob["private"], alice["public"])
+let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
+let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
 // alice_secret == bob_secret</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-x25519-public-key" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-x25519-public-key" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.x25519_public_key(private_key)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Derive the public key from a private key. Also available as <code class="text-indigo-400">x25519_public_key()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">private_key</code> : <code class="text-purple-400">String</code> - Hex-encoded private key
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - Hex-encoded public key
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair()
+let derived_public = Crypto.x25519_public_key(keypair["private"])
+// derived_public == keypair["public"]</code></pre>
             </div>
         </section>
     </section>
@@ -126,17 +328,17 @@ let bob_secret = x25519_shared_secret(bob["private"], alice["public"])
         <section id="fn-ed25519-keypair" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-ed25519-keypair" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">ed25519_keypair()</code>
+                    <code class="text-lg font-mono text-indigo-400">Crypto.ed25519_keypair()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate an Ed25519 signing key pair for digital signatures.</p>
+                <p class="text-gray-400 mb-3">Generate an Ed25519 signing key pair for digital signatures. Also available as <code class="text-indigo-400">ed25519_keypair()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code>
+                    <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = ed25519_keypair()
+                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.ed25519_keypair()
 // Use keypair["private"] to sign messages
 // Share keypair["public"] for verification</code></pre>
             </div>

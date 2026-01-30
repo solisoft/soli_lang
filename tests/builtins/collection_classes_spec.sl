@@ -352,7 +352,7 @@ describe("Collection Classes", fn() {
 
         test("Base64.encode() handles special characters", fn() {
             let encoded = Base64.encode("Hello\nWorld\t!");
-            assert_eq(encoded, "SGVsbG8KV29ybGQhIQ==");
+            assert_eq(encoded, "SGVsbG8KV29ybGQJIQ==");
         });
 
         test("Base64.decode() handles URL-safe base64", fn() {

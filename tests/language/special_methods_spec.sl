@@ -55,7 +55,8 @@ describe("Predicate Methods with ?", fn() {
     test("chained predicate checks", fn() {
         let s = "hello";
         assert(s.include?("ell") && s.starts_with?("he"));
-        assert_not(s.include?("xyz") || s.ends_with?("lo"));
+        // Test that neither xyz is included nor does it end with "xyz"
+        assert_not(s.include?("xyz") || s.ends_with?("xyz"));
     });
 });
 
@@ -65,20 +66,20 @@ describe("Pipeline Operator", fn() {
         assert_eq(result, 11);
     });
 
-    test("pipeline with built-in method", fn() {
-        let result = "hello" |> uppercase();
+    test("pipeline with lambda", fn() {
+        let result = "hello" |> fn(s) { return s.upcase(); };
         assert_eq(result, "HELLO");
     });
 
     test("pipeline with multiple steps", fn() {
         let result = [1, 2, 3, 4, 5]
-            |> fn(arr) { return filter(arr, fn(x) { return x > 2; }); }
-            |> fn(arr) { return map(arr, fn(x) { return x * 2; }); };
+            |> fn(arr) { return arr.filter(fn(x) { return x > 2; }); }
+            |> fn(arr) { return arr.map(fn(x) { return x * 2; }); };
         assert_eq(result, [6, 8, 10]);
     });
 
-    test("pipeline with method call", fn() {
-        let result = "hello" |> length();
+    test("pipeline with method via lambda", fn() {
+        let result = "hello" |> fn(s) { return s.length(); };
         assert_eq(result, 5);
     });
 
@@ -89,7 +90,7 @@ describe("Pipeline Operator", fn() {
     });
 
     test("pipeline with string operations", fn() {
-        let result = "  hello world  " |> trim() |> uppercase();
+        let result = "  hello world  " |> fn(s) { return s.trim(); } |> fn(s) { return s.upcase(); };
         assert_eq(result, "HELLO WORLD");
     });
 });

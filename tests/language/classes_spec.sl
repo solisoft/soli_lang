@@ -457,7 +457,7 @@ describe("Constructor Named Parameters", fn() {
         let error_thrown = false;
         try {
             new Point(x: 5, x: 10);
-        } catch e {
+        } catch (error) {
             error_thrown = true;
         }
         assert_eq(error_thrown, true);
@@ -474,7 +474,7 @@ describe("Constructor Named Parameters", fn() {
         let error_thrown = false;
         try {
             new Circle(diameter: 10);
-        } catch e {
+        } catch (error) {
             error_thrown = true;
         }
         assert_eq(error_thrown, true);

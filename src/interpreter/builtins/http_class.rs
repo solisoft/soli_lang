@@ -1048,6 +1048,8 @@ pub fn register_http_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: http_static_methods,
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
 

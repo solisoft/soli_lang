@@ -819,9 +819,105 @@ println(json)  // {"name":"Alice","scores":[95,87,92]}
 
 ## Cryptography Functions
 
+All cryptographic functions are available both as static methods on the `Crypto` class and as standalone functions.
+
+### Hash Functions
+
+#### Crypto.sha256(data) / sha256(data)
+
+Computes SHA-256 hash of a string.
+
+**Parameters:**
+- `data` (String) - The data to hash
+
+**Returns:** String - 64-character hex string (32 bytes)
+
+**Example:**
+```soli
+let hash = Crypto.sha256("hello")
+// "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+```
+
+#### Crypto.sha512(data) / sha512(data)
+
+Computes SHA-512 hash of a string.
+
+**Parameters:**
+- `data` (String) - The data to hash
+
+**Returns:** String - 128-character hex string (64 bytes)
+
+**Example:**
+```soli
+let hash = Crypto.sha512("hello")
+```
+
+#### Crypto.md5(data) / md5(data)
+
+Computes MD5 hash of a string. **Note:** MD5 is cryptographically broken. Use only for checksums, not security.
+
+**Parameters:**
+- `data` (String) - The data to hash
+
+**Returns:** String - 32-character hex string (16 bytes)
+
+**Example:**
+```soli
+let hash = Crypto.md5("hello")
+// "5d41402abc4b2a76b9719d911017c592"
+```
+
+#### Crypto.hmac(message, key) / hmac(message, key)
+
+Computes HMAC-SHA256 message authentication code.
+
+**Parameters:**
+- `message` (String) - The message to authenticate
+- `key` (String) - The secret key
+
+**Returns:** String - 64-character hex string (32 bytes)
+
+**Example:**
+```soli
+let mac = Crypto.hmac("message", "secret_key")
+// Use for API signature verification, webhook validation, etc.
+```
+
+### Base64 Encoding
+
+#### Crypto.base64_encode(data) / base64_encode(data)
+
+Encodes a string to Base64.
+
+**Parameters:**
+- `data` (String) - The data to encode
+
+**Returns:** String - Base64-encoded string
+
+**Example:**
+```soli
+let encoded = Crypto.base64_encode("hello world")
+// "aGVsbG8gd29ybGQ="
+```
+
+#### Crypto.base64_decode(data) / base64_decode(data)
+
+Decodes a Base64 string.
+
+**Parameters:**
+- `data` (String) - The Base64-encoded string
+
+**Returns:** String - Decoded string
+
+**Example:**
+```soli
+let decoded = Crypto.base64_decode("aGVsbG8gd29ybGQ=")
+// "hello world"
+```
+
 ### Password Hashing
 
-#### argon2_hash(password)
+#### Crypto.argon2_hash(password) / argon2_hash(password)
 
 Hashes a password using Argon2id (recommended).
 
@@ -832,11 +928,11 @@ Hashes a password using Argon2id (recommended).
 
 **Example:**
 ```soli
-let hash = argon2_hash("secretpassword")
+let hash = Crypto.argon2_hash("secretpassword")
 // $argon2id$v=19$m=19456,t=2,p=1$...
 ```
 
-#### argon2_verify(password, hash)
+#### Crypto.argon2_verify(password, hash) / argon2_verify(password, hash)
 
 Verifies a password against an Argon2 hash.
 
@@ -848,73 +944,73 @@ Verifies a password against an Argon2 hash.
 
 **Example:**
 ```soli
-if argon2_verify(user_input, stored_hash) {
+if Crypto.argon2_verify(user_input, stored_hash) {
     println("Password correct!")
 }
 ```
 
 #### password_hash(password)
 
-Alias for `argon2_hash`.
+Alias for `Crypto.argon2_hash`.
 
 #### password_verify(password, hash)
 
-Alias for `argon2_verify`.
+Alias for `Crypto.argon2_verify`.
 
 ### X25519 Key Exchange
 
-#### x25519_keypair()
+#### Crypto.x25519_keypair() / x25519_keypair()
 
 Generates a new X25519 key pair.
 
-**Returns:** Hash - `{ "public": String, "private": String }` (base64-encoded)
+**Returns:** Hash - `{ "public": String, "private": String }` (hex-encoded, 64 chars each)
 
 **Example:**
 ```soli
-let keypair = x25519_keypair()
+let keypair = Crypto.x25519_keypair()
 println(keypair["public"])
 ```
 
-#### x25519_public_key(private_key)
+#### Crypto.x25519_public_key(private_key) / x25519_public_key(private_key)
 
 Derives the public key from a private key.
 
 **Parameters:**
-- `private_key` (String) - Base64-encoded private key
+- `private_key` (String) - Hex-encoded private key
 
-**Returns:** String - Base64-encoded public key
+**Returns:** String - Hex-encoded public key
 
-#### x25519_shared_secret(private_key, public_key)
+#### Crypto.x25519_shared_secret(private_key, public_key) / x25519_shared_secret(private_key, public_key)
 
 Computes the shared secret from a private key and another party's public key.
 
 **Parameters:**
-- `private_key` (String) - Your base64-encoded private key
-- `public_key` (String) - Their base64-encoded public key
+- `private_key` (String) - Your hex-encoded private key
+- `public_key` (String) - Their hex-encoded public key
 
-**Returns:** String - Base64-encoded shared secret
+**Returns:** String - Hex-encoded shared secret
 
 **Example:**
 ```soli
 // Alice
-let alice = x25519_keypair()
+let alice = Crypto.x25519_keypair()
 
 // Bob
-let bob = x25519_keypair()
+let bob = Crypto.x25519_keypair()
 
 // Both compute the same shared secret
-let alice_secret = x25519_shared_secret(alice["private"], bob["public"])
-let bob_secret = x25519_shared_secret(bob["private"], alice["public"])
+let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
+let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
 // alice_secret == bob_secret
 ```
 
 ### Ed25519 Signatures
 
-#### ed25519_keypair()
+#### Crypto.ed25519_keypair() / ed25519_keypair()
 
 Generates a new Ed25519 signing key pair.
 
-**Returns:** Hash - `{ "public": String, "private": String }` (base64-encoded)
+**Returns:** Hash - `{ "public": String, "private": String }` (hex-encoded, 64 chars each)
 
 ---
 

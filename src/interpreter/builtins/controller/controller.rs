@@ -51,6 +51,7 @@
 //! }
 //! ```
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -71,6 +72,8 @@ fn register_controller_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
     env.define(

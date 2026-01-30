@@ -433,13 +433,139 @@
       "keywords": ["json", "stringify", "encode", "serialize"]
     },
     {
+      "title": "Crypto.sha256",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-sha256",
+      "signature": "Crypto.sha256(data)",
+      "description": "Compute SHA-256 hash of a string",
+      "keywords": ["crypto", "hash", "sha256", "digest", "checksum"]
+    },
+    {
+      "title": "sha256",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-sha256",
+      "signature": "sha256(data)",
+      "description": "Compute SHA-256 hash (alias for Crypto.sha256)",
+      "keywords": ["crypto", "hash", "sha256", "digest", "checksum"]
+    },
+    {
+      "title": "Crypto.sha512",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-sha512",
+      "signature": "Crypto.sha512(data)",
+      "description": "Compute SHA-512 hash of a string",
+      "keywords": ["crypto", "hash", "sha512", "digest", "checksum"]
+    },
+    {
+      "title": "sha512",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-sha512",
+      "signature": "sha512(data)",
+      "description": "Compute SHA-512 hash (alias for Crypto.sha512)",
+      "keywords": ["crypto", "hash", "sha512", "digest", "checksum"]
+    },
+    {
+      "title": "Crypto.md5",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-md5",
+      "signature": "Crypto.md5(data)",
+      "description": "Compute MD5 hash of a string (use only for checksums, not security)",
+      "keywords": ["crypto", "hash", "md5", "digest", "checksum"]
+    },
+    {
+      "title": "md5",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-md5",
+      "signature": "md5(data)",
+      "description": "Compute MD5 hash (alias for Crypto.md5)",
+      "keywords": ["crypto", "hash", "md5", "digest", "checksum"]
+    },
+    {
+      "title": "Crypto.hmac",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-hmac",
+      "signature": "Crypto.hmac(message, key)",
+      "description": "Compute HMAC-SHA256 message authentication code",
+      "keywords": ["crypto", "hmac", "mac", "authentication", "signature"]
+    },
+    {
+      "title": "hmac",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-hmac",
+      "signature": "hmac(message, key)",
+      "description": "Compute HMAC-SHA256 (alias for Crypto.hmac)",
+      "keywords": ["crypto", "hmac", "mac", "authentication", "signature"]
+    },
+    {
+      "title": "Crypto.base64_encode",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-base64-encode",
+      "signature": "Crypto.base64_encode(data)",
+      "description": "Encode a string to Base64",
+      "keywords": ["base64", "encode", "encoding", "convert"]
+    },
+    {
+      "title": "base64_encode",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-base64-encode",
+      "signature": "base64_encode(data)",
+      "description": "Encode a string to Base64 (alias for Crypto.base64_encode)",
+      "keywords": ["base64", "encode", "encoding", "convert"]
+    },
+    {
+      "title": "Crypto.base64_decode",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-base64-decode",
+      "signature": "Crypto.base64_decode(data)",
+      "description": "Decode a Base64 string",
+      "keywords": ["base64", "decode", "decoding", "convert"]
+    },
+    {
+      "title": "base64_decode",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-base64-decode",
+      "signature": "base64_decode(data)",
+      "description": "Decode a Base64 string (alias for Crypto.base64_decode)",
+      "keywords": ["base64", "decode", "decoding", "convert"]
+    },
+    {
+      "title": "Crypto.argon2_hash",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-argon2-hash",
+      "signature": "Crypto.argon2_hash(password)",
+      "description": "Hash a password using Argon2id",
+      "keywords": ["password", "hash", "security", "argon2"]
+    },
+    {
       "title": "argon2_hash",
       "type": "function",
       "category": "Crypto",
       "path": "/docs/builtins/crypto#fn-argon2-hash",
       "signature": "argon2_hash(password)",
-      "description": "Hash a password using Argon2id",
+      "description": "Hash a password using Argon2id (alias for Crypto.argon2_hash)",
       "keywords": ["password", "hash", "security", "argon2"]
+    },
+    {
+      "title": "Crypto.argon2_verify",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-argon2-verify",
+      "signature": "Crypto.argon2_verify(password, hash)",
+      "description": "Verify a password against an Argon2id hash",
+      "keywords": ["password", "verify", "security", "argon2"]
     },
     {
       "title": "argon2_verify",
@@ -447,7 +573,7 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#fn-argon2-verify",
       "signature": "argon2_verify(password, hash)",
-      "description": "Verify a password against an Argon2id hash",
+      "description": "Verify a password against an Argon2id hash (alias for Crypto.argon2_verify)",
       "keywords": ["password", "verify", "security", "argon2"]
     },
     {
@@ -456,7 +582,7 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#fn-argon2-hash",
       "signature": "password_hash(password)",
-      "description": "Alias for argon2_hash",
+      "description": "Alias for Crypto.argon2_hash",
       "keywords": ["password", "hash", "security"]
     },
     {
@@ -465,8 +591,17 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#fn-argon2-verify",
       "signature": "password_verify(password, hash)",
-      "description": "Alias for argon2_verify",
+      "description": "Alias for Crypto.argon2_verify",
       "keywords": ["password", "verify", "security"]
+    },
+    {
+      "title": "Crypto.x25519_keypair",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-x25519-keypair",
+      "signature": "Crypto.x25519_keypair()",
+      "description": "Generate an X25519 key pair for Diffie-Hellman key exchange",
+      "keywords": ["crypto", "key", "diffie-hellman", "exchange", "x25519"]
     },
     {
       "title": "x25519_keypair",
@@ -474,8 +609,17 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#fn-x25519-keypair",
       "signature": "x25519_keypair()",
-      "description": "Generate an X25519 key pair for Diffie-Hellman key exchange",
-      "keywords": ["crypto", "key", "diffie-hellman", "exchange"]
+      "description": "Generate an X25519 key pair (alias for Crypto.x25519_keypair)",
+      "keywords": ["crypto", "key", "diffie-hellman", "exchange", "x25519"]
+    },
+    {
+      "title": "Crypto.x25519_shared_secret",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-x25519-shared-secret",
+      "signature": "Crypto.x25519_shared_secret(private_key, public_key)",
+      "description": "Compute a shared secret from keys",
+      "keywords": ["crypto", "secret", "diffie-hellman", "x25519"]
     },
     {
       "title": "x25519_shared_secret",
@@ -483,8 +627,35 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#fn-x25519-shared-secret",
       "signature": "x25519_shared_secret(private_key, public_key)",
-      "description": "Compute a shared secret from keys",
-      "keywords": ["crypto", "secret", "diffie-hellman"]
+      "description": "Compute a shared secret (alias for Crypto.x25519_shared_secret)",
+      "keywords": ["crypto", "secret", "diffie-hellman", "x25519"]
+    },
+    {
+      "title": "Crypto.x25519_public_key",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-x25519-public-key",
+      "signature": "Crypto.x25519_public_key(private_key)",
+      "description": "Derive the public key from a private key",
+      "keywords": ["crypto", "key", "derive", "x25519", "public"]
+    },
+    {
+      "title": "x25519_public_key",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-x25519-public-key",
+      "signature": "x25519_public_key(private_key)",
+      "description": "Derive the public key (alias for Crypto.x25519_public_key)",
+      "keywords": ["crypto", "key", "derive", "x25519", "public"]
+    },
+    {
+      "title": "Crypto.ed25519_keypair",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#fn-ed25519-keypair",
+      "signature": "Crypto.ed25519_keypair()",
+      "description": "Generate an Ed25519 signing key pair",
+      "keywords": ["crypto", "signature", "key", "signing", "ed25519"]
     },
     {
       "title": "ed25519_keypair",
@@ -492,8 +663,8 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#fn-ed25519-keypair",
       "signature": "ed25519_keypair()",
-      "description": "Generate an Ed25519 signing key pair",
-      "keywords": ["crypto", "signature", "key", "signing"]
+      "description": "Generate an Ed25519 signing key pair (alias for Crypto.ed25519_keypair)",
+      "keywords": ["crypto", "signature", "key", "signing", "ed25519"]
     },
     {
       "title": "jwt_sign",

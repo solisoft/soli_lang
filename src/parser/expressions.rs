@@ -231,6 +231,43 @@ impl Parser {
             return self.parse_hash_comprehension(start_span, None, None);
         }
 
+        // Check if this is a block expression (starts with statement keyword)
+        // Note: At this point, we've already advanced past the '{' in parse_prefix
+        // so self.peek() gives us the token AFTER the '{'
+        let is_block = match &self.peek().kind {
+            TokenKind::Let
+            | TokenKind::Const
+            | TokenKind::If
+            | TokenKind::While
+            | TokenKind::For
+            | TokenKind::Return
+            | TokenKind::Throw
+            | TokenKind::Try
+            | TokenKind::Fn
+            | TokenKind::Class
+            | TokenKind::Interface
+            | TokenKind::Match
+            | TokenKind::Await => true,
+            TokenKind::RightBrace => false, // Empty hash {}, not block
+            TokenKind::LeftBrace => self.is_nested_block_expression(),
+            _ => false,
+        };
+
+        if is_block {
+            // Current token is already past the opening '{'
+            // start_span is the span of the '{' token
+            let _block_span = start_span.merge(&self.previous_span());
+            // Current token should be either '}' (empty block) or the first statement
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                statements.push(self.statement()?);
+            }
+            self.expect(&TokenKind::RightBrace)?;
+            let end_span = self.previous_span();
+            let full_span = start_span.merge(&end_span);
+            return Ok(Expr::new(ExprKind::Block(statements), full_span));
+        }
+
         let mut pairs = Vec::new();
         if !self.check(&TokenKind::RightBrace) {
             loop {
@@ -243,6 +280,14 @@ impl Parser {
                 }
 
                 self.expect_hash_separator()?;
+
+                // Convert variable keys to string literals (shorthand syntax: {name: value} => {"name": value})
+                let key = if let ExprKind::Variable(name) = &key.kind {
+                    Expr::new(ExprKind::StringLiteral(name.clone()), key.span)
+                } else {
+                    key
+                };
+
                 let value = self.expression()?;
 
                 // Check if this is a comprehension
@@ -264,6 +309,44 @@ impl Parser {
         self.expect(&TokenKind::RightBrace)?;
         let span = start_span.merge(&self.previous_span());
         Ok(Expr::new(ExprKind::Hash(pairs), span))
+    }
+
+    fn is_nested_block_expression(&mut self) -> bool {
+        let mut depth = 1;
+        let mut i = 1;
+        loop {
+            match self.tokens.get(self.current + i).map(|t| &t.kind) {
+                Some(TokenKind::LeftBrace) => {
+                    depth += 1;
+                    i += 1;
+                }
+                Some(TokenKind::RightBrace) => {
+                    depth -= 1;
+                    i += 1;
+                    if depth == 0 {
+                        return false;
+                    }
+                }
+                Some(TokenKind::Let)
+                | Some(TokenKind::Const)
+                | Some(TokenKind::If)
+                | Some(TokenKind::While)
+                | Some(TokenKind::For)
+                | Some(TokenKind::Return)
+                | Some(TokenKind::Throw)
+                | Some(TokenKind::Try)
+                | Some(TokenKind::Fn)
+                | Some(TokenKind::Class)
+                | Some(TokenKind::Interface)
+                | Some(TokenKind::Match)
+                | Some(TokenKind::Await) => {
+                    return true;
+                }
+                Some(_) | None => {
+                    i += 1;
+                }
+            }
+        }
     }
 
     fn parse_hash_comprehension(

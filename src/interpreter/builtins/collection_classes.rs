@@ -30,6 +30,8 @@ fn register_string_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     });
 
@@ -471,6 +473,8 @@ fn register_string_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: string_static_methods,
         native_methods: string_native_methods,
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
 
@@ -485,6 +489,8 @@ fn register_array_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     });
 
@@ -1025,6 +1031,14 @@ fn register_array_class(env: &mut Environment) {
         })),
     );
 
+    // array() - Create an empty array
+    env.define(
+        "array".to_string(),
+        Value::NativeFunction(NativeFunction::new("array", Some(0), |_args| {
+            Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))))
+        })),
+    );
+
     let array_class = Class {
         name: "Array".to_string(),
         superclass: None,
@@ -1032,6 +1046,8 @@ fn register_array_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: array_static_methods,
         native_methods: array_native_methods,
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
 
@@ -1046,6 +1062,8 @@ fn register_hash_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     });
 
@@ -1355,6 +1373,8 @@ fn register_hash_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: hash_static_methods,
         native_methods: hash_native_methods,
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
 
@@ -1405,6 +1425,8 @@ fn register_base64_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     });
 
@@ -1455,6 +1477,8 @@ fn register_base64_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: base64_static_methods,
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
 

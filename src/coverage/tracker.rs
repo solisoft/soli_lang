@@ -508,6 +508,11 @@ impl CoverageTracker {
                     self.collect_lines_from_expr(path, lines, value);
                 }
             }
+            Block(statements) => {
+                for stmt in statements {
+                    self.collect_lines_from_stmt(path, lines, stmt);
+                }
+            }
             LogicalAnd { left, right } | LogicalOr { left, right } => {
                 self.collect_lines_from_expr(path, lines, left);
                 self.collect_lines_from_expr(path, lines, right);

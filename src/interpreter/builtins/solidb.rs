@@ -268,6 +268,8 @@ fn register_solidb_class(env: &mut Environment) {
         static_methods: std::collections::HashMap::new(),
         native_static_methods: std::collections::HashMap::new(),
         native_methods: std::collections::HashMap::new(),
+        static_fields: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        fields: std::collections::HashMap::new(),
         constructor: None,
     });
 

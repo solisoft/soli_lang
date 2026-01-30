@@ -1,5 +1,6 @@
 //! Built-in functions for Soli.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::rc::Rc;
@@ -45,6 +46,8 @@ pub mod test_server;
 pub mod types;
 pub mod uploads;
 pub mod validation;
+pub mod clock;
+pub mod collection_classes;
 
 /// Register all built-in functions in the given environment.
 pub fn register_builtins(env: &mut Environment) {
@@ -128,10 +131,45 @@ pub fn register_builtins(env: &mut Environment) {
             let resolved = args.into_iter().next().unwrap().resolve()?;
             match &resolved {
                 Value::Array(arr) => Ok(Value::Int(arr.borrow().len() as i64)),
-                Value::String(s) => Ok(Value::Int(s.len() as i64)),
+                Value::String(s) => Ok(Value::Int(s.chars().count() as i64)),
                 Value::Hash(hash) => Ok(Value::Int(hash.borrow().len() as i64)),
                 other => Err(format!(
                     "len() expects array, string, or hash, got {}",
+                    other.type_name()
+                )),
+            }
+        })),
+    );
+
+    // push(array, value) - Add value to end of array
+    env.define(
+        "push".to_string(),
+        Value::NativeFunction(NativeFunction::new("push", Some(2), |args| {
+            match &args[0] {
+                Value::Array(arr) => {
+                    let value = args[1].clone();
+                    arr.borrow_mut().push(value);
+                    Ok(Value::Null)
+                }
+                other => Err(format!(
+                    "push() expects array as first argument, got {}",
+                    other.type_name()
+                )),
+            }
+        })),
+    );
+
+    // pop(array) - Remove and return last value from array
+    env.define(
+        "pop".to_string(),
+        Value::NativeFunction(NativeFunction::new("pop", Some(1), |args| {
+            match &args[0] {
+                Value::Array(arr) => {
+                    let value = arr.borrow_mut().pop();
+                    Ok(value.unwrap_or(Value::Null))
+                }
+                other => Err(format!(
+                    "pop() expects array as first argument, got {}",
                     other.type_name()
                 )),
             }
@@ -293,6 +331,12 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register upload builtins
     uploads::register_upload_builtins(env);
+
+    // Register clock builtins (sleep, microtime)
+    clock::register_clock_builtins(env);
+
+    // Register collection classes (String, Array, Hash, Base64)
+    collection_classes::register_collection_classes(env);
 }
 
 /// Register the Error class and built-in error types.
@@ -307,6 +351,8 @@ fn register_error_classes(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
     env.define("Error".to_string(), Value::Class(Rc::new(error_class)));
@@ -321,12 +367,16 @@ fn register_error_classes(env: &mut Environment) {
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
             native_methods: HashMap::new(),
+            static_fields: Rc::new(RefCell::new(HashMap::new())),
+            fields: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -344,12 +394,16 @@ fn register_error_classes(env: &mut Environment) {
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
             native_methods: HashMap::new(),
+            static_fields: Rc::new(RefCell::new(HashMap::new())),
+            fields: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -367,12 +421,16 @@ fn register_error_classes(env: &mut Environment) {
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
             native_methods: HashMap::new(),
+            static_fields: Rc::new(RefCell::new(HashMap::new())),
+            fields: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -390,12 +448,16 @@ fn register_error_classes(env: &mut Environment) {
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
             native_methods: HashMap::new(),
+            static_fields: Rc::new(RefCell::new(HashMap::new())),
+            fields: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
     env.define(
@@ -413,12 +475,16 @@ fn register_error_classes(env: &mut Environment) {
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
             native_methods: HashMap::new(),
+            static_fields: Rc::new(RefCell::new(HashMap::new())),
+            fields: HashMap::new(),
             constructor: None,
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
     env.define(

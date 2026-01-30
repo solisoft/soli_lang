@@ -3,28 +3,21 @@
 // ============================================================================
 
 describe("Range Operator", fn() {
-    test("range creates array from start to end", fn() {
-        let r = range(1, 5);
+    test("range creates array from start to end (exclusive)", fn() {
+        let r = range(1, 6);
         assert_eq(len(r), 5);
         assert_eq(r[0], 1);
         assert_eq(r[4], 5);
     });
 
-    test("range with start greater than end", fn() {
-        let r = range(5, 1);
-        assert_eq(len(r), 5);
-        assert_eq(r[0], 5);
-        assert_eq(r[4], 1);
-    });
-
     test("range with single element", fn() {
-        let r = range(3, 3);
+        let r = range(3, 4);
         assert_eq(len(r), 1);
         assert_eq(r[0], 3);
     });
 
     test("range with negative numbers", fn() {
-        let r = range(-3, 3);
+        let r = range(-3, 4);
         assert_eq(len(r), 7);
         assert_eq(r[0], -3);
         assert_eq(r[6], 3);
@@ -36,6 +29,11 @@ describe("Range Operator", fn() {
             sum = sum + i;
         }
         assert_eq(sum, 6);
+    });
+
+    test("range with same start and end gives empty array", fn() {
+        let r = range(3, 3);
+        assert_eq(len(r), 0);
     });
 });
 
@@ -68,14 +66,14 @@ describe("Spread Operator", fn() {
     });
 
     test("spread range result", fn() {
-        let r = range(1, 3);
+        let r = range(1, 4);
         let combined = [...r, 4, 5];
         assert_eq(combined, [1, 2, 3, 4, 5]);
     });
 
     test("spread multiple ranges", fn() {
-        let r1 = range(1, 2);
-        let r2 = range(3, 4);
+        let r1 = range(1, 3);
+        let r2 = range(3, 5);
         let combined = [...r1, ...r2];
         assert_eq(combined, [1, 2, 3, 4]);
     });

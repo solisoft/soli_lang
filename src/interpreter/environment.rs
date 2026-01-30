@@ -53,12 +53,13 @@ impl Environment {
     }
 
     /// Get a variable's value, searching up the scope chain.
+    /// Consts are checked first so they shadow let variables with the same name.
     pub fn get(&self, name: &str) -> Option<Value> {
-        if let Some(value) = self.values.get(name) {
+        // Check consts first (const shadows let)
+        if let Some(value) = self.consts.get(name) {
             return Some(value.clone());
         }
-        // Also check consts
-        if let Some(value) = self.consts.get(name) {
+        if let Some(value) = self.values.get(name) {
             return Some(value.clone());
         }
         if let Some(ref enclosing) = self.enclosing {

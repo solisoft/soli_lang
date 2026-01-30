@@ -62,8 +62,22 @@ impl<'a> Scanner<'a> {
             '{' => Ok(self.make_token(TokenKind::LeftBrace)),
             '}' => Ok(self.make_token(TokenKind::RightBrace)),
             '[' => {
-                if self.match_char('[') {
-                    self.scan_multiline_string()
+                // Distinguish between [[ multiline string and nested array [[...], ...]
+                // If after [[ we see: digit, minus (for negative numbers), or another [
+                // then it's a nested array. Otherwise, it's a multiline string.
+                // Note: [[]] is treated as empty string "" not nested empty array
+                if self.peek() == Some('[') {
+                    let next_next = self.peek_at(1);
+                    match next_next {
+                        // Nested array indicators
+                        Some(c) if c.is_ascii_digit() => Ok(self.make_token(TokenKind::LeftBracket)),
+                        Some('-') | Some('[') => Ok(self.make_token(TokenKind::LeftBracket)),
+                        // Everything else (including ] for empty string) is a multiline string
+                        _ => {
+                            self.advance(); // consume second [
+                            self.scan_multiline_string()
+                        }
+                    }
                 } else {
                     Ok(self.make_token(TokenKind::LeftBracket))
                 }
@@ -529,6 +543,11 @@ impl<'a> Scanner<'a> {
         let mut iter = self.source[self.current_pos..].chars();
         iter.next();
         iter.next()
+    }
+
+    /// Peek at character n positions ahead (0 = current peek position)
+    fn peek_at(&self, n: usize) -> Option<char> {
+        self.source[self.current_pos..].chars().nth(n)
     }
 
     fn match_char(&mut self, expected: char) -> bool {

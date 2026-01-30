@@ -77,14 +77,14 @@ describe("Lambdas and this Keyword", fn() {
         class Processor {
             multiplier: Int = 2;
             fn process(items: Array) {
-                return [fn(x) { return x * this.multiplier; }](items);
+                return items.map(fn(x) { return x * this.multiplier; });
             }
         }
         let p = new Processor();
         let result = p.process([1, 2, 3]);
-        assert_eq(result[0](), 2);
-        assert_eq(result[1](), 4);
-        assert_eq(result[2](), 6);
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 4);
+        assert_eq(result[2], 6);
     });
 });
 

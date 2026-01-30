@@ -3,11 +3,13 @@
 //! Provides functions for reading and writing files.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{json_to_value, NativeFunction, Value};
+use crate::interpreter::value::{json_to_value, Class, NativeFunction, Value};
 
 /// Register all file I/O built-in functions.
 pub fn register_file_builtins(env: &mut Environment) {
@@ -77,4 +79,199 @@ pub fn register_file_builtins(env: &mut Environment) {
             json_to_value(&json)
         })),
     );
+
+    // Register the File class with static methods
+    register_file_class(env);
+}
+
+/// Register the File class with static methods for file operations.
+fn register_file_class(env: &mut Environment) {
+    let mut file_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+
+    // File.read(path) - Read file contents as string
+    file_static_methods.insert(
+        "read".to_string(),
+        Rc::new(NativeFunction::new("File.read", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.read() expects string path".to_string()),
+            };
+            fs::read_to_string(&path)
+                .map(Value::String)
+                .map_err(|e| format!("File.read() failed: {}", e))
+        })),
+    );
+
+    // File.write(path, content) - Write content to file
+    file_static_methods.insert(
+        "write".to_string(),
+        Rc::new(NativeFunction::new("File.write", Some(2), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.write() expects string path".to_string()),
+            };
+            let content = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            fs::write(&path, &content)
+                .map(|_| Value::Bool(true))
+                .map_err(|e| format!("File.write() failed: {}", e))
+        })),
+    );
+
+    // File.exists(path) - Check if file exists
+    file_static_methods.insert(
+        "exists".to_string(),
+        Rc::new(NativeFunction::new("File.exists", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.exists() expects string path".to_string()),
+            };
+            Ok(Value::Bool(Path::new(&path).exists()))
+        })),
+    );
+
+    // File.delete(path) - Delete a file
+    file_static_methods.insert(
+        "delete".to_string(),
+        Rc::new(NativeFunction::new("File.delete", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.delete() expects string path".to_string()),
+            };
+            fs::remove_file(&path)
+                .map(|_| Value::Bool(true))
+                .map_err(|e| format!("File.delete() failed: {}", e))
+        })),
+    );
+
+    // File.is_file(path) - Check if path is a file
+    file_static_methods.insert(
+        "is_file".to_string(),
+        Rc::new(NativeFunction::new("File.is_file", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.is_file() expects string path".to_string()),
+            };
+            Ok(Value::Bool(Path::new(&path).is_file()))
+        })),
+    );
+
+    // File.is_dir(path) - Check if path is a directory
+    file_static_methods.insert(
+        "is_dir".to_string(),
+        Rc::new(NativeFunction::new("File.is_dir", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.is_dir() expects string path".to_string()),
+            };
+            Ok(Value::Bool(Path::new(&path).is_dir()))
+        })),
+    );
+
+    // File.size(path) - Get file size in bytes
+    file_static_methods.insert(
+        "size".to_string(),
+        Rc::new(NativeFunction::new("File.size", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.size() expects string path".to_string()),
+            };
+            fs::metadata(&path)
+                .map(|m| Value::Int(m.len() as i64))
+                .map_err(|e| format!("File.size() failed: {}", e))
+        })),
+    );
+
+    // File.append(path, content) - Append content to file
+    file_static_methods.insert(
+        "append".to_string(),
+        Rc::new(NativeFunction::new("File.append", Some(2), |args| {
+            use std::fs::OpenOptions;
+            use std::io::Write;
+
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.append() expects string path".to_string()),
+            };
+            let content = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            let mut file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .map_err(|e| format!("File.append() failed to open: {}", e))?;
+            file.write_all(content.as_bytes())
+                .map(|_| Value::Bool(true))
+                .map_err(|e| format!("File.append() failed to write: {}", e))
+        })),
+    );
+
+    // File.lines(path) - Read file as array of lines
+    file_static_methods.insert(
+        "lines".to_string(),
+        Rc::new(NativeFunction::new("File.lines", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.lines() expects string path".to_string()),
+            };
+            let content = fs::read_to_string(&path)
+                .map_err(|e| format!("File.lines() failed: {}", e))?;
+            let lines: Vec<Value> = content.lines().map(|l| Value::String(l.to_string())).collect();
+            Ok(Value::Array(Rc::new(RefCell::new(lines))))
+        })),
+    );
+
+    // File.copy(src, dest) - Copy a file
+    file_static_methods.insert(
+        "copy".to_string(),
+        Rc::new(NativeFunction::new("File.copy", Some(2), |args| {
+            let src = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.copy() expects string source path".to_string()),
+            };
+            let dest = match &args[1] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.copy() expects string destination path".to_string()),
+            };
+            fs::copy(&src, &dest)
+                .map(|_| Value::Bool(true))
+                .map_err(|e| format!("File.copy() failed: {}", e))
+        })),
+    );
+
+    // File.rename(old_path, new_path) - Rename/move a file
+    file_static_methods.insert(
+        "rename".to_string(),
+        Rc::new(NativeFunction::new("File.rename", Some(2), |args| {
+            let old_path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.rename() expects string old path".to_string()),
+            };
+            let new_path = match &args[1] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.rename() expects string new path".to_string()),
+            };
+            fs::rename(&old_path, &new_path)
+                .map(|_| Value::Bool(true))
+                .map_err(|e| format!("File.rename() failed: {}", e))
+        })),
+    );
+
+    let file_class = Class {
+        name: "File".to_string(),
+        superclass: None,
+        methods: HashMap::new(),
+        static_methods: HashMap::new(),
+        native_static_methods: file_static_methods,
+        native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
+        constructor: None,
+    };
+
+    env.define("File".to_string(), Value::Class(Rc::new(file_class)));
 }

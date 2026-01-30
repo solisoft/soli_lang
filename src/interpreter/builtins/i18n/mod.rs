@@ -8,6 +8,7 @@
 
 pub mod helpers;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -330,6 +331,8 @@ pub fn register_i18n_class(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: i18n_static_methods,
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
 

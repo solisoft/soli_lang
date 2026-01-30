@@ -3,10 +3,12 @@
 // ============================================================================
 
 describe("Edge Cases", fn() {
-    test("empty block returns null", fn() {
+    test("empty braces is empty hash", fn() {
         let result = {
         };
-        assert_null(result);
+        // Empty braces {} is now an empty hash, not an empty block
+        assert_eq(type(result), "hash");
+        assert_eq(len(result), 0);
     });
 
     test("chained comparisons", fn() {
@@ -91,7 +93,7 @@ describe("Edge Cases", fn() {
 
     test("unicode in strings", fn() {
         let unicode_str = "Hello 世界 🌍";
-        assert_eq(len(unicode_str), 9);
+        assert_eq(len(unicode_str), 10);
         assert_contains(unicode_str, "世界");
     });
 

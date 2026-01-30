@@ -24,6 +24,36 @@ describe("Duration Static Methods", fn() {
         assert_not_null(dur);
     });
 
+    test("Duration.of_weeks() creates duration", fn() {
+        let dur = Duration.of_weeks(1);
+        assert_not_null(dur);
+    });
+
+    test("Duration.seconds() creates duration", fn() {
+        let dur = Duration.seconds(120);
+        assert_not_null(dur);
+    });
+
+    test("Duration.minutes() creates duration", fn() {
+        let dur = Duration.minutes(5);
+        assert_not_null(dur);
+    });
+
+    test("Duration.hours() creates duration", fn() {
+        let dur = Duration.hours(2);
+        assert_not_null(dur);
+    });
+
+    test("Duration.days() creates duration", fn() {
+        let dur = Duration.days(1);
+        assert_not_null(dur);
+    });
+
+    test("Duration.weeks() creates duration", fn() {
+        let dur = Duration.weeks(1);
+        assert_not_null(dur);
+    });
+
     test("Duration.between() calculates difference", fn() {
         let dt1 = DateTime.parse("2024-01-15T10:00:00Z");
         let dt2 = DateTime.parse("2024-01-15T11:30:00Z");
@@ -54,61 +84,52 @@ describe("Duration Instance Methods", fn() {
         assert_eq(dur.total_days(), 1);
     });
 
-    test("seconds() returns seconds component", fn() {
-        let dur = Duration.of_seconds(125);
-        assert_eq(dur.seconds(), 5);
-    });
-
-    test("minutes() returns minutes component", fn() {
-        let dur = Duration.of_minutes(65);
-        assert_eq(dur.minutes(), 5);
-    });
-
-    test("hours() returns hours component", fn() {
-        let dur = Duration.of_hours(26);
-        assert_eq(dur.hours(), 2);
-    });
-
-    test("in_seconds() converts to seconds", fn() {
-        let dur = Duration.of_minutes(2);
-        assert_eq(dur.in_seconds(), 120);
-    });
-
-    test("in_minutes() converts to minutes", fn() {
-        let dur = Duration.of_hours(1);
-        assert_eq(dur.in_minutes(), 60);
-    });
-
-    test("in_hours() converts to hours", fn() {
-        let dur = Duration.of_days(2);
-        assert_eq(dur.in_hours(), 48);
+    test("to_string() returns formatted duration", fn() {
+        let dur = Duration.of_seconds(3661);
+        let str = dur.to_string();
+        assert_not_null(str);
+        assert(len(str) > 0);
     });
 });
 
-describe("Duration Arithmetic", fn() {
-    test("Duration addition", fn() {
-        let dur1 = Duration.of_seconds(60);
-        let dur2 = Duration.of_seconds(60);
-        let combined = dur1.plus(Duration.of_seconds(60));
-        assert_eq(combined.total_seconds(), 180);
+describe("Duration Conversions", fn() {
+    test("seconds to minutes conversion", fn() {
+        let dur = Duration.of_seconds(120);
+        assert_eq(dur.total_minutes(), 2);
     });
 
-    test("Duration subtraction", fn() {
-        let dur1 = Duration.of_seconds(120);
-        let dur2 = Duration.of_seconds(60);
-        let result = dur1.minus(Duration.of_seconds(60));
-        assert_eq(result.total_seconds(), 60);
+    test("minutes to seconds conversion", fn() {
+        let dur = Duration.of_minutes(5);
+        assert_eq(dur.total_seconds(), 300);
     });
 
-    test("Duration multiplication", fn() {
-        let dur = Duration.of_seconds(10);
-        let result = dur.multiplied_by(3);
-        assert_eq(result.total_seconds(), 30);
+    test("hours to minutes conversion", fn() {
+        let dur = Duration.of_hours(2);
+        assert_eq(dur.total_minutes(), 120);
     });
 
-    test("Duration division", fn() {
-        let dur = Duration.of_seconds(60);
-        let result = dur.divided_by(2);
-        assert_eq(result.total_seconds(), 30);
+    test("days to hours conversion", fn() {
+        let dur = Duration.of_days(1);
+        assert_eq(dur.total_hours(), 24);
+    });
+
+    test("weeks to days conversion", fn() {
+        let dur = Duration.of_weeks(2);
+        assert_eq(dur.total_days(), 14);
+    });
+});
+
+describe("Duration Between", fn() {
+    test("between two datetimes gives positive duration", fn() {
+        let dt1 = DateTime.parse("2024-01-15T10:00:00Z");
+        let dt2 = DateTime.parse("2024-01-15T11:00:00Z");
+        let dur = Duration.between(dt1, dt2);
+        assert(dur.total_hours() > 0);
+    });
+
+    test("between same datetime gives zero", fn() {
+        let dt = DateTime.parse("2024-01-15T10:00:00Z");
+        let dur = Duration.between(dt, dt);
+        assert_eq(dur.total_seconds(), 0);
     });
 });

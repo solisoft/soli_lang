@@ -180,10 +180,23 @@ pub fn run_with_path_and_coverage(
     interpreter.interpret(&program)?;
 
     // Execute collected tests
-    execute_test_suites(&mut interpreter, &test_suites)?;
+    let (failed_count, failed_tests) = execute_test_suites(&mut interpreter, &test_suites)?;
 
     // Get assertion count from thread-local storage
     let assertion_count = interpreter::builtins::assertions::get_and_reset_assertion_count();
+
+    // Return error if any tests failed
+    if failed_count > 0 {
+        let error_msg = if failed_tests.len() == 1 {
+            format!("Test failed: {}", failed_tests[0])
+        } else {
+            format!("{} tests failed:\n  - {}", failed_count, failed_tests.join("\n  - "))
+        };
+        return Err(SolilangError::Runtime(error::RuntimeError::General {
+            message: error_msg,
+            span: span::Span::new(0, 0, 1, 1),
+        }));
+    }
 
     Ok(assertion_count)
 }
@@ -362,9 +375,12 @@ fn ast_expr_to_value(expr: &ast::Expr) -> Value {
 fn execute_test_suites(
     interpreter: &mut interpreter::Interpreter,
     suites: &[interpreter::builtins::test_dsl::TestSuite],
-) -> Result<(), error::RuntimeError> {
+) -> Result<(i64, Vec<String>), error::RuntimeError> {
+    let mut failed_count = 0i64;
+    let mut failed_tests = Vec::new();
+
     for suite in suites {
-        // Run before_all if defined (ignore errors - some tests require async runtime)
+        // Run before_all if defined
         if let Some(before_all) = &suite.before_all {
             let _ = interpreter.call_value(before_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
         }
@@ -375,12 +391,17 @@ fn execute_test_suites(
                 let _ = interpreter.call_value(before_each.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
             }
 
-            // Execute the test body (errors are expected for tests requiring async runtime)
-            let _ = interpreter.call_value(
+            // Execute the test body and track failures
+            let result = interpreter.call_value(
                 test.body.clone(),
                 Vec::new(),
                 span::Span::new(0, 0, 1, 1),
             );
+
+            if let Err(e) = result {
+                failed_count += 1;
+                failed_tests.push(format!("{}: {}", test.name, e));
+            }
 
             // Run after_each if defined
             if let Some(after_each) = &suite.after_each {
@@ -389,14 +410,16 @@ fn execute_test_suites(
         }
 
         // Run nested suites
-        execute_test_suites(interpreter, &suite.nested_suites)?;
+        let (nested_failed, mut nested_errors) = execute_test_suites(interpreter, &suite.nested_suites)?;
+        failed_count += nested_failed;
+        failed_tests.append(&mut nested_errors);
 
         // Run after_all if defined
         if let Some(after_all) = &suite.after_all {
             let _ = interpreter.call_value(after_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
         }
     }
-    Ok(())
+    Ok((failed_count, failed_tests))
 }
 
 /// Check if a program has any import statements.

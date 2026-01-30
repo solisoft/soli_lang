@@ -164,7 +164,9 @@ describe("super Keyword", fn() {
         assert_eq(new Child().identify(), "GrandParent -> Parent -> Child");
     });
 
-    test("super in static method", fn() {
+    test("calling parent static method explicitly", fn() {
+        // Note: super.method() in static methods is not supported
+        // Use explicit class name instead
         class Base {
             static fn get_class_name() -> String {
                 return "Base";
@@ -173,7 +175,7 @@ describe("super Keyword", fn() {
 
         class Derived extends Base {
             static fn get_class_name() -> String {
-                return super.get_class_name() + "_Derived";
+                return Base.get_class_name() + "_Derived";
             }
         }
 

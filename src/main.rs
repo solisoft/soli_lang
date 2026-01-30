@@ -664,8 +664,8 @@ fn run_file(path: &str, options: &Options) {
     }
 }
 
-fn run_eval(code: &str, _options: &Options) {
-    let result = solilang::run(code);
+fn run_eval(code: &str, options: &Options) {
+    let result = solilang::run_with_type_check(code, !options.no_type_check);
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);

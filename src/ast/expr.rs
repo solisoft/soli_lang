@@ -100,6 +100,9 @@ pub enum ExprKind {
     /// Hash literal: { "key" => "value", ... }
     Hash(Vec<(Expr, Expr)>),
 
+    /// Block expression: { statements }
+    Block(Vec<Stmt>),
+
     /// Assignment expression: x = 5
     Assign { target: Box<Expr>, value: Box<Expr> },
 

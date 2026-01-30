@@ -374,6 +374,8 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: static_methods,
         native_methods: class_methods,
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     };
 

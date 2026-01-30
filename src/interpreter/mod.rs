@@ -13,4 +13,4 @@ pub use executor::Interpreter;
 pub use hidden_class::{HiddenClass, HiddenClassObject, HiddenClassRegistry, HIDDEN_CLASS_REGISTRY};
 pub use inline_cache::{PropertyInlineCache, MethodInlineCache, HiddenClassId, INLINE_CACHE};
 pub use symbol::{SymbolId, get_symbol, symbol_string};
-pub use value::Value;
+pub use value::{Value, unwrap_value};

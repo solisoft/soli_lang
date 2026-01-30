@@ -88,10 +88,43 @@ impl Interpreter {
                 .get("this")
                 .ok_or_else(|| RuntimeError::type_error("'this' outside of class", expr.span)),
 
-            ExprKind::Super => Err(RuntimeError::type_error(
-                "'super' can only be used for method calls",
-                expr.span,
-            )),
+            ExprKind::Super => {
+                // First check if we're in a super call (stored by call_function)
+                if let Some(Value::Class(superclass)) =
+                    self.environment.borrow().get("__defining_superclass__")
+                {
+                    return Ok(Value::Super(superclass.clone()));
+                }
+
+                // Get 'this' to find the current instance
+                let this_val = self.environment.borrow().get("this").ok_or_else(|| {
+                    RuntimeError::type_error("'super' outside of class", expr.span)
+                })?;
+
+                // Get the instance's class
+                let inst = match this_val {
+                    Value::Instance(inst) => inst,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "'super' outside of class",
+                            expr.span,
+                        ))
+                    }
+                };
+
+                // Get the superclass
+                let superclass = match &inst.borrow().class.superclass {
+                    Some(sc) => sc.clone(),
+                    None => {
+                        return Err(RuntimeError::type_error(
+                            "class has no superclass",
+                            expr.span,
+                        ))
+                    }
+                };
+
+                Ok(Value::Super(superclass))
+            }
 
             ExprKind::New {
                 class_name,
@@ -106,7 +139,7 @@ impl Interpreter {
                             // Evaluate the spread expression and extend with its elements
                             let spread_val = self.evaluate(inner)?;
                             match spread_val {
-                                Value::Array(arr) => {
+                                Value::Array(ref arr) => {
                                     let arr = arr.borrow();
                                     values.extend(arr.clone());
                                 }
@@ -127,6 +160,18 @@ impl Interpreter {
             }
 
             ExprKind::Hash(pairs) => self.evaluate_hash(pairs),
+
+            ExprKind::Block(statements) => {
+                let env = Environment::with_enclosing(self.environment.clone());
+                match self.execute_block(statements, env)? {
+                    ControlFlow::Normal => Ok(Value::Null),
+                    ControlFlow::Return(v) => Ok(v),
+                    ControlFlow::Throw(e) => Err(RuntimeError::General {
+                        message: format!("Unhandled exception: {}", e),
+                        span: expr.span,
+                    }),
+                }
+            }
 
             ExprKind::Assign { target, value } => self.evaluate_assign(target, value),
 
@@ -426,6 +471,7 @@ impl Interpreter {
                         is_method: true,
                         span: method.span,
                         source_path: method.source_path.clone(),
+                        defining_superclass: None,
                     };
                     return Ok(Value::Function(Rc::new(bound_method)));
                 }
@@ -466,22 +512,100 @@ impl Interpreter {
                     // For non-Model classes, return the native function directly
                     return Ok(Value::NativeFunction((*native_method).clone()));
                 }
+                // Check for static field
+                // Check for static field (including inherited static fields)
+                fn find_static_field(
+                    class: &crate::interpreter::value::Class,
+                    name: &str,
+                ) -> Option<Value> {
+                    if let Some(value) = class.static_fields.borrow().get(name) {
+                        return Some(value.clone());
+                    }
+                    if let Some(ref superclass) = class.superclass {
+                        return find_static_field(superclass, name);
+                    }
+                    None
+                }
+
+                if let Some(value) = find_static_field(class, name) {
+                    return Ok(value);
+                }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: class.name.clone(),
                     property: name.to_string(),
                     span,
                 })
             }
-            Value::Array(_) => {
+            Value::Super(ref superclass) => {
+                // Get 'this' instance for field lookup
+                let this_val =
+                    self.environment.borrow().get("this").ok_or_else(|| {
+                        RuntimeError::type_error("'super' outside of class", span)
+                    })?;
+
+                let instance = match this_val {
+                    Value::Instance(inst) => inst,
+                    _ => return Err(RuntimeError::type_error("'super' outside of class", span)),
+                };
+
+                // First check for field in the instance (fields are inherited at instance creation)
+                // Fields on the instance are accessible via 'this', not 'super'
+                if let Some(value) = instance.borrow().get(name) {
+                    return Ok(value);
+                }
+
+                // super.method() - look up method in superclass
+                if let Some(method) = superclass.find_method(name) {
+                    // Bind 'this' to the method (defining_superclass is already in method.closure)
+                    let bound_env = Environment::with_enclosing(method.closure.clone());
+                    let mut bound_env = bound_env;
+                    bound_env.define("this".to_string(), Value::Instance(instance.clone()));
+                    // Note: __defining_superclass__ is already defined in method.closure
+
+                    let bound_method = Function {
+                        name: method.name.clone(),
+                        params: method.params.clone(),
+                        body: method.body.clone(),
+                        closure: Rc::new(RefCell::new(bound_env)),
+                        is_method: true,
+                        span: method.span,
+                        source_path: method.source_path.clone(),
+                        defining_superclass: None,
+                    };
+                    return Ok(Value::Function(Rc::new(bound_method)));
+                }
+                // Also check for native methods in superclass
+                if let Some(native_method) = superclass.find_native_method(name) {
+                    let instance_clone = instance.clone();
+                    let native_method_clone = native_method.clone();
+                    return Ok(Value::NativeFunction(NativeFunction::new(
+                        &format!("{}.{}", superclass.name, name),
+                        None,
+                        move |args| {
+                            let mut new_args = vec![Value::Instance(instance_clone.clone())];
+                            new_args.extend(args.iter().cloned());
+                            (native_method_clone.func)(new_args)
+                        },
+                    )));
+                }
+                Err(RuntimeError::NoSuchProperty {
+                    value_type: superclass.name.clone(),
+                    property: name.to_string(),
+                    span,
+                })
+            }
+            Value::Array(ref _arr) => {
                 // Handle array methods: map, filter, each, reduce, find, any?, all?, sort, reverse, uniq, compact, flatten, first, last, empty?, include?, sample, shuffle, take, drop, zip, sum, min, max
                 match name {
-                    "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?" | "sort"
+                    "length" | "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?" | "sort"
                     | "reverse" | "uniq" | "compact" | "flatten" | "first" | "last" | "empty?"
                     | "include?" | "sample" | "shuffle" | "take" | "drop" | "zip" | "sum"
-                    | "min" | "max" => Ok(Value::Method(ValueMethod {
-                        receiver: Box::new(obj_val),
-                        method_name: name.to_string(),
-                    })),
+                    | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string" | "join" => {
+                        Ok(Value::Method(ValueMethod {
+                            receiver: Box::new(obj_val),
+                            method_name: name.to_string(),
+                        }))
+                    }
                     _ => Err(RuntimeError::NoSuchProperty {
                         value_type: "Array".to_string(),
                         property: name.to_string(),
@@ -489,20 +613,27 @@ impl Interpreter {
                     }),
                 }
             }
-            Value::Hash(_) => {
-                // Handle hash methods: map, filter, each, get, fetch, invert, transform_values, transform_keys, select, reject, slice, except, compact, dig
+            Value::Hash(ref hash) => {
+                // First check if it's a known method
                 match name {
-                    "map" | "filter" | "each" | "get" | "fetch" | "invert" | "transform_values"
+                    "length" | "map" | "filter" | "each" | "get" | "fetch" | "invert" | "transform_values"
                     | "transform_keys" | "select" | "reject" | "slice" | "except" | "compact"
-                    | "dig" => Ok(Value::Method(ValueMethod {
+                    | "dig" | "to_string" | "keys" | "values" | "has_key" | "delete" | "merge"
+                    | "entries" | "clear" | "set" | "empty?" => Ok(Value::Method(ValueMethod {
                         receiver: Box::new(obj_val),
                         method_name: name.to_string(),
                     })),
-                    _ => Err(RuntimeError::NoSuchProperty {
-                        value_type: "Hash".to_string(),
-                        property: name.to_string(),
-                        span,
-                    }),
+                    _ => {
+                        // Try to access as a hash key (dot notation for hash access)
+                        let key = Value::String(name.to_string());
+                        for (k, v) in hash.borrow().iter() {
+                            if key.hash_eq(k) {
+                                return Ok(v.clone());
+                            }
+                        }
+                        // Key not found, return null (like JavaScript undefined)
+                        Ok(Value::Null)
+                    }
                 }
             }
             Value::QueryBuilder(_) => {
@@ -521,11 +652,15 @@ impl Interpreter {
                     }),
                 }
             }
-            Value::String(ref s) => {
-                // Handle string methods
-                let _ = s; // silence unused warning
+            Value::String(ref _s) => {
+                // Handle string methods and properties
                 match name {
-                    "starts_with?" | "ends_with?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
+                    // Core string methods from collection_classes.rs
+                    "length" | "to_string" | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "contains" | "starts_with"
+                    | "ends_with" | "split" | "index_of" | "substring" | "replace" | "lpad"
+                    | "rpad" | "join" | "empty?"
+                    // Ruby-style methods
+                    | "starts_with?" | "ends_with?" | "include?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
                     | "count" | "gsub" | "sub" | "match" | "scan" | "tr" | "center" | "ljust"
                     | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
                     | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
@@ -633,8 +768,32 @@ impl Interpreter {
         // Create instance
         let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
 
-        // Call constructor if present
-        if let Some(ref ctor) = class.constructor {
+        // Initialize fields from class field declarations (including inherited fields)
+        fn initialize_fields(
+            interpreter: &mut Interpreter,
+            class: &crate::interpreter::value::Class,
+            instance: &Rc<std::cell::RefCell<crate::interpreter::value::Instance>>,
+        ) -> RuntimeResult<()> {
+            // First initialize fields from superclass
+            if let Some(ref superclass) = class.superclass {
+                initialize_fields(interpreter, superclass, instance)?;
+            }
+            // Then initialize fields from this class
+            for (field_name, field_initializer) in &class.fields {
+                let value = if let Some(init_expr) = field_initializer {
+                    interpreter.evaluate(init_expr)?
+                } else {
+                    Value::Null
+                };
+                instance.borrow_mut().set(field_name.clone(), value);
+            }
+            Ok(())
+        }
+        initialize_fields(self, &class, &instance)?;
+
+        // Call constructor if present (check superclass chain if needed)
+        if let Some(ctor) = class.find_constructor() {
+            let ctor = &ctor;
             let mut positional_args = Vec::new();
             let mut named_args = HashMap::new();
 
@@ -772,6 +931,14 @@ impl Interpreter {
                         inst.borrow_mut().set(name.clone(), new_value.clone());
                         Ok(new_value)
                     }
+                    Value::Class(class) => {
+                        // Set static field on class
+                        class
+                            .static_fields
+                            .borrow_mut()
+                            .insert(name.clone(), new_value.clone());
+                        Ok(new_value)
+                    }
                     _ => Err(RuntimeError::type_error(
                         format!("cannot set property on {}", obj_val.type_name()),
                         target.span,
@@ -857,6 +1024,7 @@ impl Interpreter {
                 .current_source_path
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
+            defining_superclass: None,
         };
         Ok(Value::Function(Rc::new(func)))
     }
@@ -901,6 +1069,108 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         match callee {
+            Value::Method(method) => {
+                // Handle array/hash/QueryBuilder/String methods
+                match *method.receiver {
+                    Value::Array(ref arr) => {
+                        // For mutating methods, we need the original Rc<RefCell>
+                        match method.method_name.as_str() {
+                            "push" => {
+                                if positional_args.len() != 1 {
+                                    return Err(RuntimeError::wrong_arity(1, positional_args.len(), span));
+                                }
+                                arr.borrow_mut().push(positional_args[0].clone());
+                                Ok(Value::Null)
+                            }
+                            "pop" => {
+                                if !positional_args.is_empty() {
+                                    return Err(RuntimeError::wrong_arity(0, positional_args.len(), span));
+                                }
+                                arr.borrow_mut().pop().ok_or_else(|| {
+                                    RuntimeError::type_error("pop on empty array", span)
+                                })
+                            }
+                            "clear" => {
+                                if !positional_args.is_empty() {
+                                    return Err(RuntimeError::wrong_arity(0, positional_args.len(), span));
+                                }
+                                arr.borrow_mut().clear();
+                                Ok(Value::Null)
+                            }
+                            _ => {
+                                let items = arr.borrow().clone();
+                                self.call_array_method(&items, &method.method_name, positional_args, span)
+                            }
+                        }
+                    }
+                    Value::Hash(ref hash) => {
+                        // For mutating methods, we need the original Rc<RefCell>
+                        match method.method_name.as_str() {
+                            "set" => {
+                                if positional_args.len() != 2 {
+                                    return Err(RuntimeError::wrong_arity(2, positional_args.len(), span));
+                                }
+                                let key = positional_args[0].clone();
+                                let value = positional_args[1].clone();
+                                let mut hash_ref = hash.borrow_mut();
+                                let mut found = false;
+                                for (k, v) in hash_ref.iter_mut() {
+                                    if key.hash_eq(k) {
+                                        *v = value.clone();
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                                if !found {
+                                    hash_ref.push((key, value.clone()));
+                                }
+                                Ok(value)
+                            }
+                            "delete" => {
+                                if positional_args.len() != 1 {
+                                    return Err(RuntimeError::wrong_arity(1, positional_args.len(), span));
+                                }
+                                let key = &positional_args[0];
+                                let mut deleted_value = Value::Null;
+                                hash.borrow_mut().retain(|(k, v)| {
+                                    if key.hash_eq(k) {
+                                        deleted_value = v.clone();
+                                        false
+                                    } else {
+                                        true
+                                    }
+                                });
+                                Ok(deleted_value)
+                            }
+                            "clear" => {
+                                if !positional_args.is_empty() {
+                                    return Err(RuntimeError::wrong_arity(0, positional_args.len(), span));
+                                }
+                                hash.borrow_mut().clear();
+                                Ok(Value::Null)
+                            }
+                            _ => {
+                                let entries = hash.borrow().clone();
+                                self.call_hash_method(&entries, &method.method_name, positional_args, span)
+                            }
+                        }
+                    }
+                    Value::QueryBuilder(qb) => self.call_query_builder_method(
+                        qb,
+                        &method.method_name,
+                        positional_args,
+                        span,
+                    ),
+                    Value::String(s) => {
+                        self.call_string_method(&s, &method.method_name, positional_args, span)
+                    }
+                    _ => Err(RuntimeError::type_error(
+                        format!("{} does not support methods", method.receiver.type_name()),
+                        span,
+                    )),
+                }
+            }
+
             Value::Function(func) => {
                 let required_arity = func.arity();
                 let full_arity = func.full_arity();
@@ -1151,6 +1421,85 @@ impl Interpreter {
                 }
             }
 
+            Value::Super(superclass) => {
+                // super(args) - call the superclass constructor
+                // Get 'this' instance
+                let this_val =
+                    self.environment.borrow().get("this").ok_or_else(|| {
+                        RuntimeError::type_error("'super' outside of class", span)
+                    })?;
+
+                let instance = match this_val {
+                    Value::Instance(inst) => inst,
+                    _ => return Err(RuntimeError::type_error("'super' outside of class", span)),
+                };
+
+                // Find and call the superclass constructor
+                if let Some(ref ctor) = superclass.constructor {
+                    let required_arity = ctor.arity();
+                    let full_arity = ctor.full_arity();
+
+                    let param_names: Vec<String> = ctor.params.iter().map(|p| p.name.clone()).collect();
+
+                    // Check for unknown named arguments
+                    for name in named_args.keys() {
+                        if !param_names.contains(name) {
+                            return Err(RuntimeError::undefined_variable(name.clone(), span));
+                        }
+                    }
+
+                    // Build constructor arguments
+                    let mut ctor_args = Vec::new();
+                    let mut used_params = std::collections::HashSet::new();
+
+                    // Positional arguments first
+                    for (i, arg_val) in positional_args.iter().enumerate() {
+                        if i < param_names.len() {
+                            ctor_args.push(arg_val.clone());
+                            used_params.insert(param_names[i].clone());
+                        } else {
+                            return Err(RuntimeError::wrong_arity(
+                                full_arity,
+                                positional_args.len() + named_args.len(),
+                                span,
+                            ));
+                        }
+                    }
+
+                    // Named arguments and defaults
+                    for (i, param_name) in param_names.iter().enumerate() {
+                        if used_params.contains(param_name) {
+                            continue;
+                        }
+                        if let Some(named_val) = named_args.get(param_name) {
+                            ctor_args.push(named_val.clone());
+                        } else if let Some(default_expr) = ctor.param_default_value(i) {
+                            let default_value = self.evaluate(default_expr)?;
+                            ctor_args.push(default_value);
+                        } else {
+                            return Err(RuntimeError::wrong_arity(
+                                required_arity,
+                                ctor_args.len(),
+                                span,
+                            ));
+                        }
+                    }
+
+                    // Execute constructor body with 'this' bound to the current instance
+                    let ctor_env = Environment::with_enclosing(ctor.closure.clone());
+                    let mut ctor_env = ctor_env;
+                    ctor_env.define("this".to_string(), Value::Instance(instance.clone()));
+
+                    for (param, value) in ctor.params.iter().zip(ctor_args) {
+                        ctor_env.define(param.name.clone(), value);
+                    }
+
+                    let _ = self.execute_block(&ctor.body, ctor_env);
+                }
+
+                Ok(Value::Null)
+            }
+
             _ => Err(RuntimeError::type_error(
                 format!("{} is not callable", callee.type_name()),
                 span,
@@ -1276,11 +1625,11 @@ impl Interpreter {
             Value::Method(method) => {
                 // Handle array/hash/QueryBuilder/String methods
                 match *method.receiver {
-                    Value::Array(arr) => {
+                    Value::Array(ref arr) => {
                         let items = arr.borrow().clone();
                         self.call_array_method(&items, &method.method_name, arguments, span)
                     }
-                    Value::Hash(hash) => {
+                    Value::Hash(ref hash) => {
                         let entries = hash.borrow().clone();
                         self.call_hash_method(&entries, &method.method_name, arguments, span)
                     }
@@ -1295,6 +1644,65 @@ impl Interpreter {
                         span,
                     )),
                 }
+            }
+
+            Value::Super(superclass) => {
+                // super(args) - call the superclass constructor
+                // Get 'this' instance
+                let this_val =
+                    self.environment.borrow().get("this").ok_or_else(|| {
+                        RuntimeError::type_error("'super' outside of class", span)
+                    })?;
+
+                let instance = match this_val {
+                    Value::Instance(inst) => inst,
+                    _ => return Err(RuntimeError::type_error("'super' outside of class", span)),
+                };
+
+                // Find and call the superclass constructor
+                if let Some(ref ctor) = superclass.constructor {
+                    let required_arity = ctor.arity();
+                    let full_arity = ctor.full_arity();
+
+                    if arguments.len() < required_arity {
+                        return Err(RuntimeError::wrong_arity(
+                            required_arity,
+                            arguments.len(),
+                            span,
+                        ));
+                    }
+
+                    if arguments.len() > full_arity {
+                        return Err(RuntimeError::wrong_arity(full_arity, arguments.len(), span));
+                    }
+
+                    let mut final_args = arguments;
+                    while final_args.len() < full_arity {
+                        if let Some(default_expr) = ctor.param_default_value(final_args.len()) {
+                            let default_value = self.evaluate(default_expr)?;
+                            final_args.push(default_value);
+                        } else {
+                            return Err(RuntimeError::wrong_arity(
+                                full_arity,
+                                final_args.len(),
+                                span,
+                            ));
+                        }
+                    }
+
+                    // Execute constructor body with 'this' bound to the current instance
+                    let ctor_env = Environment::with_enclosing(ctor.closure.clone());
+                    let mut ctor_env = ctor_env;
+                    ctor_env.define("this".to_string(), Value::Instance(instance.clone()));
+
+                    for (param, value) in ctor.params.iter().zip(final_args) {
+                        ctor_env.define(param.name.clone(), value);
+                    }
+
+                    let _ = self.execute_block(&ctor.body, ctor_env);
+                }
+
+                Ok(Value::Null)
             }
 
             _ => Err(RuntimeError::not_callable(span)),
@@ -1923,6 +2331,87 @@ impl Interpreter {
                 }
                 Ok(max.clone())
             }
+            "push" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                // push returns a new array with the element added (functional style)
+                let mut new_arr = items.to_vec();
+                new_arr.push(arguments[0].clone());
+                Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+            }
+            "pop" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                // pop returns a new array with the last element removed (functional style)
+                let mut new_arr = items.to_vec();
+                new_arr.pop();
+                Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+            }
+            "clear" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                // clear returns an empty array (functional style)
+                Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))))
+            }
+            "get" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let idx = match &arguments[0] {
+                    Value::Int(n) => *n,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "get expects an integer index",
+                            span,
+                        ))
+                    }
+                };
+                let idx_usize = if idx < 0 {
+                    (items.len() as i64 + idx) as usize
+                } else {
+                    idx as usize
+                };
+                items
+                    .get(idx_usize)
+                    .cloned()
+                    .ok_or_else(|| RuntimeError::IndexOutOfBounds {
+                        index: idx,
+                        length: items.len(),
+                        span,
+                    })
+            }
+            "length" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Int(items.len() as i64))
+            }
+            "to_string" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
+                Ok(Value::String(format!("[{}]", parts.join(", "))))
+            }
+            "join" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let delim = match &arguments[0] {
+                    Value::String(d) => d.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "join expects a string delimiter",
+                            span,
+                        ))
+                    }
+                };
+                let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
+                Ok(Value::String(parts.join(&delim)))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: method_name.to_string(),
@@ -2437,15 +2926,13 @@ impl Interpreter {
                 let mut current = Value::Hash(Rc::new(RefCell::new(entries.to_vec())));
                 for key in arguments {
                     match current {
-                        Value::Hash(hash) => {
+                        Value::Hash(ref hash) => {
                             let hash_ref = hash.borrow();
-                            let mut found = None;
-                            for (k, v) in hash_ref.iter() {
-                                if key.hash_eq(k) {
-                                    found = Some(v.clone());
-                                    break;
-                                }
-                            }
+                            let found = hash_ref
+                                .iter()
+                                .find(|(k, _)| key.hash_eq(k))
+                                .map(|(_, v)| v.clone());
+                            drop(hash_ref); // Release the borrow early
                             match found {
                                 Some(v) => current = v,
                                 None => return Ok(Value::Null),
@@ -2455,6 +2942,136 @@ impl Interpreter {
                     }
                 }
                 Ok(current)
+            }
+            "length" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Int(entries.len() as i64))
+            }
+            "to_string" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let parts: Vec<String> = entries
+                    .iter()
+                    .map(|(k, v)| format!("{} => {}", k, v))
+                    .collect();
+                Ok(Value::String(format!("{{{}}}", parts.join(", "))))
+            }
+            "keys" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let keys: Vec<Value> = entries.iter().map(|(k, _)| k.clone()).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(keys))))
+            }
+            "values" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let values: Vec<Value> = entries.iter().map(|(_, v)| v.clone()).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(values))))
+            }
+            "has_key" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let key = &arguments[0];
+                for (k, _) in entries {
+                    if key.hash_eq(k) {
+                        return Ok(Value::Bool(true));
+                    }
+                }
+                Ok(Value::Bool(false))
+            }
+            "delete" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let key = &arguments[0];
+                let mut result: Vec<(Value, Value)> = Vec::new();
+                let mut deleted_value = Value::Null;
+                for (k, v) in entries {
+                    if key.hash_eq(k) {
+                        deleted_value = v.clone();
+                    } else {
+                        result.push((k.clone(), v.clone()));
+                    }
+                }
+                // Return the deleted value (like Ruby)
+                Ok(deleted_value)
+            }
+            "merge" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let other = match &arguments[0] {
+                    Value::Hash(h) => h.borrow().clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "merge expects a hash argument",
+                            span,
+                        ))
+                    }
+                };
+                let mut result: Vec<(Value, Value)> = entries.to_vec();
+                for (k2, v2) in other {
+                    let mut found = false;
+                    for (k1, v1) in result.iter_mut() {
+                        if k2.hash_eq(k1) {
+                            *v1 = v2.clone();
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        result.push((k2, v2));
+                    }
+                }
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "entries" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let pairs: Vec<Value> = entries
+                    .iter()
+                    .map(|(k, v)| Value::Array(Rc::new(RefCell::new(vec![k.clone(), v.clone()]))))
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(pairs))))
+            }
+            "clear" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Hash(Rc::new(RefCell::new(Vec::new()))))
+            }
+            "set" => {
+                if arguments.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let key = arguments[0].clone();
+                let value = arguments[1].clone();
+                let mut result: Vec<(Value, Value)> = entries.to_vec();
+                let mut found = false;
+                for (k, v) in result.iter_mut() {
+                    if key.hash_eq(k) {
+                        *v = value.clone();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    result.push((key, value.clone()));
+                }
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "empty?" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Bool(entries.is_empty()))
             }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Hash".to_string(),
@@ -2488,7 +3105,7 @@ impl Interpreter {
                     }
                 };
                 let bind_vars = match &arguments[1] {
-                    Value::Hash(hash) => {
+                    Value::Hash(ref hash) => {
                         let mut map = std::collections::HashMap::new();
                         for (k, v) in hash.borrow().iter() {
                             if let Value::String(key) = k {
@@ -3260,6 +3877,230 @@ impl Interpreter {
                     Ok(Value::String(result.to_string() + suffix))
                 }
             }
+            // Methods from collection_classes.rs String class
+            "length" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Int(s.len() as i64))
+            }
+            "to_string" => Ok(Value::String(s.to_string())),
+            "upcase" | "uppercase" => Ok(Value::String(s.to_uppercase())),
+            "downcase" | "lowercase" => Ok(Value::String(s.to_lowercase())),
+            "trim" => Ok(Value::String(s.trim().to_string())),
+            "contains" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let substr = match &arguments[0] {
+                    Value::String(sub) => sub,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "contains expects a string argument",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::Bool(s.contains(substr)))
+            }
+            "starts_with" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let prefix = match &arguments[0] {
+                    Value::String(p) => p,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "starts_with expects a string argument",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::Bool(s.starts_with(prefix)))
+            }
+            "ends_with" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let suffix = match &arguments[0] {
+                    Value::String(suf) => suf,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "ends_with expects a string argument",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::Bool(s.ends_with(suffix)))
+            }
+            "split" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let delim = match &arguments[0] {
+                    Value::String(d) => d,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "split expects a string delimiter",
+                            span,
+                        ))
+                    }
+                };
+                let parts: Vec<Value> = s.split(delim).map(|p| Value::String(p.to_string())).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(parts))))
+            }
+            "index_of" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let substr = match &arguments[0] {
+                    Value::String(sub) => sub,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "index_of expects a string argument",
+                            span,
+                        ))
+                    }
+                };
+                if let Some(idx) = s.find(substr) {
+                    Ok(Value::Int(idx as i64))
+                } else {
+                    Ok(Value::Int(-1))
+                }
+            }
+            "substring" => {
+                if arguments.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let start = match &arguments[0] {
+                    Value::Int(i) => *i,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "substring expects integer start",
+                            span,
+                        ))
+                    }
+                };
+                let end = match &arguments[1] {
+                    Value::Int(i) => *i,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "substring expects integer end",
+                            span,
+                        ))
+                    }
+                };
+                let start_usize = if start < 0 { 0 } else { start as usize };
+                let end_usize = if end > s.len() as i64 { s.len() } else { end as usize };
+                if start_usize >= end_usize || start_usize >= s.len() {
+                    Ok(Value::String(String::new()))
+                } else {
+                    Ok(Value::String(s[start_usize..end_usize].to_string()))
+                }
+            }
+            "replace" => {
+                if arguments.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let from = match &arguments[0] {
+                    Value::String(f) => f,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "replace expects string from",
+                            span,
+                        ))
+                    }
+                };
+                let to = match &arguments[1] {
+                    Value::String(t) => t,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "replace expects string to",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::String(s.replace(from, to)))
+            }
+            "lpad" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let width = match &arguments[0] {
+                    Value::Int(w) if *w >= 0 => *w as usize,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "lpad expects non-negative integer width",
+                            span,
+                        ))
+                    }
+                };
+                let pad_char = arguments
+                    .get(1)
+                    .map(|v| match v {
+                        Value::String(ps) => ps.chars().next().unwrap_or(' '),
+                        _ => ' ',
+                    })
+                    .unwrap_or(' ');
+                if s.len() >= width {
+                    Ok(Value::String(s.to_string()))
+                } else {
+                    let padding = width - s.len();
+                    Ok(Value::String(pad_char.to_string().repeat(padding) + s))
+                }
+            }
+            "rpad" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                }
+                let width = match &arguments[0] {
+                    Value::Int(w) if *w >= 0 => *w as usize,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "rpad expects non-negative integer width",
+                            span,
+                        ))
+                    }
+                };
+                let pad_char = arguments
+                    .get(1)
+                    .map(|v| match v {
+                        Value::String(ps) => ps.chars().next().unwrap_or(' '),
+                        _ => ' ',
+                    })
+                    .unwrap_or(' ');
+                if s.len() >= width {
+                    Ok(Value::String(s.to_string()))
+                } else {
+                    let padding = width - s.len();
+                    Ok(Value::String(s.to_string() + &pad_char.to_string().repeat(padding)))
+                }
+            }
+            "join" => {
+                // For string, join doesn't make much sense, but we can return the string itself
+                Ok(Value::String(s.to_string()))
+            }
+            "empty?" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Bool(s.is_empty()))
+            }
+            "include?" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let substr = match &arguments[0] {
+                    Value::String(sub) => sub,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "include? expects a string argument",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::Bool(s.contains(substr)))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "String".to_string(),
                 property: method_name.to_string(),
@@ -3316,7 +4157,13 @@ impl Interpreter {
                     _ => return Ok(None),
                 };
 
-                if elements.len() > arr.len() && rest.is_none() {
+                // Without rest: pattern must match array length exactly
+                // With rest: pattern elements must be <= array length
+                if rest.is_none() {
+                    if elements.len() != arr.len() {
+                        return Ok(None);
+                    }
+                } else if elements.len() > arr.len() {
                     return Ok(None);
                 }
 

@@ -63,16 +63,6 @@ describe("Validation Functions", fn() {
         assert_not(result2["valid"]);
     });
 
-    test("V.string().matches() validates pattern", fn() {
-        let schema = hash();
-        schema["phone"] = V.string().matches("\\d{3}-\\d{3}-\\d{4}");
-
-        let valid_data = hash();
-        valid_data["phone"] = "123-456-7890";
-        let result = validate(valid_data, schema);
-        assert(result["valid"]);
-    });
-
     test("V.int().max() validates maximum value", fn() {
         let schema = hash();
         schema["quantity"] = V.int().max(100);

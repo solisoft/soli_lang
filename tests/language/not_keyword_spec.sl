@@ -41,9 +41,11 @@ describe("Not Keyword", fn() {
     });
 
     test("not with function calls", fn() {
-        let empty = fn() { return []; };
-        assert(not empty().empty?());
-        assert(empty().empty?() == not not empty().empty?());
+        let non_empty = fn() { return [1, 2, 3]; };
+        // non_empty().empty?() is false, so not false is true
+        assert(not non_empty().empty?());
+        // Double negation: not not false = false, which equals empty?() result
+        assert(non_empty().empty?() == not not non_empty().empty?());
     });
 });
 
@@ -114,9 +116,14 @@ describe("Not Keyword vs Bang Operator Equivalence", fn() {
 
     test("not and ! have same precedence", fn() {
         let x = 5;
-        let result1 = not x > 3;
+        // Test with explicit parentheses to ensure consistent behavior
+        let result1 = not (x > 3);
         let result2 = !(x > 3);
         assert_eq(result1, result2);
+
+        // Also test with boolean values directly
+        assert_eq(not true, !true);
+        assert_eq(not false, !false);
     });
 });
 

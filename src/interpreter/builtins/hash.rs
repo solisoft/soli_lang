@@ -10,6 +10,14 @@ use crate::interpreter::value::{NativeFunction, Value};
 
 /// Register all hash operation built-in functions.
 pub fn register_hash_builtins(env: &mut Environment) {
+    // hash() - Create an empty hash
+    env.define(
+        "hash".to_string(),
+        Value::NativeFunction(NativeFunction::new("hash", Some(0), |_args| {
+            Ok(Value::Hash(Rc::new(RefCell::new(Vec::new()))))
+        })),
+    );
+
     // keys(hash) - Get all keys as array
     env.define(
         "keys".to_string(),

@@ -271,6 +271,7 @@ impl Interpreter {
             Value::Method(_) => "\"<method>\"".to_string(),
             Value::Breakpoint => "\"<breakpoint>\"".to_string(),
             Value::QueryBuilder(_) => "\"<query builder>\"".to_string(),
+            Value::Super(c) => format!("\"<super of {}>\"", c.name),
         }
     }
 
@@ -402,6 +403,14 @@ impl Interpreter {
 
         for (param, value) in func.params.iter().zip(arguments) {
             call_env_inner.define(param.name.clone(), value);
+        }
+
+        // Store defining_superclass for super calls
+        if let Some(ref sc) = func.defining_superclass {
+            call_env_inner.define(
+                "__defining_superclass__".to_string(),
+                Value::Class(sc.clone()),
+            );
         }
 
         // Store reference to capture environment on error

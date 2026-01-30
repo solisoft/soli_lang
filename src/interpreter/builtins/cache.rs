@@ -355,6 +355,8 @@ pub fn register_cache_builtins(env: &mut Environment) {
         static_methods: HashMap::new(),
         native_static_methods: cache_static_methods,
         native_methods: HashMap::new(),
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
         constructor: None,
     });
 

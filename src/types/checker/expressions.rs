@@ -100,6 +100,13 @@ impl TypeChecker {
 
             ExprKind::Hash(pairs) => self.check_hash_expr(expr, pairs),
 
+            ExprKind::Block(statements) => {
+                for stmt in statements {
+                    self.check_stmt(stmt)?;
+                }
+                Ok(Type::Null)
+            }
+
             ExprKind::Assign { target, value } => {
                 let target_type = self.check_expr(target)?;
                 let value_type = self.check_expr(value)?;
@@ -704,6 +711,47 @@ impl TypeChecker {
                             return_type: Box::new(Type::String),
                         })
                     }
+                    "length" => {
+                        // () -> Int
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Int),
+                        })
+                    }
+                    "push" => {
+                        // element -> Array
+                        Ok(Type::Function {
+                            params: vec![inner_type.as_ref().clone()],
+                            return_type: Box::new(Type::Array(Box::new(
+                                inner_type.as_ref().clone(),
+                            ))),
+                        })
+                    }
+                    "pop" => {
+                        // Returns Array
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Array(Box::new(
+                                inner_type.as_ref().clone(),
+                            ))),
+                        })
+                    }
+                    "clear" => {
+                        // Returns Array
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Array(Box::new(
+                                inner_type.as_ref().clone(),
+                            ))),
+                        })
+                    }
+                    "get" => {
+                        // Int -> Element | null
+                        Ok(Type::Function {
+                            params: vec![Type::Int],
+                            return_type: Box::new(inner_type.as_ref().clone()),
+                        })
+                    }
                     _ => Err(TypeError::NoSuchMember {
                         type_name: format!("{}[]", inner_type),
                         member: name.to_string(),
@@ -717,6 +765,13 @@ impl TypeChecker {
             } => {
                 // Handle hash methods: map, filter, each, get, fetch, invert, transform_values, transform_keys, select, reject, slice, except, compact, dig
                 match name {
+                    "length" => {
+                        // () -> Int
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Int),
+                        })
+                    }
                     "map" | "filter" | "each" => {
                         // fn(Any) -> Any (runtime passes [key, value] array for each entry)
                         Ok(Type::Function {
@@ -813,8 +868,15 @@ impl TypeChecker {
                 }
             }
             Type::String => {
-                // Handle string methods: starts_with?, ends_with?, chomp, lstrip, rstrip, squeeze, count, gsub, sub, match, scan, tr, center, ljust, rjust, ord, chr, bytes, chars, lines, bytesize, capitalize, swapcase, insert, delete, delete_prefix, delete_suffix, partition, rpartition, reverse, hex, oct, truncate
+                // Handle string methods and properties: length, starts_with?, ends_with?, chomp, lstrip, rstrip, squeeze, count, gsub, sub, match, scan, tr, center, ljust, rjust, ord, chr, bytes, chars, lines, bytesize, capitalize, swapcase, insert, delete, delete_prefix, delete_suffix, partition, rpartition, reverse, hex, oct, truncate
                 match name {
+                    "length" => {
+                        // () -> Int
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Int),
+                        })
+                    }
                     "starts_with?" | "ends_with?" => {
                         // String -> Bool
                         Ok(Type::Function {
@@ -942,6 +1004,63 @@ impl TypeChecker {
                             return_type: Box::new(Type::String),
                         })
                     }
+                    // Core methods from collection_classes.rs
+                    "to_string" | "upcase" | "downcase" | "trim" | "join" => {
+                        // Returns String
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "contains" | "starts_with" | "ends_with" | "include?" => {
+                        // String -> Bool
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Bool),
+                        })
+                    }
+                    "empty?" => {
+                        // () -> Bool
+                        Ok(Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Bool),
+                        })
+                    }
+                    "split" => {
+                        // delimiter -> Array of Strings
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Array(Box::new(Type::String))),
+                        })
+                    }
+                    "index_of" => {
+                        // String -> Int
+                        Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Int),
+                        })
+                    }
+                    "substring" => {
+                        // start, end -> String
+                        Ok(Type::Function {
+                            params: vec![Type::Int, Type::Int],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "replace" => {
+                        // from, to -> String
+                        Ok(Type::Function {
+                            params: vec![Type::String, Type::String],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
+                    "lpad" | "rpad" => {
+                        // width, pad? -> String
+                        Ok(Type::Function {
+                            params: vec![Type::Int],
+                            return_type: Box::new(Type::String),
+                        })
+                    }
                     _ => Err(TypeError::NoSuchMember {
                         type_name: "String".to_string(),
                         member: name.to_string(),
@@ -1004,23 +1123,21 @@ impl TypeChecker {
         }
     }
 
-    fn check_array_expr(&mut self, expr: &Expr, elements: &[Expr]) -> TypeResult<Type> {
+    fn check_array_expr(&mut self, _expr: &Expr, elements: &[Expr]) -> TypeResult<Type> {
         if elements.is_empty() {
             return Ok(Type::Array(Box::new(Type::Unknown)));
         }
 
-        let first_type = self.check_expr(&elements[0])?;
+        let mut result_type = self.check_expr(&elements[0])?;
         for elem in elements.iter().skip(1) {
             let elem_type = self.check_expr(elem)?;
-            if !elem_type.is_assignable_to(&first_type) && !first_type.is_assignable_to(&elem_type)
+            // Widen to Any if types are inconsistent instead of erroring
+            if !elem_type.is_assignable_to(&result_type) && !result_type.is_assignable_to(&elem_type)
             {
-                return Err(TypeError::General {
-                    message: "array elements have inconsistent types".to_string(),
-                    span: expr.span,
-                });
+                result_type = Type::Any;
             }
         }
-        Ok(Type::Array(Box::new(first_type)))
+        Ok(Type::Array(Box::new(result_type)))
     }
 
     fn check_hash_expr(&mut self, _expr: &Expr, pairs: &[(Expr, Expr)]) -> TypeResult<Type> {
@@ -1192,7 +1309,8 @@ impl TypeChecker {
             }
 
             MatchPattern::Array { elements, rest: _ } => {
-                if !matches!(input_type, Type::Array(_)) {
+                // Allow Type::Any to match array patterns (e.g., untyped function parameters)
+                if !matches!(input_type, Type::Array(_) | Type::Any) {
                     return Err(TypeError::mismatch(
                         "Array".to_string(),
                         format!("{}", input_type),
@@ -1207,7 +1325,8 @@ impl TypeChecker {
             }
 
             MatchPattern::Hash { fields, rest: _ } => {
-                if !matches!(input_type, Type::Hash { .. }) {
+                // Allow Type::Any to match hash patterns (e.g., untyped function parameters)
+                if !matches!(input_type, Type::Hash { .. } | Type::Any) {
                     return Err(TypeError::mismatch(
                         "Hash".to_string(),
                         format!("{}", input_type),

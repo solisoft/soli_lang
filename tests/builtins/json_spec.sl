@@ -31,7 +31,8 @@ describe("JSON Functions", fn() {
     test("json_stringify() handles arrays", fn() {
         let arr = [1, 2, 3];
         let json = json_stringify(arr);
-        assert_contains(json, "[1, 2, 3]");
+        // JSON output is compact without spaces
+        assert_eq(json, "[1,2,3]");
     });
 
     test("json_stringify() handles nested structures", fn() {
