@@ -7,27 +7,30 @@ println("SoliDB HTTP Wrapper Benchmark");
 println("==============================");
 
 // Test 1: Ping
-let start = datetime_now();
+let start = DateTime.now();
 for i in 1..100 {
     let result = db.ping();
 }
-let ping_time = datetime_now() - start;
-println("100 pings:", ping_time, "ms");
+let end = DateTime.now();
+let ping_time = Duration.between(start, end);
+println("100 pings:", ping_time.total_millis(), "ms");
 
 // Test 2: Query
-let start = datetime_now();
+let start = DateTime.now();
 for i in 1..100 {
     let result = db.query("FOR u IN users LIMIT 1 RETURN u", {});
 }
-let query_time = datetime_now() - start;
-println("100 queries:", query_time, "ms");
+let end = DateTime.now();
+let query_time = Duration.between(start, end);
+println("100 queries:", query_time.total_millis(), "ms");
 
 // Test 3: Get document
-let start = datetime_now();
+let start = DateTime.now();
 for i in 1..100 {
     let result = db.get("users", "user1");
 }
-let get_time = datetime_now() - start;
-println("100 gets:", get_time, "ms");
+let end = DateTime.now();
+let get_time = Duration.between(start, end);
+println("100 gets:", get_time.total_millis(), "ms");
 
 println("Benchmark complete!");

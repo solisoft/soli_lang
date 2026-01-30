@@ -13,7 +13,7 @@ fn format_relative(timestamp: Int) -> String {
 }
 
 fn is_today(timestamp: Int) -> Bool {
-    let now = datetime_now();
+    let now = DateTime.now();
     let day_start = datetime_add_days(timestamp, 0);
     let day_end = datetime_add_days(timestamp, 86400);
     return now >= day_start && now < day_end;

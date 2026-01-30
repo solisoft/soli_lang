@@ -41,9 +41,9 @@ describe("Try/Catch/Finally", fn() {
         try {
             throw "error";
         } catch (e) {
-            push(sequence, "catch");
+            sequence.push("catch");
         } finally {
-            push(sequence, "finally");
+            sequence.push("finally");
         }
         assert_eq(len(sequence), 2);
         assert_eq(sequence[0], "catch");
@@ -128,12 +128,12 @@ describe("Try/Catch/Finally", fn() {
             try {
                 throw "inner";
             } finally {
-                push(order, "inner finally");
+                order.push("inner finally");
             }
         } catch (e) {
-            push(order, "outer catch");
+            order.push("outer catch");
         } finally {
-            push(order, "outer finally");
+            order.push("outer finally");
         }
         assert_eq(len(order), 3);
         assert_eq(order[0], "inner finally");

@@ -149,21 +149,21 @@ describe("HMAC Functions", fn() {
 
 describe("Base Encoding Functions", fn() {
     test("base64_encode() encodes correctly", fn() {
-        let encoded = base64_encode("hello world");
+        let encoded = Base64.encode("hello world");
         assert_not_null(encoded);
     });
 
     test("base64_decode() decodes correctly", fn() {
         let original = "Hello, World!";
-        let encoded = base64_encode(original);
-        let decoded = base64_decode(encoded);
+        let encoded = Base64.encode(original);
+        let decoded = Base64.decode(encoded);
         assert_eq(decoded, original);
     });
 
     test("base64_encode() handles binary data", fn() {
         let data = [0, 1, 2, 255, 254, 253];
-        let encoded = base64_encode(data);
-        let decoded = base64_decode(encoded);
+        let encoded = Base64.encode(data);
+        let decoded = Base64.decode(encoded);
         assert_eq(len(decoded), len(data));
     });
 

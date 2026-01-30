@@ -58,12 +58,9 @@ class Duration {
         return new Duration(n * 7, "days");
     }
 
-    // Create duration between two DateTimes
+    // Create duration between two DateTimes (uses built-in Duration.between)
     static between(start: DateTime, end: DateTime): Duration {
-        let diff = __datetime_diff(start.to_unix(), end.to_unix());
-        let dur = new Duration(0, "seconds");
-        dur.total_secs = diff as Float;
-        return dur;
+        return Duration.between(start, end);
     }
 
     // Get total days

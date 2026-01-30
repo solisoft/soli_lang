@@ -154,19 +154,6 @@ fn do_ed25519_keypair() -> (String, String) {
     (bytes_to_hex(&seed), bytes_to_hex(&public_key))
 }
 
-fn do_base64_encode(data: &str) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    STANDARD.encode(data.as_bytes())
-}
-
-fn do_base64_decode(data: &str) -> Result<String, String> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    let bytes = STANDARD
-        .decode(data)
-        .map_err(|e| format!("Base64 decode error: {}", e))?;
-    String::from_utf8(bytes).map_err(|e| format!("UTF-8 decode error: {}", e))
-}
-
 /// Register cryptographic functions and Crypto class in the given environment.
 pub fn register_crypto_builtins(env: &mut Environment) {
     // Build Crypto static methods
@@ -449,49 +436,6 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         )),
     );
 
-    // Crypto.base64_encode(data) -> String
-    crypto_static_methods.insert(
-        "base64_encode".to_string(),
-        Rc::new(NativeFunction::new(
-            "Crypto.base64_encode",
-            Some(1),
-            |args| {
-                let data = match &args[0] {
-                    Value::String(s) => s.clone(),
-                    other => {
-                        return Err(format!(
-                            "Crypto.base64_encode() expects string, got {}",
-                            other.type_name()
-                        ))
-                    }
-                };
-                Ok(Value::String(do_base64_encode(&data)))
-            },
-        )),
-    );
-
-    // Crypto.base64_decode(data) -> String
-    crypto_static_methods.insert(
-        "base64_decode".to_string(),
-        Rc::new(NativeFunction::new(
-            "Crypto.base64_decode",
-            Some(1),
-            |args| {
-                let data = match &args[0] {
-                    Value::String(s) => s.clone(),
-                    other => {
-                        return Err(format!(
-                            "Crypto.base64_decode() expects string, got {}",
-                            other.type_name()
-                        ))
-                    }
-                };
-                let result = do_base64_decode(&data)?;
-                Ok(Value::String(result))
-            },
-        )),
-    );
-
     // Create and register the Crypto class
     let crypto_class = Class {
         name: "Crypto".to_string(),
@@ -581,41 +525,6 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 }
             };
             let result = do_hmac_sha256(&message, &key)?;
-            Ok(Value::String(result))
-        })),
-    );
-
-    // base64_encode(data) -> String
-    env.define(
-        "base64_encode".to_string(),
-        Value::NativeFunction(NativeFunction::new("base64_encode", Some(1), |args| {
-            let data = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "base64_encode() expects string, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-            Ok(Value::String(do_base64_encode(&data)))
-        })),
-    );
-
-    // base64_decode(data) -> String
-    env.define(
-        "base64_decode".to_string(),
-        Value::NativeFunction(NativeFunction::new("base64_decode", Some(1), |args| {
-            let data = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "base64_decode() expects string, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-            let result = do_base64_decode(&data)?;
             Ok(Value::String(result))
         })),
     );

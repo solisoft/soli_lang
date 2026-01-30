@@ -1,246 +1,80 @@
 // DateTime and Duration Examples for Soli
-// Simple self-contained example
-
-// Simple DateTime wrapper class
-class DateTime {
-    timestamp: Int;
-
-    new() {
-        this.timestamp = __datetime_now_local();
-    }
-
-    fn year() -> Int {
-        let components = __datetime_components(this.timestamp);
-        return components["year"];
-    }
-
-    fn month() -> Int {
-        let components = __datetime_components(this.timestamp);
-        return components["month"];
-    }
-
-    fn day() -> Int {
-        let components = __datetime_components(this.timestamp);
-        return components["day"];
-    }
-
-    fn hour() -> Int {
-        let components = __datetime_components(this.timestamp);
-        return components["hour"];
-    }
-
-    fn minute() -> Int {
-        let components = __datetime_components(this.timestamp);
-        return components["minute"];
-    }
-
-    fn second() -> Int {
-        let components = __datetime_components(this.timestamp);
-        return components["second"];
-    }
-
-    fn weekday() -> String {
-        return __datetime_weekday(this.timestamp);
-    }
-
-    fn to_unix() -> Int {
-        return this.timestamp;
-    }
-
-    fn to_iso() -> String {
-        return __datetime_to_iso(this.timestamp);
-    }
-
-    fn format(fmt: String) -> String {
-        return __datetime_format(this.timestamp, fmt);
-    }
-
-    fn to_string() -> String {
-        return this.format("%Y-%m-%d %H:%M:%S");
-    }
-
-    fn add_days(n: Int) -> DateTime {
-        let new_ts = __datetime_add_days(this.timestamp);
-        let result = new DateTime();
-        result.timestamp = new_ts;
-        return result;
-    }
-
-    fn add_hours(n: Int) -> DateTime {
-        let new_ts = __datetime_add_hours(this.timestamp);
-        let result = new DateTime();
-        result.timestamp = new_ts;
-        return result;
-    }
-
-    fn add_weeks(n: Int) -> DateTime {
-        let new_ts = __datetime_add_weeks(this.timestamp);
-        let result = new DateTime();
-        result.timestamp = new_ts;
-        return result;
-    }
-
-    fn add_months(n: Int) -> DateTime {
-        let new_ts = __datetime_add_months(this.timestamp);
-        let result = new DateTime();
-        result.timestamp = new_ts;
-        return result;
-    }
-
-    fn add_years(n: Int) -> DateTime {
-        let new_ts = __datetime_add_years(this.timestamp);
-        let result = new DateTime();
-        result.timestamp = new_ts;
-        return result;
-    }
-
-    fn add(dur: Duration) -> DateTime {
-        let seconds = dur.total_seconds();
-        let new_ts = __datetime_add(this.timestamp, seconds);
-        let result = new DateTime();
-        result.timestamp = new_ts;
-        return result;
-    }
-
-    fn sub(dur: Duration) -> DateTime {
-        let seconds = dur.total_seconds();
-        let new_ts = __datetime_sub(this.timestamp, seconds);
-        let result = new DateTime();
-        result.timestamp = new_ts;
-        return result;
-    }
-
-    fn is_before(other: DateTime) -> Bool {
-        return __datetime_is_before(this.timestamp, other.timestamp);
-    }
-
-    fn is_after(other: DateTime) -> Bool {
-        return __datetime_is_after(this.timestamp, other.timestamp);
-    }
-
-    fn is_same(other: DateTime) -> Bool {
-        return __datetime_is_same(this.timestamp, other.timestamp);
-    }
-}
-
-class Duration {
-    total_secs: Float;
-
-    new(value: Int, unit: String) {
-        let multiplier = 1.0;
-        if (unit == "days") {
-            multiplier = 86400.0;
-        } elsif (unit == "hours") {
-            multiplier = 3600.0;
-        } elsif (unit == "minutes") {
-            multiplier = 60.0;
-        } elsif (unit == "seconds") {
-            multiplier = 1.0;
-        } elsif (unit == "milliseconds") {
-            multiplier = 0.001;
-        } else {
-            print("Error: Unknown unit: " + unit);
-            this.total_secs = 0.0;
-            return;
-        }
-        this.total_secs = float(value) * multiplier;
-    }
-
-    fn total_days() -> Float {
-        return this.total_secs / 86400.0;
-    }
-
-    fn total_hours() -> Float {
-        return this.total_secs / 3600.0;
-    }
-
-    fn total_minutes() -> Float {
-        return this.total_secs / 60.0;
-    }
-
-    fn total_seconds() -> Float {
-        return this.total_secs;
-    }
-
-    fn to_string() -> String {
-        let days = this.total_days();
-        if (days >= 1.0) {
-            return str(days) + " days";
-        }
-        let hours = this.total_hours();
-        if (hours >= 1.0) {
-            return str(hours) + " hours";
-        }
-        let minutes = this.total_minutes();
-        if (minutes >= 1.0) {
-            return str(minutes) + " minutes";
-        }
-        return str(this.total_secs) + " seconds";
-    }
-}
-
-// ============================================
-// EXAMPLES START HERE
-// ============================================
+// Demonstrates the built-in DateTime and Duration classes
 
 print("=== DateTime Examples ===");
 
-let now = new DateTime();
+// 1. Get current datetime
+let now = DateTime.now();
 print("1. Current datetime: " + now.to_string());
 
+// 2. Access date components
 print("2. Year: " + str(now.year()) + ", Month: " + str(now.month()) + ", Day: " + str(now.day()));
 print("   Hour: " + str(now.hour()) + ", Minute: " + str(now.minute()) + ", Second: " + str(now.second()));
 print("   Weekday: " + now.weekday());
 
+// 3. Get Unix timestamp
 let unix_ts = now.to_unix();
 print("3. Unix timestamp: " + str(unix_ts));
 
+// 4. Custom formats
 print("4. Custom formats:");
 print("   Full: " + now.format("%A, %B %d, %Y"));
 print("   US: " + now.format("%m/%d/%Y"));
 
+// 5. Date arithmetic
 print("5. Date arithmetic:");
 let tomorrow = now.add_days(1);
 print("   Tomorrow: " + tomorrow.to_string());
-let next_week = now.add_weeks(1);
+let next_week = now.add_days(7);
 print("   Next week: " + next_week.to_string());
 
+// 6. DateTime comparison
 print("6. DateTime comparison:");
-if (now.is_before(tomorrow)) {
-    print("   now is before tomorrow: true");
-}
-if (tomorrow.is_after(now)) {
+if (tomorrow.to_unix() > now.to_unix()) {
     print("   tomorrow is after now: true");
 }
+
+// 7. Create from Unix timestamp
+let epoch = DateTime.from_unix(0);
+print("7. Unix epoch: " + epoch.to_iso());
+
+// 8. Parse from string
+let parsed = DateTime.parse("2024-06-15T14:30:00Z");
+print("8. Parsed datetime: " + parsed.to_string());
+
+// 9. Get ISO 8601 format
+print("9. ISO 8601 format: " + now.to_iso());
 
 print("");
 print("=== Duration Examples ===");
 
-let dur1 = new Duration(5, "days");
-print("7. Duration of 5 days: " + dur1.to_string());
+// 10. Create durations using factory methods
+let dur1 = Duration.of_days(5);
+print("10. Duration of 5 days: " + str(dur1.total_days()) + " days");
 
-let dur2 = new Duration(2, "hours");
-print("   Duration of 2 hours: " + dur2.to_string());
+let dur2 = Duration.of_hours(2);
+print("    Duration of 2 hours: " + str(dur2.total_hours()) + " hours");
 
-let dur3 = new Duration(30, "minutes");
-print("   Duration of 30 minutes: " + dur3.to_string());
+let dur3 = Duration.of_minutes(30);
+print("    Duration of 30 minutes: " + str(dur3.total_minutes()) + " minutes");
 
-print("8. Duration totals:");
-print("   5 days in hours: " + str(dur1.total_hours()));
-print("   2 hours in minutes: " + str(dur2.total_minutes()));
+let dur4 = Duration.of_seconds(90);
+print("    Duration of 90 seconds: " + str(dur4.total_seconds()) + " seconds");
 
-print("9. DateTime + Duration:");
-let later = now.add(dur1);
-print("   Now + 5 days: " + later.to_string());
+// 11. Duration totals
+print("11. Duration totals:");
+print("    5 days in hours: " + str(dur1.total_hours()));
+print("    2 hours in minutes: " + str(dur2.total_minutes()));
 
-print("10. Duration weeks and totals:");
-let week_dur = new Duration(1, "weeks");
-print("   1 week in days: " + str(week_dur.total_days()));
-print("   1 week in hours: " + str(week_dur.total_hours()));
+// 12. Create duration between two datetimes
+let start = DateTime.now();
+let finish = DateTime.now();
+let diff = Duration.between(start, finish);
+print("12. Duration between now and now: " + str(diff.total_seconds()) + " seconds");
 
-print("11. Total years example:");
-let year_dur = new Duration(365, "days");
-print("   365 days in years: " + str(year_dur.total_days() / 365.25));
+// 13. Using Duration.weeks()
+let week_dur = Duration.of_weeks(1);
+print("13. Duration of 1 week: " + str(week_dur.total_days()) + " days");
 
 print("");
-print("All DateTime examples completed!");
+print("All DateTime and Duration examples completed!");

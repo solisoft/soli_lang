@@ -15,11 +15,11 @@ print("After modification:", numbers);
 
 // Array with push and pop
 let stack = [10, 20];
-push(stack, 30);
-push(stack, 40);
+stack.push(30);
+stack.push(40);
 print("Stack after pushes:", stack);
 
-let top = pop(stack);
+let top = stack.pop();
 print("Popped:", top);
 print("Stack after pop:", stack);
 

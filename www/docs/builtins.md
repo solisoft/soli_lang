@@ -142,39 +142,7 @@ len({"a": 1})     // 1
 
 ### Array Functions
 
-#### push(array, value)
-
-Adds a value to the end of an array (mutates the array).
-
-**Parameters:**
-- `array` (Array) - The array to modify
-- `value` (Any) - The value to add
-
-**Returns:** Array - The modified array
-
-**Example:**
-```soli
-let arr = [1, 2]
-push(arr, 3)
-println(arr)  // [1, 2, 3]
-```
-
-#### pop(array)
-
-Removes and returns the last element from an array.
-
-**Parameters:**
-- `array` (Array) - The array to modify
-
-**Returns:** Any - The removed element, or null if empty
-
-**Example:**
-```soli
-let arr = [1, 2, 3]
-let last = pop(arr)
-println(last)  // 3
-println(arr)   // [1, 2]
-```
+Array operations like `push()`, `pop()`, `map()`, `filter()`, and more are available as methods on the Array class. See the Array class documentation for details.
 
 #### range(start, end, step?)
 
@@ -885,35 +853,12 @@ let mac = Crypto.hmac("message", "secret_key")
 
 ### Base64 Encoding
 
-#### Crypto.base64_encode(data) / base64_encode(data)
+Base64 encoding and decoding is available via the **Base64 class**:
 
-Encodes a string to Base64.
+- `Base64.encode(data)` - Encodes a string to Base64
+- `Base64.decode(data)` - Decodes a Base64 string
 
-**Parameters:**
-- `data` (String) - The data to encode
-
-**Returns:** String - Base64-encoded string
-
-**Example:**
-```soli
-let encoded = Crypto.base64_encode("hello world")
-// "aGVsbG8gd29ybGQ="
-```
-
-#### Crypto.base64_decode(data) / base64_decode(data)
-
-Decodes a Base64 string.
-
-**Parameters:**
-- `data` (String) - The Base64-encoded string
-
-**Returns:** String - Decoded string
-
-**Example:**
-```soli
-let decoded = Crypto.base64_decode("aGVsbG8gd29ybGQ=")
-// "hello world"
-```
+See the [Base64 class documentation](/docs/utility/base64) for details.
 
 ### Password Hashing
 

@@ -270,6 +270,26 @@
         // Source code cache
         const sourceCache = {};
 
+        // REPL Session ID - persists across requests for stateful REPL
+        let replSessionId = localStorage.getItem('soli_repl_session_id') || generateUUID();
+        
+        // Generate a UUID v4
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        // Save session ID to localStorage
+        function saveReplSessionId() {
+            localStorage.setItem('soli_repl_session_id', replSessionId);
+        }
+        
+        // Initialize session ID
+        saveReplSessionId();
+
         // Tab switching
         function showRequestTab(tabName) {
             document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
@@ -339,10 +359,16 @@
                 const response = await fetch('/__dev/repl', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code: code })
+                    body: JSON.stringify({ code: code, repl_session_id: replSessionId })
                 });
 
                 const result = await response.json();
+
+                // Update session ID if server returned a new one
+                if (result.repl_session_id) {
+                    replSessionId = result.repl_session_id;
+                    saveReplSessionId();
+                }
 
                 if (result.error) {
                     output.innerHTML += '<div class="text-red-400 mt-2">❌ ' + escapeHtml(result.error) + '</div>';

@@ -11,7 +11,7 @@ fn create_array(n: Int) -> Int[] {
     let arr: Int[] = [];
     let i = 0;
     while (i < n) {
-        push(arr, i * 2);
+        arr.push(i * 2);
         i = i + 1;
     }
     return arr;

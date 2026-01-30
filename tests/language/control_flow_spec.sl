@@ -122,7 +122,7 @@ describe("For-In Loops", fn() {
     test("for-in can access loop variable", fn() {
         let result = [];
         for (i in range(0, 3)) {
-            push(result, i * 2);
+            result.push(i * 2);
         }
         assert_eq(result[0], 0);
         assert_eq(result[1], 2);

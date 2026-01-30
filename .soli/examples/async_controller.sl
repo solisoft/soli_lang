@@ -170,7 +170,7 @@ class DataSyncController extends Controller {
                     "title": post["title"],
                     "content": post["content"],
                     "author": post["author"],
-                    "created_at": datetime_now()
+                    "created_at": DateTime.now()
                 });
             });
 
@@ -274,7 +274,7 @@ class FileController extends Controller {
                 records.push({
                     "name": fields[0],
                     "email": fields[1],
-                    "imported_at": datetime_now()
+                    "imported_at": DateTime.now()
                 });
             }
 
@@ -375,7 +375,7 @@ class JobController extends Controller {
         let job = await redis_queue_push("jobs", {
             "type": job_type,
             "data": job_data,
-            "created_at": datetime_now()
+            "created_at": DateTime.now()
         });
 
         return {
@@ -574,7 +574,7 @@ class CompleteAsyncController extends Controller {
                     "profile": profile,
                     "activities": activities,
                     "notifications": notifications,
-                    "retrieved_at": datetime_now()
+                    "retrieved_at": DateTime.now()
                 })
             };
         } catch (e: ValueError) {

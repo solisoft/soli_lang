@@ -302,7 +302,7 @@ class PostsController extends Controller {
             "title": data["title"],
             "content": data["content"],
             "author": data["author"],
-            "created_at": datetime_now(),
+            "created_at": DateTime.now(),
             "status": "published"
         };
         
@@ -325,7 +325,7 @@ class PostsController extends Controller {
         let updates = {
             "title": data["title"],
             "content": data["content"],
-            "updated_at": datetime_now()
+            "updated_at": DateTime.now()
         };
         
         let result = solidb_update(this.db, this.database, "posts", id, updates);
@@ -405,7 +405,7 @@ class PostsController extends Controller {
             // Update post author
             solidb_update(tx, this.database, "posts", post_id, {
                 "author": new_author,
-                "transferred_at": datetime_now()
+                "transferred_at": DateTime.now()
             });
             
             // Log transfer
@@ -413,7 +413,7 @@ class PostsController extends Controller {
                 "post_id": post_id,
                 "from_author": post["author"],
                 "to_author": new_author,
-                "transferred_at": datetime_now()
+                "transferred_at": DateTime.now()
             });
             
             return {"success": true, "post_id": post_id};

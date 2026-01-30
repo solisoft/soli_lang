@@ -570,14 +570,18 @@ impl TypeChecker {
 
         match obj_type {
             Type::Class(class) => {
-                if let Some(field) = class.find_field(name) {
-                    return Ok(field.ty.clone());
-                }
-                if let Some(method) = class.find_method(name) {
-                    return Ok(Type::Function {
-                        params: method.params.iter().map(|(_, t)| t.clone()).collect(),
-                        return_type: Box::new(method.return_type.clone()),
-                    });
+                // Look up the class in the environment to get the full definition with methods
+                let class_def = self.env.get_class(&class.name);
+                if let Some(class_def) = class_def {
+                    if let Some(field) = class_def.find_field(name) {
+                        return Ok(field.ty.clone());
+                    }
+                    if let Some(method) = class_def.find_method(name) {
+                        return Ok(Type::Function {
+                            params: method.params.iter().map(|(_, t)| t.clone()).collect(),
+                            return_type: Box::new(method.return_type.clone()),
+                        });
+                    }
                 }
                 Err(TypeError::NoSuchMember {
                     type_name: class.name,
@@ -1132,7 +1136,8 @@ impl TypeChecker {
         for elem in elements.iter().skip(1) {
             let elem_type = self.check_expr(elem)?;
             // Widen to Any if types are inconsistent instead of erroring
-            if !elem_type.is_assignable_to(&result_type) && !result_type.is_assignable_to(&elem_type)
+            if !elem_type.is_assignable_to(&result_type)
+                && !result_type.is_assignable_to(&elem_type)
             {
                 result_type = Type::Any;
             }

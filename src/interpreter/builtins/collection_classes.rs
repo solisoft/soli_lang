@@ -1459,8 +1459,15 @@ fn register_base64_class(env: &mut Environment) {
             };
             match general_purpose::STANDARD.decode(&data) {
                 Ok(bytes) => {
-                    let values: Vec<Value> = bytes.iter().map(|&b| Value::Int(b as i64)).collect();
-                    Ok(Value::Array(Rc::new(RefCell::new(values))))
+                    match String::from_utf8(bytes.clone()) {
+                        Ok(string) => Ok(Value::String(string)),
+                        Err(_) => {
+                            // If not valid UTF-8, return as byte array
+                            let values: Vec<Value> =
+                                bytes.iter().map(|&b| Value::Int(b as i64)).collect();
+                            Ok(Value::Array(Rc::new(RefCell::new(values))))
+                        }
+                    }
                 }
                 Err(e) => Err(format!("Base64 decode error: {}", e)),
             }

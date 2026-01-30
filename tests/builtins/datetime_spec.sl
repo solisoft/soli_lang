@@ -3,21 +3,21 @@
 // ============================================================================
 
 describe("DateTime Functions", fn() {
-    test("datetime_now() returns current time", fn() {
-        let now = datetime_now();
+    test("DateTime.now() returns current time", fn() {
+        let now = DateTime.now();
         assert_not_null(now);
         assert(now.year() >= 2024);
     });
 
-    test("datetime_from_unix() creates from timestamp", fn() {
-        let dt = datetime_from_unix(0);
+    test("DateTime.from_unix() creates from timestamp", fn() {
+        let dt = DateTime.from_unix(0);
         assert_eq(dt.year(), 1970);
         assert_eq(dt.month(), 1);
         assert_eq(dt.day(), 1);
     });
 
     test("datetime instance methods work", fn() {
-        let dt = datetime_from_unix(1704067200);
+        let dt = DateTime.from_unix(1704067200);
         assert(dt.year() >= 2024);
         assert(dt.month() >= 1);
         assert(dt.month() <= 12);
@@ -32,23 +32,23 @@ describe("DateTime Functions", fn() {
     });
 
     test("datetime arithmetic works", fn() {
-        let dt = datetime_from_unix(1704067200);
+        let dt = DateTime.from_unix(1704067200);
         let later = dt.add_days(1);
-        assert(later.timestamp() > dt.timestamp());
+        assert(later.to_unix() > dt.to_unix());
 
         let earlier = dt.subtract_days(1);
-        assert(earlier.timestamp() < dt.timestamp());
+        assert(earlier.to_unix() < dt.to_unix());
     });
 
-    test("datetime_to_unix() converts to timestamp", fn() {
-        let dt = datetime_from_unix(1704067200);
-        let ts = datetime_to_unix(dt);
+    test("dt.to_unix() converts to timestamp", fn() {
+        let dt = DateTime.from_unix(1704067200);
+        let ts = dt.to_unix();
         assert_eq(ts, 1704067200);
     });
 
-    test("datetime iso8601() formatting", fn() {
-        let dt = datetime_from_unix(0);
-        let iso = dt.iso8601();
+    test("datetime to_iso() formatting", fn() {
+        let dt = DateTime.from_unix(0);
+        let iso = dt.to_iso();
         assert_contains(iso, "1970");
     });
 });
@@ -72,7 +72,7 @@ describe("DateTime Static Methods", fn() {
         assert_eq(epoch.year(), 1970);
     });
 
-    test("DateTime.from_unix() is alias for datetime_from_unix", fn() {
+    test("DateTime.from_unix() creates DateTime from timestamp", fn() {
         let dt = DateTime.from_unix(1704067200);
         assert_not_null(dt);
         assert_eq(dt.year(), 2024);

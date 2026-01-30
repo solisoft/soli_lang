@@ -55,11 +55,11 @@ describe("Cryptography Standalone Functions", fn() {
         assert(len(mac) > 0);
     });
 
-    test("base64_encode() and base64_decode() work", fn() {
+    test("Base64.encode() and Base64.decode() work", fn() {
         let original = "hello world";
-        let encoded = base64_encode(original);
+        let encoded = Base64.encode(original);
         assert_not_null(encoded);
-        let decoded = base64_decode(encoded);
+        let decoded = Base64.decode(encoded);
         assert_eq(decoded, original);
     });
 });
@@ -119,11 +119,11 @@ describe("Crypto Class Static Methods", fn() {
         assert_eq(len(keypair["private"]), 64);
     });
 
-    test("Crypto.base64_encode() and Crypto.base64_decode() work", fn() {
+    test("Base64 class encodes and decodes correctly", fn() {
         let original = "Test data for base64";
-        let encoded = Crypto.base64_encode(original);
+        let encoded = Base64.encode(original);
         assert_not_null(encoded);
-        let decoded = Crypto.base64_decode(encoded);
+        let decoded = Base64.decode(encoded);
         assert_eq(decoded, original);
     });
 

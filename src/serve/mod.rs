@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -98,6 +98,96 @@ pub struct UploadedFile {
     pub filename: String,
     pub content_type: String,
     pub data: Vec<u8>,
+}
+
+// =============================================================================
+// REPL Session Store - Persists interpreter state between REPL requests
+// Uses thread-local storage since Interpreter is !Send (contains Rc<RefCell<>>)
+// =============================================================================
+
+/// REPL session data containing interpreter and last access time
+struct ReplSession {
+    interpreter: RefCell<Interpreter>,
+    last_accessed: RefCell<Instant>,
+}
+
+/// Thread-local REPL session store
+/// Each tokio worker thread has its own store
+struct ReplSessionStore {
+    sessions: RefCell<HashMap<String, Rc<ReplSession>>>,
+    max_age: Duration,
+}
+
+impl ReplSessionStore {
+    fn new() -> Self {
+        Self {
+            sessions: RefCell::new(HashMap::new()),
+            max_age: Duration::from_secs(30 * 60), // 30 minutes
+        }
+    }
+
+    /// Get existing session or create new one
+    fn get_or_create(&self, session_id: &str) -> (String, Rc<ReplSession>) {
+        // Try to get existing valid session
+        {
+            let sessions = self.sessions.borrow();
+            if let Some(session) = sessions.get(session_id) {
+                if !self.is_expired(session) {
+                    *session.last_accessed.borrow_mut() = Instant::now();
+                    return (session_id.to_string(), Rc::clone(session));
+                }
+            }
+        }
+
+        // Cleanup expired sessions periodically (1 in 50 chance)
+        if rand::random::<u64>() % 50 == 0 {
+            self.cleanup();
+        }
+
+        // Create new session
+        let new_id = if session_id.is_empty() {
+            Uuid::new_v4().to_string()
+        } else {
+            session_id.to_string()
+        };
+
+        let session = Rc::new(ReplSession {
+            interpreter: RefCell::new(Interpreter::new()),
+            last_accessed: RefCell::new(Instant::now()),
+        });
+
+        {
+            let mut sessions = self.sessions.borrow_mut();
+            sessions.insert(new_id.clone(), Rc::clone(&session));
+        }
+
+        (new_id, session)
+    }
+
+    /// Check if a session is expired
+    fn is_expired(&self, session: &ReplSession) -> bool {
+        session.last_accessed.borrow().elapsed() > self.max_age
+    }
+
+    /// Cleanup expired sessions
+    fn cleanup(&self) {
+        let mut sessions = self.sessions.borrow_mut();
+        let expired_keys: Vec<String> = sessions
+            .iter()
+            .filter(|(_, session)| self.is_expired(session.as_ref()))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in expired_keys {
+            sessions.remove(&key);
+        }
+    }
+}
+
+// Thread-local storage for REPL sessions
+// Each thread gets its own store, which is fine since sessions are identified by UUID
+// and requests from the same browser tab will hit the same thread most of the time
+thread_local! {
+    static REPL_STORE: ReplSessionStore = ReplSessionStore::new();
 }
 
 /// Request data sent to interpreter thread
@@ -818,8 +908,6 @@ impl HotReloadVersions {
         }
     }
 }
-
-use std::sync::atomic::AtomicU64;
 
 /// Per-worker queue for distributing requests without contention.
 /// Each worker has its own dedicated channel, eliminating receiver contention.
@@ -3710,13 +3798,19 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
         .to_string();
     let request_data = json.get("request_data").cloned();
     let breakpoint_env = json.get("breakpoint_env").cloned();
+    let repl_session_id = json
+        .get("repl_session_id")
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .to_string();
 
     // Execute the code using the interpreter
-    let result = execute_repl_code(&code, request_data, breakpoint_env);
+    let (result, new_session_id) = execute_repl_code(&code, request_data, breakpoint_env, &repl_session_id);
 
     let response_json = serde_json::json!({
         "result": result.result,
-        "error": result.error
+        "error": result.error,
+        "repl_session_id": new_session_id
     });
 
     Ok(Response::builder()
@@ -3824,15 +3918,17 @@ fn execute_repl_code(
     code: &str,
     request_data: Option<serde_json::Value>,
     breakpoint_env: Option<serde_json::Value>,
-) -> ReplResult {
+    repl_session_id: &str,
+) -> (ReplResult, String) {
+    let (session_id, session) = REPL_STORE.with(|store| store.get_or_create(repl_session_id));
+    let mut interpreter = session.interpreter.borrow_mut();
+
     if code.trim().is_empty() {
-        return ReplResult {
+        return (ReplResult {
             result: "null".to_string(),
             error: None,
-        };
+        }, session_id);
     }
-
-    let mut interpreter = crate::interpreter::Interpreter::new();
 
     // Inject view helpers into REPL environment (same helpers available in templates)
     for (name, value) in crate::interpreter::builtins::template::get_view_helpers() {
@@ -3915,16 +4011,16 @@ fn execute_repl_code(
                     Some(v) => format!("{}", v),
                     None => "null".to_string(),
                 };
-                return ReplResult {
+                return (ReplResult {
                     result: result_str,
                     error: None,
-                };
+                }, session_id);
             }
             Err(e) => {
-                return ReplResult {
+                return (ReplResult {
                     result: "null".to_string(),
                     error: Some(format!("Execution error: {}", e)),
-                };
+                }, session_id);
             }
         }
     }
@@ -3937,7 +4033,7 @@ fn execute_repl_code(
             .map_err(|e| format!("{:?}", e))
     });
 
-    match parse_result {
+    let result = match parse_result {
         Ok(program) => match interpreter.interpret(&program) {
             Ok(_) => ReplResult {
                 result: "ok".to_string(),
@@ -3952,7 +4048,9 @@ fn execute_repl_code(
             result: "null".to_string(),
             error: Some(format!("Parse error: {}", parse_errors)),
         },
-    }
+    };
+
+    (result, session_id)
 }
 
 /// Helper to convert JSON to Value, returning Null on error.

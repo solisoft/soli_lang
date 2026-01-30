@@ -82,7 +82,7 @@ class LoggingController extends Controller {
     }
 
     fn log(level: String, message: String, ...args: Any[]) -> Any {
-        let timestamp = datetime_now();
+        let timestamp = DateTime.now();
         let formatted_args = [];
 
         let i = 0;
@@ -367,8 +367,8 @@ class HashSpreadController extends Controller {
 
         let enriched = {
             ...user,
-            "created_at": datetime_now(),
-            "last_login": datetime_now(),
+            "created_at": DateTime.now(),
+            "last_login": DateTime.now(),
             "status": "active"
         };
 
@@ -551,7 +551,7 @@ class ResponseController extends Controller {
     fn build_response(req: Any) -> Any {
         let base_response = {
             "success": true,
-            "timestamp": datetime_now(),
+            "timestamp": DateTime.now(),
             "request_id": generate_request_id()
         };
 
@@ -579,7 +579,7 @@ class ResponseController extends Controller {
 
         let base_error = {
             "success": false,
-            "timestamp": datetime_now(),
+            "timestamp": DateTime.now(),
             "error": {
                 "code": "INTERNAL_ERROR",
                 "message": error
@@ -610,7 +610,7 @@ class ResponseController extends Controller {
 
         let base_pagination = {
             "success": true,
-            "timestamp": datetime_now(),
+            "timestamp": DateTime.now(),
             "pagination": {
                 "page": page,
                 "limit": limit,
@@ -641,7 +641,7 @@ class EventController extends Controller {
     fn emit(event_type: String, ...key_values: Any[]) -> Any {
         let event = {
             "type": event_type,
-            "timestamp": datetime_now(),
+            "timestamp": DateTime.now(),
             "data": {}
         };
 
@@ -862,7 +862,7 @@ class ComplexRestSpreadController extends Controller {
         return [
             { "success": true },
             { "version": "1.0" },
-            { "generated_at": datetime_now() }
+            { "generated_at": DateTime.now() }
         ];
     }
 

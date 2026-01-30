@@ -130,62 +130,6 @@
         </section>
     </section>
 
-    <!-- Base64 Encoding -->
-    <section id="section-base64" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-            </span>
-            Base64 Encoding
-        </h2>
-
-        <section id="fn-base64-encode" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-base64-encode" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.base64_encode(data)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Encode a string to Base64. Also available as <code class="text-indigo-400">base64_encode()</code>.</p>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to encode
-                </div>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - Base64-encoded string
-                </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let encoded = Crypto.base64_encode("hello world")
-// "aGVsbG8gd29ybGQ="</code></pre>
-            </div>
-        </section>
-
-        <section id="fn-base64-decode" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-base64-decode" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.base64_decode(data)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Decode a Base64 string. Also available as <code class="text-indigo-400">base64_decode()</code>.</p>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The Base64-encoded string
-                </div>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - Decoded string
-                </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let decoded = Crypto.base64_decode("aGVsbG8gd29ybGQ=")
-// "hello world"</code></pre>
-            </div>
-        </section>
-    </section>
-
     <!-- Password Hashing -->
     <section id="section-password-hashing" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

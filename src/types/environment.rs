@@ -645,6 +645,187 @@ impl TypeEnvironment {
                 is_static: true,
             },
         );
+        datetime_class.methods.insert(
+            "epoch".to_string(),
+            MethodInfo {
+                name: "epoch".to_string(),
+                params: vec![],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        datetime_class.methods.insert(
+            "from_unix".to_string(),
+            MethodInfo {
+                name: "from_unix".to_string(),
+                params: vec![("ts".to_string(), Type::Int)],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        // Instance methods
+        datetime_class.methods.insert(
+            "year".to_string(),
+            MethodInfo {
+                name: "year".to_string(),
+                params: vec![],
+                return_type: Type::Int,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "month".to_string(),
+            MethodInfo {
+                name: "month".to_string(),
+                params: vec![],
+                return_type: Type::Int,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "day".to_string(),
+            MethodInfo {
+                name: "day".to_string(),
+                params: vec![],
+                return_type: Type::Int,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "hour".to_string(),
+            MethodInfo {
+                name: "hour".to_string(),
+                params: vec![],
+                return_type: Type::Int,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "minute".to_string(),
+            MethodInfo {
+                name: "minute".to_string(),
+                params: vec![],
+                return_type: Type::Int,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "second".to_string(),
+            MethodInfo {
+                name: "second".to_string(),
+                params: vec![],
+                return_type: Type::Int,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "millisecond".to_string(),
+            MethodInfo {
+                name: "millisecond".to_string(),
+                params: vec![],
+                return_type: Type::Int,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "weekday".to_string(),
+            MethodInfo {
+                name: "weekday".to_string(),
+                params: vec![],
+                return_type: Type::String,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "to_unix".to_string(),
+            MethodInfo {
+                name: "to_unix".to_string(),
+                params: vec![],
+                return_type: Type::Int,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "to_iso".to_string(),
+            MethodInfo {
+                name: "to_iso".to_string(),
+                params: vec![],
+                return_type: Type::String,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "to_string".to_string(),
+            MethodInfo {
+                name: "to_string".to_string(),
+                params: vec![],
+                return_type: Type::String,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "add_days".to_string(),
+            MethodInfo {
+                name: "add_days".to_string(),
+                params: vec![("days".to_string(), Type::Int)],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "add_hours".to_string(),
+            MethodInfo {
+                name: "add_hours".to_string(),
+                params: vec![("hours".to_string(), Type::Int)],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "add_minutes".to_string(),
+            MethodInfo {
+                name: "add_minutes".to_string(),
+                params: vec![("minutes".to_string(), Type::Int)],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "subtract_days".to_string(),
+            MethodInfo {
+                name: "subtract_days".to_string(),
+                params: vec![("days".to_string(), Type::Int)],
+                return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                is_private: false,
+                is_static: false,
+            },
+        );
+        datetime_class.methods.insert(
+            "format".to_string(),
+            MethodInfo {
+                name: "format".to_string(),
+                params: vec![("fmt".to_string(), Type::String)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: false,
+            },
+        );
         self.classes.insert("DateTime".to_string(), datetime_class);
 
         // Duration class
@@ -666,6 +847,107 @@ impl TypeEnvironment {
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
                 is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "of_seconds".to_string(),
+            MethodInfo {
+                name: "of_seconds".to_string(),
+                params: vec![("seconds".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "of_minutes".to_string(),
+            MethodInfo {
+                name: "of_minutes".to_string(),
+                params: vec![("minutes".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "of_hours".to_string(),
+            MethodInfo {
+                name: "of_hours".to_string(),
+                params: vec![("hours".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "of_days".to_string(),
+            MethodInfo {
+                name: "of_days".to_string(),
+                params: vec![("days".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "of_weeks".to_string(),
+            MethodInfo {
+                name: "of_weeks".to_string(),
+                params: vec![("weeks".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        // Duration instance methods
+        duration_class.methods.insert(
+            "total_seconds".to_string(),
+            MethodInfo {
+                name: "total_seconds".to_string(),
+                params: vec![],
+                return_type: Type::Float,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        duration_class.methods.insert(
+            "total_minutes".to_string(),
+            MethodInfo {
+                name: "total_minutes".to_string(),
+                params: vec![],
+                return_type: Type::Float,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        duration_class.methods.insert(
+            "total_hours".to_string(),
+            MethodInfo {
+                name: "total_hours".to_string(),
+                params: vec![],
+                return_type: Type::Float,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        duration_class.methods.insert(
+            "total_days".to_string(),
+            MethodInfo {
+                name: "total_days".to_string(),
+                params: vec![],
+                return_type: Type::Float,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        duration_class.methods.insert(
+            "to_string".to_string(),
+            MethodInfo {
+                name: "to_string".to_string(),
+                params: vec![],
+                return_type: Type::String,
+                is_private: false,
+                is_static: false,
             },
         );
         self.classes.insert("Duration".to_string(), duration_class);

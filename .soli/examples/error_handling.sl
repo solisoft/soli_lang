@@ -279,7 +279,7 @@ class DatabaseController extends Controller {
                     "user_id": data["user_id"],
                     "amount": data["amount"],
                     "type": "withdrawal",
-                    "created_at": datetime_now()
+                    "created_at": DateTime.now()
                 });
 
                 return { "success": true, "new_balance": user["balance"] - data["amount"] };
@@ -394,7 +394,7 @@ fn create_user(data: Hash) -> Any {
         "name": data["name"],
         "email": data["email"],
         "password": hash_password(data["password"]),
-        "created_at": datetime_now()
+        "created_at": DateTime.now()
     });
 
     return result;
