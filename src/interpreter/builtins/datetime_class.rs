@@ -987,6 +987,28 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         })),
     );
 
+    // Aliases: seconds, minutes, hours, days, weeks
+    dur_static_methods.insert(
+        "seconds".to_string(),
+        dur_static_methods.get("of_seconds").unwrap().clone(),
+    );
+    dur_static_methods.insert(
+        "minutes".to_string(),
+        dur_static_methods.get("of_minutes").unwrap().clone(),
+    );
+    dur_static_methods.insert(
+        "hours".to_string(),
+        dur_static_methods.get("of_hours").unwrap().clone(),
+    );
+    dur_static_methods.insert(
+        "days".to_string(),
+        dur_static_methods.get("of_days").unwrap().clone(),
+    );
+    dur_static_methods.insert(
+        "weeks".to_string(),
+        dur_static_methods.get("of_weeks").unwrap().clone(),
+    );
+
     // Create Duration class
     let duration_class = Class {
         name: "Duration".to_string(),

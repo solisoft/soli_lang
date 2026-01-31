@@ -827,6 +827,57 @@ impl TypeEnvironment {
                 is_static: true,
             },
         );
+        // Aliases: seconds, minutes, hours, days, weeks
+        duration_class.methods.insert(
+            "seconds".to_string(),
+            MethodInfo {
+                name: "seconds".to_string(),
+                params: vec![("seconds".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "minutes".to_string(),
+            MethodInfo {
+                name: "minutes".to_string(),
+                params: vec![("minutes".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "hours".to_string(),
+            MethodInfo {
+                name: "hours".to_string(),
+                params: vec![("hours".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "days".to_string(),
+            MethodInfo {
+                name: "days".to_string(),
+                params: vec![("days".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        duration_class.methods.insert(
+            "weeks".to_string(),
+            MethodInfo {
+                name: "weeks".to_string(),
+                params: vec![("weeks".to_string(), Type::Float)],
+                return_type: Type::Class(ClassType::new("Duration".to_string())),
+                is_private: false,
+                is_static: true,
+            },
+        );
         // Duration instance methods
         duration_class.methods.insert(
             "total_seconds".to_string(),
