@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0](https://github.com/solisoft/soli_lang/compare/v0.4.0...v0.5.0) (2026-01-31)
+
+
+### Features
+
+* Add static method aliases for Duration class ([8c7c4a2](https://github.com/solisoft/soli_lang/commit/8c7c4a28abd5f7cd5b1d2a84cf69cbb1b5ad2c6a))
+* Add support for nested classes and qualified name access ([d258260](https://github.com/solisoft/soli_lang/commit/d258260c00a4edc630daf003635f4f4c6ba70d5e))
+* Enhance documentation with nested classes and module integration ([52c9bfa](https://github.com/solisoft/soli_lang/commit/52c9bfa250d4e39a7755f29ee505680aadd9ed75))
+* Introduce Regex class with static methods for regex operations ([d351a4d](https://github.com/solisoft/soli_lang/commit/d351a4d24ff3e03873f4a41355018daffcec330b))
+
 ## [0.4.0](https://github.com/solisoft/soli_lang/compare/v0.3.0...v0.4.0) (2026-01-30)
 
 
