@@ -372,6 +372,193 @@ print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
 }</code></pre>
     </section>
 
+    <!-- Nested Classes -->
+    <section id="section-nested-classes" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Nested Classes</h2>
+
+        <section id="nested-classes" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <p class="text-gray-400 mb-3">Classes can be defined inside other classes, providing logical grouping and access to the outer class's members.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Outer {
+    outer_value: Int;
+
+    new(value: Int) {
+        this.outer_value = value;
+    }
+
+    fn create_inner(x: Int) -> Inner {
+        return new Inner(this, x);
+    }
+
+    class Inner {
+        outer: Outer;
+        inner_value: Int;
+
+        new(outer: Outer, value: Int) {
+            this.outer = outer;
+            this.inner_value = value;
+        }
+
+        fn get_combined() -> Int {
+            return this.outer.outer_value + this.inner_value;
+        }
+
+        fn get_outer_value() -> Int {
+            return this.outer.outer_value;
+        }
+    }
+}
+
+// Using nested classes
+let outer = new Outer(10);
+let inner = new Outer.Inner(outer, 5);
+
+print(inner.get_combined());   // 15
+print(inner.get_outer_value()); // 10
+
+// Factory pattern
+let inner2 = outer.create_inner(20);
+print(inner2.get_combined());   // 30</code></pre>
+            </div>
+        </section>
+
+        <section id="nested-class-access" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Accessing Nested Classes</h3>
+                <p class="text-gray-400 mb-3">Nested classes can be accessed through the outer class using dot notation.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Tree {
+    class Node {
+        value: Int;
+        left: Node?;
+        right: Node?;
+
+        new(value: Int) {
+            this.value = value;
+            this.left = null;
+            this.right = null;
+        }
+
+        fn insert(new_value: Int) {
+            if (new_value < this.value) {
+                if (this.left == null) {
+                    this.left = new Tree.Node(new_value);
+                } else {
+                    this.left.insert(new_value);
+                }
+            } else {
+                if (this.right == null) {
+                    this.right = new Tree.Node(new_value);
+                } else {
+                    this.right.insert(new_value);
+                }
+            }
+        }
+    }
+
+    root: Tree.Node?;
+
+    new() {
+        this.root = null;
+    }
+
+    fn insert(value: Int) {
+        if (this.root == null) {
+            this.root = new Tree.Node(value);
+        } else {
+            this.root.insert(value);
+        }
+    }
+}
+
+let tree = new Tree();
+tree.insert(5);
+tree.insert(3);
+tree.insert(7);</code></pre>
+            </div>
+        </section>
+
+        <section id="nested-class-naming" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Domain-Driven Naming Convention</h3>
+                <p class="text-gray-400 mb-3">Nested classes with the <code>::</code> separator follow a domain-driven naming convention, commonly used to organize related classes into logical namespaces. This pattern groups related functionality under a domain or context.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">// Domain model organization
+class User {
+    class Profile {
+        username: String;
+        avatar_url: String;
+
+        new(username: String) {
+            this.username = username;
+            this.avatar_url = "https://example.com/avatars/" + username;
+        }
+    }
+
+    class Settings {
+        theme: String;
+        notifications: Bool;
+
+        new() {
+            this.theme = "light";
+            this.notifications = true;
+        }
+    }
+}
+
+let profile = new User::Profile("alice");
+let settings = new User::Settings();
+
+// Controller action organization
+class Posts {
+    class Action {
+        fn create(title: String, content: String) {
+            return "Creating post: " + title;
+        }
+
+        fn delete(id: Int) {
+            return "Deleting post: " + str(id);
+        }
+    }
+
+    class Validator {
+        fn validate_post(post: Any) -> Bool {
+            return post["title"] != null && post["content"] != null;
+        }
+    }
+}
+
+let action = new Posts::Action();
+action.create("Hello", "World");</code></pre>
+            </div>
+        </section>
+
+        <section id="qualified-class-names" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Fully Qualified Names</h3>
+                <p class="text-gray-400 mb-3">Nested classes can be accessed using fully qualified names from anywhere in the code.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Service {
+    class Database {
+        fn query(sql: String) {
+            return "Executing: " + sql;
+        }
+    }
+
+    class Cache {
+        fn get(key: String) -> String? {
+            return null;
+        }
+    }
+}
+
+// Accessing from any scope using fully qualified names
+let db = new Service::Database();
+let cache = new Service::Cache();
+
+print(db.query("SELECT * FROM users"));
+print(cache.get("session:123"));</code></pre>
+            </div>
+        </section>
+    </section>
+
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
         <a href="/docs/language/collections" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
