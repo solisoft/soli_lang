@@ -80,7 +80,7 @@ impl TypeChecker {
             }
 
             ExprKind::New {
-                class_expr,
+                class_expr: _,
                 arguments,
             } => {
                 // For now, just check arguments and return an error type
