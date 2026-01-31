@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/solisoft/soli_lang/compare/v0.5.0...v0.6.0) (2026-01-31)
+
+
+### Features
+
+* Refactor JSON handling to use JSON class methods ([f36b066](https://github.com/solisoft/soli_lang/commit/f36b066c3d2091b1b1624c4850b199bd1768de6a))
+* Update dependencies and enhance REPL functionality ([b240781](https://github.com/solisoft/soli_lang/commit/b240781119ab5a6119c50ef47ab003d7ee955e08))
+
 ## [0.5.0](https://github.com/solisoft/soli_lang/compare/v0.4.0...v0.5.0) (2026-01-31)
 
 
