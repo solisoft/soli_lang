@@ -1073,8 +1073,14 @@ fn create_http_response(
         .collect();
 
     let mut result: IndexMap<HashKey, Value> = IndexMap::new();
-    result.insert(HashKey::String("status".to_string()), Value::Int(status as i64));
-    result.insert(HashKey::String("status_text".to_string()), Value::String(status_text));
+    result.insert(
+        HashKey::String("status".to_string()),
+        Value::Int(status as i64),
+    );
+    result.insert(
+        HashKey::String("status_text".to_string()),
+        Value::String(status_text),
+    );
     result.insert(
         HashKey::String("headers".to_string()),
         Value::Hash(Rc::new(RefCell::new(response_headers))),

@@ -444,7 +444,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             static_fields: Rc::new(RefCell::new(HashMap::new())),
                             fields: HashMap::new(),
                             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
                             all_methods_cache: RefCell::new(None),
                             all_native_methods_cache: RefCell::new(None),
                         }));
@@ -485,7 +485,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             static_fields: Rc::new(RefCell::new(HashMap::new())),
                             fields: HashMap::new(),
                             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
                             all_methods_cache: RefCell::new(None),
                             all_native_methods_cache: RefCell::new(None),
                         }));
@@ -526,7 +526,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             static_fields: Rc::new(RefCell::new(HashMap::new())),
                             fields: HashMap::new(),
                             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
                             all_methods_cache: RefCell::new(None),
                             all_native_methods_cache: RefCell::new(None),
                         }));
@@ -567,7 +567,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             static_fields: Rc::new(RefCell::new(HashMap::new())),
                             fields: HashMap::new(),
                             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
                             all_methods_cache: RefCell::new(None),
                             all_native_methods_cache: RefCell::new(None),
                         }));
@@ -641,7 +641,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 static_fields: Rc::new(RefCell::new(HashMap::new())),
                 fields: HashMap::new(),
                 constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                nested_classes: Rc::new(RefCell::new(HashMap::new())),
                 all_methods_cache: RefCell::new(None),
                 all_native_methods_cache: RefCell::new(None),
             }));
@@ -667,7 +667,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 static_fields: Rc::new(RefCell::new(HashMap::new())),
                 fields: HashMap::new(),
                 constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                nested_classes: Rc::new(RefCell::new(HashMap::new())),
                 all_methods_cache: RefCell::new(None),
                 all_native_methods_cache: RefCell::new(None),
             }));
@@ -700,7 +700,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     static_fields: Rc::new(RefCell::new(HashMap::new())),
                     fields: HashMap::new(),
                     constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
                     all_methods_cache: RefCell::new(None),
                     all_native_methods_cache: RefCell::new(None),
                 }));
@@ -727,7 +727,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     static_fields: Rc::new(RefCell::new(HashMap::new())),
                     fields: HashMap::new(),
                     constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
                     all_methods_cache: RefCell::new(None),
                     all_native_methods_cache: RefCell::new(None),
                 }));
@@ -819,7 +819,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             static_fields: Rc::new(RefCell::new(HashMap::new())),
                             fields: HashMap::new(),
                             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
                             all_methods_cache: RefCell::new(None),
                             all_native_methods_cache: RefCell::new(None),
                         }));
@@ -853,7 +853,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     static_fields: Rc::new(RefCell::new(HashMap::new())),
                     fields: HashMap::new(),
                     constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
                     all_methods_cache: RefCell::new(None),
                     all_native_methods_cache: RefCell::new(None),
                 }));
@@ -884,7 +884,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     static_fields: Rc::new(RefCell::new(HashMap::new())),
                     fields: HashMap::new(),
                     constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
                     all_methods_cache: RefCell::new(None),
                     all_native_methods_cache: RefCell::new(None),
                 }));
@@ -915,7 +915,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     static_fields: Rc::new(RefCell::new(HashMap::new())),
                     fields: HashMap::new(),
                     constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
                     all_methods_cache: RefCell::new(None),
                     all_native_methods_cache: RefCell::new(None),
                 }));
@@ -946,7 +946,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     static_fields: Rc::new(RefCell::new(HashMap::new())),
                     fields: HashMap::new(),
                     constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
                     all_methods_cache: RefCell::new(None),
                     all_native_methods_cache: RefCell::new(None),
                 }));
@@ -977,7 +977,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     static_fields: Rc::new(RefCell::new(HashMap::new())),
                     fields: HashMap::new(),
                     constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
                     all_methods_cache: RefCell::new(None),
                     all_native_methods_cache: RefCell::new(None),
                 }));

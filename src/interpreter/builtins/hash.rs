@@ -26,8 +26,7 @@ pub fn register_hash_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("keys", Some(1), |args| {
             match &args[0] {
                 Value::Hash(hash) => {
-                    let keys: Vec<Value> =
-                        hash.borrow().keys().map(|k| k.to_value()).collect();
+                    let keys: Vec<Value> = hash.borrow().keys().map(|k| k.to_value()).collect();
                     Ok(Value::Array(Rc::new(RefCell::new(keys))))
                 }
                 other => Err(format!("keys() expects hash, got {}", other.type_name())),

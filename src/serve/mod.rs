@@ -140,7 +140,7 @@ impl ReplSessionStore {
         }
 
         // Cleanup expired sessions periodically (1 in 50 chance)
-        if rand::random::<u64>() % 50 == 0 {
+        if rand::random::<u64>().is_multiple_of(50) {
             self.cleanup();
         }
 

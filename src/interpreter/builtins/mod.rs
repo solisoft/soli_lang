@@ -13,6 +13,8 @@ use crate::interpreter::value::{NativeFunction, Value};
 pub mod assertions;
 pub mod assigns_helpers;
 pub mod cache;
+pub mod clock;
+pub mod collection_classes;
 pub mod controller;
 pub mod crypto;
 pub mod datetime;
@@ -46,8 +48,6 @@ pub mod test_server;
 pub mod types;
 pub mod uploads;
 pub mod validation;
-pub mod clock;
-pub mod collection_classes;
 
 /// Register all built-in functions in the given environment.
 pub fn register_builtins(env: &mut Environment) {
@@ -338,7 +338,7 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+            nested_classes: Rc::new(RefCell::new(HashMap::new())),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         })),
@@ -371,7 +371,7 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+            nested_classes: Rc::new(RefCell::new(HashMap::new())),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         })),
@@ -404,7 +404,7 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+            nested_classes: Rc::new(RefCell::new(HashMap::new())),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         })),
@@ -437,7 +437,7 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+            nested_classes: Rc::new(RefCell::new(HashMap::new())),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         })),
@@ -470,7 +470,7 @@ fn register_error_classes(env: &mut Environment) {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+            nested_classes: Rc::new(RefCell::new(HashMap::new())),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         })),

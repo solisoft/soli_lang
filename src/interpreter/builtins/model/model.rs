@@ -99,7 +99,6 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::symbol::SymbolId;
 use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
 
-
 // ============================================================================
 // Validation Types
 // ============================================================================
@@ -162,8 +161,14 @@ impl ValidationError {
 
     pub fn to_value(&self) -> Value {
         let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
-        pairs.insert(HashKey::String("field".into()), Value::String(self.field.clone()));
-        pairs.insert(HashKey::String("message".into()), Value::String(self.message.clone()));
+        pairs.insert(
+            HashKey::String("field".into()),
+            Value::String(self.field.clone()),
+        );
+        pairs.insert(
+            HashKey::String("message".into()),
+            Value::String(self.message.clone()),
+        );
         Value::Hash(Rc::new(RefCell::new(pairs)))
     }
 }
@@ -204,8 +209,8 @@ struct DbConfig {
 
 impl DbConfig {
     fn from_env() -> Self {
-        let host = std::env::var("SOLIDB_HOST")
-            .unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let host =
+            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
         let host = host
             .trim_start_matches("https://")
             .trim_start_matches("http://")
@@ -255,8 +260,8 @@ pub fn init_db_config() {
 /// Get cached DB config - initialized on first call.
 fn get_db_config() -> &'static CachedDbConfig {
     CACHED_DB_CONFIG.get_or_init(|| {
-        let host = std::env::var("SOLIDB_HOST")
-            .unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let host =
+            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
         let host = host
             .trim_start_matches("https://")
             .trim_start_matches("http://")
@@ -264,7 +269,10 @@ fn get_db_config() -> &'static CachedDbConfig {
         let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         let cursor_url = format!("http://{}/_api/database/{}/cursor", host, database);
         let api_key = std::env::var("SOLIDB_API_KEY").ok();
-        CachedDbConfig { cursor_url, api_key }
+        CachedDbConfig {
+            cursor_url,
+            api_key,
+        }
     })
 }
 
@@ -570,7 +578,10 @@ pub fn build_validation_result(
 
     if !valid {
         let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
-        pairs.insert(HashKey::String("errors".into()), Value::Array(Rc::new(RefCell::new(error_values))));
+        pairs.insert(
+            HashKey::String("errors".into()),
+            Value::Array(Rc::new(RefCell::new(error_values))),
+        );
     }
 
     if let Some(rec) = record {
@@ -673,7 +684,10 @@ fn exec_async_query_with_binds(
             request = request.header("X-API-Key", key);
         }
 
-        let resp = request.send().await.map_err(|e| format!("HTTP error: {}", e))?;
+        let resp = request
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -681,8 +695,10 @@ fn exec_async_query_with_binds(
             return Err(format!("Query failed: {} - {}", status, body));
         }
 
-        let json: serde_json::Value =
-            resp.json().await.map_err(|e| format!("JSON error: {}", e))?;
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("JSON error: {}", e))?;
         Ok(json
             .get("result")
             .and_then(|r| r.as_array())
@@ -728,7 +744,10 @@ fn exec_async_query_raw(sdbql: String) -> Value {
             request = request.header("X-API-Key", key);
         }
 
-        let resp = request.send().await.map_err(|e| format!("HTTP error: {}", e))?;
+        let resp = request
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1243,7 +1262,7 @@ impl Model {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+            nested_classes: Rc::new(RefCell::new(HashMap::new())),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         };
@@ -1423,7 +1442,10 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
 
     match exec_async_query_with_binds(query, bind_vars_opt) {
         Ok(results) => {
-            let first = results.into_iter().next().unwrap_or(serde_json::Value::Null);
+            let first = results
+                .into_iter()
+                .next()
+                .unwrap_or(serde_json::Value::Null);
             json_to_value(&first)
         }
         Err(e) => Value::String(format!("Error: {}", e)),
