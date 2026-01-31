@@ -200,6 +200,7 @@ impl Parser {
         let mut constructor = None;
         let mut static_block = None;
         let mut class_statements = Vec::new();
+        let mut nested_classes = Vec::new();
 
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             if self.check(&TokenKind::Static) {
@@ -222,6 +223,12 @@ impl Parser {
                     ));
                 }
                 constructor = Some(self.parse_constructor()?);
+            } else if self.check(&TokenKind::Class) {
+                // Handle nested class declaration
+                let nested_class = self.class_declaration()?;
+                if let StmtKind::Class(nested_class_decl) = nested_class.kind {
+                    nested_classes.push(nested_class_decl);
+                }
             } else if self.check(&TokenKind::Fn) {
                 methods.push(self.parse_method(visibility, is_static)?);
             } else if self.is_class_level_statement() {
@@ -245,6 +252,7 @@ impl Parser {
                 constructor,
                 static_block,
                 class_statements,
+                nested_classes,
                 span,
             }),
             span,

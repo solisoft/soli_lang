@@ -98,14 +98,39 @@ impl Parser {
             }
 
             TokenKind::New => {
+                let start_span = self.current_span();
+                // Note: 'new' has already been consumed by parse_prefix
+
+                // Parse the class name (could be simple name or qualified name)
+                let name_span = self.current_span();
                 let class_name = self.expect_identifier()?;
+
+                // Check for qualified name (e.g., Outer::Inner)
+                let class_expr = if self.check(&TokenKind::DoubleColon) {
+                    self.advance(); // consume ::
+                    let nested_name = self.expect_identifier()?;
+                    let nested_span = name_span.merge(&self.previous_span());
+                    Expr::new(
+                        ExprKind::QualifiedName {
+                            qualifier: Box::new(Expr::new(
+                                ExprKind::Variable(class_name),
+                                name_span,
+                            )),
+                            name: nested_name,
+                        },
+                        nested_span,
+                    )
+                } else {
+                    Expr::new(ExprKind::Variable(class_name), name_span)
+                };
+
                 self.expect(&TokenKind::LeftParen)?;
                 let arguments = self.parse_arguments()?;
                 self.expect(&TokenKind::RightParen)?;
                 let span = start_span.merge(&self.previous_span());
                 Ok(Expr::new(
                     ExprKind::New {
-                        class_name,
+                        class_expr: Box::new(class_expr),
                         arguments,
                     },
                     span,
@@ -549,6 +574,19 @@ impl Parser {
                 Ok(Expr::new(
                     ExprKind::Member {
                         object: Box::new(left),
+                        name,
+                    },
+                    span,
+                ))
+            }
+
+            // Qualified name access (e.g., Outer::Inner)
+            TokenKind::DoubleColon => {
+                let name = self.expect_identifier()?;
+                let span = start_span.merge(&self.previous_span());
+                Ok(Expr::new(
+                    ExprKind::QualifiedName {
+                        qualifier: Box::new(left),
                         name,
                     },
                     span,

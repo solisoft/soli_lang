@@ -82,6 +82,10 @@ impl Interpreter {
 
             ExprKind::Member { object, name } => self.evaluate_member(object, name, expr.span),
 
+            ExprKind::QualifiedName { qualifier, name } => {
+                self.evaluate_qualified_name(qualifier, name, expr.span)
+            }
+
             ExprKind::Index { object, index } => self.evaluate_index(object, index, expr.span),
 
             ExprKind::This => self
@@ -129,9 +133,9 @@ impl Interpreter {
             }
 
             ExprKind::New {
-                class_name,
+                class_expr,
                 arguments,
-            } => self.evaluate_new(class_name, arguments, expr.span),
+            } => self.evaluate_new(class_expr, arguments, expr.span),
 
             ExprKind::Array(elements) => {
                 let mut values = Vec::new();
@@ -705,6 +709,39 @@ impl Interpreter {
         }
     }
 
+    fn evaluate_qualified_name(
+        &mut self,
+        qualifier: &Expr,
+        name: &str,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let qualifier_val = self.evaluate(qualifier)?;
+
+        match qualifier_val {
+            Value::Class(class) => {
+                // Check if this is a nested class
+                if let Some(nested_class) = class.nested_classes.borrow().get(name) {
+                    return Ok(Value::Class(nested_class.clone()));
+                }
+
+                // Also check static fields (nested classes might be stored there)
+                if let Some(value) = class.static_fields.borrow().get(name).cloned() {
+                    return Ok(value);
+                }
+
+                Err(RuntimeError::NoSuchProperty {
+                    value_type: class.name.clone(),
+                    property: name.to_string(),
+                    span,
+                })
+            }
+            _ => Err(RuntimeError::type_error(
+                &format!("'{}' is not a class", qualifier_val.type_name()),
+                span,
+            )),
+        }
+    }
+
     fn evaluate_index(&mut self, object: &Expr, index: &Expr, span: Span) -> RuntimeResult<Value> {
         let obj_val = self.evaluate(object)?;
         let idx_val = self.evaluate(index)?;
@@ -769,16 +806,23 @@ impl Interpreter {
 
     fn evaluate_new(
         &mut self,
-        class_name: &str,
+        class_expr: &Expr,
         arguments: &[Argument],
         span: Span,
     ) -> RuntimeResult<Value> {
         use std::collections::{HashMap, HashSet};
 
-        let class = match self.environment.borrow().get(class_name) {
-            Some(Value::Class(c)) => c,
-            Some(_) => return Err(RuntimeError::NotAClass(class_name.to_string(), span)),
-            None => return Err(RuntimeError::undefined_variable(class_name, span)),
+        // Evaluate the class expression to get the class
+        let class_val = self.evaluate(class_expr)?;
+
+        let class = match class_val {
+            Value::Class(c) => c,
+            _ => {
+                return Err(RuntimeError::type_error(
+                    &format!("expected class name, got {}", class_val.type_name()),
+                    span,
+                ));
+            }
         };
 
         // Create instance

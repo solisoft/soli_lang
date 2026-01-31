@@ -148,6 +148,8 @@ pub struct ClassDecl {
     /// Class-level statements (e.g., validates(...), before_save(...))
     /// These are executed once when the class is defined.
     pub class_statements: Vec<Stmt>,
+    /// Nested classes defined within this class
+    pub nested_classes: Vec<ClassDecl>,
     pub span: Span,
 }
 

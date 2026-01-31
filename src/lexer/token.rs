@@ -83,6 +83,7 @@ pub enum TokenKind {
     Pipeline,          // |>
     Pipe,              // |
     NullishCoalescing, // ??
+    DoubleColon,       // ::
 
     // Delimiters
     LeftParen,
@@ -231,6 +232,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Pipeline => write!(f, "|>"),
             TokenKind::Pipe => write!(f, "|"),
             TokenKind::NullishCoalescing => write!(f, "??"),
+            TokenKind::DoubleColon => write!(f, "::"),
             TokenKind::LeftParen => write!(f, "("),
             TokenKind::RightParen => write!(f, ")"),
             TokenKind::LeftBrace => write!(f, "{{"),

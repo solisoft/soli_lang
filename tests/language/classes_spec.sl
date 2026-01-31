@@ -480,3 +480,65 @@ describe("Constructor Named Parameters", fn() {
         assert_eq(error_thrown, true);
     });
 });
+
+describe("Nested Classes", fn() {
+    test("basic nested class declaration", fn() {
+        class Outer {
+            class Inner {
+                fn greet() {
+                    return "Hello from Inner";
+                }
+            }
+        }
+        let inner = new Outer::Inner();
+        assert_eq(inner.greet(), "Hello from Inner");
+    });
+
+    test("nested class with constructor", fn() {
+        class Container {
+            class Item {
+                fn create_value() {
+                    return 42;
+                }
+            }
+        }
+        let item = new Container::Item();
+        assert_eq(item.create_value(), 42);
+    });
+
+    test("multiple nested classes", fn() {
+        class Service {
+            class Database {
+                fn connect() {
+                    return "DB connected";
+                }
+            }
+            
+            class Cache {
+                fn get(key) {
+                    return "cached:" + key;
+                }
+            }
+        }
+        let db = new Service::Database();
+        let cache = new Service::Cache();
+        assert_eq(db.connect(), "DB connected");
+        assert_eq(cache.get("test"), "cached:test");
+    });
+
+    test("nested class accessing parent class", fn() {
+        class Parent {
+            fn get_name() {
+                return "Parent";
+            }
+            
+            class Child {
+                fn introduce() {
+                    return "Child of Parent";
+                }
+            }
+        }
+        let child = new Parent::Child();
+        assert_eq(child.introduce(), "Child of Parent");
+    });
+});

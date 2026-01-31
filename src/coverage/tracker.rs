@@ -481,6 +481,9 @@ impl CoverageTracker {
             Member { object, .. } => {
                 self.collect_lines_from_expr(path, lines, object);
             }
+            QualifiedName { qualifier, .. } => {
+                self.collect_lines_from_expr(path, lines, qualifier);
+            }
             Index { object, index, .. } => {
                 self.collect_lines_from_expr(path, lines, object);
                 self.collect_lines_from_expr(path, lines, index);

@@ -79,6 +79,9 @@ pub enum ExprKind {
     /// Member access: obj.field
     Member { object: Box<Expr>, name: String },
 
+    /// Qualified name: Outer::Inner (for nested class access)
+    QualifiedName { qualifier: Box<Expr>, name: String },
+
     /// Array index: arr[index]
     Index { object: Box<Expr>, index: Box<Expr> },
 
@@ -88,9 +91,10 @@ pub enum ExprKind {
     /// super reference (for method calls)
     Super,
 
-    /// Object instantiation: new ClassName(args) or new ClassName(named: value)
+    /// Object instantiation: new ClassName(args) or new Outer::Inner(args)
+    /// class_expr can be a Variable or QualifiedName expression
     New {
-        class_name: String,
+        class_expr: Box<Expr>,
         arguments: Vec<Argument>,
     },
 

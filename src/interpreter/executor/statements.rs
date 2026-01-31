@@ -371,6 +371,7 @@ impl Interpreter {
             constructor,
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields,
+            nested_classes: Rc::new(RefCell::new(HashMap::new())),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         };
@@ -443,6 +444,56 @@ impl Interpreter {
                     }
                 }
             }
+        }
+
+        // Process nested classes
+        if !decl.nested_classes.is_empty() {
+            self.execute_nested_classes(&decl.nested_classes, class_rc.clone())?;
+        }
+
+        Ok(())
+    }
+
+    /// Execute nested class declarations
+    fn execute_nested_classes(
+        &mut self,
+        nested_decls: &[ClassDecl],
+        parent_class: Rc<Class>,
+    ) -> RuntimeResult<()> {
+        for nested_decl in nested_decls {
+            // Save the current environment
+            let previous_env = self.environment.clone();
+
+            // Create a new environment that inherits from the parent
+            let nested_env = Rc::new(RefCell::new(Environment::with_enclosing(
+                previous_env.clone(),
+            )));
+
+            // Define the parent class in the nested environment
+            nested_env.borrow_mut().define(
+                parent_class.name.clone(),
+                Value::Class(parent_class.clone()),
+            );
+
+            // Set the environment to the nested environment
+            self.environment = nested_env;
+
+            // Execute the nested class declaration
+            self.execute_class(nested_decl)?;
+
+            // After execute_class, the nested class should be in the environment
+            // Get it and store it in the parent's nested_classes map
+            if let Some(Value::Class(nested_class)) =
+                self.environment.borrow().get(&nested_decl.name)
+            {
+                parent_class
+                    .nested_classes
+                    .borrow_mut()
+                    .insert(nested_decl.name.clone(), nested_class.clone());
+            }
+
+            // Restore the previous environment
+            self.environment = previous_env;
         }
 
         Ok(())

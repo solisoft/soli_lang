@@ -1862,6 +1862,187 @@ if (laptop != null) {
 inventory.list_all();
 ```
 
+### Nested Classes
+
+Soli supports nested classes - classes defined within other classes. This feature is useful for organizing related classes, implementing design patterns, and creating clean namespaces.
+
+```soli
+class Organization {
+    class Department {
+        fn get_name() {
+            return "Engineering";
+        }
+        
+        fn get_budget() {
+            return 1000000;
+        }
+    }
+    
+    class Team {
+        fn get_name() {
+            return "Backend Team";
+        }
+    }
+}
+```
+
+#### Accessing Nested Classes
+
+Use the `::` (scope resolution operator) to access nested classes:
+
+```soli
+let dept = new Organization::Department();
+print("Department: " + dept.get_name());  // "Department: Engineering"
+print("Budget: $" + str(dept.get_budget()));  // "Budget: $1000000"
+
+let team = new Organization::Team();
+print("Team: " + team.get_name());  // "Team: Backend Team"
+```
+
+#### Use Cases
+
+**1. Design Patterns**
+
+Nested classes are perfect for implementing design patterns:
+
+```soli
+// State Pattern
+class TrafficLight {
+    class RedState {
+        fn next() {
+            return "green";
+        }
+        
+        fn get_duration() {
+            return 30;
+        }
+    }
+    
+    class GreenState {
+        fn next() {
+            return "yellow";
+        }
+        
+        fn get_duration() {
+            return 20;
+        }
+    }
+    
+    class YellowState {
+        fn next() {
+            return "red";
+        }
+        
+        fn get_duration() {
+            return 5;
+        }
+    }
+}
+
+let red = new TrafficLight::RedState();
+print("Red light duration: " + str(red.get_duration()) + "s");  // "Red light duration: 30s"
+print("Next state: " + red.next());  // "Next state: green"
+```
+
+**2. Organization and Encapsulation**
+
+Group related classes together:
+
+```soli
+class Database {
+    class Connection {
+        fn connect() {
+            return "Connected to database";
+        }
+    }
+    
+    class QueryBuilder {
+        fn select(table: String) {
+            return "SELECT * FROM " + table;
+        }
+    }
+    
+    class Transaction {
+        fn begin() {
+            return "Transaction started";
+        }
+    }
+}
+
+let conn = new Database::Connection();
+let query = new Database::QueryBuilder();
+let tx = new Database::Transaction();
+
+print(conn.connect());  // "Connected to database"
+print(query.select("users"));  // "SELECT * FROM users"
+print(tx.begin());  // "Transaction started"
+```
+
+**3. Configuration Objects**
+
+Create hierarchical configuration structures:
+
+```soli
+class Server {
+    class SSLConfig {
+        fn is_enabled() {
+            return true;
+        }
+        
+        fn get_protocol() {
+            return "TLS 1.3";
+        }
+    }
+    
+    class LoggingConfig {
+        fn get_level() {
+            return "INFO";
+        }
+    }
+    
+    fn start() {
+        return "Server starting with SSL: " + str(new Server::SSLConfig().is_enabled());
+    }
+}
+
+let ssl = new Server::SSLConfig();
+print("Protocol: " + ssl.get_protocol());  // "Protocol: TLS 1.3"
+```
+
+#### Multiple Nested Classes
+
+You can define multiple nested classes at the same level:
+
+```soli
+class Service {
+    class Database {
+        fn connect() {
+            return "DB connected";
+        }
+    }
+    
+    class Cache {
+        fn get(key: String) {
+            return "cached:" + key;
+        }
+    }
+    
+    class Logger {
+        fn log(msg: String) {
+            return "[LOG] " + msg;
+        }
+    }
+}
+
+let db = new Service::Database();
+let cache = new Service::Cache();
+let logger = new Service::Logger();
+
+print(db.connect());  // "DB connected"
+print(cache.get("test"));  // "cached:test"
+print(logger.log("test message"));  // "[LOG] test message"
+```
+
 ---
 
 ## Pattern Matching

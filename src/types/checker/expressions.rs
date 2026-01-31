@@ -22,6 +22,12 @@ impl TypeChecker {
                 .get(name)
                 .ok_or_else(|| TypeError::UndefinedVariable(name.clone(), expr.span)),
 
+            ExprKind::QualifiedName { .. } => {
+                // For now, return Unknown for qualified names
+                // Full type checking would require runtime evaluation
+                Ok(Type::Unknown)
+            }
+
             ExprKind::Grouping(inner) => self.check_expr(inner),
 
             ExprKind::Binary {
@@ -74,26 +80,24 @@ impl TypeChecker {
             }
 
             ExprKind::New {
-                class_name,
+                class_expr,
                 arguments,
             } => {
-                if let Some(class) = self.env.get_class(class_name).cloned() {
-                    // Check constructor arguments if available
-                    for arg in arguments {
-                        match arg {
-                            Argument::Positional(expr) => {
-                                self.check_expr(expr)?;
-                            }
-                            Argument::Named(named) => {
-                                // Named arguments - runtime will validate param names
-                                self.check_expr(&named.value)?;
-                            }
+                // For now, just check arguments and return an error type
+                // Full type checking for qualified names would require runtime evaluation
+                for arg in arguments {
+                    match arg {
+                        Argument::Positional(expr) => {
+                            self.check_expr(expr)?;
+                        }
+                        Argument::Named(named) => {
+                            self.check_expr(&named.value)?;
                         }
                     }
-                    Ok(Type::Class(class))
-                } else {
-                    Err(TypeError::UndefinedType(class_name.clone(), expr.span))
                 }
+                // Return an error type that will be resolved at runtime
+                // This is a simplified approach for nested classes
+                Ok(Type::Unknown)
             }
 
             ExprKind::Array(elements) => self.check_array_expr(expr, elements),

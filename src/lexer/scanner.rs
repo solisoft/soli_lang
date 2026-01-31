@@ -70,7 +70,9 @@ impl<'a> Scanner<'a> {
                     let next_next = self.peek_at(1);
                     match next_next {
                         // Nested array indicators
-                        Some(c) if c.is_ascii_digit() => Ok(self.make_token(TokenKind::LeftBracket)),
+                        Some(c) if c.is_ascii_digit() => {
+                            Ok(self.make_token(TokenKind::LeftBracket))
+                        }
                         Some('-') | Some('[') => Ok(self.make_token(TokenKind::LeftBracket)),
                         // Everything else (including ] for empty string) is a multiline string
                         _ => {
@@ -95,7 +97,13 @@ impl<'a> Scanner<'a> {
                     Ok(self.make_token(TokenKind::Dot)) // .
                 }
             }
-            ':' => Ok(self.make_token(TokenKind::Colon)),
+            ':' => {
+                if self.match_char(':') {
+                    Ok(self.make_token(TokenKind::DoubleColon))
+                } else {
+                    Ok(self.make_token(TokenKind::Colon))
+                }
+            }
             ';' => Ok(self.make_token(TokenKind::Semicolon)),
             '?' => {
                 if self.match_char('?') {

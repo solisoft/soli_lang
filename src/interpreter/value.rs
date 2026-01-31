@@ -540,6 +540,8 @@ pub struct Class {
     pub static_fields: Rc<RefCell<HashMap<String, Value>>>,
     pub fields: HashMap<String, Option<Expr>>,
     pub constructor: Option<Rc<Function>>,
+    /// Nested classes defined within this class - using RefCell for interior mutability
+    pub nested_classes: Rc<RefCell<HashMap<String, Rc<Class>>>>,
     /// Flattened method cache for O(1) lookups including inherited methods.
     /// This is computed lazily on first access and includes all methods from the inheritance chain.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
@@ -561,6 +563,7 @@ impl Default for Class {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,
+            nested_classes: Rc::new(RefCell::new(HashMap::new())),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         }
@@ -579,6 +582,7 @@ impl Class {
         static_fields: Rc<RefCell<HashMap<String, Value>>>,
         fields: HashMap<String, Option<Expr>>,
         constructor: Option<Rc<Function>>,
+        nested_classes: Rc<RefCell<HashMap<String, Rc<Class>>>>,
     ) -> Self {
         Self {
             name,
@@ -590,6 +594,7 @@ impl Class {
             static_fields,
             fields,
             constructor,
+            nested_classes,
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         }
