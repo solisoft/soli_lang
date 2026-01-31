@@ -413,24 +413,14 @@
       "signature": "http_parallel(requests)",
       "description": "Execute multiple requests of different methods in parallel",
       "keywords": ["http", "parallel", "batch", "concurrent"]
-    },
     {
-      "title": "json_parse",
-      "type": "function",
+      "title": "JSON",
+      "type": "class",
       "category": "JSON",
-      "path": "/docs/builtins/json#fn-json-parse",
-      "signature": "json_parse(string)",
-      "description": "Parse a JSON string into a Soli value",
-      "keywords": ["json", "parse", "decode", "deserialize"]
-    },
-    {
-      "title": "json_stringify",
-      "type": "function",
-      "category": "JSON",
-      "path": "/docs/builtins/json#fn-json-stringify",
-      "signature": "json_stringify(value)",
-      "description": "Serialize a Soli value to a JSON string",
-      "keywords": ["json", "stringify", "encode", "serialize"]
+      "path": "/docs/builtins/json",
+      "signature": "JSON",
+      "description": "Class for parsing and serializing JSON: JSON.parse(), JSON.stringify()",
+      "keywords": ["json", "parse", "stringify", "encode", "serialize", "class"]
     },
     {
       "title": "Crypto.sha256",

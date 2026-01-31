@@ -1156,6 +1156,48 @@ Regex.escape("hello.world")  // "hello\\.world"
 
 ---
 
+## JSON Class
+
+The `JSON` class provides static methods for parsing and serializing JSON data.
+
+### JSON.parse(string)
+
+Parses a JSON string into a Soli value (Hash, Array, String, Int, Float, Bool, or null).
+
+**Parameters:**
+- `string` (String) - A valid JSON string
+
+**Returns:** Any - The parsed value
+
+**Example:**
+```soli
+let data = JSON.parse('{"name": "Alice", "age": 30}')
+println(data["name"])  // "Alice"
+
+let numbers = JSON.parse('[1, 2, 3, 4, 5]')
+println(numbers[0])  // 1
+```
+
+### JSON.stringify(value)
+
+Serializes a Soli value to a JSON string.
+
+**Parameters:**
+- `value` (Any) - A JSON-compatible value (Hash, Array, String, Int, Float, Bool, null)
+
+**Returns:** String - The JSON string representation
+
+**Example:**
+```soli
+let json = JSON.stringify({ "name": "Alice", "scores": [95, 87] })
+println(json)  // {"name":"Alice","scores":[95,87]}
+
+let arr = JSON.stringify([1, 2, 3])
+println(arr)  // [1,2,3]
+```
+
+---
+
 ## Environment Functions
 
 ### getenv(name)
