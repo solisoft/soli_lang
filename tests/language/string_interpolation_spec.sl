@@ -39,7 +39,7 @@ describe("String Interpolation", fn() {
 
     test("interpolation with method call", fn() {
         let text = "hello";
-        let result = "Uppercase: \(upcase(text))";
+        let result = "Uppercase: \(text.upcase())";
         assert_eq(result, "Uppercase: HELLO");
     });
 

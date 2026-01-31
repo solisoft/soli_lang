@@ -21,7 +21,7 @@ describe("List Comprehensions", fn() {
 
     test("list comprehension with transformation", fn() {
         let words = ["hello", "world"];
-        let upper = [upcase(w) for w in words];
+        let upper = [w.upcase() for w in words];
         assert_eq(upper[0], "HELLO");
         assert_eq(upper[1], "WORLD");
     });

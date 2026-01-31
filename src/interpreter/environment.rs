@@ -100,6 +100,11 @@ impl Environment {
         self.values.contains_key(name) || self.consts.contains_key(name)
     }
 
+    /// Get all variable names in the current scope (for REPL introspection).
+    pub fn get_var_names(&self) -> Vec<String> {
+        self.values.keys().cloned().collect()
+    }
+
     /// Get a variable from local scope only (no parent chain traversal).
     /// Useful when you know the variable should be in the current scope.
     #[inline]

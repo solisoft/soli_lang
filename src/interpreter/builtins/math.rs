@@ -1,6 +1,6 @@
 //! Math operation built-in functions.
-//!
-//! Provides functions for numeric operations like range, absolute value, min/max, etc.
+//! Most math methods are available via the Math class.
+//! Some fundamental functions like range() are kept as standalone for convenience.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -12,6 +12,7 @@ use crate::interpreter::value::{Class, NativeFunction, Value};
 /// Register all math built-in functions.
 pub fn register_math_builtins(env: &mut Environment) {
     // range(start, end) - Create array from start to end-1 (exclusive)
+    // This is a fundamental constructor and kept as standalone for convenience
     env.define(
         "range".to_string(),
         Value::NativeFunction(NativeFunction::new("range", Some(2), |args| {
@@ -25,7 +26,7 @@ pub fn register_math_builtins(env: &mut Environment) {
         })),
     );
 
-    // abs(number) - Absolute value
+    // abs(number) - Absolute value (kept for convenience)
     env.define(
         "abs".to_string(),
         Value::NativeFunction(NativeFunction::new("abs", Some(1), |args| match &args[0] {
@@ -35,7 +36,7 @@ pub fn register_math_builtins(env: &mut Environment) {
         })),
     );
 
-    // min(a, b) - Minimum of two values
+    // min(a, b) - Minimum of two values (kept for convenience)
     env.define(
         "min".to_string(),
         Value::NativeFunction(NativeFunction::new("min", Some(2), |args| {
@@ -49,7 +50,7 @@ pub fn register_math_builtins(env: &mut Environment) {
         })),
     );
 
-    // max(a, b) - Maximum of two values
+    // max(a, b) - Maximum of two values (kept for convenience)
     env.define(
         "max".to_string(),
         Value::NativeFunction(NativeFunction::new("max", Some(2), |args| {
@@ -63,7 +64,7 @@ pub fn register_math_builtins(env: &mut Environment) {
         })),
     );
 
-    // sqrt(number) - Square root
+    // sqrt(number) - Square root (kept for convenience)
     env.define(
         "sqrt".to_string(),
         Value::NativeFunction(NativeFunction::new("sqrt", Some(1), |args| {
@@ -75,7 +76,7 @@ pub fn register_math_builtins(env: &mut Environment) {
         })),
     );
 
-    // pow(base, exp) - Exponentiation
+    // pow(base, exp) - Exponentiation (kept for convenience)
     env.define(
         "pow".to_string(),
         Value::NativeFunction(NativeFunction::new("pow", Some(2), |args| {

@@ -107,6 +107,10 @@ impl Interpreter {
         self.assertion_count
     }
 
+    pub fn global_env(&self) -> &Rc<RefCell<Environment>> {
+        &self.environment
+    }
+
     pub fn increment_assertion_count(&mut self) {
         self.assertion_count += 1;
     }

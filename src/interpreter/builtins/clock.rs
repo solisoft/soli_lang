@@ -1,9 +1,8 @@
 //! Clock and timing built-in functions.
 //!
-//! Provides sleep() and microtime() functions.
+//! Provides sleep() function. Use DateTime.microtime() for current timestamp.
 
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
@@ -28,15 +27,5 @@ pub fn register_clock_builtins(env: &mut Environment) {
         })),
     );
 
-    // microtime() - Returns current time in microseconds as float
-    env.define(
-        "microtime".to_string(),
-        Value::NativeFunction(NativeFunction::new("microtime", Some(0), |_args| {
-            let duration = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|e| e.to_string())?;
-            let micros = duration.as_secs() as f64 * 1_000_000.0 + duration.subsec_micros() as f64;
-            Ok(Value::Float(micros))
-        })),
-    );
+    // microtime() has been moved to DateTime.microtime()
 }

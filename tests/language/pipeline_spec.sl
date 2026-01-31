@@ -20,7 +20,7 @@ describe("Pipeline Operator", fn() {
     });
 
     test("pipeline with method call", fn() {
-        let result = "hello" |> upcase();
+        let result = "hello" |> fn(s) { return s.upcase(); };
         assert_eq(result, "HELLO");
     });
 

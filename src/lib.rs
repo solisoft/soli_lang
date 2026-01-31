@@ -50,6 +50,7 @@ pub mod live;
 pub mod migration;
 pub mod module;
 pub mod parser;
+pub mod repl;
 pub mod scaffold;
 pub mod serve;
 pub mod solidb_http;

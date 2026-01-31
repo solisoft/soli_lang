@@ -22,8 +22,8 @@ describe("Clock Functions", fn() {
         assert(elapsed >= 0.01);
     });
 
-    test("microtime() returns microseconds", fn() {
-        let mt = microtime();
+    test("DateTime.microtime() returns microseconds", fn() {
+        let mt = DateTime.microtime();
         assert(mt > 0);
     });
 });

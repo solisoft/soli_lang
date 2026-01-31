@@ -710,6 +710,24 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         )),
     );
 
+    // microtime() - Returns current time in microseconds as float (static method)
+    use std::time::{SystemTime, UNIX_EPOCH};
+    dt_static_methods.insert(
+        "microtime".to_string(),
+        Rc::new(NativeFunction::new(
+            "DateTime.microtime",
+            Some(0),
+            |_args| {
+                let duration = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(|e| e.to_string())?;
+                let micros =
+                    duration.as_secs() as f64 * 1_000_000.0 + duration.subsec_micros() as f64;
+                Ok(Value::Float(micros))
+            },
+        )),
+    );
+
     // epoch() - Create DateTime at Unix epoch (1970-01-01 00:00:00 UTC)
     dt_static_methods.insert(
         "epoch".to_string(),

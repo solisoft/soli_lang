@@ -2,14 +2,11 @@
 
 use std::env;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION", "0.2.0");
-
-use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
 
 #[cfg(unix)]
 use daemonize::Daemonize;
@@ -674,129 +671,8 @@ fn run_eval(code: &str, options: &Options) {
 }
 
 fn run_repl() {
-    println!("Soli {} - Solilang Interpreter", VERSION);
-    println!("Type 'exit' or Ctrl+D to quit.\n");
-
-    let mut rl = match DefaultEditor::new() {
-        Ok(editor) => editor,
-        Err(_) => {
-            // Fallback to simple stdin reading
-            run_simple_repl();
-            return;
-        }
-    };
-
-    let mut interpreter = solilang::interpreter::Interpreter::new();
-
-    loop {
-        match rl.readline(">>> ") {
-            Ok(line) => {
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
-                }
-                if line == "exit" || line == "quit" {
-                    break;
-                }
-
-                let _ = rl.add_history_entry(line);
-
-                // Try to execute the line
-                if let Err(e) = execute_repl_line(&mut interpreter, line) {
-                    eprintln!("Error: {}", e);
-                }
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("^C");
-                continue;
-            }
-            Err(ReadlineError::Eof) => {
-                println!("Goodbye!");
-                break;
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                break;
-            }
-        }
-    }
-}
-
-fn run_simple_repl() {
-    let stdin = io::stdin();
-    let mut interpreter = solilang::interpreter::Interpreter::new();
-
-    loop {
-        print!(">>> ");
-        io::stdout().flush().unwrap();
-
-        let mut line = String::new();
-        match stdin.read_line(&mut line) {
-            Ok(0) => {
-                println!("Goodbye!");
-                break;
-            }
-            Ok(_) => {
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
-                }
-                if line == "exit" || line == "quit" {
-                    break;
-                }
-
-                if let Err(e) = execute_repl_line(&mut interpreter, line) {
-                    eprintln!("Error: {}", e);
-                }
-            }
-            Err(e) => {
-                eprintln!("Error reading input: {}", e);
-                break;
-            }
-        }
-    }
-}
-
-fn execute_repl_line(
-    interpreter: &mut solilang::interpreter::Interpreter,
-    source: &str,
-) -> Result<(), solilang::error::SolilangError> {
-    // Check if input looks like an expression that should print its result
-    // Strip trailing semicolon for the check
-    let trimmed = source.trim_end_matches(';').trim();
-
-    let source = if !trimmed.ends_with('}')
-        && !trimmed.starts_with("let ")
-        && !trimmed.starts_with("fn ")
-        && !trimmed.starts_with("class ")
-        && !trimmed.starts_with("interface ")
-        && !trimmed.starts_with("if ")
-        && !trimmed.starts_with("while ")
-        && !trimmed.starts_with("for ")
-        && !trimmed.starts_with("return ")
-        && !trimmed.starts_with("print(")
-        && !trimmed.starts_with("println(")
-    {
-        // Wrap as print statement for expression evaluation
-        format!("print({});", trimmed)
-    } else if !source.ends_with(';') && !source.ends_with('}') {
-        format!("{};", source)
-    } else {
-        source.to_string()
-    };
-
-    // Lex
-    let tokens = solilang::lexer::Scanner::new(&source).scan_tokens()?;
-
-    // Parse
-    let program = solilang::parser::Parser::new(tokens).parse()?;
-
-    // Skip type checking in REPL for flexibility
-
-    // Execute
-    interpreter.interpret(&program)?;
-
-    Ok(())
+    let mut repl = solilang::repl::EnhancedRepl::new();
+    repl.run();
 }
 
 fn format_duration(duration: std::time::Duration) -> String {
