@@ -694,76 +694,13 @@
       "keywords": ["jwt", "token", "decode"]
     },
     {
-      "title": "regex_match",
-      "type": "function",
+      "title": "Regex",
+      "type": "class",
       "category": "Regex",
-      "path": "/docs/builtins/regex#fn-regex-match",
-      "signature": "regex_match(pattern, string)",
-      "description": "Test if a string matches a regex pattern",
-      "keywords": ["regex", "match", "test", "pattern"]
-    },
-    {
-      "title": "regex_find",
-      "type": "function",
-      "category": "Regex",
-      "path": "/docs/builtins/regex#fn-regex-find",
-      "signature": "regex_find(pattern, string)",
-      "description": "Find the first match in a string",
-      "keywords": ["regex", "find", "search", "pattern"]
-    },
-    {
-      "title": "regex_find_all",
-      "type": "function",
-      "category": "Regex",
-      "path": "/docs/builtins/regex#fn-regex-find-all",
-      "signature": "regex_find_all(pattern, string)",
-      "description": "Find all matches in a string",
-      "keywords": ["regex", "findall", "search", "global"]
-    },
-    {
-      "title": "regex_replace",
-      "type": "function",
-      "category": "Regex",
-      "path": "/docs/builtins/regex#fn-regex-replace",
-      "signature": "regex_replace(pattern, string, replacement)",
-      "description": "Replace the first match",
-      "keywords": ["regex", "replace", "substitute"]
-    },
-    {
-      "title": "regex_replace_all",
-      "type": "function",
-      "category": "Regex",
-      "path": "/docs/builtins/regex#fn-regex-replace-all",
-      "signature": "regex_replace_all(pattern, string, replacement)",
-      "description": "Replace all matches",
-      "keywords": ["regex", "replaceall", "substitute", "global"]
-    },
-    {
-      "title": "regex_split",
-      "type": "function",
-      "category": "Regex",
-      "path": "/docs/builtins/regex#fn-regex-split",
-      "signature": "regex_split(pattern, string)",
-      "description": "Split a string by a regex pattern",
-      "keywords": ["regex", "split", "tokenize"]
-    },
-    {
-      "title": "regex_capture",
-      "type": "function",
-      "category": "Regex",
-      "path": "/docs/builtins/regex#fn-regex-capture",
-      "signature": "regex_capture(pattern, string)",
-      "description": "Capture named groups from a pattern",
-      "keywords": ["regex", "capture", "groups", "extract"]
-    },
-    {
-      "title": "regex_escape",
-      "type": "function",
-      "category": "Regex",
-      "path": "/docs/builtins/regex#fn-regex-escape",
-      "signature": "regex_escape(string)",
-      "description": "Escape special regex characters",
-      "keywords": ["regex", "escape", "quote"]
+      "path": "/docs/builtins/regex#regex-class",
+      "signature": "Regex",
+      "description": "Static methods for regular expression operations: matches(), find(), find_all(), replace(), replace_all(), split(), capture(), escape()",
+      "keywords": ["regex", "class", "match", "find", "replace", "split", "capture", "pattern"]
     },
     {
       "title": "getenv",

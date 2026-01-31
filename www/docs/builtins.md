@@ -1020,9 +1020,11 @@ println(payload["sub"])  // Inspect claims without verification
 
 ---
 
-## Regex Functions
+## Regex Class
 
-### regex_match(pattern, string)
+The `Regex` class provides static methods for regular expression operations.
+
+### Regex.matches(pattern, string)
 
 Tests if a string matches a regex pattern.
 
@@ -1034,11 +1036,11 @@ Tests if a string matches a regex pattern.
 
 **Example:**
 ```soli
-regex_match("^[a-z]+$", "hello")  // true
-regex_match("^[0-9]+$", "hello")  // false
+Regex.matches("^[a-z]+$", "hello")  // true
+Regex.matches("^[0-9]+$", "hello")  // false
 ```
 
-### regex_find(pattern, string)
+### Regex.find(pattern, string)
 
 Finds the first match of a pattern in a string.
 
@@ -1050,12 +1052,12 @@ Finds the first match of a pattern in a string.
 
 **Example:**
 ```soli
-let result = regex_find("[0-9]+", "abc123def")
+let result = Regex.find("[0-9]+", "abc123def")
 println(result["match"])  // "123"
 println(result["start"])  // 3
 ```
 
-### regex_find_all(pattern, string)
+### Regex.find_all(pattern, string)
 
 Finds all matches of a pattern in a string.
 
@@ -1067,11 +1069,11 @@ Finds all matches of a pattern in a string.
 
 **Example:**
 ```soli
-let matches = regex_find_all("[0-9]+", "a1b2c3")
+let matches = Regex.find_all("[0-9]+", "a1b2c3")
 // [{"match": "1", ...}, {"match": "2", ...}, {"match": "3", ...}]
 ```
 
-### regex_replace(pattern, string, replacement)
+### Regex.replace(pattern, string, replacement)
 
 Replaces the first match of a pattern.
 
@@ -1084,10 +1086,10 @@ Replaces the first match of a pattern.
 
 **Example:**
 ```soli
-regex_replace("[0-9]+", "a1b2c3", "X")  // "aXb2c3"
+Regex.replace("[0-9]+", "a1b2c3", "X")  // "aXb2c3"
 ```
 
-### regex_replace_all(pattern, string, replacement)
+### Regex.replace_all(pattern, string, replacement)
 
 Replaces all matches of a pattern.
 
@@ -1100,10 +1102,10 @@ Replaces all matches of a pattern.
 
 **Example:**
 ```soli
-regex_replace_all("[0-9]+", "a1b2c3", "X")  // "aXbXcX"
+Regex.replace_all("[0-9]+", "a1b2c3", "X")  // "aXbXcX"
 ```
 
-### regex_split(pattern, string)
+### Regex.split(pattern, string)
 
 Splits a string by a regex pattern.
 
@@ -1115,10 +1117,10 @@ Splits a string by a regex pattern.
 
 **Example:**
 ```soli
-regex_split("[,;]", "a,b;c,d")  // ["a", "b", "c", "d"]
+Regex.split("[,;]", "a,b;c,d")  // ["a", "b", "c", "d"]
 ```
 
-### regex_capture(pattern, string)
+### Regex.capture(pattern, string)
 
 Finds the first match with named capture groups.
 
@@ -1130,7 +1132,7 @@ Finds the first match with named capture groups.
 
 **Example:**
 ```soli
-let result = regex_capture(
+let result = Regex.capture(
     "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})",
     "Date: 2024-01-15"
 )
@@ -1138,7 +1140,7 @@ println(result["year"])   // "2024"
 println(result["month"])  // "01"
 ```
 
-### regex_escape(string)
+### Regex.escape(string)
 
 Escapes special regex characters in a string.
 
@@ -1149,7 +1151,7 @@ Escapes special regex characters in a string.
 
 **Example:**
 ```soli
-regex_escape("hello.world")  // "hello\\.world"
+Regex.escape("hello.world")  // "hello\\.world"
 ```
 
 ---

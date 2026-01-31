@@ -536,78 +536,6 @@ impl TypeEnvironment {
             },
         );
 
-        // regex_match(String, String) -> Bool
-        self.functions.insert(
-            "regex_match".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String],
-                return_type: Box::new(Type::Bool),
-            },
-        );
-
-        // regex_find(String, String) -> Hash|null
-        self.functions.insert(
-            "regex_find".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String],
-                return_type: Box::new(Type::Any),
-            },
-        );
-
-        // regex_find_all(String, String) -> Array
-        self.functions.insert(
-            "regex_find_all".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String],
-                return_type: Box::new(Type::Array(Box::new(Type::Any))),
-            },
-        );
-
-        // regex_replace(String, String, String) -> String
-        self.functions.insert(
-            "regex_replace".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String, Type::String],
-                return_type: Box::new(Type::String),
-            },
-        );
-
-        // regex_replace_all(String, String, String) -> String
-        self.functions.insert(
-            "regex_replace_all".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String, Type::String],
-                return_type: Box::new(Type::String),
-            },
-        );
-
-        // regex_split(String, String) -> Array
-        self.functions.insert(
-            "regex_split".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String],
-                return_type: Box::new(Type::Array(Box::new(Type::String))),
-            },
-        );
-
-        // regex_capture(String, String) -> Hash|null
-        self.functions.insert(
-            "regex_capture".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String],
-                return_type: Box::new(Type::Any),
-            },
-        );
-
-        // regex_escape(String) -> String
-        self.functions.insert(
-            "regex_escape".to_string(),
-            Type::Function {
-                params: vec![Type::String],
-                return_type: Box::new(Type::String),
-            },
-        );
-
         // Register built-in classes
         self.register_builtin_classes();
     }
@@ -951,6 +879,113 @@ impl TypeEnvironment {
             },
         );
         self.classes.insert("Duration".to_string(), duration_class);
+
+        // Regex class
+        let mut regex_class = ClassType::new("Regex".to_string());
+        regex_class.methods.insert(
+            "matches".to_string(),
+            MethodInfo {
+                name: "matches".to_string(),
+                params: vec![
+                    ("pattern".to_string(), Type::String),
+                    ("string".to_string(), Type::String),
+                ],
+                return_type: Type::Bool,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        regex_class.methods.insert(
+            "find".to_string(),
+            MethodInfo {
+                name: "find".to_string(),
+                params: vec![
+                    ("pattern".to_string(), Type::String),
+                    ("string".to_string(), Type::String),
+                ],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        regex_class.methods.insert(
+            "find_all".to_string(),
+            MethodInfo {
+                name: "find_all".to_string(),
+                params: vec![
+                    ("pattern".to_string(), Type::String),
+                    ("string".to_string(), Type::String),
+                ],
+                return_type: Type::Array(Box::new(Type::Any)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        regex_class.methods.insert(
+            "replace".to_string(),
+            MethodInfo {
+                name: "replace".to_string(),
+                params: vec![
+                    ("pattern".to_string(), Type::String),
+                    ("string".to_string(), Type::String),
+                    ("replacement".to_string(), Type::String),
+                ],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        regex_class.methods.insert(
+            "replace_all".to_string(),
+            MethodInfo {
+                name: "replace_all".to_string(),
+                params: vec![
+                    ("pattern".to_string(), Type::String),
+                    ("string".to_string(), Type::String),
+                    ("replacement".to_string(), Type::String),
+                ],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        regex_class.methods.insert(
+            "split".to_string(),
+            MethodInfo {
+                name: "split".to_string(),
+                params: vec![
+                    ("pattern".to_string(), Type::String),
+                    ("string".to_string(), Type::String),
+                ],
+                return_type: Type::Array(Box::new(Type::String)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        regex_class.methods.insert(
+            "capture".to_string(),
+            MethodInfo {
+                name: "capture".to_string(),
+                params: vec![
+                    ("pattern".to_string(), Type::String),
+                    ("string".to_string(), Type::String),
+                ],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        regex_class.methods.insert(
+            "escape".to_string(),
+            MethodInfo {
+                name: "escape".to_string(),
+                params: vec![("string".to_string(), Type::String)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("Regex".to_string(), regex_class);
 
         // I18n class
         let mut i18n_class = ClassType::new("I18n".to_string());

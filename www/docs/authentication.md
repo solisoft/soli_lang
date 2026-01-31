@@ -43,11 +43,11 @@ Use `jwt_verify()` to validate tokens and extract claims:
 fn authenticate_middleware(req: Any) -> Any {
     let auth_header = req["headers"]["Authorization"];
 
-    if (auth_header == null || !regex_match("^Bearer ", auth_header)) {
+    if (auth_header == null || !Regex.matches("^Bearer ", auth_header)) {
         return {"status": 401, "body": "Missing or invalid Authorization header"};
     }
 
-    let token = regex_replace("^Bearer ", auth_header, "");
+    let token = Regex.replace("^Bearer ", auth_header, "");
     let result = jwt_verify(token, getenv("JWT_SECRET"));
 
     if result["error"] == true {
@@ -67,7 +67,7 @@ Use `jwt_decode()` to read token claims without verification:
 ```soli
 fn get_token_info(req: Any) -> Any {
     let token = req["headers"]["Authorization"];
-    let token = regex_replace(r"^Bearer ", token, "");
+    let token = Regex.replace("^Bearer ", token, "");
 
     // Decode without verification (for reading only)
     let claims = jwt_decode(token);

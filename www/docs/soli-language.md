@@ -2704,34 +2704,35 @@ let json_string = json_stringify(data);
 // '{"users":[{"name":"Alice"},{"name":"Bob"}],"count":2}'
 ```
 
-### Regex Functions
+### Regex Class
 
 ```soli
 let text = "The quick brown fox jumps over the lazy dog";
 
 // Match check
-let has_fox = regex_match("fox", text);  // true
+let has_fox = Regex.matches("fox", text);  // true
 
 // Find matches
-let first_word = regex_find("\\w+", text);  // "The"
-let all_words = regex_find_all("\\w+", text);  // ["The", "quick", "brown", "fox", ...]
+let first_word = Regex.find("\\w+", text);  // "The"
+let all_words = Regex.find_all("\\w+", text);  // ["The", "quick", "brown", "fox", ...]
 
 // Replace
-let replaced = regex_replace("fox", text, "cat");  // "The quick brown cat..."
-let all_replaced = regex_replace_all("\\s+", text, "-");  // "The-quick-brown-fox-..."
+let replaced = Regex.replace("fox", text, "cat");  // "The quick brown cat..."
+let all_replaced = Regex.replace_all("\\s+", text, "-");  // "The-quick-brown-fox-..."
 
 // Split
-let words = regex_split("\\s+", text);  // ["The", "quick", "brown", "fox", ...]
+let words = Regex.split("\\s+", text);  // ["The", "quick", "brown", "fox", ...]
 
 // Capture groups
 let date = "2024-01-15";
-let captures = regex_capture("(\\d{4})-(\\d{2})-(\\d{2})", date);
-print(captures[0]);  // "2024"
+let captures = Regex.capture("(\\d{4})-(\\d{2})-(\\d{2})", date);
+print(captures["match"]);  // "2024-01-15"
+print(captures[0]);  // "2024" (when using numbered groups)
 print(captures[1]);  // "01"
 print(captures[2]);  // "15"
 
 // Escape special characters
-let escaped = regex_escape("file.txt (1).pdf");
+let escaped = Regex.escape("file.txt (1).pdf");
 // "file\\.txt\\ \\(1\\)\\.pdf"
 ```
 

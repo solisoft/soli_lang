@@ -231,8 +231,8 @@ pub fn register_builtins(env: &mut Environment) {
     // Register template functions
     template::register_template_builtins(env);
 
-    // Register regex functions
-    regex::register_regex_builtins(env);
+    // Register Regex class
+    regex::register_regex_class(env);
 
     // Register router functions
     router::register_router_builtins(env);
