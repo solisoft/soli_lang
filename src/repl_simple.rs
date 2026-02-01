@@ -1,29 +1,39 @@
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
-use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
-
-use crate::error::SolilangError;
 use crate::interpreter::Interpreter;
 use crate::lexer::Scanner;
 use crate::parser::Parser;
+use crate::repl_highlight::SyntaxHighlighter;
 
 const HISTORY_FILE: &str = ".soli_history";
 
-pub struct EnhancedRepl {
+pub struct SimpleRepl {
     interpreter: Interpreter,
     history: Vec<String>,
     history_file: PathBuf,
+    multiline_buffer: String,
+    multiline_indent: usize,
+    is_multiline: bool,
+    brace_balance: i32,
+    highlighter: SyntaxHighlighter,
+    highlighting_enabled: bool,
 }
 
-impl EnhancedRepl {
+impl SimpleRepl {
     pub fn new() -> Self {
+        colored::control::set_override(true);
         let history_file = Self::get_history_path();
         let mut repl = Self {
             interpreter: Interpreter::new(),
             history: Vec::new(),
             history_file,
+            multiline_buffer: String::new(),
+            multiline_indent: 0,
+            is_multiline: false,
+            brace_balance: 0,
+            highlighter: SyntaxHighlighter::new(),
+            highlighting_enabled: true,
         };
         repl.load_history();
         repl
@@ -56,61 +66,16 @@ impl EnhancedRepl {
     }
 
     pub fn run(&mut self) {
-        println!("Soli - Enhanced REPL");
-        println!("Type \".help\" for available commands.\n");
+        println!("Soli - REPL");
+        println!("Type .help for available commands.\n");
 
-        let mut rl = match DefaultEditor::new() {
-            Ok(editor) => editor,
-            Err(_) => {
-                println!("Warning: Using basic input (no history or completion)");
-                self.run_basic();
-                return;
-            }
-        };
+        let stdin = io::stdin();
 
         loop {
-            match rl.readline(">>> ") {
-                Ok(line) => {
-                    let line = line.trim();
-                    if line.is_empty() {
-                        continue;
-                    }
-                    if line == "exit" || line == ".exit" || line == "quit" || line == ".quit" {
-                        self.save_history();
-                        println!("Goodbye!");
-                        break;
-                    }
-                    let _ = rl.add_history_entry(line);
-                    self.history.push(line.to_string());
-                    if self.is_magic_command(line) {
-                        self.handle_magic_command(line);
-                    } else {
-                        self.execute_single(line);
-                    }
-                }
-                Err(ReadlineError::Interrupted) => {
-                    println!("^C");
-                    continue;
-                }
-                Err(ReadlineError::Eof) => {
-                    self.save_history();
-                    println!("\nGoodbye!");
-                    break;
-                }
-                Err(e) => {
-                    println!("Error: {}", e);
-                    self.save_history();
-                    break;
-                }
-            }
-        }
-    }
+            let prompt = self.get_prompt();
+            print!("{}", prompt);
+            io::stdout().flush().unwrap();
 
-    fn run_basic(&mut self) {
-        let stdin = std::io::stdin();
-        loop {
-            print!(">>> ");
-            std::io::stdout().flush().unwrap();
             let mut line = String::new();
             match stdin.read_line(&mut line) {
                 Ok(0) => {
@@ -118,26 +83,164 @@ impl EnhancedRepl {
                     break;
                 }
                 Ok(_) => {
-                    let line = line.trim();
-                    if line.is_empty() {
+                    let line = line.trim_end();
+                    if line.is_empty() && !self.is_multiline {
                         continue;
                     }
-                    if line == "exit" || line == "quit" {
+
+                    if line == "exit" || line == ".exit" || line == "quit" || line == ".quit" {
+                        self.save_history();
+                        println!("Goodbye!");
                         break;
                     }
-                    self.history.push(line.to_string());
-                    if self.is_magic_command(line) {
-                        self.handle_magic_command(line);
+
+                    if self.is_multiline {
+                        self.handle_multiline_input(line);
                     } else {
-                        self.execute_single(line);
+                        self.history.push(line.to_string());
+
+                        if self.is_magic_command(line) {
+                            self.handle_magic_command(line);
+                        } else if self.detect_multiline_needed(line) {
+                            self.enter_multiline(line);
+                            continue;
+                        } else {
+                            self.execute_single(line);
+                        }
                     }
                 }
-                Err(e) => {
-                    println!("Error: {}", e);
+                Err(_) => {
+                    self.save_history();
+                    println!("\nGoodbye!");
                     break;
                 }
             }
         }
+    }
+
+    fn get_prompt(&self) -> String {
+        if self.is_multiline {
+            format!("{:indent$}... ", "", indent = self.multiline_indent)
+        } else {
+            ">>> ".to_string()
+        }
+    }
+
+    fn detect_multiline_needed(&self, line: &str) -> bool {
+        let trimmed = line.trim();
+        trimmed.ends_with('{')
+            || (trimmed.starts_with("class ") && !trimmed.ends_with('}'))
+            || trimmed.starts_with("fn ")
+            || trimmed.starts_with("if ")
+            || trimmed.starts_with("while ")
+            || trimmed.starts_with("for ")
+            || trimmed.starts_with("match ")
+            || trimmed == "do"
+            || trimmed.starts_with("try")
+    }
+
+    fn enter_multiline(&mut self, line: &str) {
+        self.is_multiline = true;
+        self.multiline_buffer = line.to_string();
+        self.multiline_indent = Self::calculate_indent(line);
+        self.brace_balance = Self::count_braces(line);
+        println!("      (enter .break to cancel)");
+    }
+
+    fn handle_multiline_input(&mut self, line: &str) {
+        if line == ".break" || line == ".cancel" {
+            self.cancel_multiline();
+            return;
+        }
+
+        self.multiline_buffer.push('\n');
+        self.multiline_buffer.push_str(line);
+        self.multiline_indent = Self::calculate_indent(line);
+
+        let line_balance = Self::count_braces(line);
+        self.brace_balance += line_balance;
+
+        if self.brace_balance <= 0 && !line.trim().is_empty() {
+            self.execute_multiline();
+        } else {
+            print!("{}", self.get_prompt());
+            io::stdout().flush().unwrap();
+        }
+    }
+
+    fn execute_multiline(&mut self) {
+        self.is_multiline = false;
+        self.multiline_indent = 0;
+        let code = self.multiline_buffer.clone();
+        self.multiline_buffer.clear();
+
+        if self.highlighting_enabled {
+            let highlighted = self.highlighter.highlight(&code);
+            println!("{}", highlighted);
+        } else {
+            println!("{}", code);
+        }
+
+        self.execute_code(&code).ok();
+    }
+
+    fn cancel_multiline(&mut self) {
+        self.is_multiline = false;
+        self.multiline_buffer.clear();
+        self.multiline_indent = 0;
+        self.brace_balance = 0;
+        println!("(cancelled)");
+    }
+
+    fn calculate_indent(line: &str) -> usize {
+        let trimmed = line.trim_start();
+        let leading_spaces = line.len() - trimmed.len();
+        let extra_indent = if trimmed.ends_with('{')
+            || trimmed.ends_with("then")
+            || trimmed.ends_with("do")
+            || trimmed.ends_with("catch")
+            || trimmed.ends_with("finally")
+            || trimmed.ends_with("try")
+        {
+            4
+        } else if trimmed.ends_with("else") || trimmed.ends_with("elsif") {
+            if trimmed.starts_with("els") {
+                4
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        leading_spaces + extra_indent
+    }
+
+    fn count_braces(s: &str) -> i32 {
+        let mut balance = 0;
+        let mut in_string = false;
+        let mut escaped = false;
+
+        for c in s.chars() {
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == '"' {
+                    in_string = false;
+                }
+            } else {
+                if c == '"' {
+                    in_string = true;
+                    escaped = false;
+                } else if c == '{' {
+                    balance += 1;
+                } else if c == '}' {
+                    balance -= 1;
+                }
+            }
+        }
+        balance
     }
 
     fn is_magic_command(&self, line: &str) -> bool {
@@ -154,7 +257,23 @@ impl EnhancedRepl {
             ".clear" | ".reset" => self.cmd_clear(),
             ".load" => println!("Usage: .load <filename>"),
             ".save" => println!("Usage: .save <filename>"),
+            ".break" | ".cancel" => {
+                if self.is_multiline {
+                    self.cancel_multiline();
+                } else {
+                    println!("Not in multi-line mode.");
+                }
+            }
             ".last" => self.cmd_last(),
+            ".theme" => self.cmd_theme(),
+            ".highlight" | ".highlight on" => {
+                self.highlighting_enabled = true;
+                println!("Syntax highlighting enabled.");
+            }
+            ".highlight off" => {
+                self.highlighting_enabled = false;
+                println!("Syntax highlighting disabled.");
+            }
             _ if line.starts_with(".load ") => {
                 let parts: Vec<&str> = line.splitn(2, ' ').collect();
                 if parts.len() == 2 {
@@ -191,11 +310,22 @@ impl EnhancedRepl {
         println!(".history       - Show command history");
         println!(".clear         - Reset the REPL environment");
         println!(".last          - Show last result");
+        println!(".break         - Cancel multi-line input");
         println!(".load <file>   - Load and execute a file");
         println!(".save <file>   - Save session to a file");
         println!("? <expr>       - Inspect an expression");
-        println!("_              - Reference last result");
+        println!(".theme         - Cycle through syntax highlighting themes");
+        println!(".highlight on/off - Enable/disable syntax highlighting");
         println!("exit / Ctrl+D  - Exit the REPL");
+        println!();
+    }
+
+    fn cmd_theme(&mut self) {
+        self.highlighter.toggle_theme();
+        println!(
+            "Theme: {} (use .theme to cycle)",
+            self.highlighter.current_theme_name()
+        );
     }
 
     fn cmd_vars(&self) {
@@ -297,34 +427,49 @@ impl EnhancedRepl {
     }
 
     fn execute_single(&mut self, line: &str) {
+        if self.highlighting_enabled {
+            let highlighted = self.highlighter.highlight(line);
+            println!("{}", highlighted);
+        } else {
+            println!("{}", line);
+        }
         if let Err(e) = self.execute(line) {
             println!("Error: {}", e);
         }
     }
 
-    fn execute(&mut self, source: &str) -> Result<(), SolilangError> {
-        let should_print = Self::should_print_result(source);
-        let source = if should_print && !source.trim_end().ends_with('}') {
-            format!("print({});", source.trim())
-        } else if !source.ends_with(';')
-            && !source.ends_with('}')
-            && !source.trim_start().starts_with("let ")
-            && !source.trim_start().starts_with("fn ")
-            && !source.trim_start().starts_with("class ")
-            && !source.trim_start().starts_with("const ")
+    fn execute(&mut self, source: &str) -> Result<(), crate::error::SolilangError> {
+        self.execute_code(source)
+    }
+
+    fn execute_code(&mut self, code: &str) -> Result<(), crate::error::SolilangError> {
+        let should_print = Self::should_print_result(code);
+        let trimmed = code.trim();
+
+        let source = if should_print && !trimmed.ends_with('}') && !trimmed.ends_with(';') {
+            format!("print({});", trimmed)
+        } else if !trimmed.ends_with(';')
+            && !trimmed.ends_with('}')
+            && !trimmed.starts_with("let ")
+            && !trimmed.starts_with("fn ")
+            && !trimmed.starts_with("class ")
+            && !trimmed.starts_with("const ")
         {
-            format!("{};", source)
+            format!("{};", trimmed)
         } else {
-            source.to_string()
+            code.to_string()
         };
+
         let tokens = Scanner::new(&source).scan_tokens()?;
         let program = Parser::new(tokens).parse()?;
         self.interpreter.interpret(&program)?;
+
         Ok(())
     }
 
     fn should_print_result(source: &str) -> bool {
         let trimmed = source.trim_end_matches(';').trim();
+
         !trimmed.starts_with("let ")
             && !trimmed.starts_with("const ")
             && !trimmed.starts_with("fn ")
@@ -342,8 +487,13 @@ impl EnhancedRepl {
     }
 }
 
-impl Default for EnhancedRepl {
+impl Default for SimpleRepl {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub fn run_simple_repl() {
+    let mut repl = SimpleRepl::new();
+    repl.run();
 }

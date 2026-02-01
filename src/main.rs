@@ -671,8 +671,7 @@ fn run_eval(code: &str, options: &Options) {
 }
 
 fn run_repl() {
-    let mut repl = solilang::repl::EnhancedRepl::new();
-    repl.run();
+    solilang::repl_tui::run_tui_repl().unwrap();
 }
 
 fn format_duration(duration: std::time::Duration) -> String {
