@@ -109,6 +109,7 @@ pub fn get_http_client() -> &'static Client {
     })
 }
 
+#[allow(clippy::arc_with_non_send_sync)]
 fn spawn_http_future<F>(f: F, kind: HttpFutureKind) -> Value
 where
     F: FnOnce() -> Result<String, String> + Send + 'static,

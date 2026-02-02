@@ -229,15 +229,13 @@ impl SimpleRepl {
                 } else if c == '"' {
                     in_string = false;
                 }
-            } else {
-                if c == '"' {
-                    in_string = true;
-                    escaped = false;
-                } else if c == '{' {
-                    balance += 1;
-                } else if c == '}' {
-                    balance -= 1;
-                }
+            } else if c == '"' {
+                in_string = true;
+                escaped = false;
+            } else if c == '{' {
+                balance += 1;
+            } else if c == '}' {
+                balance -= 1;
             }
         }
         balance

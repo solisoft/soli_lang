@@ -172,14 +172,20 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     let body = response.text().map_err(|e| e.to_string())?;
 
     let mut response_hash: HashPairs = IndexMap::new();
-    response_hash.insert(HashKey::String("status".to_string()), Value::Int(status as i64));
+    response_hash.insert(
+        HashKey::String("status".to_string()),
+        Value::Int(status as i64),
+    );
     response_hash.insert(HashKey::String("body".to_string()), Value::String(body));
 
     if status == 200 {
         clear_auth();
         set_cookie_inner("session_id".to_string(), "test_session_123".to_string());
         let mut pairs: HashPairs = IndexMap::new();
-        pairs.insert(HashKey::String("email".to_string()), Value::String(email.to_string()));
+        pairs.insert(
+            HashKey::String("email".to_string()),
+            Value::String(email.to_string()),
+        );
         TEST_USER.with(|cell| {
             *cell.borrow_mut() = Some(Value::Hash(Rc::new(RefCell::new(pairs))));
         });

@@ -70,6 +70,7 @@ impl LiveViewInstance {
         self.last_active.elapsed() > timeout
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn send(&self, message: ServerMessage) -> Result<(), tungstenite::Error> {
         let json =
             serde_json::to_string(&message).map_err(|_| tungstenite::Error::ConnectionClosed)?;
@@ -86,6 +87,12 @@ impl LiveViewInstance {
 pub struct LiveRegistry {
     views: Arc<std::sync::Mutex<HashMap<LiveViewId, LiveViewInstance>>>,
     timeout: Duration,
+}
+
+impl Default for LiveRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LiveRegistry {
@@ -124,6 +131,7 @@ impl LiveRegistry {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn send(&self, id: &str, message: ServerMessage) -> Result<(), tungstenite::Error> {
         let views = self.views.lock().unwrap();
         if let Some(view) = views.get(id) {
@@ -141,4 +149,4 @@ impl LiveRegistry {
 
 /// Global LiveView registry.
 pub static LIVE_REGISTRY: std::sync::LazyLock<LiveRegistry> =
-    std::sync::LazyLock::new(|| LiveRegistry::new());
+    std::sync::LazyLock::new(LiveRegistry::new);

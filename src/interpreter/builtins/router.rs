@@ -298,16 +298,14 @@ pub fn register_router_builtins(env: &mut Environment) {
                     } else {
                         format!("/{}", path)
                     }
+                } else if path.is_empty() {
+                    current.path_prefix.clone()
+                } else if path.starts_with('/') {
+                    // Absolute path overrides context? Or appends?
+                    // Rails: match 'foo' -> prefix/foo
+                    format!("{}/{}", current.path_prefix, path.trim_start_matches('/'))
                 } else {
-                    if path.is_empty() {
-                        current.path_prefix.clone()
-                    } else if path.starts_with('/') {
-                        // Absolute path overrides context? Or appends?
-                        // Rails: match 'foo' -> prefix/foo
-                        format!("{}/{}", current.path_prefix, path.trim_start_matches('/'))
-                    } else {
-                        format!("{}/{}", current.path_prefix, path)
-                    }
+                    format!("{}/{}", current.path_prefix, path)
                 };
 
                 let handler = action.clone();
@@ -517,14 +515,12 @@ pub fn register_router_builtins(env: &mut Environment) {
                     } else {
                         format!("/{}", path)
                     }
+                } else if path.is_empty() {
+                    current.path_prefix.clone()
+                } else if path.starts_with('/') {
+                    format!("{}/{}", current.path_prefix, path.trim_start_matches('/'))
                 } else {
-                    if path.is_empty() {
-                        current.path_prefix.clone()
-                    } else if path.starts_with('/') {
-                        format!("{}/{}", current.path_prefix, path.trim_start_matches('/'))
-                    } else {
-                        format!("{}/{}", current.path_prefix, path)
-                    }
+                    format!("{}/{}", current.path_prefix, path)
                 };
 
                 // Register the WebSocket route with just the path and action string

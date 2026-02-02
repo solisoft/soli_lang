@@ -61,7 +61,7 @@ pub fn extract_session_id(cookies: Option<&str>) -> String {
             let value = c.trim_start().strip_prefix("session_id=").unwrap();
             value.to_string()
         })
-        .unwrap_or_else(|| format!("sess-{}", Uuid::new_v4().to_string()))
+        .unwrap_or_else(|| format!("sess-{}", Uuid::new_v4()))
 }
 
 /// Extract component name from URL path.
@@ -171,7 +171,7 @@ pub fn handle_event(
             // Simulated fluctuating metrics
             let base = (now as f64 / 1000.0).sin();
             let cpu = (30.0 + base * 20.0 + (now % 100) as f64 * 0.15) as i64;
-            let cpu = cpu.max(5).min(95);
+            let cpu = cpu.clamp(5, 95);
 
             let memory = (512.0 + (now as f64 / 2000.0).sin() * 100.0 + (now % 50) as f64) as i64;
             let memory_pct = (memory as f64 / 1024.0 * 100.0) as i64;

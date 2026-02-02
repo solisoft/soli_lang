@@ -248,16 +248,11 @@ fn validate_field(
                             if key == "valid" {
                                 if let Value::Bool(false) = v {
                                     // Extract nested errors
-                                    for (k2, v2) in h.borrow().iter() {
-                                        if let HashKey::String(key2) = k2 {
-                                            if key2 == "errors" {
-                                                if let Value::Array(errors) = v2 {
-                                                    for err in errors.borrow().iter() {
-                                                        // Prefix nested errors with field name
-                                                        return Err(prefix_error(field_name, err));
-                                                    }
-                                                }
-                                            }
+                                    if let Some((_, Value::Array(errors))) = h.borrow().iter().find(|(k2, _)| {
+                                        matches!(k2, HashKey::String(key2) if key2 == "errors")
+                                    }) {
+                                        if let Some(err) = errors.borrow().first() {
+                                            return Err(prefix_error(field_name, err));
                                         }
                                     }
                                 }

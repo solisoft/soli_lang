@@ -256,9 +256,9 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
             Token::Code(code, line) => {
                 let code = code.trim();
 
-                if code.starts_with("if ") {
+                if let Some(rest) = code.strip_prefix("if ") {
                     // Parse if block
-                    let condition = compile_expr(code[3..].trim());
+                    let condition = compile_expr(rest.trim());
                     let (if_node, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     nodes.push(if_node);
                     i += consumed;
@@ -316,9 +316,9 @@ fn parse_if_block(
                     in_else = true;
                     else_body = Some(Vec::new());
                     i += 1;
-                } else if code.starts_with("elsif ") {
+                } else if let Some(rest) = code.strip_prefix("elsif ") {
                     // Handle elsif as nested if in else
-                    let elsif_condition = compile_expr(code[6..].trim());
+                    let elsif_condition = compile_expr(rest.trim());
                     let (elsif_node, consumed) =
                         parse_if_block(&tokens[i..], elsif_condition, *line)?;
                     else_body = Some(vec![elsif_node]);
@@ -332,9 +332,9 @@ fn parse_if_block(
                         },
                         i + consumed,
                     ));
-                } else if code.starts_with("if ") {
+                } else if let Some(rest) = code.strip_prefix("if ") {
                     // Nested if
-                    let nested_condition = compile_expr(code[3..].trim());
+                    let nested_condition = compile_expr(rest.trim());
                     let (nested_if, consumed) =
                         parse_if_block(&tokens[i..], nested_condition, *line)?;
                     if in_else {
@@ -459,9 +459,9 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                         },
                         i + 1,
                     ));
-                } else if code.starts_with("if ") {
+                } else if let Some(rest) = code.strip_prefix("if ") {
                     // Nested if
-                    let condition = compile_expr(code[3..].trim());
+                    let condition = compile_expr(rest.trim());
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
                     i += consumed;

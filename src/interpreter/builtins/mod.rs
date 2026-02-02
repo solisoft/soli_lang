@@ -14,7 +14,7 @@ pub mod assertions;
 pub mod assigns_helpers;
 pub mod cache;
 pub mod clock;
-pub mod collection_classes;
+pub mod collections;
 pub mod controller;
 pub mod crypto;
 pub mod datetime;
@@ -274,8 +274,8 @@ pub fn register_builtins(env: &mut Environment) {
     // Register clock builtins (sleep, microtime)
     clock::register_clock_builtins(env);
 
-    // Register collection classes (String, Array, Hash, Base64)
-    collection_classes::register_collection_classes(env);
+    // Register collection classes (String, Array, Hash, Set, Range, Base64)
+    collections::register_collection_classes(env);
 }
 
 /// Register the Error class and built-in error types.

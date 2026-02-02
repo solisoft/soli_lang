@@ -1,8 +1,16 @@
 //! Tree-walking interpreter for Solilang.
 
 mod expressions;
+mod literals;
 mod operators;
+mod pattern_matching;
 mod statements;
+mod variables;
+
+pub mod access;
+pub mod calls;
+pub mod control;
+pub mod objects;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -228,6 +236,7 @@ impl Interpreter {
     }
 
     /// Convert a Value to a JSON string representation.
+    #[allow(clippy::only_used_in_recursion)]
     fn value_to_json(&self, value: &Value) -> String {
         match value {
             Value::Null => "null".to_string(),
@@ -519,7 +528,7 @@ impl Interpreter {
                 span: Span::default(),
             })?;
 
-        let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
+        let parts: Vec<&str> = request_line.split_whitespace().collect();
         if parts.len() < 2 {
             self.send_error_response(&mut stream, "400 Bad Request")?;
             return Ok(());

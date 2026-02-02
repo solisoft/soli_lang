@@ -134,8 +134,10 @@ pub fn render_nodes_with_path(
                         Value::Hash(hash) => {
                             // Iterate over hash entries as [key, value] pairs
                             for (k, v) in hash.borrow().iter() {
-                                let pair =
-                                    Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])));
+                                let pair = Value::Array(Rc::new(RefCell::new(vec![
+                                    k.to_value(),
+                                    v.clone(),
+                                ])));
                                 let loop_data = with_variable(data, var, pair)?;
                                 output.push_str(&render_nodes_with_path(
                                     body,

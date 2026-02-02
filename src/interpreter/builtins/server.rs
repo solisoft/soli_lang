@@ -63,7 +63,7 @@ impl RouteIndex {
             // Add to method index
             self.by_method
                 .entry(route.method.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(idx);
 
             // Add exact matches (routes without dynamic segments)
@@ -420,9 +420,7 @@ pub fn build_request_hash_with_parsed(
                                             );
                                             map.insert(
                                                 HashKey::from_value(key_params).unwrap(),
-                                                Value::Hash(Rc::new(RefCell::new(
-                                                    params_pairs,
-                                                ))),
+                                                Value::Hash(Rc::new(RefCell::new(params_pairs))),
                                             );
                                             map.insert(
                                                 HashKey::from_value(key_query).unwrap(),
@@ -430,9 +428,7 @@ pub fn build_request_hash_with_parsed(
                                             );
                                             map.insert(
                                                 HashKey::from_value(key_headers).unwrap(),
-                                                Value::Hash(Rc::new(RefCell::new(
-                                                    header_pairs,
-                                                ))),
+                                                Value::Hash(Rc::new(RefCell::new(header_pairs))),
                                             );
                                             map.insert(
                                                 HashKey::from_value(key_body).unwrap(),
@@ -491,21 +487,17 @@ fn build_unified_params(
     }
 
     // Add body params from JSON (highest priority)
-    if let Some(ref json) = parsed.json {
-        if let Value::Hash(hash) = json {
-            for (k, v) in hash.borrow().iter() {
-                all.insert(k.clone(), v.clone());
-            }
+    if let Some(Value::Hash(hash)) = parsed.json.as_ref() {
+        for (k, v) in hash.borrow().iter() {
+            all.insert(k.clone(), v.clone());
         }
     }
 
     // Add body params from form (if no JSON)
     if parsed.json.is_none() {
-        if let Some(ref form) = parsed.form {
-            if let Value::Hash(hash) = form {
-                for (k, v) in hash.borrow().iter() {
-                    all.insert(k.clone(), v.clone());
-                }
+        if let Some(Value::Hash(hash)) = parsed.form.as_ref() {
+            for (k, v) in hash.borrow().iter() {
+                all.insert(k.clone(), v.clone());
             }
         }
     }

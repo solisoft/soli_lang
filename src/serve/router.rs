@@ -192,6 +192,26 @@ fn derive_route(base_path: &str, func_name: &str, _has_params: bool) -> Option<C
     }
 }
 
+/// Convert a controller key (e.g., "posts", "user_profiles") to PascalCase class name (e.g., "PostsController", "UserProfilesController").
+pub fn to_pascal_case_controller(controller_key: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = true;
+
+    for c in controller_key.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+
+    result.push_str("Controller");
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

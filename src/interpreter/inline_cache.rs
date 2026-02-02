@@ -44,6 +44,12 @@ pub struct PropertyInlineCache {
     max_entries: usize,
 }
 
+impl Default for PropertyInlineCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PropertyInlineCache {
     pub fn new() -> Self {
         Self {
@@ -104,6 +110,12 @@ impl PropertyInlineCache {
 pub struct MethodInlineCache {
     entries: Vec<MethodCacheEntry>,
     max_entries: usize,
+}
+
+impl Default for MethodInlineCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MethodInlineCache {
@@ -183,10 +195,7 @@ impl InlineCacheRegistry {
         caches.get(&ip).cloned().unwrap_or_else(|| {
             drop(caches);
             let mut write_caches = self.property_caches.write().unwrap();
-            write_caches
-                .entry(ip)
-                .or_insert(PropertyInlineCache::new())
-                .clone()
+            write_caches.entry(ip).or_default().clone()
         })
     }
 
@@ -195,10 +204,7 @@ impl InlineCacheRegistry {
         caches.get(&ip).cloned().unwrap_or_else(|| {
             drop(caches);
             let mut write_caches = self.method_caches.write().unwrap();
-            write_caches
-                .entry(ip)
-                .or_insert(MethodInlineCache::new())
-                .clone()
+            write_caches.entry(ip).or_default().clone()
         })
     }
 

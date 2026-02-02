@@ -4,7 +4,7 @@ use crate::lexer::Scanner;
 use crate::parser::Parser;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 thread_local! {
@@ -27,9 +27,9 @@ impl CoverageTracker {
         }
     }
 
-    pub fn register_executable_line(&mut self, path: &PathBuf, line: usize, source: String) {
+    pub fn register_executable_line(&mut self, path: &Path, line: usize, source: String) {
         self.executable_lines
-            .entry(path.clone())
+            .entry(path.to_path_buf())
             .or_default()
             .insert(line, source);
     }
@@ -189,7 +189,7 @@ impl CoverageTracker {
 
     pub fn record_branch(
         &self,
-        path: &PathBuf,
+        path: &Path,
         line: usize,
         branch_type: BranchType,
         taken_true: bool,
@@ -198,9 +198,9 @@ impl CoverageTracker {
             if let Some(ref mut test_cov) = *cov.borrow_mut() {
                 let file_cov = test_cov
                     .file_coverages
-                    .entry(path.clone())
+                    .entry(path.to_path_buf())
                     .or_insert_with(|| FileCoverage {
-                        path: path.clone(),
+                        path: path.to_path_buf(),
                         lines: HashMap::new(),
                         branches: HashMap::new(),
                         total_lines: 0,

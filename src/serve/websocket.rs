@@ -53,6 +53,12 @@ pub struct WebSocketRegistry {
     channels: Arc<AsyncMutex<HashMap<String, HashSet<Uuid>>>>,
 }
 
+impl Default for WebSocketRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WebSocketRegistry {
     /// Create a new empty registry.
     pub fn new() -> Self {
@@ -256,15 +262,27 @@ impl WebSocketEvent {
     /// Convert to a Value for the Soli interpreter.
     pub fn to_value(&self) -> Value {
         let mut result: IndexMap<HashKey, Value> = IndexMap::new();
-        result.insert(HashKey::String("type".to_string()), Value::String(self.event_type.clone()));
-        result.insert(HashKey::String("connection_id".to_string()), Value::String(self.connection_id.clone()));
+        result.insert(
+            HashKey::String("type".to_string()),
+            Value::String(self.event_type.clone()),
+        );
+        result.insert(
+            HashKey::String("connection_id".to_string()),
+            Value::String(self.connection_id.clone()),
+        );
 
         if let Some(ref msg) = self.message {
-            result.insert(HashKey::String("message".to_string()), Value::String(msg.clone()));
+            result.insert(
+                HashKey::String("message".to_string()),
+                Value::String(msg.clone()),
+            );
         }
 
         if let Some(ref channel) = self.channel {
-            result.insert(HashKey::String("channel".to_string()), Value::String(channel.clone()));
+            result.insert(
+                HashKey::String("channel".to_string()),
+                Value::String(channel.clone()),
+            );
         }
 
         Value::Hash(Rc::new(RefCell::new(result)))
@@ -286,6 +304,12 @@ pub struct WebSocketHandlerAction {
     pub broadcast_room: Option<String>,
     /// Close the connection
     pub close: Option<String>,
+}
+
+impl Default for WebSocketHandlerAction {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WebSocketHandlerAction {

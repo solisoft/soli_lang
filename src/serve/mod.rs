@@ -11,8 +11,17 @@ pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
 mod middleware;
 mod router;
-pub mod websocket;
 mod server_constants;
+pub mod websocket;
+
+// Modularized subcomponents
+mod app_loader;
+mod env_loader;
+mod file_tracker;
+mod file_upload;
+mod repl_session;
+mod tailwind;
+mod worker_pool;
 
 pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
 pub use hot_reload::FileTracker;
@@ -33,7 +42,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -59,8 +68,8 @@ use uuid::Uuid;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
     build_request_hash_with_parsed, extract_response, find_route, get_routes,
-    parse_form_urlencoded_body, parse_json_body, parse_query_string, register_route_with_handler,
-    routes_to_worker_routes, set_worker_routes, ParsedBody, WorkerRoute,
+    parse_form_urlencoded_body, parse_json_body, parse_query_string, routes_to_worker_routes,
+    set_worker_routes, ParsedBody, WorkerRoute,
 };
 
 // Thread-local storage for tokio runtime handle (used by HTTP builtins for async operations)
@@ -100,148 +109,42 @@ pub struct UploadedFile {
     pub data: Vec<u8>,
 }
 
-// =============================================================================
-// REPL Session Store - Persists interpreter state between REPL requests
-// Uses thread-local storage since Interpreter is !Send (contains Rc<RefCell<>>)
-// =============================================================================
+// Import REPL session store from the dedicated module
+use repl_session::REPL_STORE;
 
-/// REPL session data containing interpreter and last access time
-struct ReplSession {
-    interpreter: RefCell<Interpreter>,
-    last_accessed: RefCell<Instant>,
-}
-
-/// Thread-local REPL session store
-/// Each tokio worker thread has its own store
-struct ReplSessionStore {
-    sessions: RefCell<HashMap<String, Rc<ReplSession>>>,
-    max_age: Duration,
-}
-
-impl ReplSessionStore {
-    fn new() -> Self {
-        Self {
-            sessions: RefCell::new(HashMap::new()),
-            max_age: Duration::from_secs(30 * 60), // 30 minutes
-        }
-    }
-
-    /// Get existing session or create new one
-    fn get_or_create(&self, session_id: &str) -> (String, Rc<ReplSession>) {
-        // Try to get existing valid session
-        {
-            let sessions = self.sessions.borrow();
-            if let Some(session) = sessions.get(session_id) {
-                if !self.is_expired(session) {
-                    *session.last_accessed.borrow_mut() = Instant::now();
-                    return (session_id.to_string(), Rc::clone(session));
-                }
-            }
-        }
-
-        // Cleanup expired sessions periodically (1 in 50 chance)
-        if rand::random::<u64>().is_multiple_of(50) {
-            self.cleanup();
-        }
-
-        // Create new session
-        let new_id = if session_id.is_empty() {
-            Uuid::new_v4().to_string()
-        } else {
-            session_id.to_string()
-        };
-
-        let session = Rc::new(ReplSession {
-            interpreter: RefCell::new(Interpreter::new()),
-            last_accessed: RefCell::new(Instant::now()),
-        });
-
-        {
-            let mut sessions = self.sessions.borrow_mut();
-            sessions.insert(new_id.clone(), Rc::clone(&session));
-        }
-
-        (new_id, session)
-    }
-
-    /// Check if a session is expired
-    fn is_expired(&self, session: &ReplSession) -> bool {
-        session.last_accessed.borrow().elapsed() > self.max_age
-    }
-
-    /// Cleanup expired sessions
-    fn cleanup(&self) {
-        let mut sessions = self.sessions.borrow_mut();
-        let expired_keys: Vec<String> = sessions
-            .iter()
-            .filter(|(_, session)| self.is_expired(session.as_ref()))
-            .map(|(k, _)| k.clone())
-            .collect();
-        for key in expired_keys {
-            sessions.remove(&key);
-        }
-    }
-}
-
-// Thread-local storage for REPL sessions
-// Each thread gets its own store, which is fine since sessions are identified by UUID
-// and requests from the same browser tab will hit the same thread most of the time
-thread_local! {
-    static REPL_STORE: ReplSessionStore = ReplSessionStore::new();
-}
+// Import worker pool structures
+use worker_pool::{HotReloadVersions, WorkerQueues, WorkerSender};
 
 /// Request data sent to interpreter thread
-struct RequestData {
-    method: String,
-    path: String,
-    query: HashMap<String, String>,
-    headers: HashMap<String, String>,
-    body: String,
+pub(crate) struct RequestData {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) query: HashMap<String, String>,
+    pub(crate) headers: HashMap<String, String>,
+    pub(crate) body: String,
     /// Raw body bytes (for multipart parsing)
     #[allow(dead_code)]
-    body_bytes: Option<Vec<u8>>,
+    pub(crate) body_bytes: Option<Vec<u8>>,
     /// Pre-parsed form fields from multipart
-    multipart_form: Option<HashMap<String, String>>,
+    pub(crate) multipart_form: Option<HashMap<String, String>>,
     /// Pre-parsed files from multipart
-    multipart_files: Option<Vec<UploadedFile>>,
-    response_tx: oneshot::Sender<ResponseData>,
+    pub(crate) multipart_files: Option<Vec<UploadedFile>>,
+    pub(crate) response_tx: oneshot::Sender<ResponseData>,
 }
 
 /// Response data from interpreter thread
 #[derive(Clone)]
-struct ResponseData {
-    status: u16,
-    headers: Vec<(String, String)>,
-    body: String,
+pub(crate) struct ResponseData {
+    pub(crate) status: u16,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: String,
 }
 
-fn track_views_recursive(dir: &Path, tracker: &mut FileTracker) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                track_views_recursive(&path, tracker);
-            } else if path.extension().is_some_and(|ext| ext == "erb") {
-                tracker.track(&path);
-            }
-        }
-    }
-}
+// File tracking functions are now in file_tracker module
+use file_tracker::{track_static_recursive, track_views_recursive};
 
-fn track_static_recursive(dir: &Path, tracker: &mut FileTracker) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                track_static_recursive(&path, tracker);
-            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if server_constants::is_tracked_static_extension(ext) {
-                    tracker.track(&path);
-                }
-            }
-        }
-    }
-}
+// File upload functions are now in file_upload module
+use file_upload::uploaded_files_to_value;
 
 /// Serve an MVC application from a folder in production mode by default.
 pub fn serve_folder(folder: &Path, port: u16) -> Result<(), RuntimeError> {
@@ -262,44 +165,8 @@ pub fn serve_folder_with_options(
     serve_folder_with_options_and_workers(folder, port, dev_mode, workers)
 }
 
-/// Load environment variables from .env files in the application directory.
-/// This loads .env first, then .env.{APP_ENV} if APP_ENV is set.
-fn load_env_files(folder: &Path) {
-    load_env_file(folder, ".env", false);
-
-    if let Ok(app_env) = std::env::var("APP_ENV") {
-        load_env_file(folder, &format!(".env.{}", app_env), true);
-    }
-}
-
-fn load_env_file(folder: &Path, filename: &str, override_existing: bool) {
-    let env_file = folder.join(filename);
-    if !env_file.exists() {
-        return;
-    }
-
-    let Ok(content) = std::fs::read_to_string(&env_file) else {
-        return;
-    };
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-
-        let key = key.trim();
-        let value = value.trim().trim_matches('"').trim_matches('\'');
-
-        if override_existing || std::env::var(key).is_err() {
-            std::env::set_var(key, value);
-        }
-    }
-}
+// Environment loading functions are now in env_loader module
+use env_loader::load_env_files;
 
 /// Serve an MVC application from a folder with configurable options and worker count.
 pub fn serve_folder_with_options_and_workers(
@@ -518,451 +385,17 @@ pub fn serve_folder_with_options_and_workers(
     )
 }
 
-/// Spawn Tailwind in watch mode as a background process.
-/// Returns the child process handle if successful.
-fn spawn_tailwind_watch(folder: &Path) -> Option<std::process::Child> {
-    let tailwind_config = folder.join("tailwind.config.js");
-    if !tailwind_config.exists() {
-        return None;
-    }
+// Import app_loader functions
+use app_loader::{
+    define_routes_dsl, execute_file, load_controller, load_controllers_in_worker, load_middleware,
+    load_models, reload_routes_in_worker, scan_controllers, track_view_files,
+};
 
-    let package_json = folder.join("package.json");
-    if !package_json.exists() {
-        return None;
-    }
-
-    println!("Starting Tailwind CSS in watch mode...");
-
-    // Use npx tailwindcss directly for watch mode
-    match std::process::Command::new("npx")
-        .args([
-            "tailwindcss",
-            "-i",
-            "./app/assets/css/application.css",
-            "-o",
-            "./public/css/application.css",
-            "--watch",
-        ])
-        .current_dir(folder)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => {
-            println!(
-                "   ✓ Tailwind CSS watch process started (PID: {})",
-                child.id()
-            );
-            Some(child)
-        }
-        Err(e) => {
-            eprintln!("   ✗ Failed to start Tailwind watch: {}", e);
-            // Fall back to single compilation
-            compile_tailwind_css_once(folder);
-            None
-        }
-    }
-}
-
-/// Run a single Tailwind CSS compilation (fallback/initial).
-/// Returns true if compilation was successful.
-fn compile_tailwind_css_once(folder: &Path) -> bool {
-    let tailwind_config = folder.join("tailwind.config.js");
-    if !tailwind_config.exists() {
-        return false;
-    }
-
-    // Check for package.json with build:css script
-    let package_json = folder.join("package.json");
-    if !package_json.exists() {
-        return false;
-    }
-
-    println!("Compiling Tailwind CSS...");
-
-    let output = std::process::Command::new("npm")
-        .arg("run")
-        .arg("build:css")
-        .current_dir(folder)
-        .output();
-
-    match output {
-        Ok(result) => {
-            if result.status.success() {
-                println!("   ✓ Tailwind CSS compiled successfully");
-                true
-            } else {
-                let stderr = String::from_utf8_lossy(&result.stderr);
-                eprintln!("   ✗ Tailwind CSS compilation failed: {}", stderr);
-                false
-            }
-        }
-        Err(e) => {
-            eprintln!("   ✗ Failed to run npm: {}", e);
-            false
-        }
-    }
-}
-
-/// Touch the input CSS file to trigger Tailwind's watch mode.
-fn trigger_tailwind_rebuild(folder: &Path) {
-    let input_css = folder.join("app/assets/css/application.css");
-    if input_css.exists() {
-        // Touch file by reading and rewriting (works cross-platform)
-        if let Ok(content) = std::fs::read(&input_css) {
-            let _ = std::fs::write(&input_css, content);
-        }
-    }
-}
-
-/// Scan for all controller files in the controllers directory.
-fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
-    let mut controllers = Vec::new();
-
-    for entry in std::fs::read_dir(controllers_dir).map_err(|e| RuntimeError::General {
-        message: format!("Failed to read controllers directory: {}", e),
-        span: Span::default(),
-    })? {
-        let entry = entry.map_err(|e| RuntimeError::General {
-            message: format!("Failed to read directory entry: {}", e),
-            span: Span::default(),
-        })?;
-
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "sl") {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.ends_with("_controller.sl") {
-                    controllers.push(path);
-                }
-            }
-        }
-    }
-
-    Ok(controllers)
-}
-
-/// Load all model files.
-fn load_models(interpreter: &mut Interpreter, models_dir: &Path) -> Result<(), RuntimeError> {
-    for entry in std::fs::read_dir(models_dir)
-        .map_err(|e| RuntimeError::General {
-            message: format!("Failed to read models directory: {}", e),
-            span: Span::default(),
-        })?
-        .flatten()
-    {
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "sl") {
-            println!("Loading model: {}", path.display());
-            execute_file(interpreter, &path)?;
-        }
-    }
-    Ok(())
-}
-
-/// Load all middleware files and register middleware functions.
-fn load_middleware(
-    interpreter: &mut Interpreter,
-    middleware_dir: &Path,
-    file_tracker: &mut FileTracker,
-) -> Result<(), RuntimeError> {
-    // Clear existing middleware
-    clear_middleware();
-
-    let middleware_files = scan_middleware_files(middleware_dir)?;
-
-    if middleware_files.is_empty() {
-        return Ok(());
-    }
-
-    println!("Loading middleware:");
-
-    for middleware_path in middleware_files {
-        // Track file for hot reload
-        file_tracker.track(&middleware_path);
-
-        // Read source to extract function names and orders
-        let source =
-            std::fs::read_to_string(&middleware_path).map_err(|e| RuntimeError::General {
-                message: format!("Failed to read middleware file: {}", e),
-                span: Span::default(),
-            })?;
-
-        let functions = extract_middleware_functions(&source);
-
-        // Execute the middleware file to define functions
-        execute_file(interpreter, &middleware_path)?;
-
-        // Register each middleware function
-        for (func_name, order, global_only, scope_only) in functions {
-            let func_value = interpreter
-                .environment
-                .borrow()
-                .get(&func_name)
-                .ok_or_else(|| RuntimeError::General {
-                    message: format!(
-                        "Middleware function '{}' not found in {}",
-                        func_name,
-                        middleware_path.display()
-                    ),
-                    span: Span::default(),
-                })?;
-
-            let flags = if global_only {
-                " [global_only]".to_string()
-            } else if scope_only {
-                " [scope_only]".to_string()
-            } else {
-                "".to_string()
-            };
-            println!(
-                "  [{}] {} (order: {}){}",
-                middleware_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown"),
-                func_name,
-                order,
-                flags
-            );
-
-            register_middleware_with_options(
-                &func_name,
-                func_value,
-                order,
-                global_only,
-                scope_only,
-            );
-        }
-    }
-
-    Ok(())
-}
-
-/// Load a controller file and register its routes.
-fn load_controller(
-    interpreter: &mut Interpreter,
-    controller_path: &Path,
-    file_tracker: &mut FileTracker,
-) -> Result<(), RuntimeError> {
-    let controller_name = controller_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
-
-    println!("Loading controller: {}", controller_name);
-
-    // Track file for hot reload
-    file_tracker.track(controller_path);
-
-    // Read and parse the controller to extract function names
-    let source = std::fs::read_to_string(controller_path).map_err(|e| RuntimeError::General {
-        message: format!("Failed to read controller file: {}", e),
-        span: Span::default(),
-    })?;
-
-    // Derive routes from the controller
-    let routes = derive_routes_from_controller(controller_name, &source)?;
-
-    // Execute the controller file to define functions
-    execute_file(interpreter, controller_path)?;
-
-    // Check if this is an OOP controller (class-based)
-    let controller_key = controller_name.trim_end_matches("_controller");
-    let class_name = to_pascal_case_controller(controller_key);
-    let is_oop_controller = interpreter
-        .environment
-        .borrow()
-        .get(&class_name)
-        .map(|v| matches!(v, Value::Class(_)))
-        .unwrap_or(false);
-
-    // Register routes using the interpreter's environment
-    for route in routes {
-        // Create full handler name: controller#action
-        let full_handler_name = format!("{}#{}", controller_key, route.function_name);
-
-        if is_oop_controller {
-            // OOP controller: methods are inside the class, resolved at runtime
-        } else {
-            // Function-based controller: look up the function in the environment
-            let func_value = interpreter
-                .environment
-                .borrow()
-                .get(&route.function_name)
-                .ok_or_else(|| RuntimeError::General {
-                    message: format!(
-                        "Function '{}' not found in controller {}",
-                        route.function_name, controller_name
-                    ),
-                    span: Span::default(),
-                })?;
-
-            // Register action in global registry for DSL lookup
-            crate::interpreter::builtins::router::register_controller_action(
-                controller_key,
-                &route.function_name,
-                func_value.clone(),
-            );
-        }
-
-        register_route_with_handler(&route.method, &route.path, full_handler_name);
-    }
-
-    Ok(())
-}
-
-/// Execute a Soli file with the given interpreter.
-fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result<(), RuntimeError> {
-    let source = std::fs::read_to_string(path).map_err(|e| RuntimeError::General {
-        message: format!("Failed to read file '{}': {}", path.display(), e),
-        span: Span::default(),
-    })?;
-
-    // Lex
-    let tokens = crate::lexer::Scanner::new(&source)
-        .scan_tokens()
-        .map_err(|e| RuntimeError::General {
-            message: format!("Lexer error in {}: {}", path.display(), e),
-            span: Span::default(),
-        })?;
-
-    // Parse
-    let mut program =
-        crate::parser::Parser::new(tokens)
-            .parse()
-            .map_err(|e| RuntimeError::General {
-                message: format!("Parser error in {}: {}", path.display(), e),
-                span: Span::default(),
-            })?;
-
-    // Module resolution (if the file has imports)
-    if crate::has_imports(&program) {
-        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
-        let mut resolver = crate::module::ModuleResolver::new(base_dir);
-        program = resolver
-            .resolve(program, path)
-            .map_err(|e| RuntimeError::General {
-                message: format!("Module resolution error in {}: {}", path.display(), e),
-                span: Span::default(),
-            })?;
-    }
-
-    // Execute (skip type checking for flexibility)
-    interpreter.set_source_path(path.to_path_buf());
-    interpreter.interpret(&program)
-}
-
-/// Recursively track view files for hot reload.
-fn track_view_files(views_dir: &Path, file_tracker: &mut FileTracker) -> Result<(), RuntimeError> {
-    fn track_recursive(dir: &Path, file_tracker: &mut FileTracker) -> Result<(), RuntimeError> {
-        if !dir.exists() {
-            return Ok(());
-        }
-
-        for entry in std::fs::read_dir(dir)
-            .map_err(|e| RuntimeError::General {
-                message: format!("Failed to read views directory: {}", e),
-                span: Span::default(),
-            })?
-            .flatten()
-        {
-            let path = entry.path();
-            if path.is_dir() {
-                track_recursive(&path, file_tracker)?;
-            } else if path.extension().is_some_and(|ext| ext == "erb") {
-                file_tracker.track(&path);
-            }
-        }
-        Ok(())
-    }
-
-    track_recursive(views_dir, file_tracker)
-}
-
-/// Hot reload version counters - shared between file watcher and workers.
-/// Workers periodically check if versions changed and reload accordingly.
-struct HotReloadVersions {
-    /// Incremented when controllers change
-    controllers: AtomicU64,
-    /// Incremented when middleware changes
-    middleware: AtomicU64,
-    /// Incremented when views change
-    views: AtomicU64,
-    /// Incremented when static files (CSS, JS) change
-    static_files: AtomicU64,
-    /// Incremented when routes.sl changes
-    routes: AtomicU64,
-    /// Incremented when view helpers change
-    helpers: AtomicU64,
-}
-
-impl HotReloadVersions {
-    fn new() -> Self {
-        Self {
-            controllers: AtomicU64::new(0),
-            middleware: AtomicU64::new(0),
-            views: AtomicU64::new(0),
-            static_files: AtomicU64::new(0),
-            routes: AtomicU64::new(0),
-            helpers: AtomicU64::new(0),
-        }
-    }
-}
-
-/// Per-worker queue for distributing requests without contention.
-/// Each worker has its own dedicated channel, eliminating receiver contention.
-struct WorkerQueues {
-    senders: Vec<channel::Sender<RequestData>>,
-    receivers: Vec<channel::Receiver<RequestData>>,
-}
-
-impl WorkerQueues {
-    fn new(num_workers: usize, capacity_per_worker: usize) -> Self {
-        let mut senders = Vec::with_capacity(num_workers);
-        let mut receivers = Vec::with_capacity(num_workers);
-
-        for _ in 0..num_workers {
-            let (tx, rx) = channel::bounded(capacity_per_worker);
-            senders.push(tx);
-            receivers.push(rx);
-        }
-
-        Self { senders, receivers }
-    }
-
-    /// Get a sender that round-robins across workers (lock-free)
-    fn get_sender(&self) -> WorkerSender {
-        WorkerSender {
-            senders: self.senders.clone(),
-            next_worker: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        }
-    }
-
-    /// Get the receiver for a specific worker
-    fn get_receiver(&self, worker_id: usize) -> channel::Receiver<RequestData> {
-        self.receivers[worker_id].clone()
-    }
-}
-
-/// A sender that distributes requests across workers using round-robin
-#[derive(Clone)]
-struct WorkerSender {
-    senders: Vec<channel::Sender<RequestData>>,
-    next_worker: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-}
-
-impl WorkerSender {
-    fn send(&self, data: RequestData) -> Result<(), channel::SendError<RequestData>> {
-        // Round-robin distribution (lock-free)
-        let worker = self
-            .next_worker
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            % self.senders.len();
-        self.senders[worker].send(data)
-    }
-}
+// Import tailwind functions
+use tailwind::{spawn_tailwind_watch, trigger_tailwind_rebuild};
 
 /// Run the MVC HTTP server with a worker pool for parallel request processing.
+#[allow(clippy::too_many_arguments)]
 fn run_hyper_server_worker_pool(
     folder: &Path,
     port: u16,
@@ -1347,6 +780,7 @@ fn run_hyper_server_worker_pool(
 }
 
 /// Worker loop - processes requests from dedicated per-worker queue
+#[allow(clippy::too_many_arguments)]
 fn worker_loop(
     worker_id: usize,
     work_rx: channel::Receiver<RequestData>,
@@ -1469,7 +903,7 @@ fn worker_loop(
         }
 
         // Process WebSocket events first (quick non-blocking check)
-        if let (Some(ref mut rx), Some(ref _registry)) =
+        if let (Some(ref mut rx), Some(_registry)) =
             (ws_event_rx_inner.as_mut(), ws_registry_inner.as_ref())
         {
             // Use try_recv for non-blocking check instead of recv_timeout(ZERO)
@@ -1538,149 +972,6 @@ fn worker_loop(
     }
 }
 
-/// Load all controllers in a worker thread
-fn load_controllers_in_worker(
-    worker_id: usize,
-    interpreter: &mut Interpreter,
-    controllers_dir: &Path,
-) {
-    if let Ok(entries) = std::fs::read_dir(controllers_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "sl") {
-                if let Err(e) = execute_file(interpreter, &path) {
-                    eprintln!(
-                        "Worker {}: Error loading {}: {}",
-                        worker_id,
-                        path.display(),
-                        e
-                    );
-                }
-
-                // Also register controller actions in this worker (only for function-based controllers)
-                if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
-                    if name.ends_with("_controller") {
-                        let controller_key = name.trim_end_matches("_controller");
-                        let class_name = to_pascal_case_controller(controller_key);
-
-                        // Check if this is an OOP controller (class-based)
-                        let is_oop_controller = interpreter
-                            .environment
-                            .borrow()
-                            .get(&class_name)
-                            .map(|v| matches!(v, Value::Class(_)))
-                            .unwrap_or(false);
-
-                        // Only register actions for function-based controllers
-                        // OOP controllers have their methods resolved at runtime
-                        if !is_oop_controller {
-                            let source = std::fs::read_to_string(&path).unwrap_or_default();
-                            let routes =
-                                derive_routes_from_controller(name, &source).unwrap_or_default();
-                            for route in routes {
-                                if let Some(func_value) =
-                                    interpreter.environment.borrow().get(&route.function_name)
-                                {
-                                    crate::interpreter::builtins::router::register_controller_action(
-                                        controller_key,
-                                        &route.function_name,
-                                        func_value.clone(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Define DSL helpers for routes in the interpreter.
-/// This must be called before routes.sl can be executed.
-fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
-    let dsl_source = r#"
-        fn resources(name: Any, block: Any) {
-            router_resource_enter(name, null);
-            if (block != null) { block(); }
-            router_resource_exit();
-        }
-
-        fn namespace(name: Any, block: Any) {
-            router_namespace_enter(name);
-            if (block != null) { block(); }
-            router_namespace_exit();
-        }
-
-        fn member(block: Any) {
-            router_member_enter();
-            if (block != null) { block(); }
-            router_member_exit();
-        }
-
-        fn collection(block: Any) {
-            router_collection_enter();
-            if (block != null) { block(); }
-            router_collection_exit();
-        }
-
-        fn middleware(mw_names: Any, block: Any) {
-            router_middleware_scope(mw_names);
-            if (block != null) { block(); }
-            router_middleware_scope_exit();
-        }
-
-        fn get(path: Any, action: Any) { router_match("GET", path, action); }
-        fn post(path: Any, action: Any) { router_match("POST", path, action); }
-        fn put(path: Any, action: Any) { router_match("PUT", path, action); }
-        fn delete(path: Any, action: Any) { router_match("DELETE", path, action); }
-        fn patch(path: Any, action: Any) { router_match("PATCH", path, action); }
-
-        fn websocket(path: Any, action: Any) { router_websocket(path, action); }
-    "#;
-
-    let tokens = crate::lexer::Scanner::new(dsl_source)
-        .scan_tokens()
-        .map_err(|e| RuntimeError::General {
-            message: format!("DSL Lexer error: {}", e),
-            span: Span::default(),
-        })?;
-    let program =
-        crate::parser::Parser::new(tokens)
-            .parse()
-            .map_err(|e| RuntimeError::General {
-                message: format!("DSL Parser error: {}", e),
-                span: Span::default(),
-            })?;
-    interpreter.interpret(&program)
-}
-
-/// Reload routes in a worker thread.
-/// Clears existing routes, resets router context, and re-executes routes.sl.
-fn reload_routes_in_worker(worker_id: usize, interpreter: &mut Interpreter, routes_file: &Path) {
-    // 1. Clear existing routes
-    crate::interpreter::builtins::server::clear_routes();
-
-    // 2. Clear WebSocket routes
-    crate::serve::websocket::clear_websocket_routes();
-
-    // 3. Reset router context
-    crate::interpreter::builtins::router::reset_router_context();
-
-    // 4. Re-execute routes.sl (DSL helpers are already defined in interpreter)
-    if routes_file.exists() {
-        if let Err(e) = execute_file(interpreter, routes_file) {
-            eprintln!("Worker {}: Error reloading routes: {}", worker_id, e);
-            return;
-        }
-    }
-
-    // 5. Rebuild route index
-    crate::interpreter::builtins::server::rebuild_route_index();
-
-    println!("Worker {}: Routes reloaded successfully", worker_id);
-}
-
 /// Data for WebSocket events sent to the interpreter thread.
 struct WebSocketEventData {
     path: String,
@@ -1716,67 +1007,8 @@ pub struct LiveViewEventData {
     pub response_tx: oneshot::Sender<Result<(), String>>,
 }
 
-/// Parse multipart form data into form fields and files.
-async fn parse_multipart_body(
-    body_bytes: &[u8],
-    content_type: &str,
-) -> (HashMap<String, String>, Vec<UploadedFile>) {
-    let mut form_fields = HashMap::new();
-    let mut files = Vec::new();
-
-    // Extract boundary from content-type header
-    let boundary = content_type.split(';').find_map(|part| {
-        let part = part.trim();
-        if part.starts_with("boundary=") {
-            Some(
-                part.trim_start_matches("boundary=")
-                    .trim_matches('"')
-                    .to_string(),
-            )
-        } else {
-            None
-        }
-    });
-
-    let boundary = match boundary {
-        Some(b) => b,
-        None => return (form_fields, files),
-    };
-
-    // Use multer to parse the multipart data
-    let stream = futures_util::stream::once(async move {
-        Ok::<_, std::io::Error>(bytes::Bytes::copy_from_slice(body_bytes))
-    });
-
-    let mut multipart = multer::Multipart::new(stream, boundary);
-
-    while let Ok(Some(field)) = multipart.next_field().await {
-        let name = field.name().map(|s| s.to_string()).unwrap_or_default();
-        let filename = field.file_name().map(|s| s.to_string());
-        let content_type = field
-            .content_type()
-            .map(|m| m.to_string())
-            .unwrap_or_default();
-
-        if let Ok(data) = field.bytes().await {
-            if let Some(fname) = filename {
-                // This is a file upload
-                files.push(UploadedFile {
-                    name: name.clone(),
-                    filename: fname,
-                    content_type,
-                    data: data.to_vec(),
-                });
-            } else {
-                // This is a regular form field
-                let value = String::from_utf8_lossy(&data).to_string();
-                form_fields.insert(name, value);
-            }
-        }
-    }
-
-    (form_fields, files)
-}
+// File upload functions are now in file_upload module
+use file_upload::parse_multipart_body;
 
 /// Handle a hyper request
 async fn handle_hyper_request(
@@ -1951,10 +1183,11 @@ async fn handle_hyper_request(
                                                 }
                                             }
                                         } else if event_type == "heartbeat" {
-                                            // Send heartbeat acknowledgment
+                                            // Send heartbeat acknowledgment (fire-and-forget)
                                             let ack = serde_json::json!({
                                                 "type": "heartbeat_ack"
                                             });
+                                            #[allow(clippy::let_underscore_future)]
                                             let _ = tx_arc.send(Ok(tungstenite::Message::Text(
                                                 ack.to_string(),
                                             )));
@@ -2361,12 +1594,15 @@ async fn handle_websocket_stream<S>(
         response_tx,
     };
 
-    if let Err(_) = ws_event_tx.send(connect_event) {
-        // Silently ignore send errors
-    }
- 
+    // Silently ignore send errors
+    let _ = ws_event_tx.send(connect_event);
+
     // Wait for handler response (don't block forever, max 5 seconds)
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS), response_rx).await;
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS),
+        response_rx,
+    )
+    .await;
 
     // Send ping to client
     let _ = stream.send(tungstenite::Message::Ping(vec![])).await;
@@ -2378,7 +1614,7 @@ async fn handle_websocket_stream<S>(
     let forward_task = async {
         while let Some(msg) = ws_rx.recv().await {
             if let Err(e) = ws_sender
-                .send(msg.unwrap_or_else(|_| tungstenite::Message::Close(None)))
+                .send(msg.unwrap_or(tungstenite::Message::Close(None)))
                 .await
             {
                 eprintln!("WebSocket send error: {}", e);
@@ -2486,7 +1722,7 @@ fn handle_websocket_event(
                 let action_name = route
                     .handler_name
                     .split('#')
-                    .last()
+                    .next_back()
                     .unwrap_or(&route.handler_name);
                 match interpreter.environment.borrow().get(action_name) {
                     Some(h) => h,
@@ -2503,15 +1739,27 @@ fn handle_websocket_event(
 
     // Build event hash: {type, connection_id, message, channel?}
     let mut event_map: IndexMap<HashKey, Value> = IndexMap::new();
-    event_map.insert(HashKey::String("type".to_string()), Value::String(data.event_type.clone()));
-    event_map.insert(HashKey::String("connection_id".to_string()), Value::String(connection_id.clone()));
+    event_map.insert(
+        HashKey::String("type".to_string()),
+        Value::String(data.event_type.clone()),
+    );
+    event_map.insert(
+        HashKey::String("connection_id".to_string()),
+        Value::String(connection_id.clone()),
+    );
 
     if let Some(ref msg) = data.message {
-        event_map.insert(HashKey::String("message".to_string()), Value::String(msg.clone()));
+        event_map.insert(
+            HashKey::String("message".to_string()),
+            Value::String(msg.clone()),
+        );
     }
 
     if let Some(ref channel) = data.channel {
-        event_map.insert(HashKey::String("channel".to_string()), Value::String(channel.clone()));
+        event_map.insert(
+            HashKey::String("channel".to_string()),
+            Value::String(channel.clone()),
+        );
     }
 
     let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
@@ -2579,7 +1827,10 @@ fn handle_liveview_event(
     let params_value = json_to_value(&data.params);
 
     let mut event_map: IndexMap<HashKey, Value> = IndexMap::new();
-    event_map.insert(HashKey::String("event".to_string()), Value::String(data.event.clone()));
+    event_map.insert(
+        HashKey::String("event".to_string()),
+        Value::String(data.event.clone()),
+    );
     event_map.insert(HashKey::String("params".to_string()), params_value);
     event_map.insert(HashKey::String("state".to_string()), state_value);
     let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
@@ -2592,7 +1843,7 @@ fn handle_liveview_event(
                 Ok(h) => h,
                 Err(_) => {
                     // Try to look up the function directly in the environment
-                    let action_name = handler_name.split('#').last().unwrap_or(&handler_name);
+                    let action_name = handler_name.split('#').next_back().unwrap_or(&handler_name);
                     match interpreter.environment.borrow().get(action_name) {
                         Some(h) => h,
                         None => {
@@ -2948,7 +2199,7 @@ fn call_oop_controller_action(
         if let Some(before_response) = execute_before_actions(
             interpreter,
             info,
-            &action_name,
+            action_name,
             req.clone(),
             &params,
             &session,
@@ -3059,7 +2310,7 @@ fn call_oop_controller_action(
         return Some(execute_after_actions(
             interpreter,
             info,
-            &action_name,
+            action_name,
             req,
             &response,
         ));
@@ -3200,9 +2451,18 @@ fn execute_after_actions(
         .map(|(k, v)| (HashKey::String(k.clone()), Value::String(v.clone())))
         .collect();
     let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
-    response_map.insert(HashKey::String("status".to_string()), Value::Int(response.status as i64));
-    response_map.insert(HashKey::String("headers".to_string()), Value::Hash(Rc::new(RefCell::new(headers_map))));
-    response_map.insert(HashKey::String("body".to_string()), Value::String(response.body.clone()));
+    response_map.insert(
+        HashKey::String("status".to_string()),
+        Value::Int(response.status as i64),
+    );
+    response_map.insert(
+        HashKey::String("headers".to_string()),
+        Value::Hash(Rc::new(RefCell::new(headers_map))),
+    );
+    response_map.insert(
+        HashKey::String("body".to_string()),
+        Value::String(response.body.clone()),
+    );
     let response_value = Value::Hash(Rc::new(RefCell::new(response_map)));
 
     for after_action in &controller_info.after_actions {
@@ -3272,7 +2532,8 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
                     "headers" => {
                         if let Value::Hash(h) = val {
                             for (hk, hv) in h.borrow().iter() {
-                                if let (HashKey::String(key_str), Value::String(val_str)) = (hk, hv) {
+                                if let (HashKey::String(key_str), Value::String(val_str)) = (hk, hv)
+                                {
                                     headers.push((key_str.clone(), val_str.clone()));
                                 }
                             }
@@ -3357,28 +2618,6 @@ fn to_pascal_case_controller(controller_key: &str) -> String {
 
     result.push_str("Controller");
     result
-}
-
-/// Convert uploaded files to Soli Value array.
-fn uploaded_files_to_value(files: &[UploadedFile]) -> Value {
-    let file_values: Vec<Value> = files
-        .iter()
-        .map(|f| {
-            let mut file_map: IndexMap<HashKey, Value> = IndexMap::new();
-            file_map.insert(HashKey::String("name".to_string()), Value::String(f.name.clone()));
-            file_map.insert(HashKey::String("filename".to_string()), Value::String(f.filename.clone()));
-            file_map.insert(HashKey::String("content_type".to_string()), Value::String(f.content_type.clone()));
-            file_map.insert(HashKey::String("size".to_string()), Value::Int(f.data.len() as i64));
-            file_map.insert(
-                HashKey::String("data".to_string()),
-                Value::Array(Rc::new(RefCell::new(
-                    f.data.iter().map(|&b| Value::Int(b as i64)).collect(),
-                ))),
-            );
-            Value::Hash(Rc::new(RefCell::new(file_map)))
-        })
-        .collect();
-    Value::Array(Rc::new(RefCell::new(file_values)))
 }
 
 /// Parse request body based on Content-Type header.
@@ -3805,7 +3044,8 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
         .to_string();
 
     // Execute the code using the interpreter
-    let (result, new_session_id) = execute_repl_code(&code, request_data, breakpoint_env, &repl_session_id);
+    let (result, new_session_id) =
+        execute_repl_code(&code, request_data, breakpoint_env, &repl_session_id);
 
     let response_json = serde_json::json!({
         "result": result.result,
@@ -3838,7 +3078,7 @@ async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes
         .find(|(k, _)| *k == "file")
         .map(|(_, f)| {
             urlencoding::decode(f)
-                .unwrap_or_else(|_| Cow::Borrowed(f))
+                .unwrap_or(Cow::Borrowed(f))
                 .into_owned()
         })
         .unwrap_or_else(String::new);
@@ -3924,10 +3164,13 @@ fn execute_repl_code(
     let mut interpreter = session.interpreter.borrow_mut();
 
     if code.trim().is_empty() {
-        return (ReplResult {
-            result: "null".to_string(),
-            error: None,
-        }, session_id);
+        return (
+            ReplResult {
+                result: "null".to_string(),
+                error: None,
+            },
+            session_id,
+        );
     }
 
     // Inject view helpers into REPL environment (same helpers available in templates)
@@ -3936,16 +3179,14 @@ fn execute_repl_code(
     }
 
     // Set up breakpoint environment variables first (these are the captured variables)
-    if let Some(env_obj) = breakpoint_env {
-        if let serde_json::Value::Object(map) = env_obj {
-            for (name, value) in map {
-                // Skip internal variables
-                if !name.starts_with("__") {
-                    interpreter
-                        .environment
-                        .borrow_mut()
-                        .define(name, convert_json_to_value(value));
-                }
+    if let Some(serde_json::Value::Object(map)) = breakpoint_env {
+        for (name, value) in map {
+            // Skip internal variables
+            if !name.starts_with("__") {
+                interpreter
+                    .environment
+                    .borrow_mut()
+                    .define(name, convert_json_to_value(value));
             }
         }
     }
@@ -4011,16 +3252,22 @@ fn execute_repl_code(
                     Some(v) => format!("{}", v),
                     None => "null".to_string(),
                 };
-                return (ReplResult {
-                    result: result_str,
-                    error: None,
-                }, session_id);
+                return (
+                    ReplResult {
+                        result: result_str,
+                        error: None,
+                    },
+                    session_id,
+                );
             }
             Err(e) => {
-                return (ReplResult {
-                    result: "null".to_string(),
-                    error: Some(format!("Execution error: {}", e)),
-                }, session_id);
+                return (
+                    ReplResult {
+                        result: "null".to_string(),
+                        error: Some(format!("Execution error: {}", e)),
+                    },
+                    session_id,
+                );
             }
         }
     }
@@ -4082,7 +3329,7 @@ fn render_error_page(
         interpreter.serialize_environment_for_debug()
     };
     let env_json_for_render: Option<&str> = Some(&captured_env);
-    let location;
+
     let mut full_stack_trace: Vec<String> = Vec::new();
 
     // Extract error message and stack trace from the combined error
@@ -4124,7 +3371,7 @@ fn render_error_page(
         })
         .unwrap_or_else(|| "unknown".to_string());
 
-    location = format!("{}:{}", error_file, error_line);
+    let location = format!("{}:{}", error_file, error_line);
 
     // Build stack trace - first the error, then controller stack trace, then view
     full_stack_trace.push(format!("Error: {}", actual_error));

@@ -168,6 +168,12 @@ pub struct HiddenClassObject {
     pub fields: Vec<(SymbolId, Value)>,
 }
 
+impl Default for HiddenClassObject {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HiddenClassObject {
     pub fn new() -> Self {
         Self {
@@ -202,11 +208,9 @@ impl HiddenClassObject {
             .get(self.hidden_class_id)
             .and_then(|hc| hc.get_property_offset(symbol_id, &HIDDEN_CLASS_REGISTRY))
         {
-            if offset < self.fields.len() {
-                if self.fields[offset].0 == symbol_id {
-                    self.fields[offset].1 = value;
-                    return;
-                }
+            if offset < self.fields.len() && self.fields[offset].0 == symbol_id {
+                self.fields[offset].1 = value;
+                return;
             }
         }
 

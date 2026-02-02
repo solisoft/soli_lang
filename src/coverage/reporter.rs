@@ -1,7 +1,7 @@
 use crate::coverage::data::*;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION", "0.2.0");
 
@@ -259,7 +259,7 @@ impl CoverageReporter {
         }
     }
 
-    fn write_html_assets(&self, assets_dir: &PathBuf) {
+    fn write_html_assets(&self, assets_dir: &Path) {
         let style = r#"* { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; }
 .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
@@ -290,7 +290,7 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
         let _ = fs::write(assets_dir.join("app.js"), app_js);
     }
 
-    fn write_html_source_files(&self, coverage: &AggregatedCoverage, output_dir: &PathBuf) {
+    fn write_html_source_files(&self, coverage: &AggregatedCoverage, output_dir: &Path) {
         let src_dir = output_dir.join("src");
         let _ = fs::create_dir_all(&src_dir);
 
@@ -376,7 +376,7 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
         )
     }
 
-    fn write_html_breakdown_json(&self, coverage: &AggregatedCoverage, output_dir: &PathBuf) {
+    fn write_html_breakdown_json(&self, coverage: &AggregatedCoverage, output_dir: &Path) {
         let breakdown = self.generate_json_output(coverage);
         let _ = fs::write(output_dir.join("breakdown.json"), breakdown);
     }

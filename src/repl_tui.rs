@@ -80,10 +80,10 @@ impl LineBuffer {
 
 #[derive(Clone)]
 enum OutputLine {
-    Input(String),      // User input (with syntax highlighting)
-    Result(String),     // Execution result (green)
-    Error(String),      // Error message (red)
-    Info(String),       // Info/system message (dim)
+    Input(String),  // User input (with syntax highlighting)
+    Result(String), // Execution result (green)
+    Error(String),  // Error message (red)
+    Info(String),   // Info/system message (dim)
 }
 
 struct InputState {
@@ -196,15 +196,13 @@ impl InputState {
                 } else if c == '"' {
                     in_string = false;
                 }
-            } else {
-                if c == '"' {
-                    in_string = true;
-                    escaped = false;
-                } else if c == '{' {
-                    balance += 1;
-                } else if c == '}' {
-                    balance -= 1;
-                }
+            } else if c == '"' {
+                in_string = true;
+                escaped = false;
+            } else if c == '{' {
+                balance += 1;
+            } else if c == '}' {
+                balance -= 1;
             }
         }
         balance
@@ -717,7 +715,10 @@ impl TuiRepl {
     fn run_interpreter(&mut self, source: &str) -> Result<(), String> {
         match Scanner::new(source).scan_tokens() {
             Ok(tokens) => match Parser::new(tokens).parse() {
-                Ok(program) => self.interpreter.interpret(&program).map_err(|e| e.to_string()),
+                Ok(program) => self
+                    .interpreter
+                    .interpret(&program)
+                    .map_err(|e| e.to_string()),
                 Err(e) => Err(format!("Parse Error: {}", e)),
             },
             Err(e) => Err(format!("Lex Error: {}", e)),
@@ -754,8 +755,7 @@ impl TuiRepl {
             .add_info(".funcs         - List all defined functions");
         self.input
             .add_info(".classes       - List all defined classes");
-        self.input
-            .add_info(".history       - Show command history");
+        self.input.add_info(".history       - Show command history");
         self.input
             .add_info(".clear         - Reset the REPL environment");
         self.input

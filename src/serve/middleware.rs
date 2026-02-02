@@ -303,7 +303,7 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
     let mut pending_global_only: Option<bool> = None;
     let mut pending_scope_only: Option<bool> = None;
 
-    for (_line_number, line) in lines.iter().enumerate() {
+    for line in lines.iter() {
         let trimmed = line.trim();
 
         // Check for order comment
@@ -404,7 +404,10 @@ fn _private_helper() {
     #[test]
     fn test_middleware_result_continue() {
         let mut request_map: IndexMap<HashKey, Value> = IndexMap::new();
-        request_map.insert(HashKey::String("path".to_string()), Value::String("/test".to_string()));
+        request_map.insert(
+            HashKey::String("path".to_string()),
+            Value::String("/test".to_string()),
+        );
         let request = Value::Hash(Rc::new(RefCell::new(request_map)));
 
         let mut result_map: IndexMap<HashKey, Value> = IndexMap::new();
@@ -422,7 +425,10 @@ fn _private_helper() {
     fn test_middleware_result_response() {
         let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
         response_map.insert(HashKey::String("status".to_string()), Value::Int(401));
-        response_map.insert(HashKey::String("body".to_string()), Value::String("Unauthorized".to_string()));
+        response_map.insert(
+            HashKey::String("body".to_string()),
+            Value::String("Unauthorized".to_string()),
+        );
         let response = Value::Hash(Rc::new(RefCell::new(response_map)));
 
         let mut result_map: IndexMap<HashKey, Value> = IndexMap::new();

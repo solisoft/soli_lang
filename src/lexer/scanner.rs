@@ -341,12 +341,10 @@ impl<'a> Scanner<'a> {
                     value.push('(');
                 }
                 Some(')') => {
-                    if has_interpolation {
-                        if paren_depth > 0 {
-                            paren_depth -= 1;
-                        }
-                        // Don't break here - the " will break the loop when we see it
+                    if has_interpolation && paren_depth > 0 {
+                        paren_depth -= 1;
                     }
+                    // Don't break here - the " will break the loop when we see it
                     self.advance();
                     value.push(')');
                 }
@@ -430,7 +428,7 @@ impl<'a> Scanner<'a> {
                     chars.next(); // consume (
                     let mut _paren_depth = 1;
                     // Read until matching )
-                    while let Some(c2) = chars.next() {
+                    for c2 in chars.by_ref() {
                         if c2 == '(' {
                             _paren_depth += 1;
                             current.push(c2);

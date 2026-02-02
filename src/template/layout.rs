@@ -11,6 +11,9 @@ use crate::interpreter::value::{HashKey, Value};
 use crate::interpreter::Interpreter;
 use crate::template::parser::{parse_template, BinaryOp, CompareOp, Expr, TemplateNode};
 
+/// Type alias for partial renderer callback to reduce type complexity.
+type PartialRenderer<'a> = Option<&'a dyn Fn(&str, &Value) -> Result<String, String>>;
+
 /// Resolve a value if it's a Future, otherwise return as-is.
 /// This enables auto-resolution of async HTTP responses in templates.
 #[inline]
@@ -35,7 +38,7 @@ pub fn render_with_layout(
     layout_source: &str,
     content: &str,
     data: &Value,
-    partial_renderer: Option<&dyn Fn(&str, &Value) -> Result<String, String>>,
+    partial_renderer: PartialRenderer<'_>,
 ) -> Result<String, String> {
     render_with_layout_path(layout_source, content, data, partial_renderer, None)
 }
@@ -45,7 +48,7 @@ pub fn render_with_layout_path(
     layout_source: &str,
     content: &str,
     data: &Value,
-    partial_renderer: Option<&dyn Fn(&str, &Value) -> Result<String, String>>,
+    partial_renderer: PartialRenderer<'_>,
     layout_path: Option<&str>,
 ) -> Result<String, String> {
     let layout_nodes = parse_template(layout_source).map_err(|e| {
@@ -63,7 +66,7 @@ pub fn render_layout_nodes(
     nodes: &[TemplateNode],
     content: &str,
     data: &Value,
-    partial_renderer: Option<&dyn Fn(&str, &Value) -> Result<String, String>>,
+    partial_renderer: PartialRenderer<'_>,
 ) -> Result<String, String> {
     render_layout_nodes_with_path(nodes, content, data, partial_renderer, None)
 }
@@ -73,7 +76,7 @@ pub fn render_layout_nodes_with_path(
     nodes: &[TemplateNode],
     content: &str,
     data: &Value,
-    partial_renderer: Option<&dyn Fn(&str, &Value) -> Result<String, String>>,
+    partial_renderer: PartialRenderer<'_>,
     layout_path: Option<&str>,
 ) -> Result<String, String> {
     let mut output = String::new();
@@ -154,8 +157,10 @@ pub fn render_layout_nodes_with_path(
                         }
                         Value::Hash(hash) => {
                             for (k, v) in hash.borrow().iter() {
-                                let pair =
-                                    Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])));
+                                let pair = Value::Array(Rc::new(RefCell::new(vec![
+                                    k.to_value(),
+                                    v.clone(),
+                                ])));
                                 let loop_data = with_variable(data, var, pair)?;
                                 output.push_str(&render_layout_nodes_with_path(
                                     body,

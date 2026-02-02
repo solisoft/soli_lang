@@ -555,9 +555,10 @@ fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemonize:
 }
 
 fn run_new(name: &str, template: Option<&str>) {
+    use solilang::scaffold::app_generator::print_success_message;
     match solilang::scaffold::create_app(name, template) {
         Ok(()) => {
-            solilang::scaffold::print_success_message(name);
+            print_success_message(name);
         }
         Err(e) => {
             eprintln!("Error: {}", e);

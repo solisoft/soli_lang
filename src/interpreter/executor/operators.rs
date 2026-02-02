@@ -238,4 +238,43 @@ impl Interpreter {
             UnaryOp::Not => Ok(Value::Bool(!val.is_truthy())),
         }
     }
+
+    pub(crate) fn evaluate_logical_and(
+        &mut self,
+        left: &Expr,
+        right: &Expr,
+    ) -> RuntimeResult<Value> {
+        let left_val = self.evaluate(left)?;
+        if !left_val.is_truthy() {
+            Ok(left_val)
+        } else {
+            self.evaluate(right)
+        }
+    }
+
+    pub(crate) fn evaluate_logical_or(
+        &mut self,
+        left: &Expr,
+        right: &Expr,
+    ) -> RuntimeResult<Value> {
+        let left_val = self.evaluate(left)?;
+        if left_val.is_truthy() {
+            Ok(left_val)
+        } else {
+            self.evaluate(right)
+        }
+    }
+
+    pub(crate) fn evaluate_nullish_coalescing(
+        &mut self,
+        left: &Expr,
+        right: &Expr,
+    ) -> RuntimeResult<Value> {
+        let left_val = self.evaluate(left)?;
+        if matches!(left_val, Value::Null) {
+            self.evaluate(right)
+        } else {
+            Ok(left_val)
+        }
+    }
 }

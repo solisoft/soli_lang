@@ -219,7 +219,8 @@ pub fn register_upload_builtins(env: &mut Environment) {
                         }
                         Err(e) => {
                             let mut error_hash: IndexMap<HashKey, Value> = IndexMap::new();
-                            error_hash.insert(HashKey::String("error".to_string()), Value::String(e));
+                            error_hash
+                                .insert(HashKey::String("error".to_string()), Value::String(e));
                             error_hash.insert(
                                 HashKey::String("filename".to_string()),
                                 Value::String(file.filename),

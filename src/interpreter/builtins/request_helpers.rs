@@ -257,9 +257,7 @@ fn http_request(
     let response_headers: HashMap<String, String> = response
         .headers()
         .iter()
-        .filter_map(|(name, value)| {
-            Some((name.to_string(), value.to_str().unwrap_or("").to_string()))
-        })
+        .map(|(name, value)| (name.to_string(), value.to_str().unwrap_or("").to_string()))
         .collect();
 
     let body = response.text().map_err(|e| e.to_string())?;

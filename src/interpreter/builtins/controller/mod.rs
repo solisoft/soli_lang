@@ -51,6 +51,7 @@
 //! }
 //! ```
 
+#[allow(clippy::module_inception)]
 pub mod controller;
 pub mod registry;
 

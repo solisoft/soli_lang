@@ -572,6 +572,7 @@ impl Default for Class {
 
 impl Class {
     /// Create a new class with all fields initialized, including caches.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: String,
         superclass: Option<Rc<Class>>,

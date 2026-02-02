@@ -6,41 +6,6 @@
 //!
 //! Solilang uses a tree-walking interpreter for executing programs.
 
-// Allow some clippy lints that are stylistic and not critical
-#![allow(clippy::module_inception)]
-#![allow(clippy::result_large_err)]
-#![allow(clippy::arc_with_non_send_sync)]
-#![allow(clippy::only_used_in_recursion)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::ptr_arg)]
-#![allow(clippy::new_without_default)]
-#![allow(clippy::collapsible_if)]
-#![allow(clippy::collapsible_else_if)]
-#![allow(clippy::collapsible_match)]
-#![allow(clippy::derivable_impls)]
-#![allow(clippy::unnecessary_cast)]
-#![allow(clippy::needless_borrow)]
-#![allow(clippy::wildcard_in_or_patterns)]
-#![allow(clippy::needless_borrows_for_generic_args)]
-#![allow(clippy::unnecessary_lazy_evaluations)]
-#![allow(clippy::len_zero)]
-#![allow(clippy::redundant_pattern_matching)]
-#![allow(clippy::trim_split_whitespace)]
-#![allow(clippy::to_string_in_format_args)]
-#![allow(clippy::while_let_on_iterator)]
-#![allow(clippy::manual_ok_err)]
-#![allow(clippy::unwrap_or_default)]
-#![allow(clippy::unnecessary_filter_map)]
-#![allow(clippy::manual_clamp)]
-#![allow(clippy::redundant_closure)]
-#![allow(clippy::unused_enumerate_index)]
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::let_underscore_future)]
-#![allow(clippy::double_ended_iterator_last)]
-#![allow(clippy::needless_late_init)]
-#![allow(clippy::manual_strip)]
-#![allow(clippy::never_loop)]
-
 pub mod ast;
 pub mod coverage;
 pub mod error;
@@ -75,18 +40,12 @@ pub fn run_with_type_check(source: &str, type_check: bool) -> Result<(), Solilan
 }
 
 /// Run a Solilang program with full control over execution options.
-pub fn run_with_options(
-    source: &str,
-    type_check: bool,
-) -> Result<(), SolilangError> {
+pub fn run_with_options(source: &str, type_check: bool) -> Result<(), SolilangError> {
     run_with_path(source, None, type_check)
 }
 
 /// Run a Solilang program from a file path with module resolution.
-pub fn run_file(
-    path: &std::path::Path,
-    type_check: bool,
-) -> Result<(), SolilangError> {
+pub fn run_file(path: &std::path::Path, type_check: bool) -> Result<(), SolilangError> {
     let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {
         message: format!("Failed to read file '{}': {}", path.display(), e),
         span: span::Span::new(0, 0, 1, 1),
@@ -194,7 +153,11 @@ pub fn run_with_path_and_coverage(
         let error_msg = if failed_tests.len() == 1 {
             format!("Test failed: {}", failed_tests[0])
         } else {
-            format!("{} tests failed:\n  - {}", failed_count, failed_tests.join("\n  - "))
+            format!(
+                "{} tests failed:\n  - {}",
+                failed_count,
+                failed_tests.join("\n  - ")
+            )
         };
         return Err(SolilangError::Runtime(error::RuntimeError::General {
             message: error_msg,
@@ -264,7 +227,11 @@ pub fn run_with_path_and_coverage(
         let error_msg = if failed_tests.len() == 1 {
             format!("Test failed: {}", failed_tests[0])
         } else {
-            format!("{} tests failed:\n  - {}", failed_count, failed_tests.join("\n  - "))
+            format!(
+                "{} tests failed:\n  - {}",
+                failed_count,
+                failed_tests.join("\n  - ")
+            )
         };
         return Err(SolilangError::Runtime(error::RuntimeError::General {
             message: error_msg,
@@ -275,7 +242,9 @@ pub fn run_with_path_and_coverage(
     Ok(assertion_count)
 }
 
-fn extract_test_definitions(program: &ast::Program) -> Vec<interpreter::builtins::test_dsl::TestSuite> {
+fn extract_test_definitions(
+    program: &ast::Program,
+) -> Vec<interpreter::builtins::test_dsl::TestSuite> {
     let mut suites = Vec::new();
     for stmt in &program.statements {
         if let ast::StmtKind::Expression(expr) = &stmt.kind {
@@ -347,31 +316,31 @@ fn extract_tests_from_block(
         if let ast::StmtKind::Expression(expr) = &stmt.kind {
             if let ast::ExprKind::Call { callee, arguments } = &expr.kind {
                 if let ast::ExprKind::Variable(name) = &callee.kind {
-                        if name == "test" || name == "it" || name == "specify" {
-                            if let Some(test) = extract_test_from_call(arguments, stmt.span) {
-                                suite.tests.push(test);
-                            }
-                        } else if name == "describe" || name == "context" {
-                            if let Some(nested) = extract_suite_from_call(name, arguments, stmt.span) {
-                                suite.nested_suites.push(nested);
-                            }
-                        } else if name == "before_each" {
-                            if let Some(Argument::Positional(callback)) = arguments.first() {
-                                suite.before_each = Some(ast_expr_to_value(callback));
-                            }
-                        } else if name == "after_each" {
-                            if let Some(Argument::Positional(callback)) = arguments.first() {
-                                suite.after_each = Some(ast_expr_to_value(callback));
-                            }
-                        } else if name == "before_all" {
-                            if let Some(Argument::Positional(callback)) = arguments.first() {
-                                suite.before_all = Some(ast_expr_to_value(callback));
-                            }
-                        } else if name == "after_all" {
-                            if let Some(Argument::Positional(callback)) = arguments.first() {
-                                suite.after_all = Some(ast_expr_to_value(callback));
-                            }
+                    if name == "test" || name == "it" || name == "specify" {
+                        if let Some(test) = extract_test_from_call(arguments, stmt.span) {
+                            suite.tests.push(test);
                         }
+                    } else if name == "describe" || name == "context" {
+                        if let Some(nested) = extract_suite_from_call(name, arguments, stmt.span) {
+                            suite.nested_suites.push(nested);
+                        }
+                    } else if name == "before_each" {
+                        if let Some(Argument::Positional(callback)) = arguments.first() {
+                            suite.before_each = Some(ast_expr_to_value(callback));
+                        }
+                    } else if name == "after_each" {
+                        if let Some(Argument::Positional(callback)) = arguments.first() {
+                            suite.after_each = Some(ast_expr_to_value(callback));
+                        }
+                    } else if name == "before_all" {
+                        if let Some(Argument::Positional(callback)) = arguments.first() {
+                            suite.before_all = Some(ast_expr_to_value(callback));
+                        }
+                    } else if name == "after_all" {
+                        if let Some(Argument::Positional(callback)) = arguments.first() {
+                            suite.after_all = Some(ast_expr_to_value(callback));
+                        }
+                    }
                 }
             }
         }
@@ -400,9 +369,11 @@ fn extract_test_from_call(
         Argument::Named(_) => return None,
     };
     let test_body = match &second_arg.kind {
-        ast::ExprKind::Lambda { params, return_type, body } => {
-            create_function_value(params.clone(), return_type.clone(), body.clone(), span)
-        }
+        ast::ExprKind::Lambda {
+            params,
+            return_type,
+            body,
+        } => create_function_value(params.clone(), return_type.clone(), body.clone(), span),
         _ => return None,
     };
 
@@ -419,8 +390,8 @@ fn create_function_value(
     span: span::Span,
 ) -> Value {
     use interpreter::value::Function;
-    use std::rc::Rc;
     use std::cell::RefCell;
+    use std::rc::Rc;
 
     // Create an environment with builtins registered
     let mut env = interpreter::environment::Environment::new();
@@ -439,9 +410,11 @@ fn create_function_value(
 
 fn ast_expr_to_value(expr: &ast::Expr) -> Value {
     match &expr.kind {
-        ast::ExprKind::Lambda { params, return_type, body } => {
-            create_function_value(params.clone(), return_type.clone(), body.clone(), expr.span)
-        }
+        ast::ExprKind::Lambda {
+            params,
+            return_type,
+            body,
+        } => create_function_value(params.clone(), return_type.clone(), body.clone(), expr.span),
         _ => Value::Null,
     }
 }
@@ -456,21 +429,23 @@ fn execute_test_suites(
     for suite in suites {
         // Run before_all if defined
         if let Some(before_all) = &suite.before_all {
-            let _ = interpreter.call_value(before_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+            let _ =
+                interpreter.call_value(before_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
         }
 
         for test in &suite.tests {
             // Run before_each if defined
             if let Some(before_each) = &suite.before_each {
-                let _ = interpreter.call_value(before_each.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+                let _ = interpreter.call_value(
+                    before_each.clone(),
+                    Vec::new(),
+                    span::Span::new(0, 0, 1, 1),
+                );
             }
 
             // Execute the test body and track failures
-            let result = interpreter.call_value(
-                test.body.clone(),
-                Vec::new(),
-                span::Span::new(0, 0, 1, 1),
-            );
+            let result =
+                interpreter.call_value(test.body.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
 
             if let Err(e) = result {
                 failed_count += 1;
@@ -479,18 +454,24 @@ fn execute_test_suites(
 
             // Run after_each if defined
             if let Some(after_each) = &suite.after_each {
-                let _ = interpreter.call_value(after_each.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+                let _ = interpreter.call_value(
+                    after_each.clone(),
+                    Vec::new(),
+                    span::Span::new(0, 0, 1, 1),
+                );
             }
         }
 
         // Run nested suites
-        let (nested_failed, mut nested_errors) = execute_test_suites(interpreter, &suite.nested_suites)?;
+        let (nested_failed, mut nested_errors) =
+            execute_test_suites(interpreter, &suite.nested_suites)?;
         failed_count += nested_failed;
         failed_tests.append(&mut nested_errors);
 
         // Run after_all if defined
         if let Some(after_all) = &suite.after_all {
-            let _ = interpreter.call_value(after_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+            let _ =
+                interpreter.call_value(after_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
         }
     }
     Ok((failed_count, failed_tests))

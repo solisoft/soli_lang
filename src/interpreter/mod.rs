@@ -10,7 +10,9 @@ pub mod value;
 
 pub use environment::Environment;
 pub use executor::Interpreter;
-pub use hidden_class::{HiddenClass, HiddenClassObject, HiddenClassRegistry, HIDDEN_CLASS_REGISTRY};
-pub use inline_cache::{PropertyInlineCache, MethodInlineCache, HiddenClassId, INLINE_CACHE};
-pub use symbol::{SymbolId, get_symbol, symbol_string};
-pub use value::{Value, unwrap_value};
+pub use hidden_class::{
+    HiddenClass, HiddenClassObject, HiddenClassRegistry, HIDDEN_CLASS_REGISTRY,
+};
+pub use inline_cache::{HiddenClassId, MethodInlineCache, PropertyInlineCache, INLINE_CACHE};
+pub use symbol::{get_symbol, symbol_string, SymbolId};
+pub use value::{unwrap_value, Value};

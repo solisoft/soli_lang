@@ -258,10 +258,9 @@ pub fn render_error_template(status_code: u16, message: &str, request_id: &str) 
     let error_data = Value::Hash(Rc::new(RefCell::new(error_map)));
 
     // Try to render the template without layout (error pages should be standalone)
-    match template_cache.render(&template_name, &error_data, Some(None)) {
-        Ok(content) => Some(content),
-        Err(_) => None,
-    }
+    template_cache
+        .render(&template_name, &error_data, Some(None))
+        .ok()
 }
 
 /// Recursively resolve all Future values in a Value.
@@ -1151,7 +1150,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             let data = resolve_futures_in_value(args[0].clone());
             let status = if args.len() > 1 {
                 match &args[1] {
-                    Value::Int(n) => *n as i64,
+                    Value::Int(n) => *n,
                     _ => 200,
                 }
             } else {
@@ -1173,7 +1172,10 @@ pub fn register_template_builtins(env: &mut Environment) {
             let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
             response_map.insert(HashKey::String("status".to_string()), Value::Int(status));
             response_map.insert(HashKey::String("headers".to_string()), headers);
-            response_map.insert(HashKey::String("body".to_string()), Value::String(json_body));
+            response_map.insert(
+                HashKey::String("body".to_string()),
+                Value::String(json_body),
+            );
 
             Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
         })),
@@ -1194,7 +1196,7 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             let status = if args.len() > 1 {
                 match &args[1] {
-                    Value::Int(n) => *n as i64,
+                    Value::Int(n) => *n,
                     _ => 200,
                 }
             } else {

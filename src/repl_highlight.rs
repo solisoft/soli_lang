@@ -2,18 +2,13 @@ use crate::lexer::token::Token;
 use crate::lexer::Scanner;
 use colored::Colorize;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum SyntaxTheme {
+    #[default]
     Default,
     Midnight,
     Monokai,
     Github,
-}
-
-impl Default for SyntaxTheme {
-    fn default() -> Self {
-        SyntaxTheme::Default
-    }
 }
 
 #[derive(Clone)]

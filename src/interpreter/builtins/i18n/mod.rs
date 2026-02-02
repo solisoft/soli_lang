@@ -194,8 +194,8 @@ pub fn register_i18n_class(env: &mut Environment) {
                     // Use comma as decimal separator
                     format!("{}", n).replace('.', ",")
                 }
-                "en" | _ => {
-                    // Use dot as decimal separator
+                _ => {
+                    // Use dot as decimal separator (default for "en" and others)
                     format!("{}", n)
                 }
             };
@@ -242,7 +242,7 @@ pub fn register_i18n_class(env: &mut Environment) {
 
             let (decimal_sep, thousands_sep) = match locale.as_str() {
                 "fr" | "de" | "es" | "it" => (",", "."),
-                "en" | _ => (".", ","),
+                _ => (".", ","), // default for "en" and others
             };
 
             let int_part = amount as i64;
