@@ -980,4 +980,204 @@ pub fn register_websocket_builtins(env: &mut Environment) {
             Ok(Value::Int(0))
         })),
     );
+
+    // ws_list_presence(channel) - Get all users in a room
+    // Returns: [{ user_id, metas: [{ connection_id, state, phx_ref, online_at, ...extra }] }, ...]
+    env.define(
+        "ws_list_presence".to_string(),
+        Value::NativeFunction(NativeFunction::new("ws_list_presence", Some(1), |args| {
+            let channel = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "ws_list_presence() expects string channel, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let registry = get_ws_registry();
+
+            // We need to block on the async operation to get the result
+            // Use a channel to get the result back synchronously
+            let (tx, rx) = std::sync::mpsc::channel();
+            let registry_clone = registry.clone();
+            tokio::spawn(async move {
+                let presences = registry_clone.list_presence(&channel).await;
+                let _ = tx.send(presences);
+            });
+
+            // Wait for result with timeout
+            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(presences) => {
+                    // Convert to Soli array of hashes
+                    let result: Vec<Value> = presences
+                        .iter()
+                        .map(|p| {
+                            let metas: Vec<Value> = p
+                                .metas
+                                .iter()
+                                .map(|m| {
+                                    let mut meta_map: IndexMap<HashKey, Value> = IndexMap::new();
+                                    meta_map.insert(
+                                        HashKey::String("connection_id".to_string()),
+                                        Value::String(m.connection_id.to_string()),
+                                    );
+                                    meta_map.insert(
+                                        HashKey::String("phx_ref".to_string()),
+                                        Value::String(m.phx_ref.clone()),
+                                    );
+                                    meta_map.insert(
+                                        HashKey::String("state".to_string()),
+                                        Value::String(m.state.clone()),
+                                    );
+                                    meta_map.insert(
+                                        HashKey::String("online_at".to_string()),
+                                        Value::Int(m.online_at as i64),
+                                    );
+                                    // Add extra fields
+                                    for (k, v) in &m.extra {
+                                        meta_map.insert(
+                                            HashKey::String(k.clone()),
+                                            Value::String(v.clone()),
+                                        );
+                                    }
+                                    Value::Hash(Rc::new(RefCell::new(meta_map)))
+                                })
+                                .collect();
+
+                            let mut user_map: IndexMap<HashKey, Value> = IndexMap::new();
+                            user_map.insert(
+                                HashKey::String("user_id".to_string()),
+                                Value::String(p.user_id.clone()),
+                            );
+                            user_map.insert(
+                                HashKey::String("metas".to_string()),
+                                Value::Array(Rc::new(RefCell::new(metas))),
+                            );
+                            Value::Hash(Rc::new(RefCell::new(user_map)))
+                        })
+                        .collect();
+
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                }
+                Err(_) => Ok(Value::Array(Rc::new(RefCell::new(Vec::new())))),
+            }
+        })),
+    );
+
+    // ws_presence_count(channel) - Get user count in a room (unique users, not connections)
+    // Returns: number
+    env.define(
+        "ws_presence_count".to_string(),
+        Value::NativeFunction(NativeFunction::new("ws_presence_count", Some(1), |args| {
+            let channel = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "ws_presence_count() expects string channel, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let registry = get_ws_registry();
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            let registry_clone = registry.clone();
+            tokio::spawn(async move {
+                let count = registry_clone.presence_count(&channel).await;
+                let _ = tx.send(count);
+            });
+
+            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(count) => Ok(Value::Int(count as i64)),
+                Err(_) => Ok(Value::Int(0)),
+            }
+        })),
+    );
+
+    // ws_get_presence(channel, user_id) - Get specific user's presence in a room
+    // Returns: { user_id, metas: [...] } or null
+    env.define(
+        "ws_get_presence".to_string(),
+        Value::NativeFunction(NativeFunction::new("ws_get_presence", Some(2), |args| {
+            let channel = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "ws_get_presence() expects string channel, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let user_id = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "ws_get_presence() expects string user_id, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let registry = get_ws_registry();
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            let registry_clone = registry.clone();
+            tokio::spawn(async move {
+                let presence = registry_clone.get_user_presence(&channel, &user_id).await;
+                let _ = tx.send(presence);
+            });
+
+            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(Some(presence)) => {
+                    let metas: Vec<Value> = presence
+                        .metas
+                        .iter()
+                        .map(|m| {
+                            let mut meta_map: IndexMap<HashKey, Value> = IndexMap::new();
+                            meta_map.insert(
+                                HashKey::String("connection_id".to_string()),
+                                Value::String(m.connection_id.to_string()),
+                            );
+                            meta_map.insert(
+                                HashKey::String("phx_ref".to_string()),
+                                Value::String(m.phx_ref.clone()),
+                            );
+                            meta_map.insert(
+                                HashKey::String("state".to_string()),
+                                Value::String(m.state.clone()),
+                            );
+                            meta_map.insert(
+                                HashKey::String("online_at".to_string()),
+                                Value::Int(m.online_at as i64),
+                            );
+                            for (k, v) in &m.extra {
+                                meta_map.insert(
+                                    HashKey::String(k.clone()),
+                                    Value::String(v.clone()),
+                                );
+                            }
+                            Value::Hash(Rc::new(RefCell::new(meta_map)))
+                        })
+                        .collect();
+
+                    let mut user_map: IndexMap<HashKey, Value> = IndexMap::new();
+                    user_map.insert(
+                        HashKey::String("user_id".to_string()),
+                        Value::String(presence.user_id),
+                    );
+                    user_map.insert(
+                        HashKey::String("metas".to_string()),
+                        Value::Array(Rc::new(RefCell::new(metas))),
+                    );
+
+                    Ok(Value::Hash(Rc::new(RefCell::new(user_map))))
+                }
+                _ => Ok(Value::Null),
+            }
+        })),
+    );
 }

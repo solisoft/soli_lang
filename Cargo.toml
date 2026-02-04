@@ -43,7 +43,7 @@ tokio-stream = "0.1"
 tokio-tungstenite = "0.24"
 hyper-tungstenite = "0.15"
 bytes = "1.5"
-uuid = { version = "1", features = ["v4", "fast-rng"] }
+uuid = { version = "1", features = ["v4", "fast-rng", "serde"] }
 tungstenite = "0.24"
 lazy_static = "1.4"
 futures-util = "0.3"

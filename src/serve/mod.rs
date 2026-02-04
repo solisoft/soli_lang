@@ -917,6 +917,9 @@ fn worker_loop(
                         broadcast: None,
                         broadcast_room: None,
                         close: None,
+                        track: None,
+                        untrack: None,
+                        set_presence: None,
                     });
                 }
                 Err(channel::TryRecvError::Empty) => {}
@@ -991,6 +994,9 @@ struct WebSocketActionData {
     broadcast: Option<String>,
     broadcast_room: Option<String>,
     close: Option<String>,
+    track: Option<std::collections::HashMap<String, String>>,
+    untrack: Option<String>,
+    set_presence: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Data for LiveView events sent to the interpreter thread.
@@ -1700,9 +1706,40 @@ fn handle_websocket_event(
     runtime_handle: &tokio::runtime::Handle,
 ) {
     use crate::interpreter::value::Value;
+    use crate::serve::websocket::{
+        PresenceDiff, UserPresencePayload, WebSocketHandlerAction, WebSocketRegistry,
+    };
 
     // Clone connection_id for use in async spawns
-    let connection_id = data.connection_id.to_string();
+    let connection_id = data.connection_id;
+    let connection_id_str = connection_id.to_string();
+
+    // Auto-untrack all presences on disconnect
+    if data.event_type == "disconnect" {
+        let registry = crate::serve::websocket::get_ws_registry();
+        let registry_clone = registry.clone();
+        runtime_handle.spawn(async move {
+            // Untrack all presences for this connection
+            let untracked = registry_clone.untrack_all(&connection_id).await;
+
+            // Broadcast leave diffs for users whose last connection just left
+            for (channel, user_id, was_last, meta) in untracked {
+                if was_last && !user_id.is_empty() {
+                    let mut leaves = std::collections::HashMap::new();
+                    leaves.insert(
+                        user_id,
+                        UserPresencePayload { metas: vec![meta] },
+                    );
+                    let diff = PresenceDiff {
+                        joins: std::collections::HashMap::new(),
+                        leaves,
+                    };
+                    let diff_msg = WebSocketRegistry::build_presence_diff(&diff);
+                    registry_clone.broadcast_to_channel(&channel, &diff_msg).await;
+                }
+            }
+        });
+    }
 
     // Find the WebSocket route for this path
     let routes = crate::serve::websocket::get_websocket_routes();
@@ -1745,7 +1782,7 @@ fn handle_websocket_event(
     );
     event_map.insert(
         HashKey::String("connection_id".to_string()),
-        Value::String(connection_id.clone()),
+        Value::String(connection_id_str.clone()),
     );
 
     if let Some(ref msg) = data.message {
@@ -1767,34 +1804,176 @@ fn handle_websocket_event(
     // Call the handler function
     match interpreter.call_value(handler, vec![event_value], Span::default()) {
         Ok(result) => {
-            // Handle broadcast response from handler
-            if let Value::Hash(hash) = &result {
-                for (k, v) in hash.borrow().iter() {
-                    if let (HashKey::String(key), Value::String(value)) = (k, v) {
-                        match key.as_str() {
-                            "broadcast" => {
-                                // Broadcast to all clients
-                                let registry = crate::serve::websocket::get_ws_registry();
-                                let registry_clone = registry.clone();
-                                let msg = value.clone();
-                                runtime_handle.spawn(async move {
-                                    registry_clone.broadcast_all(&msg).await;
-                                });
+            // Parse the handler result into actions
+            let action = WebSocketHandlerAction::from_value(&result);
+            let registry = crate::serve::websocket::get_ws_registry();
+
+            // Process join action
+            if let Some(ref channel) = action.join {
+                let registry_clone = registry.clone();
+                let channel_clone = channel.clone();
+                runtime_handle.spawn(async move {
+                    registry_clone.join_channel(&connection_id, &channel_clone).await;
+                });
+            }
+
+            // Process leave action
+            if let Some(ref channel) = action.leave {
+                let registry_clone = registry.clone();
+                let channel_clone = channel.clone();
+                runtime_handle.spawn(async move {
+                    registry_clone.leave_channel(&connection_id, &channel_clone).await;
+                });
+            }
+
+            // Process broadcast action
+            if let Some(ref msg) = action.broadcast {
+                let registry_clone = registry.clone();
+                let msg_clone = msg.clone();
+                runtime_handle.spawn(async move {
+                    registry_clone.broadcast_all(&msg_clone).await;
+                });
+            }
+
+            // Process send action
+            if let Some(ref msg) = action.send {
+                let registry_clone = registry.clone();
+                let msg_clone = msg.clone();
+                runtime_handle.spawn(async move {
+                    registry_clone.send_to(&connection_id, &msg_clone).await.ok();
+                });
+            }
+
+            // Process broadcast_room action
+            if let Some(ref msg) = action.broadcast_room {
+                // broadcast_room expects format "channel:message" or just message to all joined channels
+                // For simplicity, we'll broadcast to all channels this connection has joined
+                if let Some(ref join_channel) = action.join {
+                    let registry_clone = registry.clone();
+                    let channel_clone = join_channel.clone();
+                    let msg_clone = msg.clone();
+                    runtime_handle.spawn(async move {
+                        registry_clone.broadcast_to_channel(&channel_clone, &msg_clone).await;
+                    });
+                }
+            }
+
+            // Process close action
+            if let Some(ref reason) = action.close {
+                let registry_clone = registry.clone();
+                let reason_clone = reason.clone();
+                runtime_handle.spawn(async move {
+                    registry_clone.close(&connection_id, &reason_clone).await;
+                });
+            }
+
+            // Process track action (presence tracking)
+            if let Some(ref track_meta) = action.track {
+                let channel = track_meta.get("channel").cloned();
+                let user_id = track_meta.get("user_id").cloned();
+
+                if let (Some(channel), Some(user_id)) = (channel, user_id) {
+                    let registry_clone = registry.clone();
+                    let meta = track_meta.clone();
+                    runtime_handle.spawn(async move {
+                        let (is_new_user, presence_meta) = registry_clone
+                            .track(&connection_id, &channel, &user_id, meta)
+                            .await;
+
+                        // Get full presence state for the joining connection
+                        let presences = registry_clone.list_presence(&channel).await;
+                        let state_msg = WebSocketRegistry::build_presence_state(&presences);
+
+                        // Send full presence_state to the joining connection
+                        let _ = registry_clone.send_to(&connection_id, &state_msg).await;
+
+                        // If this is a new user (not just another tab), broadcast presence_diff
+                        if is_new_user {
+                            let mut joins = std::collections::HashMap::new();
+                            joins.insert(
+                                user_id.clone(),
+                                UserPresencePayload {
+                                    metas: vec![presence_meta],
+                                },
+                            );
+                            let diff = PresenceDiff {
+                                joins,
+                                leaves: std::collections::HashMap::new(),
+                            };
+                            let diff_msg = WebSocketRegistry::build_presence_diff(&diff);
+
+                            // Broadcast to all in channel except the joining connection
+                            registry_clone
+                                .broadcast_to_channel_except(&channel, &diff_msg, &connection_id)
+                                .await;
+                        }
+                    });
+                }
+            }
+
+            // Process untrack action
+            if let Some(ref channel) = action.untrack {
+                let registry_clone = registry.clone();
+                let channel_clone = channel.clone();
+                runtime_handle.spawn(async move {
+                    if let Some((was_last, meta)) =
+                        registry_clone.untrack(&connection_id, &channel_clone).await
+                    {
+                        // If this was the last connection for this user, broadcast leave diff
+                        if was_last {
+                            // Find user_id from the meta's extra field
+                            let user_id = meta.extra.get("user_id").cloned().unwrap_or_default();
+                            if !user_id.is_empty() {
+                                let mut leaves = std::collections::HashMap::new();
+                                leaves.insert(
+                                    user_id,
+                                    UserPresencePayload { metas: vec![meta] },
+                                );
+                                let diff = PresenceDiff {
+                                    joins: std::collections::HashMap::new(),
+                                    leaves,
+                                };
+                                let diff_msg = WebSocketRegistry::build_presence_diff(&diff);
+                                registry_clone
+                                    .broadcast_to_channel(&channel_clone, &diff_msg)
+                                    .await;
                             }
-                            "send" => {
-                                // Send to this specific client
-                                let registry = crate::serve::websocket::get_ws_registry();
-                                let registry_clone = registry.clone();
-                                let msg = value.clone();
-                                if let Ok(uuid) = connection_id.parse::<uuid::Uuid>() {
-                                    runtime_handle.spawn(async move {
-                                        registry_clone.send_to(&uuid, &msg).await.ok();
-                                    });
-                                }
-                            }
-                            _ => {}
                         }
                     }
+                });
+            }
+
+            // Process set_presence action
+            if let Some(ref presence_data) = action.set_presence {
+                let channel = presence_data.get("channel").cloned();
+                let state = presence_data.get("state").cloned();
+
+                if let (Some(channel), Some(state)) = (channel, state) {
+                    let registry_clone = registry.clone();
+                    runtime_handle.spawn(async move {
+                        if let Some(updated_meta) =
+                            registry_clone.set_presence(&connection_id, &channel, &state).await
+                        {
+                            // Find user_id for the diff
+                            let user_id = updated_meta.extra.get("user_id").cloned().unwrap_or_default();
+                            if !user_id.is_empty() {
+                                // Broadcast presence_diff with the updated meta
+                                let mut joins = std::collections::HashMap::new();
+                                joins.insert(
+                                    user_id,
+                                    UserPresencePayload {
+                                        metas: vec![updated_meta],
+                                    },
+                                );
+                                let diff = PresenceDiff {
+                                    joins,
+                                    leaves: std::collections::HashMap::new(),
+                                };
+                                let diff_msg = WebSocketRegistry::build_presence_diff(&diff);
+                                registry_clone.broadcast_to_channel(&channel, &diff_msg).await;
+                            }
+                        }
+                    });
                 }
             }
         }
