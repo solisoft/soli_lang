@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/solisoft/soli_lang/compare/v0.8.0...v0.9.0) (2026-02-05)
+
+
+### Features
+
+* **soap:** introduce SOAP class for web service integration ([a10f2bc](https://github.com/solisoft/soli_lang/commit/a10f2bc2da568b6b55b8d62a3f8151ab72ee0b5f))
+
 ## [0.8.0](https://github.com/solisoft/soli_lang/compare/v0.7.0...v0.8.0) (2026-02-05)
 
 
