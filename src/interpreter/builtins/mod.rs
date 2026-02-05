@@ -41,6 +41,7 @@ pub mod security_headers;
 pub mod server;
 pub mod session;
 pub mod session_helpers;
+pub mod soap;
 pub mod solidb;
 pub mod strings;
 pub mod template;
@@ -180,6 +181,9 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register HTTP class
     http_class::register_http_class(env);
+
+    // Register SOAP class
+    soap::register_soap_class(env);
 
     // Register HTTP server functions
     server::register_server_builtins(env);

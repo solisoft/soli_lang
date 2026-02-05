@@ -163,11 +163,6 @@ pub fn handle_event(
             let minutes = ((time_secs % 3600) / 60) as i64;
             let seconds = (time_secs % 60) as i64;
 
-            eprintln!(
-                "DEBUG metrics: now={}, ms={}, h={}, m={}, s={}",
-                now, milliseconds, hours, minutes, seconds
-            );
-
             // Simulated fluctuating metrics
             let base = (now as f64 / 1000.0).sin();
             let cpu = (30.0 + base * 20.0 + (now % 100) as f64 * 0.15) as i64;

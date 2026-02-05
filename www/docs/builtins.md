@@ -1198,6 +1198,113 @@ println(arr)  // [1,2,3]
 
 ---
 
+## SOAP Class
+
+The `SOAP` class provides methods for making SOAP (Simple Object Access Protocol) calls and working with XML data.
+
+### SOAP.call(url, action, envelope, headers?)
+
+Makes a SOAP request by performing an HTTP POST with the SOAP envelope.
+
+**Parameters:**
+- `url` (String) - The SOAP service endpoint URL
+- `action` (String) - The SOAP action/method name
+- `envelope` (String) - The complete SOAP envelope XML
+- `headers` (Hash, optional) - Additional HTTP headers
+
+**Returns:** Hash - Response with:
+- `status` (Int) - HTTP status code
+- `body` (String) - Raw XML response
+- `parsed` (Hash) - Parsed XML as nested Hash structures
+
+**Example:**
+```soli
+let envelope = SOAP.wrap("<GetWeather><City>London</City></GetWeather>")
+let result = await(SOAP.call("https://weather.example.com/service", "GetWeather", envelope))
+
+if result["status"] == 200 {
+    let temp = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]["Temperature"]
+    println("Temperature: " + temp)
+}
+```
+
+### SOAP.wrap(body)
+
+Wraps an XML body in a complete SOAP envelope with the standard SOAP 1.1 namespace.
+
+**Parameters:**
+- `body` (String) - The XML body content
+
+**Returns:** String - Complete SOAP envelope XML
+
+**Example:**
+```soli
+let body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
+let envelope = SOAP.wrap(body)
+// Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+```
+
+### SOAP.parse(xml)
+
+Parses an XML string into a nested Hash structure for easy access.
+
+**Parameters:**
+- `xml` (String) - XML string to parse
+
+**Returns:** Hash - Nested Hash with element names as keys and text/attributes as values
+
+**Example:**
+```soli
+let xml = "<?xml version=\"1.0\"?><root><item>value</item></root>"
+let parsed = SOAP.parse(xml)
+// Returns: { "root" => { "item" => { "_text" => "value" } } }
+```
+
+### SOAP.xml_escape(text)
+
+Escapes special XML characters for safe inclusion in XML documents.
+
+**Parameters:**
+- `text` (String) - The text to escape
+
+**Returns:** String - XML-escaped text (&lt;, &gt;, &amp;, &quot;, &apos;)
+
+**Example:**
+```soli
+let escaped = SOAP.xml_escape("<script>alert('xss')</script>")
+// Returns: "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;"
+```
+
+### Complete SOAP Example
+
+```soli
+// Build the SOAP request body
+let body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
+let envelope = SOAP.wrap(body)
+
+// Make the SOAP call
+let result = await(SOAP.call(
+    "https://weather.example.com/service",
+    "http://example.com/weather/GetWeather",
+    envelope,
+    { "Authorization": "Bearer token123" }
+))
+
+// Handle the response
+if result["status"] == 200 {
+    let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
+    let temp = response["Temperature"]
+    let condition = response["Condition"]
+    
+    println("Temperature: " + temp)
+    println("Condition: " + condition)
+} else {
+    println("Error: " + result["body"])
+}
+```
+
+---
+
 ## Environment Functions
 
 ### getenv(name)
@@ -2695,6 +2802,162 @@ Deletes a blob from SolidB.
 - `blob_id` (String) - Blob ID
 
 **Returns:** String - "OK" on success
+
+---
+
+## SOAP Class
+
+The `SOAP` class provides methods for making SOAP (Simple Object Access Protocol) calls. SOAP is a protocol for exchanging structured information in web services.
+
+### Static Methods
+
+#### SOAP.call(url, action, envelope, headers?)
+
+Makes a SOAP request to a web service.
+
+**Parameters:**
+- `url` (String) - The SOAP service endpoint URL
+- `action` (String) - The SOAPAction header value
+- `envelope` (String) - The SOAP envelope XML string
+- `headers` (Hash, optional) - Additional HTTP headers
+
+**Returns:** Hash - Response with `status`, `headers`, and `body` keys
+
+**Example:**
+```soli
+let envelope = '''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.com/service">
+      <id>123</id>
+    </GetUser>
+  </soap:Body>
+</soap:Envelope>'''
+
+let result = SOAP.call(
+  "https://example.com/service",
+  "GetUser",
+  envelope,
+  {"Content-Type": "text/xml; charset=utf-8"}
+)
+
+if result["status"] == 200 {
+    println("Response: " + result["body"])
+}
+```
+
+#### SOAP.wrap(body, namespace?)
+
+Wraps an XML body in a SOAP envelope.
+
+**Parameters:**
+- `body` (String) - The XML body content
+- `namespace` (String, optional) - SOAP namespace (default: SOAP 1.1)
+
+**Returns:** String - Complete SOAP envelope XML
+
+**Example:**
+```soli
+let body = "<GetCustomer><id>42</id></GetCustomer>"
+let envelope = SOAP.wrap(body)
+```
+
+#### SOAP.parse(xml_string)
+
+Parses a SOAP XML response into a Hash.
+
+**Parameters:**
+- `xml_string` (String) - The SOAP response XML
+
+**Returns:** Hash - Parsed response with extracted data
+
+**Example:**
+```soli
+let response = SOAP.parse(xml_response)
+let customer_name = response["Body"]["GetCustomerResponse"]["Name"]
+```
+
+#### SOAP.xml_escape(string)
+
+Escapes special XML characters in a string.
+
+**Parameters:**
+- `string` (String) - The string to escape
+
+**Returns:** String - XML-safe string with <, >, &, ", ' encoded
+
+**Example:**
+```soli
+let safe = SOAP.xml_escape("Tom & Jerry <test>")
+// Returns: "Tom &amp; Jerry &lt;test&gt;"
+```
+
+#### SOAP.to_xml(hash, root_element?)
+
+Converts a Hash (including nested hashes and arrays) to XML.
+
+**Parameters:**
+- `hash` (Hash) - The hash to convert to XML
+- `root_element` (String, optional) - Root element name (default: "root")
+
+**Returns:** String - XML string
+
+**Special keys:**
+- `@attr_name` - Creates an attribute on the element
+- `_text` - Sets the text content of the element
+
+**Example with attributes:**
+```soli
+let data = {
+    "user" => {
+        "@id" => "123",
+        "name" => "John",
+        "email" => "john@example.com",
+        "address" => {
+            "street" => "123 Main St",
+            "city" => "Boston"
+        },
+        "tags" => ["admin", "user"]
+    }
+}
+
+let xml = SOAP.to_xml(data, "users")
+// Returns:
+// <users>
+//   <user id="123">
+//     <name>John</name>
+//     <email>john@example.com</email>
+//     <address>
+//       <street>123 Main St</street>
+//       <city>Boston</city>
+//     </address>
+//     <tags_0>admin</tags_0>
+//     <tags_1>user</tags_1>
+//   </user>
+// </users>
+```
+
+**Example with _text for element content:**
+```soli
+let data = {
+    "product" => {
+        "name" => "Laptop",
+        "description" => {
+            "_text" => "A high-performance laptop with 16GB RAM"
+        },
+        "price" => "999.99"
+    }
+}
+
+let xml = SOAP.to_xml(data, "catalog")
+// Returns:
+// <catalog>
+//   <product>
+//     <name>Laptop</name>
+//     <description>A high-performance laptop with 16GB RAM</description>
+//     <price>999.99</price>
+//   </product>
+// </catalog>
+```
 
 ---
 

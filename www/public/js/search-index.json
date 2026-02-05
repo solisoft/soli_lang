@@ -423,6 +423,51 @@
       "keywords": ["json", "parse", "stringify", "encode", "serialize", "class"]
     },
     {
+      "title": "SOAP",
+      "type": "class",
+      "category": "SOAP",
+      "path": "/docs/builtins/soap",
+      "signature": "SOAP",
+      "description": "Class for SOAP calls and XML processing: SOAP.call(), SOAP.wrap(), SOAP.parse(), SOAP.xml_escape()",
+      "keywords": ["soap", "xml", "web service", "api", "class", "envelope", "wsdl"]
+    },
+    {
+      "title": "SOAP.call",
+      "type": "method",
+      "category": "SOAP",
+      "path": "/docs/builtins/soap#soap-call",
+      "signature": "SOAP.call(url, action, envelope, headers?)",
+      "description": "Make a SOAP request via HTTP POST",
+      "keywords": ["soap", "call", "request", "web service", "api"]
+    },
+    {
+      "title": "SOAP.wrap",
+      "type": "method",
+      "category": "SOAP",
+      "path": "/docs/builtins/soap#soap-wrap",
+      "signature": "SOAP.wrap(body)",
+      "description": "Wrap XML body in SOAP envelope",
+      "keywords": ["soap", "wrap", "envelope", "xml"]
+    },
+    {
+      "title": "SOAP.parse",
+      "type": "method",
+      "category": "SOAP",
+      "path": "/docs/builtins/soap#soap-parse",
+      "signature": "SOAP.parse(xml)",
+      "description": "Parse XML string into nested Hash",
+      "keywords": ["soap", "parse", "xml", "parse"]
+    },
+    {
+      "title": "SOAP.xml_escape",
+      "type": "method",
+      "category": "SOAP",
+      "path": "/docs/builtins/soap#soap-xml-escape",
+      "signature": "SOAP.xml_escape(text)",
+      "description": "Escape special XML characters",
+      "keywords": ["soap", "xml", "escape", "xml", "security"]
+    },
+    {
       "title": "Crypto.sha256",
       "type": "method",
       "category": "Crypto",

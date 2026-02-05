@@ -250,6 +250,10 @@ fn builtins_upload(req: Any) -> Any {
     return render_docs("docs/builtins/upload", "File Upload Functions", "builtins", "upload");
 }
 
+fn builtins_soap(req: Any) -> Any {
+    return render_docs("docs/builtins/soap", "SOAP Class", "builtins", "soap");
+}
+
 // ============================================================================
 // Utility
 // ============================================================================

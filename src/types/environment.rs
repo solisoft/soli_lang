@@ -1130,6 +1130,54 @@ impl TypeEnvironment {
             },
         );
         self.classes.insert("I18n".to_string(), i18n_class);
+
+        // SOAP class
+        let mut soap_class = ClassType::new("SOAP".to_string());
+        soap_class.methods.insert(
+            "call".to_string(),
+            MethodInfo {
+                name: "call".to_string(),
+                params: vec![
+                    ("url".to_string(), Type::String),
+                    ("action".to_string(), Type::String),
+                    ("envelope".to_string(), Type::String),
+                ],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        soap_class.methods.insert(
+            "wrap".to_string(),
+            MethodInfo {
+                name: "wrap".to_string(),
+                params: vec![("body".to_string(), Type::String)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        soap_class.methods.insert(
+            "parse".to_string(),
+            MethodInfo {
+                name: "parse".to_string(),
+                params: vec![("xml".to_string(), Type::String)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        soap_class.methods.insert(
+            "xml_escape".to_string(),
+            MethodInfo {
+                name: "xml_escape".to_string(),
+                params: vec![("text".to_string(), Type::String)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("SOAP".to_string(), soap_class);
     }
 
     /// Enter a new scope.
