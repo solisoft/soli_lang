@@ -19,6 +19,8 @@ use uuid::Uuid;
 
 use crate::interpreter::value::{HashKey, Value};
 
+type ConnectionPresenceMap = HashMap<Uuid, Vec<(String, String)>>;
+
 /// Metadata for a single presence connection.
 /// Each user can have multiple connections (tabs/devices), each with its own meta.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -107,7 +109,7 @@ pub struct WebSocketRegistry {
     /// Presence tracking: channel -> user_id -> UserPresence
     room_presence: Arc<AsyncMutex<HashMap<String, HashMap<String, UserPresence>>>>,
     /// Connection to presence mapping for cleanup: connection_id -> Vec<(channel, user_id)>
-    connection_presence: Arc<AsyncMutex<HashMap<Uuid, Vec<(String, String)>>>>,
+    connection_presence: Arc<AsyncMutex<ConnectionPresenceMap>>,
     /// Counter for generating unique phx_ref values
     ref_counter: Arc<AtomicU64>,
 }

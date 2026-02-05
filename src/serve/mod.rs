@@ -1402,7 +1402,8 @@ async fn handle_hyper_request(
     match response_rx.await {
         Ok(resp_data) => {
             let mut builder = Response::builder()
-                .status(StatusCode::from_u16(resp_data.status).unwrap_or(StatusCode::OK));
+                .status(StatusCode::from_u16(resp_data.status).unwrap_or(StatusCode::OK))
+                .header("Server", "soliMVC");
 
             // Check if response is HTML for live reload injection
             let is_html = resp_data
