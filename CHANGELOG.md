@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/solisoft/soli_lang/compare/v0.6.0...v0.7.0) (2026-02-02)
+
+
+### Features
+
+* Refactor REPL implementation and update dependencies ([59cda41](https://github.com/solisoft/soli_lang/commit/59cda41a549938bbcd340c4d036521d44370e12c))
+
 ## [0.6.0](https://github.com/solisoft/soli_lang/compare/v0.5.0...v0.6.0) (2026-01-31)
 
 
