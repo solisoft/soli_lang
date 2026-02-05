@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/solisoft/soli_lang/compare/v0.7.0...v0.8.0) (2026-02-05)
+
+
+### Miscellaneous Chores
+
+* release 0.8.0 ([d2c720e](https://github.com/solisoft/soli_lang/commit/d2c720e19cce895c6f4be99a386de669b327b22a))
+
 ## [0.7.0](https://github.com/solisoft/soli_lang/compare/v0.6.0...v0.7.0) (2026-02-02)
 
 
