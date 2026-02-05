@@ -79,6 +79,7 @@ jobs:
         uses: googleapis/release-please-action@v4
         with:
           release-type: rust
+          wait-for-publish: true
 
   publish:
     needs: release
