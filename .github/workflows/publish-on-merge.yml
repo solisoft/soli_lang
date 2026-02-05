@@ -4,6 +4,8 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -11,8 +13,8 @@ permissions:
 jobs:
   publish:
     if: |
-      github.event.pull_request.merged == true &&
-      startswith(github.event.pull_request.title, 'chore: release')
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && (startswith(github.event.pull_request.title, 'chore: release') || startswith(github.event.pull_request.title, 'chore(main): release'))) ||
+      (github.event_name == 'push' && (startsWith(github.event.head_commit.message, 'chore: release') || startsWith(github.event.head_commit.message, 'chore(main): release')))
     runs-on: ubuntu-latest
     environment: main
     steps:
