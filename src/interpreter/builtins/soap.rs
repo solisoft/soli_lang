@@ -521,8 +521,7 @@ fn value_to_xml(value: &Value, element_name: &str) -> String {
                     HashKey::Null => "null".to_string(),
                 };
 
-                if key.starts_with('@') {
-                    let attr_name = &key[1..];
+                if let Some(attr_name) = key.strip_prefix('@') {
                     let attr_value = get_value_string(v);
                     attributes.push_str(&format!(
                         " {}=\"{}\"",
@@ -577,7 +576,7 @@ fn get_value_string(value: &Value) -> String {
             "[{}]",
             arr.borrow()
                 .iter()
-                .map(|v| get_value_string(v))
+                .map(get_value_string)
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
