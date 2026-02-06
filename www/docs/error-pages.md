@@ -166,7 +166,7 @@ fn show(req: Any) -> Any {
         };
     }
     
-    return render("users/show.html.erb", { "user": user });
+    render("users/show.html.erb", { "user": user })
 }
 ```
 

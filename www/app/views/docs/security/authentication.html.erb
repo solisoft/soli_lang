@@ -97,7 +97,7 @@ let token_with_exp = jwt_sign(
 if result["error"] == true {
     // Handle invalid token
     print("Auth Error:", result["message"]);
-    return { "error": "Unauthorized" };
+    { "error": "Unauthorized" }
 } else {
     // Token is valid, access claims
     let user_id = result["sub"];

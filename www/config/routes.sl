@@ -119,17 +119,6 @@ get("/docs/scaffold", "docs#redirect_scaffold");
 get("/docs/soli-language", "docs#redirect_soli_language");
 
 // ============================================================================
-// Splat Route Examples
-// ============================================================================
-//
-// Splat routes use *param_name to capture remaining path segments
-// The captured value includes a leading slash
-
-get("/files/*filepath", "home#files_demo");
-get("/api/*version/users/*id", "home#api_demo");
-get("/*catchall", "home#catchall_demo");
-
-// ============================================================================
 // WebSocket Demo
 // ============================================================================
 
@@ -201,4 +190,13 @@ get("/docs/core-concepts/state-machines", "docs#core_concepts_state_machines");
 
 get("/wildcard/*", "wildcard#*");
 
-print("Routes loaded!");
+// ============================================================================
+// Splat Route Examples
+// ============================================================================
+//
+// Splat routes use *param_name to capture remaining path segments
+// The captured value includes a leading slash
+
+get("/files/*filepath", "home#files_demo");
+get("/api/*version/users/*id", "home#api_demo");
+get("/*catchall", "home#catchall_demo");

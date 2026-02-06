@@ -349,7 +349,7 @@ order.ship();
         order.set("total", total);
         order.set("created_at", clock());
 
-        return order;
+        order
     }
 
     fn process_order(order: Any) {
@@ -361,7 +361,7 @@ order.ship();
             order.process();
         }
 
-        return order;
+        order
     }
 }
 

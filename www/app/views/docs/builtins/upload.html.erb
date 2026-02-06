@@ -202,7 +202,7 @@ fn upload_avatar(req) {
     // Generate download URL
     let blob_url = get_blob_url(collection, result["blob_id"])
 
-    return {
+    {
         "status": 201,
         "body": json_stringify({
             "message": "File uploaded successfully",
@@ -227,7 +227,7 @@ fn get_file(req) {
 
     let data = db.get_blob("avatars", blob_id)
 
-    return {
+    {
         "status": 200,
         "headers": {
             "Content-Type": metadata["content_type"],

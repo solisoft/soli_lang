@@ -29,7 +29,7 @@ fn update_profile(req: Any) -> Any {
     print("Age:", all["age"]);          // "25" (JSON body overrides query)
     print("Bio:", all["bio"]);          // "Developer" (from JSON body)
 
-    return {"status": 200, "body": "Profile updated"};
+    {"status": 200, "body": "Profile updated"}
 }
 ```
 
@@ -58,7 +58,7 @@ fn update_item(req: Any) -> Any {
     // "quantity" only in body
     print("Quantity:", all["quantity"]);
 
-    return {"status": 200, "body": "OK"};
+    {"status": 200, "body": "OK"}
 }
 ```
 
@@ -83,7 +83,7 @@ fn handler(req: Any) -> Any {
     // Or unified access
     let all = req["all"];
 
-    return {"status": 200, "body": "OK"};
+    {"status": 200, "body": "OK"}
 }
 ```
 
@@ -114,14 +114,14 @@ fn search(req: Any) -> Any {
     // Execute search with filters
     let results = execute_search(filters);
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({
             "results": results,
             "page": page,
             "limit": limit
         })
-    };
+    }
 }
 ```
 

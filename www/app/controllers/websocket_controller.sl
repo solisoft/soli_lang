@@ -28,12 +28,12 @@ fn chat_handler(event: Any) -> Any {
         };
     }
 
-    return {};
+    {}
 }
 
 // Page to display the WebSocket demo
 fn demo(req: Any) -> Any {
-    return render("websocket/demo", {
+    render("websocket/demo", {
         "title": "WebSocket Demo"
-    });
+    })
 }

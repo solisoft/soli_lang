@@ -94,7 +94,7 @@ if result["valid"] {
     create_user(result["data"]);
 } else {
     // result["errors"] contains validation messages
-    return render("register", { "errors": result["errors"] });
+    render("register", { "errors": result["errors"] })
 }</code></pre>
             </div>
         </div>

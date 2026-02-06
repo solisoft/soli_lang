@@ -146,10 +146,10 @@ let result = validate({
 // app/controllers/users_controller.sl
 
 fn new(req: Any) -> Any {
-    return {
+    {
         "status": 200,
         "body": render("users/new.html", {})
-    };
+    }
 }
 
 fn create(req: Any) -> Any {
@@ -194,10 +194,10 @@ fn create(req: Any) -> Any {
     // Create user (example)
     let user = create_user(data["username"], data["email"], data["password"]);
 
-    return {
+    {
         "status": 201,
         "body": json_stringify({"user": user})
-    };
+    }
 }
 ```
 

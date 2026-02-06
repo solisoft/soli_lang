@@ -46,9 +46,9 @@ fn greet(name: String) {
     print("Hello, " + name + "!");
 }
 
-// With return value
+// With return value (implicit return)
 fn add(a: Int, b: Int) -> Int {
-    return a + b;
+    a + b
 }
 
 // Void function
@@ -58,10 +58,8 @@ fn log_message(msg: String) {
 
 // Early return
 fn absolute(x: Int) -> Int {
-    if (x < 0) {
-        return -x;
-    }
-    return x;
+    if (x < 0) { return -x; }
+    x
 }</code></pre>
             </div>
         </section>
@@ -74,43 +72,31 @@ fn absolute(x: Int) -> Int {
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Calculate factorial
 fn factorial(n: Int) -> Int {
-    if (n <= 1) {
-        return 1;
-    }
-    return n * factorial(n - 1);
+    if (n <= 1) { return 1; }
+    n * factorial(n - 1)
 }
 
 print(factorial(5));  // 120
 
 // Calculate Fibonacci
 fn fibonacci(n: Int) -> Int {
-    if (n <= 1) {
-        return n;
-    }
-    return fibonacci(n - 1) + fibonacci(n - 2);
+    if (n <= 1) { return n; }
+    fibonacci(n - 1) + fibonacci(n - 2)
 }
 
 print(fibonacci(10));  // 55
 
 // Check if a number is prime
 fn is_prime(n: Int) -> Bool {
-    if (n < 2) {
-        return false;
-    }
-    if (n == 2) {
-        return true;
-    }
-    if (n % 2 == 0) {
-        return false;
-    }
+    if (n < 2) { return false; }
+    if (n == 2) { return true; }
+    if (n % 2 == 0) { return false; }
     let i = 3;
     while (i * i <= n) {
-        if (n % i == 0) {
-            return false;
-        }
+        if (n % i == 0) { return false; }
         i = i + 2;
     }
-    return true;
+    true
 }</code></pre>
             </div>
         </div>
@@ -124,16 +110,12 @@ fn is_prime(n: Int) -> Bool {
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Function as parameter
 fn apply(x: Int, f: (Int) -> Int) -> Int {
-    return f(x);
+    f(x)
 }
 
-fn double(x: Int) -> Int {
-    return x * 2;
-}
+fn double(x: Int) -> Int { x * 2 }
 
-fn square(x: Int) -> Int {
-    return x * x;
-}
+fn square(x: Int) -> Int { x * x }
 
 let result = apply(5, double);   // 10
 let squared = apply(5, square);  // 25
@@ -144,7 +126,7 @@ fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[] {
     for (item in arr) {
         push(result, transformer(item));
     }
-    return result;
+    result
 }
 
 let numbers = [1, 2, 3, 4, 5];
@@ -164,9 +146,9 @@ fn make_counter() -> () -> Int {
     let count = 0;
     fn counter() -> Int {
         count = count + 1;
-        return count;
+        count
     }
-    return counter;
+    counter
 }
 
 let counter1 = make_counter();
@@ -182,9 +164,9 @@ print(counter2());  // 2
 // Closure capturing variables
 fn make_greeter(greeting: String) -> (String) -> String {
     fn greet(name: String) -> String {
-        return greeting + ", " + name + "!";
+        greeting + ", " + name + "!"
     }
-    return greet;
+    greet
 }
 
 let say_hello = make_greeter("Hello");
@@ -202,7 +184,7 @@ print(say_hola("Bob"));     // "Hola, Bob!"</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn greet(name: String, greeting: String = "Hello") -> String {
-    return greeting + ", " + name + "!";
+    greeting + ", " + name + "!"
 }
 
 print(greet("Alice"));              // "Hello, Alice!"
@@ -215,7 +197,7 @@ fn create_user(name: String, email: String = null, role: String = "user") -> Has
     if (email != null) {
         user["email"] = email;
     }
-    return user;
+    user
 }
 
 let user1 = create_user("Alice");
@@ -232,7 +214,7 @@ let user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Hash {
-    return {"host": host, "port": port, "debug": debug};
+    {"host": host, "port": port, "debug": debug}
 }
 
 // All named parameters
@@ -280,9 +262,62 @@ let user3 = new User(name: "Charlie", role: "moderator");</code></pre>
         </div>
     </section>
 
+    <!-- Implicit Returns -->
+    <section id="section-implicit-returns" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+            </span>
+            Implicit Returns
+        </h2>
+        <p class="text-gray-400 mb-4">The last expression in a function body is automatically returned, without needing the <code class="text-indigo-400">return</code> keyword. This applies to all functions, methods, and lambdas.</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Simple implicit return
+fn add(a: Int, b: Int) -> Int {
+    a + b
+}
+print(add(2, 3));  // 5
+
+// Works with if/else expressions
+fn abs(x: Int) -> Int {
+    if (x < 0) { -x } else { x }
+}
+print(abs(-5));  // 5
+
+// Works with lambdas
+let doubled = [1, 2, 3].map(fn(x) { x * 2 });
+print(doubled);  // [2, 4, 6]
+
+// Works with closures
+fn make_adder(n: Int) -> (Int) -> Int {
+    fn(x) { x + n }
+}
+let add5 = make_adder(5);
+print(add5(3));  // 8
+
+// Note: `let` as last statement returns null
+fn nothing() {
+    let x = 1;
+}
+print(nothing());  // null</code></pre>
+            </div>
+        </div>
+
+        <div class="my-6 p-5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+            <h4 class="text-base font-semibold text-indigo-400 mb-2">When to use explicit <code>return</code></h4>
+            <p class="text-indigo-200/80 text-sm">
+                Use <code>return</code> for <strong>early exits</strong> from a function &mdash; when you want to exit before reaching the last expression.
+                For the final expression in a function body, omit <code>return</code> for cleaner code.
+            </p>
+        </div>
+    </section>
+
     <!-- Return Keyword -->
     <section id="section-return" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Return Statement</h2>
+        <h2 class="text-2xl font-bold text-white mb-4">Early Return</h2>
 
         <section id="kw-return" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -292,14 +327,14 @@ let user3 = new User(name: "Charlie", role: "moderator");</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Exits a function and optionally returns a value.</p>
+                <p class="text-gray-400 mb-3">Exits a function early and returns a value. Use <code>return</code> when you need to exit before the last expression.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">fn find_first_even(numbers: Int[]) -> Int {
     for (n in numbers) {
         if (n % 2 == 0) {
             return n;  // Early return
         }
     }
-    return -1;  // Not found
+    -1  // Implicit return: not found
 }
 
 let result = find_first_even([1, 3, 5, 4, 7]);  // 4</code></pre>

@@ -105,6 +105,53 @@ describe("Functions", fn() {
     });
 });
 
+describe("Implicit Returns", fn() {
+    test("implicit return from expression", fn() {
+        fn add(a, b) {
+            a + b
+        }
+        assert_eq(add(2, 3), 5);
+    });
+
+    test("implicit return from function call", fn() {
+        fn double(x) { x * 2 }
+        fn call_double(x) {
+            double(x)
+        }
+        assert_eq(call_double(5), 10);
+    });
+
+    test("implicit return from if/else", fn() {
+        fn abs(x) {
+            if (x < 0) { -x } else { x }
+        }
+        assert_eq(abs(-5), 5);
+        assert_eq(abs(5), 5);
+    });
+
+    test("implicit return from block lambda", fn() {
+        let items = [1, 2, 3];
+        let doubled = items.map(fn(x) { x * 2 });
+        assert_eq(doubled, [2, 4, 6]);
+    });
+
+    test("let as last statement returns null", fn() {
+        fn nothing() {
+            let x = 1;
+        }
+        assert_null(nothing());
+    });
+
+    test("explicit return still works", fn() {
+        fn early(x) {
+            if (x < 0) { return "negative"; }
+            "non-negative"
+        }
+        assert_eq(early(-1), "negative");
+        assert_eq(early(1), "non-negative");
+    });
+});
+
 describe("Closures", fn() {
     test("closure captures outer variable", fn() {
         let multiplier = 3;

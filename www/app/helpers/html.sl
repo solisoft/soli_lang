@@ -4,16 +4,16 @@ fn truncate_html(html: String, length: Int) -> String {
     if (len(html) <= length) {
         return html;
     }
-    return substring(html, 0, length) + "...";
+    substring(html, 0, length) + "..."
 }
 
 fn strip_tags(html: String) -> String {
-    return strip_html(html);
+    strip_html(html)
 }
 
 fn format_html_content(content: String) -> String {
     let escaped = html_escape(content);
-    return escaped;
+    escaped
 }
 
 fn get_section_color(id: String) -> String {
@@ -57,5 +57,5 @@ fn get_icon_path(icon: String) -> String {
     }
 
     // Fallback icon (question mark)
-    return "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z' />";
+    "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z' />"
 }

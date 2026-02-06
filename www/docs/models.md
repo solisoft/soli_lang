@@ -207,14 +207,14 @@ Implement relationships using model methods:
 ```soli
 class Post extends Model {
     fn author() -> Any {
-        return User.find(this.author_id);
+        User.find(this.author_id)
     }
 }
 
 class User extends Model {
     // Returns a QueryBuilder for chaining
     fn posts() -> Any {
-        return Post.where("doc.author_id == @id", { "id": this.id });
+        Post.where("doc.author_id == @id", { "id": this.id })
     }
 }
 
@@ -236,11 +236,11 @@ Add custom methods to your models:
 ```soli
 class User extends Model {
     fn is_admin() -> Bool {
-        return this.role == "admin";
+        this.role == "admin"
     }
 
     fn full_name() -> String {
-        return this.first_name + " " + this.last_name;
+        this.first_name + " " + this.last_name
     }
 }
 
@@ -284,11 +284,11 @@ class User extends Model {
     }
 
     fn posts() -> Any {
-        return Post.where("doc.user_id == @id", { "id": this.id });
+        Post.where("doc.user_id == @id", { "id": this.id })
     }
 
     fn is_adult() -> Bool {
-        return this.age >= 18;
+        this.age >= 18
     }
 }
 
@@ -297,7 +297,7 @@ class BlogPost extends Model {
     validates("title", { "presence": true, "min_length": 3 })
 
     fn author() -> Any {
-        return User.find(this.user_id);
+        User.find(this.user_id)
     }
 }
 
@@ -305,17 +305,17 @@ class BlogPost extends Model {
 class UsersController extends Controller {
     fn index(req: Any) -> Any {
         let users = User.all();
-        return render("users/index", { "users": users });
+        render("users/index", { "users": users })
     }
 
     fn show(req: Any) -> Any {
         let id = req["params"]["id"];
         let user = User.find(id);
         let posts = user.posts().order("created_at", "desc").limit(5).all();
-        return render("users/show", {
+        render("users/show", {
             "user": user,
             "posts": posts
-        });
+        })
     }
 
     fn create(req: Any) -> Any {
@@ -326,9 +326,9 @@ class UsersController extends Controller {
         });
 
         if result["valid"] {
-            return redirect("/users/" + result["record"]["id"]);
+            redirect("/users/" + result["record"]["id"])
         } else {
-            return render("users/new", { "errors": result["errors"] });
+            render("users/new", { "errors": result["errors"] })
         }
     }
 }

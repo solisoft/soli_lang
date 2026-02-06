@@ -39,7 +39,7 @@ print("Hello, World!");
 ```soli
 // A simple program that calculates and displays results
 fn calculate_area(radius: Float) -> Float {
-    return 3.14159 * radius * radius;
+    3.14159 * radius * radius
 }
 
 let radius = 5.0;
@@ -607,7 +607,7 @@ fn greet(name: String) {
 
 // With return value
 fn add(a: Int, b: Int) -> Int {
-    return a + b;
+    a + b
 }
 
 // Void function (explicit)
@@ -617,7 +617,7 @@ fn log_message(msg: String) {
 
 // With type annotations on return
 fn multiply(a: Float, b: Float) -> Float {
-    return a * b;
+    a * b
 }
 ```
 
@@ -629,7 +629,7 @@ fn factorial(n: Int) -> Int {
     if (n <= 1) {
         return 1;
     }
-    return n * factorial(n - 1);
+    n * factorial(n - 1)
 }
 
 print(factorial(5));  // 120
@@ -639,7 +639,7 @@ fn fibonacci(n: Int) -> Int {
     if (n <= 1) {
         return n;
     }
-    return fibonacci(n - 1) + fibonacci(n - 2);
+    fibonacci(n - 1) + fibonacci(n - 2)
 }
 
 print(fibonacci(10));  // 55
@@ -662,7 +662,7 @@ fn is_prime(n: Int) -> Bool {
         }
         i = i + 2;
     }
-    return true;
+    true
 }
 
 // Find maximum in array
@@ -676,7 +676,7 @@ fn find_max(arr: Int[]) -> Int {
             max = arr[i];
         }
     }
-    return max;
+    max
 }
 ```
 
@@ -703,7 +703,7 @@ fn process_user(user: Hash) -> Hash {
     processed["status"] = "active";
     processed["created_at"] = DateTime.utc().to_iso();
 
-    return processed;
+    processed
 }
 ```
 
@@ -714,15 +714,15 @@ Functions can accept other functions as parameters and return functions:
 ```soli
 // Function as parameter
 fn apply(x: Int, f: (Int) -> Int) -> Int {
-    return f(x);
+    f(x)
 }
 
 fn double(x: Int) -> Int {
-    return x * 2;
+    x * 2
 }
 
 fn square(x: Int) -> Int {
-    return x * x;
+    x * x
 }
 
 let result = apply(5, double);   // 10
@@ -734,7 +734,7 @@ fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[] {
     for (item in arr) {
         push(result, transformer(item));
     }
-    return result;
+    result
 }
 
 let numbers = [1, 2, 3, 4, 5];
@@ -743,9 +743,9 @@ let doubled = transform_array(numbers, fn(x) x * 2);  // [2, 4, 6, 8, 10]
 // Function that returns a function
 fn multiplier(factor: Int) -> (Int) -> Int {
     fn closure(x: Int) -> Int {
-        return x * factor;
+        x * factor
     }
-    return closure;
+    closure
 }
 
 let times_two = multiplier(2);
@@ -764,9 +764,9 @@ fn make_counter() -> () -> Int {
     let count = 0;
     fn counter() -> Int {
         count = count + 1;
-        return count;
+        count
     }
-    return counter;
+    counter
 }
 
 let counter1 = make_counter();
@@ -782,9 +782,9 @@ print(counter2());  // 2
 // Closure capturing variables
 fn make_greeter(greeting: String) -> (String) -> String {
     fn greet(name: String) -> String {
-        return greeting + ", " + name + "!";
+        greeting + ", " + name + "!"
     }
-    return greet;
+    greet
 }
 
 let say_hello = make_greeter("Hello");
@@ -798,7 +798,7 @@ print(say_hola("Bob"));     // "Hola, Bob!"
 
 ```soli
 fn greet(name: String, greeting: String = "Hello") -> String {
-    return greeting + ", " + name + "!";
+    greeting + ", " + name + "!"
 }
 
 print(greet("Alice"));              // "Hello, Alice!"
@@ -811,7 +811,7 @@ fn create_user(name: String, email: String = null, role: String = "user") -> Has
     if (email != null) {
         user["email"] = email;
     }
-    return user;
+    user
 }
 
 let user1 = create_user("Alice");
@@ -888,7 +888,7 @@ fn sum(numbers: Int[]) -> Int {
     for (n in numbers) {
         total = total + n;
     }
-    return total;
+    total
 }
 
 print(sum([1, 2, 3, 4, 5]));  // 15
@@ -914,7 +914,7 @@ fn format_list(items: String[], separator: String = ", ", final_separator: Strin
     for (i in range(0, len - 1)) {
         result = result + items[i] + separator;
     }
-    return result + final_separator + " " + items[len - 1];
+    result + final_separator + " " + items[len - 1]
 }
 
 print(format_list(["apple", "banana", "cherry"]));  // "apple, banana and cherry"
@@ -978,7 +978,7 @@ fn slice(arr: Array, start: Int, end: Int) -> Array {
     for (i in range(start, actual_end)) {
         push(result, arr[i]);
     }
-    return result;
+    result
 }
 
 print(slice(fruits, 1, 3));  // ["banana", "cherry"]
@@ -1030,7 +1030,7 @@ fn chunk(arr: Array, size: Int) -> Array[] {
     if (len(current) > 0) {
         push(result, current);
     }
-    return result;
+    result
 }
 
 print(chunk(numbers, 3));  // [[1,2,3], [4,5,6], [7,8,9], [10]]
@@ -1081,7 +1081,7 @@ fn insert(arr: Array, index: Int, value: Any) -> Array {
     if (index >= len(arr)) {
         push(result, value);
     }
-    return result;
+    result
 }
 
 // Reverse
@@ -1307,7 +1307,7 @@ fn group_by(arr: Array[], key_fn: (Any) -> Any) -> Hash {
         }
         push(result[key], item);
     }
-    return result;
+    result
 }
 
 let users = [
@@ -1333,7 +1333,7 @@ fn flatten(arr: Array[]) -> Array {
             push(result, item);
         }
     }
-    return result;
+    result
 }
 
 print(flatten([1, [2, 3], [4, [5, 6]], 7]));  // [1, 2, 3, 4, 5, 6, 7]
@@ -1345,7 +1345,7 @@ fn zip(arr1: Array, arr2: Array) -> Array[] {
     for (i in range(0, len)) {
         push(result, [arr1[i], arr2[i]]);
     }
-    return result;
+    result
 }
 
 print(zip(["a", "b", "c"], [1, 2, 3]));  // [[a, 1], [b, 2], [c, 3]]
@@ -1373,7 +1373,7 @@ class Person {
 
     // Instance methods
     fn greet() -> String {
-        return "Hello, I'm " + this.name;
+        "Hello, I'm " + this.name
     }
 
     fn introduce() -> String {
@@ -1381,7 +1381,7 @@ class Person {
         if (this.email != "") {
             intro = intro + ". You can reach me at " + this.email;
         }
-        return intro;
+        intro
     }
 
     fn have_birthday() {
@@ -1414,23 +1414,23 @@ class Rectangle {
     }
 
     fn area() -> Float {
-        return this.width * this.height;
+        this.width * this.height
     }
 
     fn perimeter() -> Float {
-        return 2 * (this.width + this.height);
+        2 * (this.width + this.height)
     }
 
     // Static factory method
     static fn square(side: Float) -> Rectangle {
-        return new Rectangle(side, side);
+        new Rectangle(side, side)
     }
 
     // Another factory method
     static fn from_area(area: Float, aspect_ratio: Float = 1.0) -> Rectangle {
         let width = sqrt(area / aspect_ratio);
         let height = width * aspect_ratio;
-        return new Rectangle(width, height);
+        new Rectangle(width, height)
     }
 }
 
@@ -1459,11 +1459,11 @@ class Animal {
     }
 
     fn speak() -> String {
-        return this.name + " makes a sound";
+        this.name + " makes a sound"
     }
 
     fn get_info() -> String {
-        return this.name + " is " + str(this.age) + " years old";
+        this.name + " is " + str(this.age) + " years old"
     }
 }
 
@@ -1479,12 +1479,12 @@ class Dog extends Animal {
 
     // Override method
     fn speak() -> String {
-        return this.name + " barks!";
+        this.name + " barks!"
     }
 
     // Subclass-specific method
     fn fetch() -> String {
-        return this.name + " fetches the ball!";
+        this.name + " fetches the ball!"
     }
 }
 
@@ -1495,11 +1495,11 @@ class Cat extends Animal {
     }
 
     fn speak() -> String {
-        return this.name + " meows!";
+        this.name + " meows!"
     }
 
     fn purr() -> String {
-        return this.name + " purrs contentedly";
+        this.name + " purrs contentedly"
     }
 }
 
@@ -1552,11 +1552,11 @@ class Circle implements Drawable, Resizable {
     }
 
     fn draw() -> String {
-        return "Circle with radius " + str(this.radius) + " and color " + this.color;
+        "Circle with radius " + str(this.radius) + " and color " + this.color
     }
 
     fn get_color() -> String {
-        return this.color;
+        this.color
     }
 
     fn resize(width: Float, height: Float) {
@@ -1565,7 +1565,7 @@ class Circle implements Drawable, Resizable {
     }
 
     fn get_dimensions() -> {width: Float, height: Float} {
-        return {"width": this.radius * 2, "height": this.radius * 2};
+        {"width": this.radius * 2, "height": this.radius * 2}
     }
 }
 
@@ -1581,11 +1581,11 @@ class Rectangle implements Drawable, Resizable {
     }
 
     fn draw() -> String {
-        return "Rectangle " + str(this.width) + "x" + str(this.height) + " in " + this.color;
+        "Rectangle " + str(this.width) + "x" + str(this.height) + " in " + this.color
     }
 
     fn get_color() -> String {
-        return this.color;
+        this.color
     }
 
     fn resize(width: Float, height: Float) {
@@ -1594,7 +1594,7 @@ class Rectangle implements Drawable, Resizable {
     }
 
     fn get_dimensions() -> {width: Float, height: Float} {
-        return {"width": this.width, "height": this.height};
+        {"width": this.width, "height": this.height}
     }
 }
 
@@ -1633,7 +1633,7 @@ class BankAccount {
             this.log_transaction("Deposit", amount);
             return true;
         }
-        return false;
+        false
     }
 
     // Public method
@@ -1643,22 +1643,22 @@ class BankAccount {
             this.log_transaction("Withdrawal", -amount);
             return true;
         }
-        return false;
+        false
     }
 
     // Public getter
     public fn get_balance() -> Float {
-        return this.balance;
+        this.balance
     }
 
     // Private method - internal helper
     private fn validate_amount(amount: Float) -> Bool {
-        return amount > 0;
+        amount > 0
     }
 
     // Private method
     private fn has_sufficient_funds(amount: Float) -> Bool {
-        return this.balance >= amount;
+        this.balance >= amount
     }
 
     // Private method
@@ -1698,20 +1698,20 @@ class MathUtils {
     // Static methods
     static fn square(x: Float) -> Float {
         MathUtils.calculation_count = MathUtils.calculation_count + 1;
-        return x * x;
+        x * x
     }
 
     static fn cube(x: Float) -> Float {
         MathUtils.calculation_count = MathUtils.calculation_count + 1;
-        return x * x * x;
+        x * x * x
     }
 
     static fn max(a: Float, b: Float) -> Float {
-        return a > b ? a : b;
+        a > b ? a : b
     }
 
     static fn min(a: Float, b: Float) -> Float {
-        return a < b ? a : b;
+        a < b ? a : b
     }
 
     static fn clamp(value: Float, min_val: Float, max_val: Float) -> Float {
@@ -1721,7 +1721,7 @@ class MathUtils {
         if (value > max_val) {
             return max_val;
         }
-        return value;
+        value
     }
 }
 
@@ -1754,11 +1754,11 @@ class Product {
     }
 
     fn get_total_value() -> Float {
-        return this.price * this.quantity;
+        this.price * this.quantity
     }
 
     fn is_in_stock() -> Bool {
-        return this.quantity > 0;
+        this.quantity > 0
     }
 
     fn reduce_quantity(amount: Int) -> Bool {
@@ -1766,11 +1766,11 @@ class Product {
             this.quantity = this.quantity - amount;
             return true;
         }
-        return false;
+        false
     }
 
     fn to_string() -> String {
-        return this.name + " ($" + str(this.price) + ") - " + str(this.quantity) + " in stock";
+        this.name + " ($" + str(this.price) + ") - " + str(this.quantity) + " in stock"
     }
 }
 
@@ -1786,11 +1786,11 @@ class Electronics extends Product {
     }
 
     fn is_under_warranty() -> Bool {
-        return this.warranty_months > 12;
+        this.warranty_months > 12
     }
 
     fn to_string() -> String {
-        return this.brand + " " + this.name + " - $" + str(this.price) + " (" + str(this.warranty_months) + " month warranty)";
+        this.brand + " " + this.name + " - $" + str(this.price) + " (" + str(this.warranty_months) + " month warranty)"
     }
 }
 
@@ -1812,7 +1812,7 @@ class Inventory {
                 return splice(this.products, i, 1)[0];
             }
         }
-        return null;
+        null
     }
 
     fn find_product(id: String) -> Product? {
@@ -1821,7 +1821,7 @@ class Inventory {
                 return product;
             }
         }
-        return null;
+        null
     }
 
     fn get_total_inventory_value() -> Float {
@@ -1829,11 +1829,11 @@ class Inventory {
         for (product in this.products) {
             total = total + product.get_total_value();
         }
-        return total;
+        total
     }
 
     fn get_out_of_stock_products() -> Product[] {
-        return this.products.filter(fn(p) !p.is_in_stock());
+        this.products.filter(fn(p) !p.is_in_stock())
     }
 
     fn list_all() {
@@ -1870,17 +1870,17 @@ Soli supports nested classes - classes defined within other classes. This featur
 class Organization {
     class Department {
         fn get_name() {
-            return "Engineering";
+            "Engineering"
         }
-        
+
         fn get_budget() {
-            return 1000000;
+            1000000
         }
     }
-    
+
     class Team {
         fn get_name() {
-            return "Backend Team";
+            "Backend Team"
         }
     }
 }
@@ -1910,31 +1910,31 @@ Nested classes are perfect for implementing design patterns:
 class TrafficLight {
     class RedState {
         fn next() {
-            return "green";
+            "green"
         }
-        
+
         fn get_duration() {
-            return 30;
+            30
         }
     }
-    
+
     class GreenState {
         fn next() {
-            return "yellow";
+            "yellow"
         }
-        
+
         fn get_duration() {
-            return 20;
+            20
         }
     }
-    
+
     class YellowState {
         fn next() {
-            return "red";
+            "red"
         }
-        
+
         fn get_duration() {
-            return 5;
+            5
         }
     }
 }
@@ -1952,19 +1952,19 @@ Group related classes together:
 class Database {
     class Connection {
         fn connect() {
-            return "Connected to database";
+            "Connected to database"
         }
     }
-    
+
     class QueryBuilder {
         fn select(table: String) {
-            return "SELECT * FROM " + table;
+            "SELECT * FROM " + table
         }
     }
-    
+
     class Transaction {
         fn begin() {
-            return "Transaction started";
+            "Transaction started"
         }
     }
 }
@@ -1986,22 +1986,22 @@ Create hierarchical configuration structures:
 class Server {
     class SSLConfig {
         fn is_enabled() {
-            return true;
+            true
         }
-        
+
         fn get_protocol() {
-            return "TLS 1.3";
+            "TLS 1.3"
         }
     }
-    
+
     class LoggingConfig {
         fn get_level() {
-            return "INFO";
+            "INFO"
         }
     }
-    
+
     fn start() {
-        return "Server starting with SSL: " + str(new Server::SSLConfig().is_enabled());
+        "Server starting with SSL: " + str(new Server::SSLConfig().is_enabled())
     }
 }
 
@@ -2017,19 +2017,19 @@ You can define multiple nested classes at the same level:
 class Service {
     class Database {
         fn connect() {
-            return "DB connected";
+            "DB connected"
         }
     }
-    
+
     class Cache {
         fn get(key: String) {
-            return "cached:" + key;
+            "cached:" + key
         }
     }
-    
+
     class Logger {
         fn log(msg: String) {
-            return "[LOG] " + msg;
+            "[LOG] " + msg
         }
     }
 }
@@ -2087,7 +2087,7 @@ print(category);  // "single digit positive"
 
 // Practical example: HTTP status handling
 fn handle_status(code: Int) -> String {
-    return match code {
+    match code {
         code if code >= 200 && code < 300 => "Success: " + str(code),
         code if code >= 300 && code < 400 => "Redirect: " + str(code),
         404 => "Not Found",
@@ -2095,7 +2095,7 @@ fn handle_status(code: Int) -> String {
         500 => "Internal Server Error",
         code if code >= 500 => "Server Error: " + str(code),
         _ => "Client Error: " + str(code),
-    };
+    }
 }
 
 print(handle_status(200));  // "Success: 200"
@@ -2170,7 +2170,7 @@ match data {
 let value: Any = get_some_value();
 
 fn describe_value(val: Any) -> String {
-    return match val {
+    match val {
         s: String => "String with " + str(len(s)) + " characters",
         n: Int => "Integer: " + str(n),
         f: Float => "Float: " + str(f),
@@ -2179,12 +2179,12 @@ fn describe_value(val: Any) -> String {
         h: Hash => "Hash with " + str(len(h)) + " keys",
         null => "Null value",
         _ => "Unknown type: " + type(val),
-    };
+    }
 }
 
 // Practical example: JSON value handler
 fn handle_json_value(value: Any) -> String {
-    return match value {
+    match value {
         null => "null",
         s: String => "\"" + s + "\"",
         n: Int => str(n),
@@ -2195,10 +2195,10 @@ fn handle_json_value(value: Any) -> String {
         h: Hash => "{" + join(h.entries().map(fn(pair) {
             let k = pair[0];
             let v = pair[1];
-            return "\"" + k + "\": " + handle_json_value(v);
+            "\"" + k + "\": " + handle_json_value(v)
         }), ", ") + "}",
         _ => "\"unknown\"",
-    };
+    }
 }
 ```
 
@@ -2207,7 +2207,7 @@ fn handle_json_value(value: Any) -> String {
 ```soli
 // Command pattern matching
 fn execute_command(command: Hash) -> String {
-    return match command {
+    match command {
         {"action": "create", "type": "user", "data": data} => {
             "Creating user: " + data["name"];
         },
@@ -2221,12 +2221,12 @@ fn execute_command(command: Hash) -> String {
             "Unknown action: " + action;
         },
         _ => "Invalid command format",
-    };
+    }
 }
 
 // Tree traversal with pattern matching
 fn process_tree(node: Any) -> Any {
-    return match node {
+    match node {
         {"type": "leaf", "value": value} => {
             {"value": value * 2};
         },
@@ -2239,7 +2239,7 @@ fn process_tree(node: Any) -> Any {
         },
         {"type": "leaf"} => {"value": 0},
         _ => null,
-    };
+    }
 }
 ```
 
@@ -2252,9 +2252,9 @@ fn process_tree(node: Any) -> Any {
 The pipeline operator `|>` passes the left value as the first argument to the right function:
 
 ```soli
-fn double(x: Int) -> Int { return x * 2; }
-fn add_one(x: Int) -> Int { return x + 1; }
-fn square(x: Int) -> Int { return x * x; }
+fn double(x: Int) -> Int { x * 2 }
+fn add_one(x: Int) -> Int { x + 1 }
+fn square(x: Int) -> Int { x * x }
 
 // Without pipeline (nested calls)
 let result1 = square(add_one(double(5)));  // Hard to read
@@ -2267,21 +2267,21 @@ print(result2);  // (5 * 2 + 1)^2 = 121
 ### Pipeline with Multiple Arguments
 
 ```soli
-fn add(a: Int, b: Int) -> Int { return a + b; }
-fn multiply(a: Int, b: Int) -> Int { return a * b; }
+fn add(a: Int, b: Int) -> Int { a + b }
+fn multiply(a: Int, b: Int) -> Int { a * b }
 
 // 5 |> add(3) means add(5, 3)
 let result = 5 |> add(3) |> multiply(2);
 print(result);  // (5 + 3) * 2 = 16
 
 // More complex chaining
-fn subtract(a: Int, b: Int) -> Int { return a - b; }
-fn divide(a: Int, b: Int) -> Int { return int(a / b); }
+fn subtract(a: Int, b: Int) -> Int { a - b }
+fn divide(a: Int, b: Int) -> Int { int(a / b) }
 
 let calc = 100
-    |> fn(x) { return subtract(x, 10); }()
-    |> fn(x) { return divide(x, 3); }()
-    |> fn(x) { return multiply(x, 4); }();
+    |> fn(x) { subtract(x, 10) }()
+    |> fn(x) { divide(x, 3) }()
+    |> fn(x) { multiply(x, 4) }();
 print(calc);  // ((100 - 10) / 3) * 4 = 120
 ```
 
@@ -2308,29 +2308,29 @@ let result2 = numbers
 ```soli
 // Data processing pipeline
 fn process_user_data(raw_data: Hash) -> Hash {
-    return raw_data
-        |> fn(d) { d["sanitized_email"] = d["email"].lower().trim(); return d; }()
+    raw_data
+        |> fn(d) { d["sanitized_email"] = d["email"].lower().trim(); d }()
         |> validate_user()
         |> enrich_profile()
-        |> calculate_metrics();
+        |> calculate_metrics()
 }
 
 // HTTP request pipeline
 fn fetch_and_process(url: String) -> Hash {
-    return url
+    url
         |> http_get_json()
         |> transform_response()
         |> validate_data()
-        |> format_output();
+        |> format_output()
 }
 
 // String transformation pipeline
 fn format_filename(filename: String) -> String {
-    return filename
-        |> fn(s) { return s.lower(); }()
-        |> fn(s) { return s.replace(" ", "_"); }()
-        |> fn(s) { return s.replace("-", "_"); }()
-        |> fn(s) { return s + ".txt"; }();
+    filename
+        |> fn(s) { s.lower() }()
+        |> fn(s) { s.replace(" ", "_") }()
+        |> fn(s) { s.replace("-", "_") }()
+        |> fn(s) { s + ".txt" }()
 }
 
 print(format_filename("My Document"));  // "my_document.txt"
@@ -2351,11 +2351,11 @@ print(result);  // 18 (6+8+10)
 
 // Fetch and process user with async pipeline
 fn get_user_data(user_id: Int) -> Hash {
-    return user_id
-        |> fn(id) { return {"id": id}; }()
+    user_id
+        |> fn(id) { {"id": id} }()
         |> fetch_from_db()
         |> enrich_with_permissions()
-        |> cache_result();
+        |> cache_result()
 }
 
 // Complex data pipeline
@@ -2383,41 +2383,41 @@ print("Total Revenue: $" + str(total_revenue));  // $2750
 
 // Private function (not exported)
 fn validate_number(n: Int) -> Bool {
-    return n >= 0;
+    n >= 0
 }
 
 // Exported functions
 export fn add(a: Int, b: Int) -> Int {
-    return a + b;
+    a + b
 }
 
 export fn subtract(a: Int, b: Int) -> Int {
-    return a - b;
+    a - b
 }
 
 export fn multiply(a: Int, b: Int) -> Int {
-    return a * b;
+    a * b
 }
 
 export fn divide(a: Int, b: Int) -> Float {
     if (b == 0) {
         panic("Division by zero");
     }
-    return float(a) / float(b);
+    float(a) / float(b)
 }
 
 export fn factorial(n: Int) -> Int {
     if (n <= 1) {
         return 1;
     }
-    return n * factorial(n - 1);
+    n * factorial(n - 1)
 }
 
 export fn fibonacci(n: Int) -> Int {
     if (n <= 1) {
         return n;
     }
-    return fibonacci(n - 1) + fibonacci(n - 2);
+    fibonacci(n - 1) + fibonacci(n - 2)
 }
 ```
 
@@ -2904,7 +2904,7 @@ fn calculate_age(birthdate: DateTime) -> Int {
         (now.month() == birthdate.month() && now.day() < birthdate.day())) {
         age = age - 1;
     }
-    return age;
+    age
 }
 
 let birthdate = DateTime.parse("1990-05-15");
@@ -2931,22 +2931,22 @@ fn relative_time(dt: DateTime) -> String {
         let days = int(seconds / 86400);
         return str(days) + (days == 1 ? " day ago" : " days ago");
     }
-    return dt.to_string();
+    dt.to_string()
 }
 
 // Check if date is in the past
 fn is_past(dt: DateTime) -> Bool {
     let now = DateTime.utc();
-    return dt.to_unix() < now.to_unix();
+    dt.to_unix() < now.to_unix()
 }
 
 // Get start of day
 fn start_of_day(dt: DateTime) -> DateTime {
-    return DateTime.parse(
+    DateTime.parse(
         str(dt.year()) + "-" +
         str(dt.month()) + "-" +
         str(dt.day()) + "T00:00:00"
-    );
+    )
 }
 
 // Get business days between two dates
@@ -2960,7 +2960,7 @@ fn business_days(start: DateTime, end: DateTime) -> Int {
         }
         current = current.add(Duration.days(1));
     }
-    return count;
+    count
 }
 ```
 
@@ -2994,7 +2994,7 @@ let item_count = 10;  // Good
 ```soli
 // Good: Single responsibility
 fn validate_email(email: String) -> Bool {
-    return email.contains("@") && email.contains(".");
+    email.contains("@") && email.contains(".")
 }
 
 // Good: Descriptive names
@@ -3030,7 +3030,7 @@ fn safe_get(arr: Array, index: Int) -> Any? {
     if (index >= 0 && index < len(arr)) {
         return arr[index];
     }
-    return null;
+    null
 }
 
 // Good: Use functional methods for transformations
@@ -3061,7 +3061,7 @@ class BankAccount {
     }
 
     public fn get_balance() -> Float {
-        return this.balance;
+        this.balance
     }
 }
 ```
@@ -3080,17 +3080,17 @@ fn process(data: Hash) -> Result {
     }
 
     // Main logic at less indentation
-    return do_processing(data);
+    do_processing(data)
 }
 
 // Good: Use pattern matching for complex conditions
 fn handle_event(event: Hash) -> String {
-    return match event {
+    match event {
         {"type": "click", "element": "button"} => "Button clicked",
         {"type": "submit", "form": form} => "Form submitted",
         {"type": "error", "message": msg} => "Error: " + msg,
         _ => "Unknown event",
-    };
+    }
 }
 ```
 
@@ -3113,7 +3113,7 @@ const PI = 3.14159;
 ### Functions
 ```soli
 fn add(a: Int, b: Int) -> Int {
-    return a + b;
+    a + b
 }
 ```
 
@@ -3125,7 +3125,7 @@ class Person {
         this.name = name;
     }
     fn greet() -> String {
-        return "Hello, " + this.name;
+        "Hello, " + this.name
     }
 }
 ```
@@ -3172,7 +3172,7 @@ value |> fn1() |> fn2();
 ```soli
 // math.sl
 export fn add(a: Int, b: Int) -> Int {
-    return a + b;
+    a + b
 }
 
 // main.sl

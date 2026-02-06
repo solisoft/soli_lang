@@ -57,7 +57,7 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
         return { "broadcast": msg };
     }
 
-    return {};
+    {}
 }</code></pre>
         </div>
     </div>
@@ -128,7 +128,7 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
     }
 
     // Leave is automatic on disconnect
-    return {};
+    {}
 }</code></pre>
         </div>
     </div>
@@ -208,7 +208,7 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
     }
 
     // Disconnect auto-untracks and broadcasts leave diff
-    return {};
+    {}
 }</code></pre>
         </div>
     </div>

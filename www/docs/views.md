@@ -543,7 +543,7 @@ fn format_phone(number) {
     if len(digits) == 10 {
         return "(" + substring(digits, 0, 3) + ") " + substring(digits, 3, 6) + "-" + substring(digits, 6, 10)
     }
-    return number
+    number
 }
 
 // Custom helper: Generate a mailto link
@@ -551,7 +551,7 @@ fn mail_to(email, text = null) {
     if text == null {
         text = email
     }
-    return "<a href=\"mailto:" + html_escape(email) + "\">" + html_escape(text) + "</a>"
+    "<a href=\"mailto:" + html_escape(email) + "\">" + html_escape(text) + "</a>"
 }
 ```
 
@@ -589,9 +589,9 @@ Use layout with render:
 
 ```soli
 fn index(req: Any) -> Any {
-    return render("home/index", {
+    render("home/index", {
         "title": "Welcome"
-    }, "layouts/application");
+    }, "layouts/application")
 }
 ```
 
@@ -623,12 +623,12 @@ Controllers pass data to views:
 
 ```soli
 fn show(req: Any) -> Any {
-    return render("posts/show", {
+    render("posts/show", {
         "title": "My Post",
         "post": post,
         "comments": comments,
         "author": author
-    });
+    })
 }
 ```
 

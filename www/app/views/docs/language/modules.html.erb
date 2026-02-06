@@ -55,34 +55,34 @@ hello()</code></pre>
 
 // Private function (not exported)
 fn validate_number(n: Int) -> Bool {
-    return n >= 0;
+    n >= 0
 }
 
 // Exported functions
 export fn add(a: Int, b: Int) -> Int {
-    return a + b;
+    a + b
 }
 
 export fn subtract(a: Int, b: Int) -> Int {
-    return a - b;
+    a - b
 }
 
 export fn multiply(a: Int, b: Int) -> Int {
-    return a * b;
+    a * b
 }
 
 export fn divide(a: Int, b: Int) -> Float {
     if (b == 0) {
         panic("Division by zero");
     }
-    return float(a) / float(b);
+    float(a) / float(b)
 }
 
 export fn factorial(n: Int) -> Int {
     if (n <= 1) {
         return 1;
     }
-    return n * factorial(n - 1);
+    n * factorial(n - 1)
 }</code></pre>
                 </div>
             </div>
@@ -128,7 +128,7 @@ export class User {
     }
 
     fn get_display_name() -> String {
-        return this.username + " (" + this.email + ")";
+        this.username + " (" + this.email + ")"
     }
 }
 
@@ -147,7 +147,7 @@ export class Post {
 
     fn get_summary() -> String {
         let preview = this.content.slice(0, 100);
-        return this.title + " by " + this.author.username;
+        this.title + " by " + this.author.username
     }
 }</code></pre>
             </div>
@@ -168,27 +168,27 @@ export class Posts {
     class Action {
         fn create(title: String, content: String) -> Post {
             // Create a new post
-            return new Post(0, title, content, current_user());
+            new Post(0, title, content, current_user())
         }
 
         fn update(id: Int, updates: Any) -> Post? {
             // Update an existing post
-            return find_post_by_id(id).update(updates);
+            find_post_by_id(id).update(updates)
         }
 
         fn delete(id: Int) -> Bool {
             // Delete a post
-            return remove_post(id);
+            remove_post(id)
         }
     }
 
     class View {
         fn list(page: Int, per_page: Int) -> Post[] {
-            return paginated_posts(page, per_page);
+            paginated_posts(page, per_page)
         }
 
         fn show(id: Int) -> Post? {
-            return find_post_by_id(id);
+            find_post_by_id(id)
         }
     }
 }
@@ -196,17 +196,17 @@ export class Posts {
 export class Users {
     class Action {
         fn register(username: String, email: String) -> User {
-            return new User(0, username, email);
+            new User(0, username, email)
         }
 
         fn login(email: String, password: String) -> User? {
-            return authenticate_user(email, password);
+            authenticate_user(email, password)
         }
     }
 
     class Validator {
         fn validate_registration(data: Any) -> Bool {
-            return data["username"] != null && data["email"] != null;
+            data["username"] != null && data["email"] != null
         }
     }
 }</code></pre>

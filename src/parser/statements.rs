@@ -28,7 +28,11 @@ impl Parser {
         } else if self.check(&TokenKind::Try) {
             self.try_statement()
         } else if self.check(&TokenKind::LeftBrace) {
-            self.block_statement()
+            if self.looks_like_hash_literal() {
+                self.expression_statement()
+            } else {
+                self.block_statement()
+            }
         } else if self.check(&TokenKind::Interface) {
             self.interface_declaration()
         } else {
@@ -212,6 +216,26 @@ impl Parser {
             },
             span,
         ))
+    }
+
+    /// Check if a `{` at statement position starts a hash literal rather than a block.
+    /// Peeks ahead without consuming tokens.
+    fn looks_like_hash_literal(&self) -> bool {
+        match &self.peek_nth(1).kind {
+            // {} is empty hash
+            TokenKind::RightBrace => true,
+            // { "key": ... } — string key clearly starts a hash
+            TokenKind::StringLiteral(_) => true,
+            // { 42: ... } — number key starts a hash
+            TokenKind::IntLiteral(_) | TokenKind::FloatLiteral(_) => true,
+            // { name: ... } or { name => ... } — identifier followed by hash separator
+            TokenKind::Identifier(_) => matches!(
+                &self.peek_nth(2).kind,
+                TokenKind::Colon | TokenKind::FatArrow
+            ),
+            // Anything else (keywords, nested {, etc.) → block
+            _ => false,
+        }
     }
 
     fn block_statement(&mut self) -> ParseResult<Stmt> {

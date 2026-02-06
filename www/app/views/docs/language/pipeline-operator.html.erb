@@ -47,17 +47,17 @@
         <h2 class="text-2xl font-bold text-white mb-4">With Multiple Arguments</h2>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn add(a: Int, b: Int) -> Int { return a + b; }
-fn multiply(a: Int, b: Int) -> Int { return a * b; }
+<pre><code class="language-soli text-sm">fn add(a: Int, b: Int) -> Int { a + b }
+fn multiply(a: Int, b: Int) -> Int { a * b }
 
 // 5 |> add(3) means add(5, 3)
 let result = 5 |> add(3) |> multiply(2);  // (5 + 3) * 2 = 16
 
 // More complex chaining
 let calc = 100
-    |> fn(x) { return x - 10; }()
-    |> fn(x) { return int(x / 3); }()
-    |> fn(x) { return x * 4; }();
+    |> fn(x) { x - 10 }()
+    |> fn(x) { int(x / 3) }()
+    |> fn(x) { x * 4 }();
 print(calc);  // ((100 - 10) / 3) * 4 = 120</code></pre>
             </div>
         </div>
@@ -93,20 +93,20 @@ print(processed);  // (6+7+8+9+10) * 2 = 80</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Data processing pipeline
 fn process_user_data(raw_data: Hash) -> Hash {
-    return raw_data
-        |> fn(d) { d["sanitized_email"] = d["email"].lower().trim(); return d; }()
+    raw_data
+        |> fn(d) { d["sanitized_email"] = d["email"].lower().trim(); d }()
         |> validate_user()
         |> enrich_profile()
-        |> calculate_metrics();
+        |> calculate_metrics()
 }
 
 // HTTP request pipeline
 fn fetch_and_process(url: String) -> Hash {
-    return url
+    url
         |> http_get_json()
         |> transform_response()
         |> validate_data()
-        |> format_output();
+        |> format_output()
 }
 
 // Complex data pipeline

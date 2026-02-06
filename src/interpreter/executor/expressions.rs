@@ -88,7 +88,7 @@ impl Interpreter {
             ExprKind::Block(statements) => {
                 let env = Environment::with_enclosing(self.environment.clone());
                 match self.execute_block(statements, env)? {
-                    ControlFlow::Normal => Ok(Value::Null),
+                    ControlFlow::Normal(v) => Ok(v),
                     ControlFlow::Return(v) => Ok(v),
                     ControlFlow::Throw(e) => Err(RuntimeError::General {
                         message: format!("Unhandled exception: {}", e),

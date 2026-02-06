@@ -31,7 +31,7 @@ fn login(req: Any) -> Any {
         };
     }
 
-    return {"status": 401, "body": "Invalid credentials"};
+    {"status": 401, "body": "Invalid credentials"}
 }
 ```
 
@@ -56,7 +56,7 @@ fn authenticate_middleware(req: Any) -> Any {
 
     // Token is valid - add user info to request
     req["current_user"] = result;
-    return null;  // Continue to next middleware/controller
+    null  // Continue to next middleware/controller
 }
 ```
 
@@ -72,14 +72,14 @@ fn get_token_info(req: Any) -> Any {
     // Decode without verification (for reading only)
     let claims = jwt_decode(token);
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({
             "subject": claims["sub"],
             "issued_at": claims["iat"],
             "expires": claims["exp"]
         })
-    };
+    }
 }
 ```
 

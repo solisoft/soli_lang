@@ -21,10 +21,10 @@
 
     fn index(req: Any) -> Any {
         let posts = Post.all();
-        return render("posts/index", {
+        render("posts/index", {
             "title": "All Posts",
             "posts": posts
-        });
+        })
     }
 
     fn show(req: Any) -> Any {
@@ -35,10 +35,10 @@
             return error(404, "Post not found");
         }
 
-        return render("posts/show", {
+        render("posts/show", {
             "title": post["title"],
             "post": post
-        });
+        })
     }
 }</code></pre>
 
@@ -52,7 +52,7 @@
         // Run before ALL actions
         this.before_action = fn(req) {
             print("Processing: " + req.path);
-            return req;
+            req
         };
 
         // Run before SPECIFIC actions only
@@ -60,7 +60,7 @@
             let post = Post.find(req.params["id"]);
             if post == null { return error(404, "Not Found"); }
             req["post"] = post; // Pass to action
-            return req;
+            req
         };
     }
     
@@ -74,11 +74,11 @@
 
     <pre data-filename="app/controllers/simple_controller.sl"><code class="language-soli text-sm">// GET /health
 fn health(req: Any) -> Any {
-    return {
+    {
         "status": 200,
         "headers": {"Content-Type": "application/json"},
         "body": "{\"status\":\"ok\"}"
-    };
+    }
 }</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">The Request Object</h2>
@@ -106,17 +106,17 @@ fn health(req: Any) -> Any {
     <h2 class="text-2xl font-bold text-white mb-6">Response Types</h2>
 
     <div class="space-y-6 mb-12">
-        <pre data-filename="Render View"><code class="language-soli text-sm">return render("home/index", { "title": "Welcome" });</code></pre>
+        <pre data-filename="Render View"><code class="language-soli text-sm">render("home/index", { "title": "Welcome" })</code></pre>
 
-        <pre data-filename="Redirect"><code class="language-soli text-sm">return redirect("/login");</code></pre>
+        <pre data-filename="Redirect"><code class="language-soli text-sm">redirect("/login")</code></pre>
 
-        <pre data-filename="JSON API"><code class="language-soli text-sm">return {
+        <pre data-filename="JSON API"><code class="language-soli text-sm">{
     "status": 200,
     "headers": { "Content-Type": "application/json" },
     "body": json_encode({ "data": posts })
-};</code></pre>
-        
-        <pre data-filename="Error"><code class="language-soli text-sm">return error(404, "Page Not Found");</code></pre>
+}</code></pre>
+
+        <pre data-filename="Error"><code class="language-soli text-sm">error(404, "Page Not Found")</code></pre>
     </div>
 
     <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20">

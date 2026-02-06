@@ -48,7 +48,7 @@
     }
 
     fn greet() -> String {
-        return "Hello, I'm " + this.name;
+        "Hello, I'm " + this.name
     }
 
     fn introduce() -> String {
@@ -56,7 +56,7 @@
         if (this.email != "") {
             intro = intro + ". You can reach me at " + this.email;
         }
-        return intro;
+        intro
     }
 
     fn have_birthday() {
@@ -102,11 +102,11 @@ class Animal {
     }
 
     fn speak() -> String {
-        return this.name + " makes a sound";
+        this.name + " makes a sound"
     }
 
     fn get_info() -> String {
-        return this.name + " is " + str(this.age) + " years old";
+        this.name + " is " + str(this.age) + " years old"
     }
 }
 
@@ -121,12 +121,12 @@ class Dog extends Animal {
 
     // Override method
     fn speak() -> String {
-        return this.name + " barks!";
+        this.name + " barks!"
     }
 
     // Subclass-specific method
     fn fetch() -> String {
-        return this.name + " fetches the ball!";
+        this.name + " fetches the ball!"
     }
 }
 
@@ -176,11 +176,11 @@ class Circle implements Drawable, Resizable {
     }
 
     fn draw() -> String {
-        return "Circle with radius " + str(this.radius) + " and color " + this.color;
+        "Circle with radius " + str(this.radius) + " and color " + this.color
     }
 
     fn get_color() -> String {
-        return this.color;
+        this.color
     }
 
     fn resize(width: Float, height: Float) {
@@ -188,7 +188,7 @@ class Circle implements Drawable, Resizable {
     }
 
     fn get_dimensions() -> {width: Float, height: Float} {
-        return {"width": this.radius * 2, "height": this.radius * 2};
+        {"width": this.radius * 2, "height": this.radius * 2}
     }
 }
 
@@ -241,16 +241,16 @@ for (shape in shapes) {
                 <pre data-filename="Example"><code class="language-soli text-sm">class PostsController extends Controller {
     // Underscore prefix marks internal helper methods
     fn _permit_params(params: Any) -> Any {
-        return {
+        {
             "title": params["title"],
             "content": params["content"]
-        };
+        }
     }
 
     fn create(req: Any) -> Any {
         // Using the private helper
         let permitted = this._permit_params(req["params"]);
-        return Posts.create(permitted);
+        Posts.create(permitted)
     }
 }</code></pre>
                 <p class="text-gray-400 mt-3 text-sm"><strong class="text-yellow-400">Recommendation:</strong> Use either <code>private fn</code> keyword OR underscore prefix (<code>_</code>) for internal helper methods. The underscore convention is used throughout the codebase (e.g., <code>_authenticate</code>, <code>_build_post_params</code> in examples).</p>
@@ -277,11 +277,11 @@ for (shape in shapes) {
     }
 
     public fn get_balance() -> Float {
-        return this.balance;
+        this.balance
     }
 
     private fn validate_amount(amount: Float) -> Bool {
-        return amount > 0;
+        amount > 0
     }
 }
 
@@ -310,15 +310,15 @@ print(account.get_balance());     // 1500.0</code></pre>
     static E: Float = 2.71828182846;
 
     static fn square(x: Float) -> Float {
-        return x * x;
+        x * x
     }
 
     static fn cube(x: Float) -> Float {
-        return x * x * x;
+        x * x * x
     }
 
     static fn max(a: Float, b: Float) -> Float {
-        return a > b ? a : b;
+        if (a > b) { a } else { b }
     }
 
     static fn clamp(value: Float, min_val: Float, max_val: Float) -> Float {
@@ -328,7 +328,7 @@ print(account.get_balance());     // 1500.0</code></pre>
         if (value > max_val) {
             return max_val;
         }
-        return value;
+        value
     }
 }
 
@@ -367,7 +367,7 @@ print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
         <p class="text-gray-400 mb-3">Static methods.</p>
         <pre data-filename="my_class.sl"><code class="language-soli text-sm">class Math {
     static fn add(a, b) {
-        return a + b;
+        a + b
     }
 }</code></pre>
     </section>
@@ -387,7 +387,7 @@ print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
     }
 
     fn create_inner(x: Int) -> Inner {
-        return new Inner(this, x);
+        new Inner(this, x)
     }
 
     class Inner {
@@ -400,11 +400,11 @@ print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
         }
 
         fn get_combined() -> Int {
-            return this.outer.outer_value + this.inner_value;
+            this.outer.outer_value + this.inner_value
         }
 
         fn get_outer_value() -> Int {
-            return this.outer.outer_value;
+            this.outer.outer_value
         }
     }
 }
@@ -511,17 +511,17 @@ let settings = new User::Settings();
 class Posts {
     class Action {
         fn create(title: String, content: String) {
-            return "Creating post: " + title;
+            "Creating post: " + title
         }
 
         fn delete(id: Int) {
-            return "Deleting post: " + str(id);
+            "Deleting post: " + str(id)
         }
     }
 
     class Validator {
         fn validate_post(post: Any) -> Bool {
-            return post["title"] != null && post["content"] != null;
+            post["title"] != null && post["content"] != null
         }
     }
 }
@@ -538,7 +538,7 @@ action.create("Hello", "World");</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Service {
     class Database {
         fn query(sql: String) {
-            return "Executing: " + sql;
+            "Executing: " + sql
         }
     }
 

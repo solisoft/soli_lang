@@ -127,7 +127,7 @@ fn login(email: String, password: String) -> Hash {
         { "expires_in": 86400 }  // 24 hours
     )
 
-    return { "token": token }
+    { "token": token }
 }
 
 // Protected endpoint middleware
@@ -144,7 +144,7 @@ fn authenticate(req: Hash) -> Hash? {
         return null
     }
 
-    return result
+    result
 }</code></pre>
         </div>
     </section>

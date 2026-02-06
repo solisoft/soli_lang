@@ -36,7 +36,7 @@ impl Interpreter {
                         stack_trace,
                     });
                 }
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(value))
             }
 
             StmtKind::Let {
@@ -48,7 +48,7 @@ impl Interpreter {
                     Value::Null
                 };
                 self.environment.borrow_mut().define(name.clone(), value);
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(Value::Null))
             }
 
             StmtKind::Const {
@@ -58,7 +58,7 @@ impl Interpreter {
                 self.environment
                     .borrow_mut()
                     .define_const(name.clone(), value);
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(Value::Null))
             }
 
             StmtKind::Block(statements) => self.execute_block(
@@ -77,7 +77,7 @@ impl Interpreter {
                 } else if let Some(else_br) = else_branch {
                     self.execute(else_br)
                 } else {
-                    Ok(ControlFlow::Normal)
+                    Ok(ControlFlow::Normal(Value::Null))
                 }
             }
 
@@ -85,11 +85,11 @@ impl Interpreter {
                 while self.evaluate(condition)?.is_truthy() {
                     match self.execute(body)? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
-                        ControlFlow::Normal => {}
+                        ControlFlow::Normal(_) => {}
                         ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
                     }
                 }
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(Value::Null))
             }
 
             StmtKind::For {
@@ -116,17 +116,17 @@ impl Interpreter {
                 self.environment
                     .borrow_mut()
                     .define(decl.name.clone(), Value::Function(Rc::new(func)));
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(Value::Null))
             }
 
             StmtKind::Class(decl) => {
                 self.execute_class(decl)?;
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(Value::Null))
             }
 
             StmtKind::Interface(_) => {
                 // Interfaces are handled at type-check time, no runtime effect
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(Value::Null))
             }
 
             StmtKind::Import(import_decl) => {
@@ -162,7 +162,7 @@ impl Interpreter {
 
                 let throw_value = match try_result {
                     Ok(control_flow) => match control_flow {
-                        ControlFlow::Normal => None,
+                        ControlFlow::Normal(_) => None,
                         ControlFlow::Return(v) => {
                             if let Some(finally_blk) = finally_block {
                                 self.execute(finally_blk)?;
@@ -193,7 +193,7 @@ impl Interpreter {
                         self.environment = previous;
 
                         match catch_result {
-                            Ok(ControlFlow::Normal) => {}
+                            Ok(ControlFlow::Normal(_)) => {}
                             Ok(ControlFlow::Return(v)) => {
                                 if let Some(finally_blk) = finally_block {
                                     self.execute(finally_blk)?;
@@ -225,11 +225,11 @@ impl Interpreter {
                     match self.execute(finally_blk)? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                         ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
-                        ControlFlow::Normal => {}
+                        ControlFlow::Normal(_) => {}
                     }
                 }
 
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(Value::Null))
             }
         }
     }
@@ -255,11 +255,11 @@ impl Interpreter {
                     self.environment = prev_env;
                     match result? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
-                        ControlFlow::Normal => {}
+                        ControlFlow::Normal(_) => {}
                         ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
                     }
                 }
-                Ok(ControlFlow::Normal)
+                Ok(ControlFlow::Normal(Value::Null))
             }
             _ => Err(RuntimeError::type_error(
                 format!("cannot iterate over {}", iter_value.type_name()),

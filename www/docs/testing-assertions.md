@@ -117,7 +117,7 @@ class UserModelTest {
         results.push(assert_not_nil(found, "find_by_email() returns user"));
         results.push(assert_equal(user["id"], found["id"], "same user is returned"));
 
-        return results;
+        results
     }
 }
 ```
@@ -163,22 +163,22 @@ You can create custom assertions by defining new functions:
 ```soli
 fn assert_length(expected_len, collection, message) {
     let actual_len = len(collection);
-    return {
+    {
         "passed": actual_len == expected_len,
         "message": message,
         "expected": expected_len,
         "actual": actual_len
-    };
+    }
 }
 
 fn assert_starts_with(prefix, str, message) {
     let starts_with = len(str) >= len(prefix) && substring(str, 0, len(prefix)) == prefix;
-    return {
+    {
         "passed": starts_with,
         "message": message,
         "expected": prefix + "...",
         "actual": str
-    };
+    }
 }
 ```
 
@@ -216,7 +216,7 @@ class TransactionModelTest {
         let stats = TransactionModel.stats();
         results.push(assert_equal(1, stats["total"], "one transaction in stats"));
 
-        return results;
+        results
     }
 }
 ```

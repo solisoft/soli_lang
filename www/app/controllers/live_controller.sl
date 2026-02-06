@@ -30,7 +30,7 @@ fn counter(event_data: Any) -> Any {
     }
 
     // Return unchanged state for unknown events
-    return state;
+    state
 }
 
 // Metrics component handler - Binary Clock
@@ -155,5 +155,5 @@ fn metrics(event_data: Any) -> Any {
         };
     }
 
-    return null;
+    null
 }

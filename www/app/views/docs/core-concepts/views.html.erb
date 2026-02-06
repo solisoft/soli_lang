@@ -591,10 +591,10 @@
 <pre><code class="language-soli text-sm">fn show(req) {
     let post = Post.find(req.params["id"]);
     
-    return render("posts/show", {
+    render("posts/show", {
         "title": post["title"],
         "post": post
-    });
+    })
 }</code></pre>
         </div>
     </div>

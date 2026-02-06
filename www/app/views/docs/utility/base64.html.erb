@@ -132,7 +132,7 @@ let json_response = json_stringify({
 <pre data-filename="Example"><code class="language-soli text-sm">fn basic_auth_header(username: String, password: String) -> String {
     let credentials = username + ":" + password;
     let encoded = Base64.encode(credentials);
-    return "Basic " + encoded;
+    "Basic " + encoded
 }
 
 // Usage
@@ -190,7 +190,7 @@ fn safe_decode(input: String) -> String {
         return Base64.decode(input);
     } catch e {
         print("Failed to decode: " + e);
-        return "";
+        ""
     }
 }</code></pre>
         </div>

@@ -42,7 +42,7 @@ pub struct StackFrame {
 
 /// Internal result type that can carry return values and exceptions.
 pub(crate) enum ControlFlow {
-    Normal,
+    Normal(Value),
     Return(Value),
     Throw(Value),
 }
@@ -358,14 +358,14 @@ impl Interpreter {
     ) -> RuntimeResult<ControlFlow> {
         let previous = std::mem::replace(&mut self.environment, Rc::new(RefCell::new(env)));
 
-        let mut result = Ok(ControlFlow::Normal);
+        let mut result = Ok(ControlFlow::Normal(Value::Null));
         for stmt in statements {
             result = self.execute(stmt);
             match &result {
                 Err(_) => break,
                 Ok(ControlFlow::Return(_)) => break,
                 Ok(ControlFlow::Throw(_)) => break,
-                Ok(ControlFlow::Normal) => {}
+                Ok(ControlFlow::Normal(_)) => {}
             }
         }
 
@@ -447,7 +447,7 @@ impl Interpreter {
 
         // Execute the function body
         let result = match self.execute_block(&func.body, call_env_rc.borrow().clone()) {
-            Ok(ControlFlow::Normal) => Ok(Value::Null),
+            Ok(ControlFlow::Normal(v)) => Ok(v),
             Ok(ControlFlow::Return(return_value)) => Ok(return_value),
             Ok(ControlFlow::Throw(e)) => Err(RuntimeError::General {
                 message: format!("Unhandled exception: {}", e),

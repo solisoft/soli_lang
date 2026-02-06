@@ -110,8 +110,8 @@ session_destroy();</code></pre>
         
         return redirect("/dashboard");
     }
-    
-    return render("login", { "error": "Invalid credentials" });
+
+    render("login", { "error": "Invalid credentials" })
 }</code></pre>
             </div>
         </div>

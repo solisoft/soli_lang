@@ -429,6 +429,4 @@ pub(crate) fn reload_routes_in_worker(
 
     // 5. Rebuild route index
     crate::interpreter::builtins::server::rebuild_route_index();
-
-    println!("Worker {}: Routes reloaded successfully", worker_id);
 }

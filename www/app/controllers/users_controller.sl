@@ -2,9 +2,9 @@
 
 // Login form
 fn login(req: Any) -> Any {
-    return render("users/login.html", {
+    render("users/login.html", {
         "title": "Login"
-    });
+    })
 }
 
 // Login handler with session management
@@ -36,20 +36,20 @@ fn login_post(req: Any) -> Any {
         };
     }
 
-    return {
+    {
         "status": 401,
         "body": json_stringify({
             "success": false,
             "error": "Invalid email or password"
         })
-    };
+    }
 }
 
 // Registration form
 fn register(req: Any) -> Any {
-    return render("users/register.html", {
+    render("users/register.html", {
         "title": "Register"
-    });
+    })
 }
 
 // Registration handler with input validation
@@ -100,7 +100,7 @@ fn register_post(req: Any) -> Any {
 
     // In real app: save to database
     // For demo, just show success
-    return {
+    {
         "status": 201,
         "body": json_stringify({
             "success": true,
@@ -111,7 +111,7 @@ fn register_post(req: Any) -> Any {
                 "age": validated["age"]
             }
         })
-    };
+    }
 }
 
 // Profile page (requires authentication)
@@ -123,19 +123,19 @@ fn profile(req: Any) -> Any {
         };
     }
 
-    return render("users/profile.html", {
+    render("users/profile.html", {
         "title": "Profile"
-    });
+    })
 }
 
 // Logout - destroy session
 fn logout(req: Any) -> Any {
     session_destroy();
 
-    return {
+    {
         "status": 302,
         "headers": {"Location": "/"}
-    };
+    }
 }
 
 // Regenerate session ID
@@ -152,17 +152,17 @@ fn regenerate_session(req: Any) -> Any {
 
     print("Session regenerated: ", old_id, " -> ", new_id);
 
-    return {
+    {
         "status": 302,
         "headers": {"Location": "/users/profile"}
-    };
+    }
 }
 
 // Validation demo page
 fn validation_demo(req: Any) -> Any {
-    return render("users/validation-demo.html", {
+    render("users/validation-demo.html", {
         "title": "Validation Demo"
-    });
+    })
 }
 
 // Validation API endpoint
@@ -183,10 +183,10 @@ fn validate_registration(req: Any) -> Any {
 
     let result = validate(data, schema);
 
-    return {
+    {
         "status": result["valid"] ? 200 : 422,
         "body": json_stringify(result)
-    };
+    }
 }
 
 // JWT Demo: Create token
@@ -220,14 +220,14 @@ fn create_token(req: Any) -> Any {
         expires = data["expires_in"];
     }
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({
             "token": token,
             "type": "Bearer",
             "expires_in": expires
         })
-    };
+    }
 }
 
 // JWT Demo: Verify token
@@ -257,13 +257,13 @@ fn verify_token(req: Any) -> Any {
         };
     }
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({
             "valid": true,
             "claims": result
         })
-    };
+    }
 }
 
 // JWT Demo: Decode token (without verification)
@@ -282,10 +282,10 @@ fn decode_token(req: Any) -> Any {
 
     let claims = jwt_decode(token);
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({
             "claims": claims
         })
-    };
+    }
 }

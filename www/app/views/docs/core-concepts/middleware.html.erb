@@ -71,10 +71,10 @@ SOLI_REQUEST_LOG=0 soli serve myapp</code></pre>
 
 fn add_cors_headers(req: Any) -> Any {
     // Continue to next middleware/handler
-    return {
+    {
         "continue": true,
         "request": req
-    };
+    }
 }</code></pre>
         </div>
     </div>
@@ -109,10 +109,10 @@ fn authenticate(req: Any) -> Any {
     }
 
     // Continue to handler
-    return {
+    {
         "continue": true,
         "request": req
-    };
+    }
 }</code></pre>
         </div>
     </div>

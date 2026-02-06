@@ -114,7 +114,7 @@ fn update_item(req: Any) -> Any {
     // Quantity from body only
     print("Quantity:", all["quantity"]); // "5"
 
-    return {"status": 200, "body": "Updated"};
+    {"status": 200, "body": "Updated"}
 }</code></pre>
             </div>
         </div>
@@ -194,7 +194,7 @@ fn update_item(req: Any) -> Any {
     // Or unified access
     let all = req["all"];
 
-    return {"status": 200, "body": "OK"};
+    {"status": 200, "body": "OK"}
 }</code></pre>
             </div>
         </div>
@@ -240,14 +240,14 @@ fn search(req: Any) -> Any {
     // Execute search
     let results = execute_search(filters);
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({
             "results": results,
             "page": page,
             "limit": limit
         })
-    };
+    }
 }</code></pre>
             </div>
         </div>

@@ -147,7 +147,7 @@ let names: String[] = ["Alice", "Bob", "Charlie"];
 
 // Function parameters
 fn greet(name: String) -> String {
-    return "Hello, " + name + "!";
+    "Hello, " + name + "!"
 }</code></pre>
                 </div>
             </section>
@@ -465,7 +465,7 @@ for (c in "Soli".chars()) {
 // Check palindrome
 fn is_palindrome(s: String) -> Bool {
     let cleaned = downcase(s);
-    return cleaned == cleaned.reverse();
+    cleaned == cleaned.reverse()
 }
 print(is_palindrome("racecar"));  // true</code></pre>
                 </div>
@@ -631,7 +631,7 @@ let job = fields[2];     // "Engineer"
 // Format currency
 fn format_currency(amount: Float) -> String {
     let formatted = str(amount);
-    return "$" + formatted;
+    "$" + formatted
 }
 
 // Parse URL query string
@@ -644,7 +644,7 @@ fn parse_query(query: String) -> Hash {
             result[parts[0]] = parts[1];
         }
     }
-    return result;
+    result
 }
 let params = parse_query("name=Alice&age=30");
 // {"name": "Alice", "age": "30"}</code></pre>
@@ -661,12 +661,12 @@ let params = parse_query("name=Alice&age=30");
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm">// Basic email validation
 fn is_valid_email(email: String) -> Bool {
-    return contains(email, "@") && contains(email, ".");
+    contains(email, "@") && contains(email, ".")
 }
 
 // Check minimum length
 fn has_min_length(str: String, min: Int) -> Bool {
-    return len(str) >= min;
+    len(str) >= min
 }
 
 // Check if string is numeric
@@ -679,13 +679,13 @@ fn is_numeric(str: String) -> Bool {
             return false;
         }
     }
-    return true;
+    true
 }
 
 // Validate username
 fn is_valid_username(username: String) -> Bool {
     let trimmed = trim(username);
-    return len(trimmed) >= 3 && len(trimmed) <= 20;
+    len(trimmed) >= 3 && len(trimmed) <= 20
 }</code></pre>
                 </div>
             </section>
@@ -706,7 +706,7 @@ fn template(str: String, vars: Hash) -> String {
         let value = pair[1];
         result = replace(result, "{{" + key + "}}", str(value));
     }
-    return result;
+    result
 }
 
 let tmpl = "Hello, {{name}}! You have {{count}} messages.";
@@ -715,7 +715,7 @@ let output = template(tmpl, {"name": "Alice", "count": 5});
 
 // Build HTML safely
 fn build_link(url: String, text: String) -> String {
-    return "<a href=\"" + html_escape(url) + "\">" + html_escape(text) + "</a>";
+    "<a href=\"" + html_escape(url) + "\">" + html_escape(text) + "</a>"
 }</code></pre>
                 </div>
             </section>

@@ -93,10 +93,10 @@ get("/users/:id?", "users#show");</code></pre>
     let user_id = req["params"]["id"];
     let post_id = req["params"]["post_id"];
 
-    return {
+    {
         "status": 200,
         "body": "User ID: " + user_id
-    };
+    }
 }</code></pre>
         </div>
     </div>
@@ -131,10 +131,10 @@ get("/*path", "catchall#handle");</code></pre>
     // /files/docs/report.pdf -> filepath = "/docs/report.pdf"
     // /files/images/photo.jpg -> filepath = "/images/photo.jpg"
 
-    return {
+    {
         "status": 200,
         "body": "Serving: " + filepath
-    };
+    }
 }</code></pre>
         </div>
     </div>
@@ -207,11 +207,11 @@ get("/files/*filepath", "files#serve");</code></pre>
 
     fn routing(req: Any) -> Any {
         let path = req["params"]["path"];  // "/routing"
-        return render("docs/routing", {"active_page": "routing"});
+        render("docs/routing", {"active_page": "routing"})
     }
 
     fn installation(req: Any) -> Any {
-        return render("docs/installation", {"active_page": "installation"});
+        render("docs/installation", {"active_page": "installation"})
     }
 }</code></pre>
         </div>
@@ -263,10 +263,10 @@ fn search(req: Any) -> Any {
     let query = req["query"]["q"];      // "solilang"
     let page = req["query"]["page"];    // "1"
 
-    return {
+    {
         "status": 200,
         "body": "Searching for: " + query
-    };
+    }
 }</code></pre>
         </div>
     </div>

@@ -114,14 +114,14 @@
 
     <span class="text-gray-500">// Relationships via methods</span>
     <span class="text-purple-400">fn</span> <span class="text-blue-400">author</span>() -> <span class="text-yellow-200">Any</span> {
-        <span class="text-purple-400">return</span> <span class="text-yellow-200">User</span>.<span class="text-blue-400">find</span>(<span class="text-blue-400">this</span>.author_id);
+        <span class="text-yellow-200">User</span>.<span class="text-blue-400">find</span>(<span class="text-blue-400">this</span>.author_id)
     }
 
     <span class="text-purple-400">fn</span> <span class="text-blue-400">comments</span>() -> <span class="text-yellow-200">Any</span> {
-        <span class="text-purple-400">return</span> <span class="text-yellow-200">Comment</span>.<span class="text-blue-400">where</span>(
+        <span class="text-yellow-200">Comment</span>.<span class="text-blue-400">where</span>(
             <span class="text-green-400">"doc.post_id == @id"</span>,
             { <span class="text-green-400">"id"</span>: <span class="text-blue-400">this</span>.id }
-        );
+        )
     }
 }</code></pre>
                         </div>
@@ -154,10 +154,10 @@
             .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
             .<span class="text-blue-400">all</span>();
 
-        <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, {
+        <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, {
             <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span>,
             <span class="text-green-400">"posts"</span>: posts
-        });
+        })
     }
 
     <span class="text-purple-400">fn</span> <span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>) {
@@ -165,7 +165,7 @@
         <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>] {
             <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/posts"</span>);
         }
-        <span class="text-purple-400">return</span> <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/new"</span>);
+        <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/new"</span>)
     }
 }</code></pre>
                         </div>
@@ -458,7 +458,7 @@
             }
         };
     }
-    <span class="text-purple-400">return</span> {};
+    {}
 }</code></pre>
                         </div>
                     </div>

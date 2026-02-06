@@ -118,10 +118,10 @@ get("/users/:id", "users#show");</code></pre>
             <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">fn index(req: Any) -> Any {
     let message = "Welcome to Soli!";
 
-    return render("home/index", {
+    render("home/index", {
         "title": "Home",
         "message": message
-    });
+    })
 }</code></pre>
         </div>
 

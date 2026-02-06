@@ -17,13 +17,13 @@ fn profile(req: Any) -> Any {
         return {"status": 401, "body": "Please log in"};
     }
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({
             "user": session_get("user"),
             "email": session_get("email")
         })
-    };
+    }
 }
 ```
 
@@ -39,10 +39,10 @@ fn login(req: Any) -> Any {
     session_set("role", "admin");
     session_set("authenticated", true);
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({"success": true})
-    };
+    }
 }
 ```
 
@@ -50,7 +50,7 @@ fn login(req: Any) -> Any {
 
 ```soli
 fn is_logged_in() -> Bool {
-    return session_has("authenticated") && session_get("authenticated") == true;
+    session_has("authenticated") && session_get("authenticated") == true
 }
 ```
 
@@ -60,7 +60,7 @@ fn is_logged_in() -> Bool {
 fn remove_item(req: Any) -> Any {
     let removed = session_delete("temporary_data");
     print("Removed:", removed);
-    return {"status": 200};
+    {"status": 200}
 }
 ```
 
@@ -85,7 +85,7 @@ fn login(req: Any) -> Any {
         return {"status": 200, "body": "Logged in"};
     }
 
-    return {"status": 401, "body": "Invalid credentials"};
+    {"status": 401, "body": "Invalid credentials"}
 }
 ```
 
@@ -95,10 +95,10 @@ fn login(req: Any) -> Any {
 fn logout(req: Any) -> Any {
     session_destroy();
 
-    return {
+    {
         "status": 200,
         "body": json_stringify({"success": true})
-    };
+    }
 }
 ```
 
@@ -115,7 +115,7 @@ fn require_auth(req: Any) -> Any {
             "body": json_stringify({"error": "Authentication required"})
         };
     }
-    return null;  // Allow request to continue
+    null  // Allow request to continue
 }
 
 fn require_role(req: Any, required_role: String) -> Any {
@@ -132,7 +132,7 @@ fn require_role(req: Any, required_role: String) -> Any {
         };
     }
 
-    return null;
+    null
 }
 ```
 

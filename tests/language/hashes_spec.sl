@@ -50,4 +50,20 @@ describe("Hash Operations", fn() {
         assert_eq(h[true], "yes");
         assert_eq(h[false], "no");
     });
+
+    test("hash literal as last expression (implicit return)", fn() {
+        fn make_response() {
+            { "status": 200, "body": "ok" }
+        }
+        let r = make_response();
+        assert_eq(r["status"], 200);
+        assert_eq(r["body"], "ok");
+    });
+
+    test("empty hash as last expression", fn() {
+        fn empty() {
+            {}
+        }
+        assert_eq(empty(), {});
+    });
 });

@@ -10,18 +10,18 @@ Create a file in `app/controllers/` with a `_controller.sl` suffix:
 // app/controllers/users_controller.sl
 class UsersController extends Controller {
     fn index(req: Any) -> Any {
-        return render("users/index", {
+        render("users/index", {
             "title": "Users",
             "users": []
-        });
+        })
     }
 
     fn show(req: Any) -> Any {
         let user_id = req.params["id"];
-        return render("users/show", {
+        render("users/show", {
             "title": "User Details",
             "user_id": user_id
-        });
+        })
     }
 }
 ```
@@ -56,7 +56,7 @@ class ApplicationController extends Controller {
             if user_id != null {
                 req["current_user"] = User.find(user_id);
             }
-            return req;
+            req
         };
     }
 }
@@ -78,7 +78,7 @@ class PostsController extends Controller {
 
     # Private helper methods (not exposed as actions)
     fn _validate_post(req: Any) -> Bool {
-        return req.params["title"] != null;
+        req.params["title"] != null
     }
 }
 ```
@@ -103,13 +103,13 @@ class ApplicationController extends Controller {
                 return redirect("/login");
             }
             req["current_user"] = User.find(user_id);
-            return req;
+            req
         };
     }
 
     # Shared helper method available to all subclasses
     fn _current_user(req: Any) -> Any {
-        return req["current_user"];
+        req["current_user"]
     }
 }
 ```
@@ -130,7 +130,7 @@ class PostsController extends ApplicationController {
                 return error(404, "Post not found");
             }
             req["post"] = post;
-            return req;
+            req
         };
     }
 
@@ -138,15 +138,15 @@ class PostsController extends ApplicationController {
         # Can use inherited _current_user helper
         let user = this._current_user(req);
         let posts = Post.all();
-        return render("posts/index", {
+        render("posts/index", {
             "posts": posts,
             "user": user
-        });
+        })
     }
 
     fn show(req: Any) -> Any {
         # req["post"] is set by before_action
-        return render("posts/show", { "post": req["post"] });
+        render("posts/show", { "post": req["post"] })
     }
 }
 ```
@@ -163,7 +163,7 @@ class PostsController extends Controller {
         # Run for all actions
         this.before_action = fn(req) {
             println("Before any action: " + req.path);
-            return req;
+            req
         };
 
         # Run only for specific actions
@@ -173,7 +173,7 @@ class PostsController extends Controller {
                 return error(404, "Post not found");
             }
             req["post"] = post;
-            return req;
+            req
         };
     }
 }
@@ -186,7 +186,7 @@ this.before_action = fn(req) {
     if req.session["user_id"] == null {
         return redirect("/login");
     }
-    return req;  # Continue to action
+    req  # Continue to action
 };
 ```
 
@@ -200,7 +200,7 @@ class PostsController extends Controller {
         this.after_action = fn(req, response) {
             # Log the action
             println("Completed: " + req.path);
-            return response;  # Return modified or original response
+            response  # Return modified or original response
         };
     }
 }
@@ -212,7 +212,7 @@ Filter after actions to specific actions:
 this.after_action(:create, :update) = fn(req, response) {
     # Log changes after create/update
     println("Data modified");
-    return response;
+    response
 };
 ```
 
@@ -264,7 +264,7 @@ class PostsController extends Controller {
         # Or access via this (after injection)
         let post = this.get_controller_field(req, "post");
 
-        return render("posts/show", { "post": post });
+        render("posts/show", { "post": post })
     }
 }
 ```
@@ -275,10 +275,10 @@ class PostsController extends Controller {
 
 ```soli
 fn index(req: Any) -> Any {
-    return render("home/index", {
+    render("home/index", {
         "title": "Welcome",
         "message": "Hello!"
-    });
+    })
 }
 ```
 
@@ -293,12 +293,12 @@ class PostsController extends Controller {
     }
 
     fn show(req: Any) -> Any {
-        return render("posts/show", { "post": req["post"] });
+        render("posts/show", { "post": req["post"] })
     }
 
     # Skip layout for specific action
     fn json_only(req: Any) -> Any {
-        return render_json({ "data": "value" }, layout: false);
+        render_json({ "data": "value" }, layout: false)
     }
 }
 ```
@@ -310,13 +310,13 @@ fn create(req: Any) -> Any {
     # Process form data...
 
     # Redirect to another page
-    return redirect("/users");
+    redirect("/users")
 }
 
 fn update(req: Any) -> Any {
     # After update, redirect to show page
     let user_id = req.params["id"];
-    return redirect("/users/" + user_id);
+    redirect("/users/" + user_id)
 }
 ```
 
@@ -324,12 +324,12 @@ fn update(req: Any) -> Any {
 
 ```soli
 fn api_users(req: Any) -> Any {
-    return render_json({
+    render_json({
         "users": [
             {"id": 1, "name": "Alice"},
             {"id": 2, "name": "Bob"}
         ]
-    });
+    })
 }
 ```
 
@@ -337,7 +337,7 @@ fn api_users(req: Any) -> Any {
 
 ```soli
 fn ping(req: Any) -> Any {
-    return render_text("pong");
+    render_text("pong")
 }
 ```
 
@@ -353,7 +353,7 @@ fn show(req: Any) -> Any {
     if user == null {
         return error(404, "User not found");
     }
-    return render("users/show", {"user": user});
+    render("users/show", {"user": user})
 }
 ```
 
@@ -368,7 +368,7 @@ class PostsController extends Controller {
         this.before_action = fn(req) {
             # Store data on request for later use
             req["post"] = Post.find(req.params["id"]);
-            return req;
+            req
         };
     }
 
@@ -376,12 +376,12 @@ class PostsController extends Controller {
         # Access the post set by before_action
         let post = req["post"];
 
-        return render("posts/show", { "post": post });
+        render("posts/show", { "post": post })
     }
 
     # Access request parameters
     fn _get_id(req: Any) -> String {
-        return req.params["id"];
+        req.params["id"]
     }
 }
 ```

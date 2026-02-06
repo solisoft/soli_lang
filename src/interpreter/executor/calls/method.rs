@@ -221,7 +221,7 @@ impl Interpreter {
 
             match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => result.push(v),
-                ControlFlow::Normal => result.push(Value::Null),
+                ControlFlow::Normal(v) => result.push(v),
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array method", span));
                 }
@@ -263,7 +263,7 @@ impl Interpreter {
 
             let result_value = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
-                ControlFlow::Normal => Value::Null,
+                ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array filter", span));
                 }
@@ -307,7 +307,7 @@ impl Interpreter {
             call_env.define(param_name.clone(), item.clone());
 
             match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_) | ControlFlow::Normal => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array each", span));
                 }
@@ -362,7 +362,7 @@ impl Interpreter {
 
             acc = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
-                ControlFlow::Normal => Value::Null,
+                ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array reduce", span));
                 }
@@ -402,7 +402,7 @@ impl Interpreter {
 
             let result_value = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
-                ControlFlow::Normal => Value::Null,
+                ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array find", span));
                 }
@@ -446,7 +446,7 @@ impl Interpreter {
 
             let result_value = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
-                ControlFlow::Normal => Value::Null,
+                ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array any?", span));
                 }
@@ -490,7 +490,7 @@ impl Interpreter {
 
             let result_value = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
-                ControlFlow::Normal => Value::Null,
+                ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array all?", span));
                 }
@@ -535,8 +535,10 @@ impl Interpreter {
                 }
 
                 match self.execute_block(&func.body, call_env) {
-                    Ok(ControlFlow::Return(Value::Int(n))) => n.cmp(&0),
-                    Ok(ControlFlow::Return(Value::Float(n))) => {
+                    Ok(ControlFlow::Return(Value::Int(n)))
+                    | Ok(ControlFlow::Normal(Value::Int(n))) => n.cmp(&0),
+                    Ok(ControlFlow::Return(Value::Float(n)))
+                    | Ok(ControlFlow::Normal(Value::Float(n))) => {
                         if n < 0.0 {
                             std::cmp::Ordering::Less
                         } else if n > 0.0 {

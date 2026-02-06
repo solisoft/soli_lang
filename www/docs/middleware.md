@@ -16,7 +16,7 @@ fn authenticate(req: Any) -> Any {
     }
 
     // Validate token...
-    return req;
+    req
 }
 ```
 
@@ -31,7 +31,7 @@ Log all incoming requests:
 fn log_request(req: Any) -> Any {
     let timestamp = datetime::now();
     println(timestamp + " " + req.method + " " + req.path);
-    return req;
+    req
 }
 ```
 
@@ -46,7 +46,7 @@ fn cors(req: Any) -> Any {
     response.headers["Access-Control-Allow-Origin"] = "*";
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
-    return response;
+    response
 }
 ```
 
@@ -62,7 +62,7 @@ fn auth(req: Any) -> Any {
     }
 
     // Verify session...
-    return req;
+    req
 }
 ```
 
@@ -104,7 +104,7 @@ Request -> Logging -> CORS -> Auth -> Controller -> Auth -> CORS -> Response
 fn add_locale(req: Any) -> Any {
     let lang = req.query["lang"] ?? "en";
     req.locale = lang;
-    return req;
+    req
 }
 ```
 
@@ -114,7 +114,7 @@ fn add_locale(req: Any) -> Any {
 fn add_headers(req: Any, response: Any) -> Any {
     response.headers["X-Frame-Options"] = "SAMEORIGIN";
     response.headers["X-Content-Type-Options"] = "nosniff";
-    return response;
+    response
 }
 ```
 
@@ -122,7 +122,7 @@ fn add_headers(req: Any, response: Any) -> Any {
 
 ```soli
 fn handle_errors(req: Any, error: Any) -> Any {
-    return error(500, "Internal Server Error");
+    error(500, "Internal Server Error")
 }
 ```
 
