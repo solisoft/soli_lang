@@ -11,6 +11,10 @@ pub const CAPACITY_PER_WORKER: usize = 64;
 /// Batch size for processing operations
 pub const BATCH_SIZE: usize = 64;
 
+/// Worker poll interval in milliseconds for recv_timeout between batch drains.
+/// Hot reload checks use lock-free AtomicU64 loads (nanoseconds), so this can be very short.
+pub const WORKER_POLL_INTERVAL_MS: u64 = 1;
+
 /// Request timeout in seconds
 pub const REQUEST_TIMEOUT_SECS: u64 = 5;
 

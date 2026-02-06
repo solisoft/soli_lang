@@ -16,11 +16,9 @@ class HomeController extends Controller {
 
     // GET /health
     fn health(req: Any) -> Any {
-        return {
-            "status": 200,
-            "headers": {"Content-Type": "text/json"},
-            "body": "{\"status\":\"ok\"}"
-        };
+        return render_json({
+            "status": "ok"
+        });
     }
 
     // GET /docs - redirect to documentation
@@ -30,5 +28,29 @@ class HomeController extends Controller {
             "headers": {"Location": "/docs.html"},
             "body": ""
         };
+    }
+
+    // GET /files/*filepath - Splat route demo
+    fn files_demo(req) {
+        return render_json({
+            "route": "files_demo",
+            "params": req["params"]
+        });
+    }
+
+    // GET /api/*version/users/*id - Multi-splat route demo
+    fn api_demo(req) {
+        return render_json({
+            "route": "api_demo",
+            "params": req["params"]
+        });
+    }
+
+    // GET /*catchall - Catch-all route demo
+    fn catchall_demo(req) {
+        return render_json({
+            "route": "catchall_demo",
+            "params": req["params"]
+        });
     }
 }

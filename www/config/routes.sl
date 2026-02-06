@@ -190,4 +190,15 @@ get("/state-machines", "state_machines#demo");
 
 get("/docs/core-concepts/state-machines", "docs#core_concepts_state_machines");
 
+// ============================================================================
+// Wildcard Route Examples
+// ============================================================================
+//
+// These demonstrate the dynamic action resolution feature:
+// Path /wildcard/* maps to wildcard_controller.sl functions
+//
+// Example: /wildcard/demo → wildcard#demo
+
+get("/wildcard/*", "wildcard#*");
+
 print("Routes loaded!");

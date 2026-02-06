@@ -592,7 +592,7 @@ impl Interpreter {
 
         if let Some(route) = matched_route {
             let request_hash =
-                build_request_hash(&method, path, matched_params, query, headers, body);
+                build_request_hash(&method, path, matched_params, &query, &headers, &body);
 
             let handler = self.environment.borrow().get(&route.handler_name);
 

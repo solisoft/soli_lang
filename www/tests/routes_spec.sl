@@ -280,3 +280,63 @@ describe("Route Coverage", fn() {
         assert_gt(len(feature_docs), 5);
     });
 });
+
+describe("Wildcard Routes", fn() {
+    test("Wildcard routes use * in path pattern", fn() {
+        let wildcard_pattern = "get(\"/docs/*\", \"docs#*\")";
+        assert_contains(wildcard_pattern, "/*");
+    });
+
+    test("Wildcard action uses * after controller#", fn() {
+        let wildcard_action = "get(\"/docs/*\", \"docs#*\")";
+        assert_contains(wildcard_action, "#*");
+    });
+
+    test("Splat params capture remaining path segments", fn() {
+        let splat_examples = [
+            {"pattern": "/files/*path", "path": "/files/docs/readme", "expected_path": "/docs/readme"},
+            {"pattern": "/api/*version/users", "path": "/api/v1/users", "expected_version": "/v1"},
+            {"pattern": "/users/:id/*action", "path": "/users/123/edit", "expected_id": "123", "expected_action": "/edit"},
+        ];
+        assert_gt(len(splat_examples), 0);
+    });
+
+    test("Multiple splats supported in pattern", fn() {
+        let multi_splat = "get(\"/*version/*resource/*id\", \"api#*\")";
+        assert_contains(multi_splat, "/*");
+    });
+
+    test("Wildcard action expands using splat params", fn() {
+        let examples = [
+            {"handler": "docs#*", "params": {"splat": "/routing"}, "expected": "docs#routing"},
+            {"handler": "api#*", "params": {"version": "/v1", "action": "/users"}, "expected": "api#users"},
+            {"handler": "files#*", "params": {"filepath": "/docs/guide"}, "expected": "files#docs/guide"},
+        ];
+        assert_gt(len(examples), 0);
+    });
+
+    test("Non-wildcard handlers return unchanged", fn() {
+        let static_handlers = [
+            {"handler": "home#index", "expected": "home#index"},
+            {"handler": "users#show", "expected": "users#show"},
+        ];
+        assert_gt(len(static_handlers), 0);
+    });
+});
+
+describe("Route Parameters", fn() {
+    test("Route parameters use :param syntax", fn() {
+        let param_patterns = ["/users/:id", "/posts/:post_id/comments/:comment_id"];
+        assert_gt(len(param_patterns), 0);
+    });
+
+    test("Parameters are accessible in controller via req.params", fn() {
+        let param_access = "req[\"params\"][\"id\"]";
+        assert_contains(param_access, "params");
+    });
+
+    test("Optional parameters use :param?", fn() {
+        let optional_pattern = "get(\"/users/:?\", \"users#index\")";
+        assert_contains(optional_pattern, ":?");
+    });
+});

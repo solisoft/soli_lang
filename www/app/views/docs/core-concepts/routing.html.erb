@@ -173,6 +173,84 @@ get("/*path", "catchall#handle");</code></pre>
         </table>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Wildcard Action Routes</h2>
+    <p class="text-gray-400 mb-6">Use <code>controller#*</code> to dynamically resolve actions from the URL path:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Dynamic docs routes - /docs/routing → docs#routing
+get("/docs/*", "docs#*");
+
+// API routes with version - /api/v1/users → api#users
+get("/api/*version/*action", "api#*");
+
+// Files serving - /files/docs/readme → files#docs/readme
+get("/files/*filepath", "files#serve");</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">The action name is resolved from captured splat parameters in this priority order:</p>
+    <ol class="list-decimal list-inside text-gray-400 mb-6 space-y-1">
+        <li><code>splat</code> parameter</li>
+        <li><code>path</code>, <code>filepath</code>, <code>filename</code>, <code>action</code>, or <code>resource</code></li>
+        <li>First non-nested parameter</li>
+    </ol>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/docs_controller.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class DocsController extends Controller {
+    static {
+        this.layout = "docs";
+    }
+
+    fn routing(req: Any) -> Any {
+        let path = req["params"]["path"];  // "/routing"
+        return render("docs/routing", {"active_page": "routing"});
+    }
+
+    fn installation(req: Any) -> Any {
+        return render("docs/installation", {"active_page": "installation"});
+    }
+}</code></pre>
+        </div>
+    </div>
+
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-12">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-4 font-semibold text-white">Route Pattern</th>
+                    <th class="px-6 py-4 font-semibold text-white">Request Path</th>
+                    <th class="px-6 py-4 font-semibold text-white">Action Resolved</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">get("/docs/*", "docs#*")</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">/docs/routing</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">docs#routing</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">get("/docs/*", "docs#*")</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">/docs/installation</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">docs#installation</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">get("/api/*version/*action", "api#*")</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">/api/v1/users</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">api#users</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 font-mono text-indigo-300">get("/files/*filepath", "files#serve")</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">/files/docs/readme</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">files#docs/readme</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Query Parameters</h2>
     <p class="text-gray-400 mb-6">Query strings are automatically parsed and available in <code>req["query"]</code>:</p>
 

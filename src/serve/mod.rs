@@ -69,7 +69,7 @@ use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
     build_request_hash_with_parsed, extract_response, find_route, get_routes,
     parse_form_urlencoded_body, parse_json_body, parse_query_string, routes_to_worker_routes,
-    set_worker_routes, ParsedBody, WorkerRoute,
+    set_worker_routes, take_fast_path_response, ParsedBody, WorkerRoute,
 };
 
 // Thread-local storage for tokio runtime handle (used by HTTP builtins for async operations)
@@ -833,7 +833,7 @@ fn worker_loop(
 
     let _worker_routes = get_routes();
 
-    let check_interval = Duration::from_millis(100);
+    let check_interval = Duration::from_millis(server_constants::WORKER_POLL_INTERVAL_MS);
     let mut ws_event_rx_inner = Some(ws_event_rx);
     let ws_registry_inner = Some(ws_registry);
     let mut lv_event_rx_inner = Some(lv_event_rx);
@@ -1727,16 +1727,15 @@ fn handle_websocket_event(
             for (channel, user_id, was_last, meta) in untracked {
                 if was_last && !user_id.is_empty() {
                     let mut leaves = std::collections::HashMap::new();
-                    leaves.insert(
-                        user_id,
-                        UserPresencePayload { metas: vec![meta] },
-                    );
+                    leaves.insert(user_id, UserPresencePayload { metas: vec![meta] });
                     let diff = PresenceDiff {
                         joins: std::collections::HashMap::new(),
                         leaves,
                     };
                     let diff_msg = WebSocketRegistry::build_presence_diff(&diff);
-                    registry_clone.broadcast_to_channel(&channel, &diff_msg).await;
+                    registry_clone
+                        .broadcast_to_channel(&channel, &diff_msg)
+                        .await;
                 }
             }
         });
@@ -1814,7 +1813,9 @@ fn handle_websocket_event(
                 let registry_clone = registry.clone();
                 let channel_clone = channel.clone();
                 runtime_handle.spawn(async move {
-                    registry_clone.join_channel(&connection_id, &channel_clone).await;
+                    registry_clone
+                        .join_channel(&connection_id, &channel_clone)
+                        .await;
                 });
             }
 
@@ -1823,7 +1824,9 @@ fn handle_websocket_event(
                 let registry_clone = registry.clone();
                 let channel_clone = channel.clone();
                 runtime_handle.spawn(async move {
-                    registry_clone.leave_channel(&connection_id, &channel_clone).await;
+                    registry_clone
+                        .leave_channel(&connection_id, &channel_clone)
+                        .await;
                 });
             }
 
@@ -1841,7 +1844,10 @@ fn handle_websocket_event(
                 let registry_clone = registry.clone();
                 let msg_clone = msg.clone();
                 runtime_handle.spawn(async move {
-                    registry_clone.send_to(&connection_id, &msg_clone).await.ok();
+                    registry_clone
+                        .send_to(&connection_id, &msg_clone)
+                        .await
+                        .ok();
                 });
             }
 
@@ -1854,7 +1860,9 @@ fn handle_websocket_event(
                     let channel_clone = join_channel.clone();
                     let msg_clone = msg.clone();
                     runtime_handle.spawn(async move {
-                        registry_clone.broadcast_to_channel(&channel_clone, &msg_clone).await;
+                        registry_clone
+                            .broadcast_to_channel(&channel_clone, &msg_clone)
+                            .await;
                     });
                 }
             }
@@ -1926,10 +1934,7 @@ fn handle_websocket_event(
                             let user_id = meta.extra.get("user_id").cloned().unwrap_or_default();
                             if !user_id.is_empty() {
                                 let mut leaves = std::collections::HashMap::new();
-                                leaves.insert(
-                                    user_id,
-                                    UserPresencePayload { metas: vec![meta] },
-                                );
+                                leaves.insert(user_id, UserPresencePayload { metas: vec![meta] });
                                 let diff = PresenceDiff {
                                     joins: std::collections::HashMap::new(),
                                     leaves,
@@ -1952,11 +1957,16 @@ fn handle_websocket_event(
                 if let (Some(channel), Some(state)) = (channel, state) {
                     let registry_clone = registry.clone();
                     runtime_handle.spawn(async move {
-                        if let Some(updated_meta) =
-                            registry_clone.set_presence(&connection_id, &channel, &state).await
+                        if let Some(updated_meta) = registry_clone
+                            .set_presence(&connection_id, &channel, &state)
+                            .await
                         {
                             // Find user_id for the diff
-                            let user_id = updated_meta.extra.get("user_id").cloned().unwrap_or_default();
+                            let user_id = updated_meta
+                                .extra
+                                .get("user_id")
+                                .cloned()
+                                .unwrap_or_default();
                             if !user_id.is_empty() {
                                 // Broadcast presence_diff with the updated meta
                                 let mut joins = std::collections::HashMap::new();
@@ -1971,7 +1981,9 @@ fn handle_websocket_event(
                                     leaves: std::collections::HashMap::new(),
                                 };
                                 let diff_msg = WebSocketRegistry::build_presence_diff(&diff);
-                                registry_clone.broadcast_to_channel(&channel, &diff_msg).await;
+                                registry_clone
+                                    .broadcast_to_channel(&channel, &diff_msg)
+                                    .await;
                             }
                         }
                     });
@@ -2855,14 +2867,20 @@ fn handle_request(
     data: &RequestData,
     dev_mode: bool,
 ) -> ResponseData {
+    // Clear any stale fast-path response from a previous request
+    let _ = take_fast_path_response();
+
     let start_time = Instant::now();
     let method = &data.method;
     let path = &data.path;
 
-    // Check if request logging is enabled (default: false for performance, enable with SOLI_REQUEST_LOG=1)
-    let log_requests = std::env::var("SOLI_REQUEST_LOG")
-        .map(|v| v == "1" || v == "true")
-        .unwrap_or(false);
+    // Check if request logging is enabled (cached per-thread to avoid env var lookup per request)
+    thread_local! {
+        static LOG_REQUESTS: bool = std::env::var("SOLI_REQUEST_LOG")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+    }
+    let log_requests = LOG_REQUESTS.with(|v| *v);
 
     // Set up session for this request
     let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
@@ -2910,43 +2928,58 @@ fn handle_request(
         }
     };
 
-    let handler_name = route.handler_name.clone();
+    let route_handler_name = route.handler_name.clone();
     let scoped_middleware = route.middleware.clone();
 
-    // Extract Content-Type for body parsing
-    let content_type = data.headers.get("content-type").map(|s| s.as_str());
-
-    // Parse body based on Content-Type (including multipart data parsed in async context)
-    let parsed_body = parse_request_body(
-        &data.body,
-        content_type,
-        data.multipart_form.as_ref(),
-        data.multipart_files.as_ref(),
+    // Expand wildcard action pattern (e.g., "docs#*" → "docs#routing")
+    let expanded_handler = crate::interpreter::builtins::server::expand_wildcard_action(
+        &route_handler_name,
+        &matched_params,
     );
 
-    // Build request hash with parsed body - optimize for empty query/headers/body
-    let mut request_hash =
-        if data.query.is_empty() && data.headers.is_empty() && data.body.is_empty() {
-            build_request_hash_with_parsed(
-                &data.method,
-                &data.path,
-                matched_params,
-                HashMap::new(),
-                HashMap::new(),
-                String::new(),
-                parsed_body,
-            )
-        } else {
-            build_request_hash_with_parsed(
-                &data.method,
-                &data.path,
-                matched_params,
-                data.query.clone(),
-                data.headers.clone(),
-                data.body.clone(),
-                parsed_body,
-            )
+    // If expansion failed (wildcard but no param to expand), return 404
+    let handler_name = if expanded_handler.is_none()
+        && route_handler_name.contains('#')
+        && route_handler_name.ends_with("#*")
+    {
+        // Clear session context before returning 404
+        set_current_session_id(None);
+        let error_html = render_production_error_page(404, "Action not found for this route.");
+        return ResponseData {
+            status: 404,
+            headers: vec![(
+                "Content-Type".to_string(),
+                "text/html; charset=utf-8".to_string(),
+            )],
+            body: error_html,
         };
+    } else {
+        expanded_handler.unwrap_or(route_handler_name)
+    };
+
+    // Skip body parsing for GET/HEAD requests (no body to parse)
+    let parsed_body = if data.method == "GET" || data.method == "HEAD" {
+        ParsedBody::default()
+    } else {
+        let content_type = data.headers.get("content-type").map(|s| s.as_str());
+        parse_request_body(
+            &data.body,
+            content_type,
+            data.multipart_form.as_ref(),
+            data.multipart_files.as_ref(),
+        )
+    };
+
+    // Build request hash with parsed body (pass references to avoid cloning)
+    let mut request_hash = build_request_hash_with_parsed(
+        &data.method,
+        &data.path,
+        matched_params,
+        &data.query,
+        &data.headers,
+        &data.body,
+        parsed_body,
+    );
 
     // Helper to finalize response with session cookie and timing
     let finalize_response = |mut resp: ResponseData| -> ResponseData {

@@ -295,7 +295,10 @@ impl WebSocketRegistry {
         let presence_meta = PresenceMeta {
             connection_id: *connection_id,
             phx_ref,
-            state: meta.get("state").cloned().unwrap_or_else(|| "online".to_string()),
+            state: meta
+                .get("state")
+                .cloned()
+                .unwrap_or_else(|| "online".to_string()),
             online_at,
             extra: meta,
         };
@@ -384,7 +387,10 @@ impl WebSocketRegistry {
 
     /// Untrack all presences for a connection (called on disconnect).
     /// Returns Vec<(channel, user_id, was_last, PresenceMeta)> for all tracked presences.
-    pub async fn untrack_all(&self, connection_id: &Uuid) -> Vec<(String, String, bool, PresenceMeta)> {
+    pub async fn untrack_all(
+        &self,
+        connection_id: &Uuid,
+    ) -> Vec<(String, String, bool, PresenceMeta)> {
         let mut results = Vec::new();
 
         // Get the list of (channel, user_id) pairs for this connection
@@ -832,7 +838,10 @@ mod tests {
         let (is_new2, _) = registry
             .track(&conn_id2, "room:lobby", "user_123", meta)
             .await;
-        assert!(!is_new2, "Second connection for same user should NOT be new");
+        assert!(
+            !is_new2,
+            "Second connection for same user should NOT be new"
+        );
 
         // Verify only one user but two metas
         let presences = registry.list_presence("room:lobby").await;
@@ -1275,7 +1284,10 @@ mod tests {
         let value = Value::Hash(Rc::new(RefCell::new(hash)));
 
         let action = WebSocketHandlerAction::from_value(&value);
-        assert_eq!(action.broadcast_room, Some(r#"{"msg":"hello"}"#.to_string()));
+        assert_eq!(
+            action.broadcast_room,
+            Some(r#"{"msg":"hello"}"#.to_string())
+        );
     }
 
     #[tokio::test]

@@ -178,6 +178,72 @@ pub fn find_route(method: &str, path: &str) -> Option<(Route, HashMap<String, St
     })
 }
 
+/// Expand a wildcard action pattern using matched path parameters.
+///
+/// Handles patterns like:
+/// - "docs#*" with {path: "/routing"} → "docs#routing"
+/// - "api#*" with {version: "/v1", action: "/users"} → "api#users"
+/// - "controller#action" (no wildcard) → unchanged
+///
+/// Returns None if wildcard can't be expanded.
+pub fn expand_wildcard_action(
+    handler_name: &str,
+    params: &HashMap<String, String>,
+) -> Option<String> {
+    // Check if handler_name contains # (controller#action format)
+    if let Some((controller, action)) = handler_name.split_once('#') {
+        if action == "*" {
+            // Try to expand from splat params
+            // Look for common splat param names
+            if let Some(splat) = params.get("splat") {
+                let action_name = splat.trim_start_matches('/');
+                if !action_name.is_empty() {
+                    return Some(format!("{}#{}", controller, action_name));
+                }
+            }
+            // Look for first splat param (any param starting with * in pattern becomes captured without *)
+            for (key, value) in params.iter() {
+                if key == "path"
+                    || key == "filepath"
+                    || key == "filename"
+                    || key == "action"
+                    || key == "resource"
+                {
+                    let action_name = value.trim_start_matches('/');
+                    if !action_name.is_empty() {
+                        return Some(format!("{}#{}", controller, action_name));
+                    }
+                }
+            }
+            // Look for any param that could be the action
+            for (_, value) in params.iter() {
+                let action_name = value.trim_start_matches('/');
+                if !action_name.is_empty() && !action_name.contains('/') {
+                    // Prefer non-nested paths as action names
+                    return Some(format!("{}#{}", controller, action_name));
+                }
+            }
+            None
+        } else {
+            // No wildcard, return as-is
+            Some(handler_name.to_string())
+        }
+    } else {
+        // No controller#action format, check if it's just "*"
+        if handler_name == "*" {
+            for (_, value) in params.iter() {
+                let action_name = value.trim_start_matches('/');
+                if !action_name.is_empty() {
+                    return Some(action_name.to_string());
+                }
+            }
+            None
+        } else {
+            Some(handler_name.to_string())
+        }
+    }
+}
+
 /// Convert routes to worker-safe routes (without middleware Values).
 pub fn routes_to_worker_routes(routes: &[Route]) -> Vec<WorkerRoute> {
     routes
@@ -281,7 +347,9 @@ pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> 
             if pat.starts_with('*') {
                 let param_name = pat.strip_prefix('*').unwrap();
                 // Check if there are literal segments after this splat
-                let has_literals_after = pattern_parts[pat_idx + 1..].iter().any(|p| !p.starts_with(':') && !p.starts_with('*'));
+                let has_literals_after = pattern_parts[pat_idx + 1..]
+                    .iter()
+                    .any(|p| !p.starts_with(':') && !p.starts_with('*'));
 
                 if pat_idx == last_splat_idx && !has_literals_after {
                     // Last splat with no literals after - consume all remaining path parts
@@ -401,7 +469,10 @@ mod match_path_tests {
         let result = match_path("/*splat", "/anything/here/goes");
         assert!(result.is_some());
         let params = result.unwrap();
-        assert_eq!(params.get("splat"), Some(&"/anything/here/goes".to_string()));
+        assert_eq!(
+            params.get("splat"),
+            Some(&"/anything/here/goes".to_string())
+        );
     }
 
     #[test]
@@ -427,6 +498,105 @@ mod match_path_tests {
         assert_eq!(params.get("a"), Some(&"/one".to_string()));
         assert_eq!(params.get("b"), Some(&"/two".to_string()));
         assert_eq!(params.get("c"), Some(&"/three/four".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod expand_wildcard_action_tests {
+    use super::*;
+
+    #[test]
+    fn test_no_wildcard_returns_unchanged() {
+        let params = HashMap::new();
+        assert_eq!(
+            expand_wildcard_action("docs#index", &params),
+            Some("docs#index".to_string())
+        );
+        assert_eq!(
+            expand_wildcard_action("users#show", &params),
+            Some("users#show".to_string())
+        );
+    }
+
+    #[test]
+    fn test_wildcard_with_splat_param() {
+        let mut params = HashMap::new();
+        params.insert("splat".to_string(), "/routing".to_string());
+        assert_eq!(
+            expand_wildcard_action("docs#*", &params),
+            Some("docs#routing".to_string())
+        );
+    }
+
+    #[test]
+    fn test_wildcard_with_path_param() {
+        let mut params = HashMap::new();
+        params.insert("path".to_string(), "/installation".to_string());
+        assert_eq!(
+            expand_wildcard_action("docs#*", &params),
+            Some("docs#installation".to_string())
+        );
+    }
+
+    #[test]
+    fn test_wildcard_with_filepath_param() {
+        let mut params = HashMap::new();
+        params.insert("filepath".to_string(), "/guide/quickstart".to_string());
+        assert_eq!(
+            expand_wildcard_action("docs#*", &params),
+            Some("docs#guide/quickstart".to_string())
+        );
+    }
+
+    #[test]
+    fn test_wildcard_with_action_param() {
+        let mut params = HashMap::new();
+        params.insert("action".to_string(), "/edit".to_string());
+        assert_eq!(
+            expand_wildcard_action("users#*", &params),
+            Some("users#edit".to_string())
+        );
+    }
+
+    #[test]
+    fn test_wildcard_with_multiple_splats() {
+        let mut params = HashMap::new();
+        params.insert("version".to_string(), "/v1".to_string());
+        params.insert("action".to_string(), "/users".to_string());
+        assert_eq!(
+            expand_wildcard_action("api#*", &params),
+            Some("api#users".to_string())
+        );
+    }
+
+    #[test]
+    fn test_wildcard_with_nested_path() {
+        let mut params = HashMap::new();
+        params.insert(
+            "resource".to_string(),
+            "/users/profile/settings".to_string(),
+        );
+        // Should use the resource param (has / but we accept nested paths)
+        assert_eq!(
+            expand_wildcard_action("api#*", &params),
+            Some("api#users/profile/settings".to_string())
+        );
+    }
+
+    #[test]
+    fn test_wildcard_returns_none_when_no_expansion() {
+        let params = HashMap::new();
+        assert_eq!(expand_wildcard_action("docs#*", &params), None);
+    }
+
+    #[test]
+    fn test_standalone_wildcard() {
+        let mut params = HashMap::new();
+        params.insert("path".to_string(), "/some/action".to_string());
+        assert_eq!(
+            expand_wildcard_action("*", &params),
+            Some("some/action".to_string())
+        );
     }
 }
 
@@ -457,18 +627,58 @@ pub fn parse_query_string(query: &str) -> HashMap<String, String> {
     result
 }
 
-// Pre-allocated static keys for request hash to avoid repeated String allocations
+// Pre-allocated hash keys for request hash construction.
+// Using a single struct with one thread_local access instead of 10 nested .with() calls.
+struct RequestHashKeys {
+    method: HashKey,
+    path: HashKey,
+    params: HashKey,
+    query: HashKey,
+    headers: HashKey,
+    body: HashKey,
+    json: HashKey,
+    form: HashKey,
+    files: HashKey,
+    all: HashKey,
+}
+
 thread_local! {
-    static KEY_METHOD: Value = Value::String("method".to_string());
-    static KEY_PATH: Value = Value::String("path".to_string());
-    static KEY_PARAMS: Value = Value::String("params".to_string());
-    static KEY_QUERY: Value = Value::String("query".to_string());
-    static KEY_HEADERS: Value = Value::String("headers".to_string());
-    static KEY_BODY: Value = Value::String("body".to_string());
-    static KEY_JSON: Value = Value::String("json".to_string());
-    static KEY_FORM: Value = Value::String("form".to_string());
-    static KEY_FILES: Value = Value::String("files".to_string());
-    static KEY_ALL: Value = Value::String("all".to_string());
+    static REQUEST_KEYS: RequestHashKeys = RequestHashKeys {
+        method: HashKey::String("method".to_string()),
+        path: HashKey::String("path".to_string()),
+        params: HashKey::String("params".to_string()),
+        query: HashKey::String("query".to_string()),
+        headers: HashKey::String("headers".to_string()),
+        body: HashKey::String("body".to_string()),
+        json: HashKey::String("json".to_string()),
+        form: HashKey::String("form".to_string()),
+        files: HashKey::String("files".to_string()),
+        all: HashKey::String("all".to_string()),
+    };
+}
+
+/// Pre-built response data for fast-path rendering (avoids Value::Hash round-trip).
+/// Set by render_json/render_text, consumed by extract_response.
+pub struct FastPathResponse {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+}
+
+thread_local! {
+    static FAST_PATH_RESPONSE: RefCell<Option<FastPathResponse>> = const { RefCell::new(None) };
+}
+
+/// Set a fast-path response (called from render_json/render_text).
+pub fn set_fast_path_response(resp: FastPathResponse) {
+    FAST_PATH_RESPONSE.with(|cell| {
+        *cell.borrow_mut() = Some(resp);
+    });
+}
+
+/// Take the fast-path response if set (called from extract_response).
+pub fn take_fast_path_response() -> Option<FastPathResponse> {
+    FAST_PATH_RESPONSE.with(|cell| cell.borrow_mut().take())
 }
 
 /// Parsed request body data.
@@ -518,9 +728,9 @@ pub fn build_request_hash(
     method: &str,
     path: &str,
     params: HashMap<String, String>,
-    query: HashMap<String, String>,
-    headers: HashMap<String, String>,
-    body: String,
+    query: &HashMap<String, String>,
+    headers: &HashMap<String, String>,
+    body: &str,
 ) -> Value {
     build_request_hash_with_parsed(
         method,
@@ -538,106 +748,76 @@ pub fn build_request_hash_with_parsed(
     method: &str,
     path: &str,
     params: HashMap<String, String>,
-    query: HashMap<String, String>,
-    headers: HashMap<String, String>,
-    body: String,
+    query: &HashMap<String, String>,
+    headers: &HashMap<String, String>,
+    body: &str,
     parsed: ParsedBody,
 ) -> Value {
-    // Pre-allocate with known capacity
+    // Build IndexMap directly from references with pre-allocated capacity
     let params_pairs: IndexMap<HashKey, Value> = if params.is_empty() {
         IndexMap::new()
     } else {
-        params
-            .into_iter()
-            .map(|(k, v)| (HashKey::String(k), Value::String(v)))
-            .collect()
+        let mut map = IndexMap::with_capacity(params.len());
+        for (k, v) in params {
+            map.insert(HashKey::String(k), Value::String(v));
+        }
+        map
     };
 
     let query_pairs: IndexMap<HashKey, Value> = if query.is_empty() {
         IndexMap::new()
     } else {
-        query
-            .into_iter()
-            .map(|(k, v)| (HashKey::String(k), Value::String(v)))
-            .collect()
+        let mut map = IndexMap::with_capacity(query.len());
+        for (k, v) in query {
+            map.insert(HashKey::String(k.clone()), Value::String(v.clone()));
+        }
+        map
     };
 
     let header_pairs: IndexMap<HashKey, Value> = if headers.is_empty() {
         IndexMap::new()
     } else {
-        headers
-            .into_iter()
-            .map(|(k, v)| (HashKey::String(k), Value::String(v)))
-            .collect()
+        let mut map = IndexMap::with_capacity(headers.len());
+        for (k, v) in headers {
+            map.insert(HashKey::String(k.clone()), Value::String(v.clone()));
+        }
+        map
     };
 
     // Build unified "all" params - merges route params, query params, and body params
     let all_pairs = build_unified_params(&params_pairs, &query_pairs, &parsed);
 
-    // Build request hash using cached keys
-    let request_pairs: IndexMap<HashKey, Value> = KEY_METHOD.with(|key_method| {
-        KEY_PATH.with(|key_path| {
-            KEY_PARAMS.with(|key_params| {
-                KEY_QUERY.with(|key_query| {
-                    KEY_HEADERS.with(|key_headers| {
-                        KEY_BODY.with(|key_body| {
-                            KEY_JSON.with(|key_json| {
-                                KEY_FORM.with(|key_form| {
-                                    KEY_FILES.with(|key_files| {
-                                        KEY_ALL.with(|key_all| {
-                                            let mut map = IndexMap::new();
-                                            map.insert(
-                                                HashKey::from_value(key_method).unwrap(),
-                                                Value::String(method.to_string()),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_path).unwrap(),
-                                                Value::String(path.to_string()),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_params).unwrap(),
-                                                Value::Hash(Rc::new(RefCell::new(params_pairs))),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_query).unwrap(),
-                                                Value::Hash(Rc::new(RefCell::new(query_pairs))),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_headers).unwrap(),
-                                                Value::Hash(Rc::new(RefCell::new(header_pairs))),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_body).unwrap(),
-                                                Value::String(body),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_json).unwrap(),
-                                                parsed.json.unwrap_or(Value::Null),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_form).unwrap(),
-                                                parsed.form.unwrap_or(Value::Null),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_files).unwrap(),
-                                                parsed.files.unwrap_or(Value::Array(Rc::new(
-                                                    RefCell::new(Vec::new()),
-                                                ))),
-                                            );
-                                            map.insert(
-                                                HashKey::from_value(key_all).unwrap(),
-                                                Value::Hash(Rc::new(RefCell::new(all_pairs))),
-                                            );
-                                            map
-                                        })
-                                    })
-                                })
-                            })
-                        })
-                    })
-                })
-            })
-        })
+    // Build request hash using cached keys (single thread_local access)
+    let request_pairs: IndexMap<HashKey, Value> = REQUEST_KEYS.with(|keys| {
+        let mut map = IndexMap::with_capacity(10);
+        map.insert(keys.method.clone(), Value::String(method.to_string()));
+        map.insert(keys.path.clone(), Value::String(path.to_string()));
+        map.insert(
+            keys.params.clone(),
+            Value::Hash(Rc::new(RefCell::new(params_pairs))),
+        );
+        map.insert(
+            keys.query.clone(),
+            Value::Hash(Rc::new(RefCell::new(query_pairs))),
+        );
+        map.insert(
+            keys.headers.clone(),
+            Value::Hash(Rc::new(RefCell::new(header_pairs))),
+        );
+        map.insert(keys.body.clone(), Value::String(body.to_string()));
+        map.insert(keys.json.clone(), parsed.json.unwrap_or(Value::Null));
+        map.insert(keys.form.clone(), parsed.form.unwrap_or(Value::Null));
+        map.insert(
+            keys.files.clone(),
+            parsed
+                .files
+                .unwrap_or(Value::Array(Rc::new(RefCell::new(Vec::new())))),
+        );
+        map.insert(
+            keys.all.clone(),
+            Value::Hash(Rc::new(RefCell::new(all_pairs))),
+        );
+        map
     });
 
     Value::Hash(Rc::new(RefCell::new(request_pairs)))
@@ -650,7 +830,8 @@ fn build_unified_params(
     query_params: &IndexMap<HashKey, Value>,
     parsed: &ParsedBody,
 ) -> IndexMap<HashKey, Value> {
-    let mut all: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut all: IndexMap<HashKey, Value> =
+        IndexMap::with_capacity(route_params.len() + query_params.len());
 
     // Start with route params
     for (k, v) in route_params {
@@ -682,7 +863,13 @@ fn build_unified_params(
 }
 
 /// Extract response data from a response hash returned by a handler.
+/// Checks fast-path thread-local first (set by render_json/render_text).
 pub fn extract_response(response: &Value) -> (u16, HashMap<String, String>, String) {
+    // Fast path: if render_json/render_text set a pre-built response, use it directly
+    if let Some(fast) = take_fast_path_response() {
+        return (fast.status, fast.headers.into_iter().collect(), fast.body);
+    }
+
     let mut status = 200u16;
     let mut headers = HashMap::new();
     let mut body = String::new();
@@ -1331,10 +1518,8 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                                 Value::Int(m.online_at as i64),
                             );
                             for (k, v) in &m.extra {
-                                meta_map.insert(
-                                    HashKey::String(k.clone()),
-                                    Value::String(v.clone()),
-                                );
+                                meta_map
+                                    .insert(HashKey::String(k.clone()), Value::String(v.clone()));
                             }
                             Value::Hash(Rc::new(RefCell::new(meta_map)))
                         })

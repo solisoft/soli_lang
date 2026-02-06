@@ -1150,7 +1150,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             let data = resolve_futures_in_value(args[0].clone());
             let status = if args.len() > 1 {
                 match &args[1] {
-                    Value::Int(n) => *n,
+                    Value::Int(n) => *n as u16,
                     _ => 200,
                 }
             } else {
@@ -1162,22 +1162,20 @@ pub fn register_template_builtins(env: &mut Environment) {
                 _ => value_to_json(&data)?.to_string(),
             };
 
-            let mut headers_map: IndexMap<HashKey, Value> = IndexMap::new();
-            headers_map.insert(
-                HashKey::String("Content-Type".to_string()),
-                Value::String("application/json; charset=utf-8".to_string()),
-            );
-            let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
-
-            let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
-            response_map.insert(HashKey::String("status".to_string()), Value::Int(status));
-            response_map.insert(HashKey::String("headers".to_string()), headers);
-            response_map.insert(
-                HashKey::String("body".to_string()),
-                Value::String(json_body),
+            // Set fast-path response to bypass Value::Hash round-trip in extract_response
+            crate::interpreter::builtins::server::set_fast_path_response(
+                crate::interpreter::builtins::server::FastPathResponse {
+                    status,
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "application/json; charset=utf-8".to_string(),
+                    )],
+                    body: json_body,
+                },
             );
 
-            Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
+            // Return Null since extract_response will use the fast-path
+            Ok(Value::Null)
         })),
     );
 
@@ -1196,26 +1194,27 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             let status = if args.len() > 1 {
                 match &args[1] {
-                    Value::Int(n) => *n,
+                    Value::Int(n) => *n as u16,
                     _ => 200,
                 }
             } else {
                 200
             };
 
-            let mut headers_map: IndexMap<HashKey, Value> = IndexMap::new();
-            headers_map.insert(
-                HashKey::String("Content-Type".to_string()),
-                Value::String("text/plain; charset=utf-8".to_string()),
+            // Set fast-path response to bypass Value::Hash round-trip in extract_response
+            crate::interpreter::builtins::server::set_fast_path_response(
+                crate::interpreter::builtins::server::FastPathResponse {
+                    status,
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/plain; charset=utf-8".to_string(),
+                    )],
+                    body: text,
+                },
             );
-            let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
 
-            let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
-            response_map.insert(HashKey::String("status".to_string()), Value::Int(status));
-            response_map.insert(HashKey::String("headers".to_string()), headers);
-            response_map.insert(HashKey::String("body".to_string()), Value::String(text));
-
-            Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
+            // Return Null since extract_response will use the fast-path
+            Ok(Value::Null)
         })),
     );
 }
