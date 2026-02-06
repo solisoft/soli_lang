@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/solisoft/soli_lang/compare/v0.11.0...v0.12.0) (2026-02-06)
+
+
+### Features
+
+* **security:** implement global versioning and caching for security headers ([20998b1](https://github.com/solisoft/soli_lang/commit/20998b18ebe0cb2a2bd24ba9ecc135f60d9c2d96))
+
 ## [0.11.0](https://github.com/solisoft/soli_lang/compare/v0.10.0...v0.11.0) (2026-02-06)
 
 
