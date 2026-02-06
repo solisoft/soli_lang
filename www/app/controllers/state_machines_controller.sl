@@ -6,7 +6,7 @@ import "../../stdlib/state_machine.sl";
 let state_machines: Hash = {};
 
 // Create a new state machine
-fn create(req: Any) -> Any {
+fn create(req) {
     let data = req["json"];
 
     // Validate required fields
@@ -65,7 +65,7 @@ fn create(req: Any) -> Any {
 }
 
 // Get state machine by ID
-fn get(req: Any) -> Any {
+fn get(req) {
     let id = req["params"]["id"];
 
     if !has_key(state_machines, id) {
@@ -96,7 +96,7 @@ fn get(req: Any) -> Any {
 }
 
 // List all state machines
-fn list(req: Any) -> Any {
+fn list(req) {
     let list = [];
     let entries = state_machines.entries();
     for entry in entries {
@@ -120,7 +120,7 @@ fn list(req: Any) -> Any {
 }
 
 // Perform a transition
-fn transition(req: Any) -> Any {
+fn transition(req) {
     let id = req["params"]["id"];
     let data = req["json"];
 
@@ -177,7 +177,7 @@ fn transition(req: Any) -> Any {
 }
 
 // Set context value
-fn set_context(req: Any) -> Any {
+fn set_context(req) {
     let id = req["params"]["id"];
     let data = req["json"];
 
@@ -216,7 +216,7 @@ fn set_context(req: Any) -> Any {
 }
 
 // Get context value
-fn get_context(req: Any) -> Any {
+fn get_context(req) {
     let id = req["params"]["id"];
     let key = req["params"]["key"];
 
@@ -244,7 +244,7 @@ fn get_context(req: Any) -> Any {
 }
 
 // Delete state machine
-fn delete(req: Any) -> Any {
+fn delete(req) {
     let id = req["params"]["id"];
 
     if !has_key(state_machines, id) {
@@ -269,7 +269,7 @@ fn delete(req: Any) -> Any {
 }
 
 // Demo page
-fn demo(req: Any) -> Any {
+fn demo(req) {
     render("state_machines/demo.html", {
         "title": "State Machine Demo"
     })

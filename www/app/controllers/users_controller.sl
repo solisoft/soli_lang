@@ -1,14 +1,14 @@
 // Users Controller - Authentication, Sessions, and Validation Demo
 
 // Login form
-fn login(req: Any) -> Any {
+fn login(req) {
     render("users/login.html", {
         "title": "Login"
     })
 }
 
 // Login handler with session management
-fn login_post(req: Any) -> Any {
+fn login_post(req) {
     let data = req["json"];
 
     // Demo validation - in real app, check database
@@ -46,14 +46,14 @@ fn login_post(req: Any) -> Any {
 }
 
 // Registration form
-fn register(req: Any) -> Any {
+fn register(req) {
     render("users/register.html", {
         "title": "Register"
     })
 }
 
 // Registration handler with input validation
-fn register_post(req: Any) -> Any {
+fn register_post(req) {
     let data = req["json"];
 
     // Define validation schema
@@ -115,7 +115,7 @@ fn register_post(req: Any) -> Any {
 }
 
 // Profile page (requires authentication)
-fn profile(req: Any) -> Any {
+fn profile(req) {
     if (session_get("authenticated") != true) {
         return {
             "status": 302,
@@ -129,7 +129,7 @@ fn profile(req: Any) -> Any {
 }
 
 // Logout - destroy session
-fn logout(req: Any) -> Any {
+fn logout(req) {
     session_destroy();
 
     {
@@ -139,7 +139,7 @@ fn logout(req: Any) -> Any {
 }
 
 // Regenerate session ID
-fn regenerate_session(req: Any) -> Any {
+fn regenerate_session(req) {
     if (session_get("authenticated") != true) {
         return {
             "status": 302,
@@ -159,14 +159,14 @@ fn regenerate_session(req: Any) -> Any {
 }
 
 // Validation demo page
-fn validation_demo(req: Any) -> Any {
+fn validation_demo(req) {
     render("users/validation-demo.html", {
         "title": "Validation Demo"
     })
 }
 
 // Validation API endpoint
-fn validate_registration(req: Any) -> Any {
+fn validate_registration(req) {
     let data = req["json"];
 
     let schema = {
@@ -190,7 +190,7 @@ fn validate_registration(req: Any) -> Any {
 }
 
 // JWT Demo: Create token
-fn create_token(req: Any) -> Any {
+fn create_token(req) {
     let data = req["json"];
 
     // In real app: verify user credentials first
@@ -231,7 +231,7 @@ fn create_token(req: Any) -> Any {
 }
 
 // JWT Demo: Verify token
-fn verify_token(req: Any) -> Any {
+fn verify_token(req) {
     let data = req["json"];
     let token = data["token"];
 
@@ -267,7 +267,7 @@ fn verify_token(req: Any) -> Any {
 }
 
 // JWT Demo: Decode token (without verification)
-fn decode_token(req: Any) -> Any {
+fn decode_token(req) {
     let data = req["json"];
     let token = data["token"];
 

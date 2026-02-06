@@ -7,5 +7,6 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1273 | 6:14 PM | 🔵 | Soli Framework Routes Configuration | ~539 |
+| #1276 | 6:15 PM | 🔴 | Fixed DSL Function Shadowing After Controller Hot Reload | ~390 |
+| #1274 | " | 🔵 | Soli MVC Application Loader Architecture | ~557 |
 </claude-mem-context>

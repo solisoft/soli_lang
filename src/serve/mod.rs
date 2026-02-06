@@ -859,6 +859,10 @@ fn worker_loop(
             last_controllers_version = current_controllers;
             // Re-load all controllers
             load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
+            // Re-define DSL helpers (controllers may shadow get/post/put/delete/patch)
+            if let Err(e) = define_routes_dsl(interpreter) {
+                eprintln!("Worker {}: Error redefining routes DSL: {}", worker_id, e);
+            }
         }
 
         if current_middleware != last_middleware_version {

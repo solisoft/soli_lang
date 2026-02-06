@@ -8,7 +8,7 @@
 // Handlers should return the new state as a hash.
 
 // Counter component handler
-fn counter(event_data: Any) -> Any {
+fn counter(event_data) {
     let event = event_data["event"];
     let state = event_data["state"];
     let count = state["count"];
@@ -34,7 +34,7 @@ fn counter(event_data: Any) -> Any {
 }
 
 // Metrics component handler - Binary Clock
-fn metrics(event_data: Any) -> Any {
+fn metrics(event_data) {
     let event = event_data["event"];
     let state = event_data["state"];
 

@@ -15,14 +15,14 @@ class HomeController extends Controller {
     }
 
     // GET /health
-    fn health(req: Any) -> Any {
+    fn health(req) {
         render_json({
             "status": "ok"
         })
     }
 
     // GET /docs - redirect to documentation
-    fn docs_redirect(req: Any) -> Any {
+    fn docs_redirect(req) {
         {
             "status": 302,
             "headers": {"Location": "/docs.html"},

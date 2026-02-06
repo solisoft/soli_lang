@@ -2,7 +2,7 @@
 
 // WebSocket handler - receives events: {type, connection_id, message?, channel?}
 // Returns: {broadcast: "msg"} to broadcast to all, {send: "msg"} to reply to sender
-fn chat_handler(event: Any) -> Any {
+fn chat_handler(event) {
     let event_type = event["type"];
     let connection_id = event["connection_id"];
 
@@ -32,7 +32,7 @@ fn chat_handler(event: Any) -> Any {
 }
 
 // Page to display the WebSocket demo
-fn demo(req: Any) -> Any {
+fn demo(req) {
     render("websocket/demo", {
         "title": "WebSocket Demo"
     })
