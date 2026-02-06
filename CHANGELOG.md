@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0](https://github.com/solisoft/soli_lang/compare/v0.12.0...v0.13.0) (2026-02-06)
+
+
+### Features
+
+* **routes:** redefine DSL helpers and remove type annotations from controller methods ([d0eb8d9](https://github.com/solisoft/soli_lang/commit/d0eb8d9acb4ca2ba8696695820c1163ea4f6c592))
+
+
+### Bug Fixes
+
+* **interpreter:** update ControlFlow to return values in expressions ([7128dca](https://github.com/solisoft/soli_lang/commit/7128dca232d4464fa2415e2958a21b461accab6d))
+
 ## [0.12.0](https://github.com/solisoft/soli_lang/compare/v0.11.0...v0.12.0) (2026-02-06)
 
 
