@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/solisoft/soli_lang/compare/v0.9.0...v0.10.0) (2026-02-06)
+
+
+### Features
+
+* **routing:** implement splat route functionality and update documentation ([772fe01](https://github.com/solisoft/soli_lang/commit/772fe01123659a0ef3a24672d372ba0da0b27dfc))
+
 ## [0.9.0](https://github.com/solisoft/soli_lang/compare/v0.8.0...v0.9.0) (2026-02-05)
 
 
