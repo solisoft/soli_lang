@@ -112,8 +112,6 @@ class LoggingController extends Controller {
         let formatted = messages.map(fn(m) {
             return str(m);
         });
-
-        print("[DEBUG] " + join(formatted, " "));
     }
 }
 

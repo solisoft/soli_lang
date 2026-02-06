@@ -227,6 +227,7 @@ fn register_route(method: &str, path: &str, handler_name: String, middleware: Ve
 
 /// Match a path against a pattern and extract parameters.
 /// Pattern format: "/users/:id" matches "/users/123" with params {"id": "123"}
+/// Splat format: "/files/*path" matches "/files/a/b" with params {"path": "/a/b"}
 pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> {
     // Fast path: exact match (no params)
     if pattern == path {
@@ -236,22 +237,197 @@ pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> 
     let pattern_parts: Vec<&str> = pattern.split('/').collect();
     let path_parts: Vec<&str> = path.split('/').collect();
 
-    if pattern_parts.len() != path_parts.len() {
+    // Count splat segments in pattern
+    let splat_count = pattern_parts.iter().filter(|p| p.starts_with('*')).count();
+
+    // If splats exist, pattern can have fewer parts than path
+    // Otherwise, parts must match exactly
+    if splat_count == 0 && pattern_parts.len() != path_parts.len() {
+        return None;
+    }
+
+    // With splats, pattern parts must be <= path parts
+    if splat_count > 0 && pattern_parts.len() > path_parts.len() {
         return None;
     }
 
     let mut params = HashMap::new();
 
-    for (pat, actual) in pattern_parts.iter().zip(path_parts.iter()) {
-        if let Some(param_name) = pat.strip_prefix(':') {
-            params.insert(param_name.to_string(), actual.to_string());
-        } else if pat != actual {
-            // Literal mismatch
+    // Find indices of splat segments in pattern
+    let splat_indices: Vec<usize> = pattern_parts
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.starts_with('*'))
+        .map(|(i, _)| i)
+        .collect();
+
+    if splat_indices.is_empty() {
+        // No splats - exact part matching
+        for (pat, actual) in pattern_parts.iter().zip(path_parts.iter()) {
+            if let Some(param_name) = pat.strip_prefix(':') {
+                params.insert(param_name.to_string(), actual.to_string());
+            } else if pat != actual {
+                return None;
+            }
+        }
+    } else {
+        // Has splats - handle multiple splats
+        // All splats except the last consume exactly one segment
+        // The last splat consumes all remaining segments (if there are no literals after it)
+        let mut path_idx = 0;
+        let last_splat_idx = *splat_indices.last().unwrap_or(&0);
+
+        for (pat_idx, pat) in pattern_parts.iter().enumerate() {
+            if pat.starts_with('*') {
+                let param_name = pat.strip_prefix('*').unwrap();
+                // Check if there are literal segments after this splat
+                let has_literals_after = pattern_parts[pat_idx + 1..].iter().any(|p| !p.starts_with(':') && !p.starts_with('*'));
+
+                if pat_idx == last_splat_idx && !has_literals_after {
+                    // Last splat with no literals after - consume all remaining path parts
+                    let remaining_parts = &path_parts[path_idx..];
+                    let captured = remaining_parts.join("/");
+                    let with_leading_slash = format!("/{}", captured);
+                    params.insert(param_name.to_string(), with_leading_slash);
+                    path_idx = path_parts.len();
+                } else {
+                    // Non-last splat or splat followed by literals - consume exactly one segment
+                    if path_idx >= path_parts.len() {
+                        return None;
+                    }
+                    let segment = path_parts[path_idx];
+                    params.insert(param_name.to_string(), format!("/{}", segment));
+                    path_idx += 1;
+                }
+            } else {
+                // Non-splat segment
+                if path_idx >= path_parts.len() {
+                    return None;
+                }
+                if let Some(param_name) = pat.strip_prefix(':') {
+                    params.insert(param_name.to_string(), path_parts[path_idx].to_string());
+                } else if *pat != path_parts[path_idx] {
+                    return None;
+                }
+                path_idx += 1;
+            }
+        }
+
+        // Verify we consumed all path parts
+        if path_idx != path_parts.len() {
             return None;
         }
     }
 
     Some(params)
+}
+
+#[cfg(test)]
+mod match_path_tests {
+    use super::*;
+
+    #[test]
+    fn test_exact_match() {
+        assert_eq!(match_path("/users", "/users"), Some(HashMap::new()));
+        assert_eq!(match_path("/api/v1", "/api/v1"), Some(HashMap::new()));
+    }
+
+    #[test]
+    fn test_param_match() {
+        let result = match_path("/users/:id", "/users/123");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("id"), Some(&"123".to_string()));
+    }
+
+    #[test]
+    fn test_multiple_params() {
+        let result = match_path("/users/:user_id/posts/:post_id", "/users/456/posts/789");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("user_id"), Some(&"456".to_string()));
+        assert_eq!(params.get("post_id"), Some(&"789".to_string()));
+    }
+
+    #[test]
+    fn test_splat_basic() {
+        let result = match_path("/files/*path", "/files/a/b/c");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("path"), Some(&"/a/b/c".to_string()));
+    }
+
+    #[test]
+    fn test_splat_single_segment() {
+        let result = match_path("/files/*path", "/files/document.pdf");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("path"), Some(&"/document.pdf".to_string()));
+    }
+
+    #[test]
+    fn test_splat_with_prefix() {
+        let result = match_path("/api/*version/users", "/api/v1/users");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("version"), Some(&"/v1".to_string()));
+    }
+
+    #[test]
+    fn test_splat_combined_with_params() {
+        let result = match_path("/users/:id/*action", "/users/123/edit/delete");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("id"), Some(&"123".to_string()));
+        assert_eq!(params.get("action"), Some(&"/edit/delete".to_string()));
+    }
+
+    #[test]
+    fn test_multiple_splats() {
+        let result = match_path("/api/*version/*resource", "/api/v1/users/list");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("version"), Some(&"/v1".to_string()));
+        assert_eq!(params.get("resource"), Some(&"/users/list".to_string()));
+    }
+
+    #[test]
+    fn test_splat_no_match_different_prefix() {
+        assert!(match_path("/files/*path", "/documents/a/b").is_none());
+    }
+
+    #[test]
+    fn test_splat_at_root() {
+        let result = match_path("/*splat", "/anything/here/goes");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("splat"), Some(&"/anything/here/goes".to_string()));
+    }
+
+    #[test]
+    fn test_param_no_match() {
+        assert!(match_path("/users/:id", "/posts/123").is_none());
+    }
+
+    #[test]
+    fn test_literal_no_match() {
+        assert!(match_path("/users", "/admins").is_none());
+    }
+
+    #[test]
+    fn test_empty_path() {
+        assert_eq!(match_path("/", "/"), Some(HashMap::new()));
+    }
+
+    #[test]
+    fn test_three_splats() {
+        let result = match_path("/*a/*b/*c", "/one/two/three/four");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("a"), Some(&"/one".to_string()));
+        assert_eq!(params.get("b"), Some(&"/two".to_string()));
+        assert_eq!(params.get("c"), Some(&"/three/four".to_string()));
+    }
 }
 
 /// Parse query string into a hash map.
