@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/solisoft/soli_lang/compare/v0.10.0...v0.11.0) (2026-02-06)
+
+
+### Features
+
+* **routing:** add wildcard action expansion and enhance routing documentation ([a803e8c](https://github.com/solisoft/soli_lang/commit/a803e8ce9ce74f5bc7f6c82dff2559d82baf8f1b))
+
 ## [0.10.0](https://github.com/solisoft/soli_lang/compare/v0.9.0...v0.10.0) (2026-02-06)
 
 
