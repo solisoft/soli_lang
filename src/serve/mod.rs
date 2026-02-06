@@ -1026,7 +1026,16 @@ async fn handle_hyper_request(
     lv_event_tx: channel::Sender<LiveViewEventData>,
     dev_mode: bool,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    let method = req.method().to_string().to_uppercase();
+    let method = match *req.method() {
+        hyper::Method::GET => "GET".to_string(),
+        hyper::Method::POST => "POST".to_string(),
+        hyper::Method::PUT => "PUT".to_string(),
+        hyper::Method::DELETE => "DELETE".to_string(),
+        hyper::Method::PATCH => "PATCH".to_string(),
+        hyper::Method::HEAD => "HEAD".to_string(),
+        hyper::Method::OPTIONS => "OPTIONS".to_string(),
+        _ => req.method().to_string().to_uppercase(),
+    };
     let uri = req.uri();
     let path = uri.path().to_string();
 
@@ -2350,6 +2359,35 @@ fn call_handler(
     }
 }
 
+// Thread-local cache of controllers that have before/after action hooks.
+// None means not yet initialized; Some(set) means we've checked the registry.
+thread_local! {
+    static CONTROLLERS_WITH_HOOKS: RefCell<Option<std::collections::HashSet<String>>> = const { RefCell::new(None) };
+}
+
+/// Check if a controller has hooks, using thread-local cache to avoid RwLock reads.
+fn controller_has_hooks(controller_key: &str) -> bool {
+    CONTROLLERS_WITH_HOOKS.with(|cache| {
+        let cached = cache.borrow();
+        if let Some(ref set) = *cached {
+            return set.contains(controller_key);
+        }
+        drop(cached);
+
+        // Build cache from registry (once per thread)
+        let registry = CONTROLLER_REGISTRY.read().unwrap();
+        let mut set = std::collections::HashSet::new();
+        for (key, info) in registry.all().iter().map(|i| (&i.class_name, i)) {
+            if !info.before_actions.is_empty() || !info.after_actions.is_empty() {
+                set.insert(key.clone());
+            }
+        }
+        let has_hooks = set.contains(controller_key);
+        *cache.borrow_mut() = Some(set);
+        has_hooks
+    })
+}
+
 /// Call an OOP controller action (controller#action).
 /// Returns Some(ResponseData) if handled, None if not an OOP controller.
 fn call_oop_controller_action(
@@ -2374,14 +2412,15 @@ fn call_oop_controller_action(
         _ => return None,
     };
 
-    // Get controller info from registry (optional - may not exist for simple OOP controllers)
-    let controller_info = {
+    // Only read controller info from registry if controller has hooks (avoids RwLock per request)
+    let controller_info = if controller_has_hooks(controller_key) {
         let registry = CONTROLLER_REGISTRY.read().unwrap();
         registry.get(controller_key).cloned()
+    } else {
+        None
     };
 
-    // Extract request components
-    let req = request_hash.clone();
+    // Extract request components - pass by reference where possible
     let params = get_hash_field(request_hash, "params").unwrap_or(Value::Null);
     let session = get_hash_field(request_hash, "session").unwrap_or(Value::Null);
     let headers = get_hash_field(request_hash, "headers").unwrap_or(Value::Null);
@@ -2392,7 +2431,7 @@ fn call_oop_controller_action(
             interpreter,
             info,
             action_name,
-            req.clone(),
+            request_hash.clone(),
             &params,
             &session,
             &headers,
@@ -2435,7 +2474,13 @@ fn call_oop_controller_action(
     };
 
     // Set up controller context (req, params, session, headers)
-    setup_controller_context(&controller_instance, &req, &params, &session, &headers);
+    setup_controller_context(
+        &controller_instance,
+        request_hash,
+        &params,
+        &session,
+        &headers,
+    );
 
     // Call the action method on the class
     // For OOP controllers, the method is inside the class, not in the global environment
@@ -2444,7 +2489,7 @@ fn call_oop_controller_action(
         &class_rc,
         &controller_instance,
         action_name,
-        &req,
+        request_hash,
     );
 
     let response = match action_result {
@@ -2503,7 +2548,7 @@ fn call_oop_controller_action(
             interpreter,
             info,
             action_name,
-            req,
+            request_hash.clone(),
             &response,
         ));
     }
@@ -2792,24 +2837,42 @@ fn call_controller_method(
         .map_err(|e| format!("Error calling method: {}", e))
 }
 
+// Thread-local cache for PascalCase controller names to avoid per-request string allocation.
+thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
+    static PASCAL_CASE_CACHE: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
 /// Convert a controller key (e.g., "posts", "user_profiles") to PascalCase class name (e.g., "PostsController", "UserProfilesController").
+/// Uses thread-local cache to avoid per-request string allocation.
 fn to_pascal_case_controller(controller_key: &str) -> String {
-    let mut result = String::new();
-    let mut capitalize_next = true;
-
-    for c in controller_key.chars() {
-        if c == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(c.to_ascii_uppercase());
-            capitalize_next = false;
-        } else {
-            result.push(c);
+    PASCAL_CASE_CACHE.with(|cache| {
+        let cache_ref = cache.borrow();
+        if let Some(cached) = cache_ref.get(controller_key) {
+            return cached.clone();
         }
-    }
+        drop(cache_ref);
 
-    result.push_str("Controller");
-    result
+        let mut result = String::new();
+        let mut capitalize_next = true;
+
+        for c in controller_key.chars() {
+            if c == '_' {
+                capitalize_next = true;
+            } else if capitalize_next {
+                result.push(c.to_ascii_uppercase());
+                capitalize_next = false;
+            } else {
+                result.push(c);
+            }
+        }
+
+        result.push_str("Controller");
+        cache
+            .borrow_mut()
+            .insert(controller_key.to_string(), result.clone());
+        result
+    })
 }
 
 /// Parse request body based on Content-Type header.
@@ -2882,12 +2945,18 @@ fn handle_request(
     }
     let log_requests = LOG_REQUESTS.with(|v| *v);
 
-    // Set up session for this request
+    // Set up session only if request has cookies (skip entirely for API/benchmark requests)
     let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
-    let existing_session_id = extract_session_id_from_cookie(cookie_header);
-    let session_id = ensure_session(existing_session_id.as_deref());
-    let is_new_session = existing_session_id.as_deref() != Some(&session_id);
-    set_current_session_id(Some(session_id.clone()));
+    let (session_id, is_new_session) = if cookie_header.is_some() {
+        let existing_session_id = extract_session_id_from_cookie(cookie_header);
+        let session_id = ensure_session(existing_session_id.as_deref());
+        let is_new = existing_session_id.as_deref() != Some(&session_id);
+        set_current_session_id(Some(session_id.clone()));
+        (Some(session_id), is_new)
+    } else {
+        set_current_session_id(None);
+        (None, false)
+    };
 
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route, matched_params) = match find_route(method, path) {
@@ -2910,13 +2979,20 @@ fn handle_request(
             return ResponseData {
                 status: 404,
                 headers: if is_new_session {
-                    vec![
-                        ("Set-Cookie".to_string(), create_session_cookie(&session_id)),
-                        (
+                    if let Some(ref sid) = session_id {
+                        vec![
+                            ("Set-Cookie".to_string(), create_session_cookie(sid)),
+                            (
+                                "Content-Type".to_string(),
+                                "text/html; charset=utf-8".to_string(),
+                            ),
+                        ]
+                    } else {
+                        vec![(
                             "Content-Type".to_string(),
                             "text/html; charset=utf-8".to_string(),
-                        ),
-                    ]
+                        )]
+                    }
                 } else {
                     vec![(
                         "Content-Type".to_string(),
@@ -2985,8 +3061,10 @@ fn handle_request(
     let finalize_response = |mut resp: ResponseData| -> ResponseData {
         // Add session cookie if it's a new session
         if is_new_session {
-            resp.headers
-                .push(("Set-Cookie".to_string(), create_session_cookie(&session_id)));
+            if let Some(ref sid) = session_id {
+                resp.headers
+                    .push(("Set-Cookie".to_string(), create_session_cookie(sid)));
+            }
         }
         // Add security headers if enabled
         {

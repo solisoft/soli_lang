@@ -2,12 +2,29 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, NativeFunction, Value};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 
 lazy_static! {
     static ref SECURITY_HEADERS_CONFIG: RwLock<SecurityHeadersConfig> =
         RwLock::new(SecurityHeadersConfig::default());
     static ref SECURITY_HEADERS_ENABLED: RwLock<bool> = RwLock::new(false);
+}
+
+/// Global version counter incremented on every config change.
+/// Thread-local caches compare against this to detect staleness.
+static SECURITY_HEADERS_VERSION: AtomicU64 = AtomicU64::new(0);
+
+// Thread-local cache of built security headers to avoid RwLock reads per request.
+thread_local! {
+    static CACHED_SECURITY_HEADERS: RefCell<(u64, Vec<(String, String)>)> =
+        const { RefCell::new((0, Vec::new())) };
+}
+
+/// Bump the global version to invalidate all thread-local caches.
+fn invalidate_security_headers_cache() {
+    SECURITY_HEADERS_VERSION.fetch_add(1, Ordering::Release);
 }
 
 #[derive(Clone, Default)]
@@ -43,6 +60,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 *enabled = true;
+                invalidate_security_headers_cache();
                 Ok(Value::Bool(true))
             },
         )),
@@ -58,6 +76,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 *enabled = false;
+                invalidate_security_headers_cache();
                 Ok(Value::Bool(true))
             },
         )),
@@ -99,6 +118,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             } else {
                 config.csp = Some(policy);
             }
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -124,6 +144,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 config.csp = Some(policy);
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -147,6 +168,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
             config.csp = Some(policy);
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -169,6 +191,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
             config.csp = Some(policy);
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -196,6 +219,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 include_subdomains,
                 preload,
             });
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -210,6 +234,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 config.x_frame_options = Some("DENY".to_string());
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -225,6 +250,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 config.x_frame_options = Some("SAMEORIGIN".to_string());
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -246,6 +272,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
             config.xss_protection = Some(format!("1; mode={}", mode));
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -260,6 +287,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 config.x_content_type_options = true;
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -284,6 +312,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 config.referrer_policy = Some(policy);
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -308,6 +337,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 config.permissions_policy = Some(policy);
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -329,6 +359,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
             config.cross_origin_embedder_policy = Some(policy);
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -349,6 +380,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
             config.cross_origin_opener_policy = Some(policy);
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -369,6 +401,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
             config.cross_origin_resource_policy = Some(policy);
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -384,6 +417,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             config.referrer_policy = Some("strict-origin-when-cross-origin".to_string());
             config.permissions_policy =
                 Some("geolocation=(), microphone=(), camera=()".to_string());
+            invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
     );
@@ -399,6 +433,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 config.x_frame_options = Some("SAMEORIGIN".to_string());
                 config.x_content_type_options = true;
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -428,6 +463,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 config.permissions_policy =
                     Some("geolocation=(), microphone=(), camera=()".to_string());
                 config.cross_origin_embedder_policy = Some("require-corp".to_string());
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -444,6 +480,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 config.x_content_type_options = true;
                 config.referrer_policy = Some("strict-origin".to_string());
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -459,6 +496,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
                 *config = SecurityHeadersConfig::default();
+                invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
         )),
@@ -558,6 +596,24 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
 }
 
 pub fn get_security_headers() -> Vec<(String, String)> {
+    let current_version = SECURITY_HEADERS_VERSION.load(Ordering::Acquire);
+
+    CACHED_SECURITY_HEADERS.with(|cache| {
+        let cached = cache.borrow();
+        if cached.0 == current_version {
+            return cached.1.clone();
+        }
+        drop(cached);
+
+        // Rebuild from global state (only once per thread per config change)
+        let headers = build_security_headers_vec();
+        *cache.borrow_mut() = (current_version, headers.clone());
+        headers
+    })
+}
+
+/// Build the security headers Vec from global RwLock state.
+fn build_security_headers_vec() -> Vec<(String, String)> {
     let enabled = match SECURITY_HEADERS_ENABLED.read() {
         Ok(guard) => *guard,
         Err(_) => return Vec::new(),
@@ -619,8 +675,18 @@ pub fn get_security_headers() -> Vec<(String, String)> {
 }
 
 pub fn security_headers_enabled() -> bool {
-    match SECURITY_HEADERS_ENABLED.read() {
-        Ok(guard) => *guard,
-        Err(_) => false,
-    }
+    // Use the cached headers to check — if cache is valid and empty, headers are disabled
+    let current_version = SECURITY_HEADERS_VERSION.load(Ordering::Acquire);
+    CACHED_SECURITY_HEADERS.with(|cache| {
+        let cached = cache.borrow();
+        if cached.0 == current_version {
+            return !cached.1.is_empty();
+        }
+        drop(cached);
+        // Fall back to RwLock read
+        match SECURITY_HEADERS_ENABLED.read() {
+            Ok(guard) => *guard,
+            Err(_) => false,
+        }
+    })
 }

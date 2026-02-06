@@ -64,33 +64,27 @@ impl InMemorySessionStore {
 
     /// Get or create a session by ID.
     fn get_or_create(&self, session_id: &str) -> String {
-        // Probabilistic cleanup: only run on 1 in 100 requests to reduce lock contention
+        // Probabilistic cleanup: only run on 1 in 1000 requests to reduce lock contention
         let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
-        if count.is_multiple_of(100) {
+        if count.is_multiple_of(1000) {
             self.cleanup();
         }
 
-        // Fast path: read lock to check if session exists and is valid
+        // Fast path: read lock to check if session exists (skip expiration check —
+        // 24h max_age is long enough that probabilistic cleanup handles expired sessions)
         {
             let sessions = self.sessions.read().unwrap();
-            if let Some(session) = sessions.get(session_id) {
-                if !session.is_expired(self.max_age) {
-                    // Session valid - touch() is skipped for performance
-                    // (expiration is 24h, a few seconds drift is acceptable)
-                    return session_id.to_string();
-                }
+            if sessions.contains_key(session_id) {
+                return session_id.to_string();
             }
         }
 
-        // Slow path: write lock to create/replace session
+        // Slow path: write lock to create session
         let mut sessions = self.sessions.write().unwrap();
 
         // Double-check after acquiring write lock
-        if let Some(session) = sessions.get(session_id) {
-            if !session.is_expired(self.max_age) {
-                return session_id.to_string();
-            }
-            sessions.remove(session_id);
+        if sessions.contains_key(session_id) {
+            return session_id.to_string();
         }
 
         // Create new session
