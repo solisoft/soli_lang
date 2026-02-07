@@ -4,6 +4,20 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+fn serialize_msgpack(value: &Value) -> Result<Vec<u8>, SoliDBError> {
+    rmp_serde::to_vec(value).map_err(|e| SoliDBError {
+        message: format!("MessagePack serialization error: {}", e),
+        code: None,
+    })
+}
+
+fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
+    rmp_serde::from_slice(bytes).map_err(|e| SoliDBError {
+        message: format!("MessagePack deserialization error: {}", e),
+        code: None,
+    })
+}
+
 // Global shared HTTP client for connection pooling
 static SHARED_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
 
@@ -110,8 +124,13 @@ impl SoliDBClient {
             request = request.basic_auth(u, Some(p));
         }
 
+        request = request.header("Accept", "application/msgpack");
+
         if let Some(b) = body {
-            request = request.json(b);
+            let msgpack_bytes = serialize_msgpack(b)?;
+            request = request
+                .header("Content-Type", "application/msgpack")
+                .body(msgpack_bytes);
         }
 
         let response = request.send().map_err(|e| SoliDBError {
@@ -131,22 +150,38 @@ impl SoliDBClient {
             });
         }
 
-        let text = response.text().map_err(|e| SoliDBError {
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+
+        let bytes = response.bytes().map_err(|e| SoliDBError {
             message: format!("Failed to read response: {}", e),
             code: None,
         })?;
 
-        if text.is_empty() {
+        if bytes.is_empty() {
             return Err(SoliDBError {
                 message: format!("Empty response for HTTP {} {}", method, path),
                 code: None,
             });
         }
 
-        serde_json::from_str(&text).map_err(|e| SoliDBError {
-            message: format!("Failed to parse JSON: {} - Text: {}", e, text),
-            code: None,
-        })
+        if content_type.contains("msgpack") {
+            deserialize_msgpack(&bytes)
+        } else {
+            // Fallback to JSON if server doesn't support msgpack
+            serde_json::from_slice(&bytes).map_err(|e| SoliDBError {
+                message: format!(
+                    "Failed to parse response: {} - Body: {}",
+                    e,
+                    String::from_utf8_lossy(&bytes)
+                ),
+                code: None,
+            })
+        }
     }
 
     pub fn ping(&self) -> Result<bool, SoliDBError> {

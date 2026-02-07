@@ -59,6 +59,7 @@ hmac = "0.12"
 
 # Data encoding
 base64 = "0.22"
+rmp-serde = "1"
 
 # Validation
 regex = "1"
