@@ -362,7 +362,7 @@
                 includeMatches: true
             });
         })
-        .catch(() => console.log('Search index not available'));
+        .catch((e) => console.log('Search index not available', e));
 
     function openSearchModal() {
         document.getElementById('searchModal').classList.add('open');

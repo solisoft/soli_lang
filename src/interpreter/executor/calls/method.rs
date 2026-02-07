@@ -158,6 +158,7 @@ impl Interpreter {
             "any?" => self.array_any(items, arguments, span),
             "all?" => self.array_all(items, arguments, span),
             "sort" => self.array_sort(items, arguments, span),
+            "sort_by" => self.array_sort_by(items, arguments, span),
             "reverse" => self.array_reverse(items, arguments, span),
             "uniq" => self.array_uniq(items, arguments, span),
             "compact" => self.array_compact(items, arguments, span),
@@ -568,6 +569,86 @@ impl Interpreter {
         }
 
         Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_sort_by(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+
+        let mut result = items.to_vec();
+
+        match &arguments[0] {
+            Value::String(key) => {
+                let hash_key = HashKey::String(key.clone());
+                result.sort_by(|a, b| {
+                    let val_a = Self::extract_hash_value(a, &hash_key);
+                    let val_b = Self::extract_hash_value(b, &hash_key);
+                    Self::compare_sort_values(&val_a, &val_b)
+                });
+            }
+            Value::Function(func) => {
+                let func = func.clone();
+                let param_name = func
+                    .params
+                    .first()
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "it".to_string());
+
+                // Extract key values for each item using the function
+                let mut keyed: Vec<(Value, Value)> = Vec::with_capacity(result.len());
+                for item in &result {
+                    let mut call_env = Environment::with_enclosing(func.closure.clone());
+                    call_env.define(param_name.clone(), item.clone());
+
+                    let key_val = match self.execute_block(&func.body, call_env) {
+                        Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => v,
+                        _ => Value::Null,
+                    };
+                    keyed.push((item.clone(), key_val));
+                }
+
+                keyed.sort_by(|a, b| Self::compare_sort_values(&a.1, &b.1));
+                result = keyed.into_iter().map(|(item, _)| item).collect();
+            }
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "sort_by expects a string key or a function argument",
+                    span,
+                ))
+            }
+        }
+
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn extract_hash_value(value: &Value, key: &HashKey) -> Value {
+        match value {
+            Value::Hash(hash) => hash.borrow().get(key).cloned().unwrap_or(Value::Null),
+            _ => Value::Null,
+        }
+    }
+
+    fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+        match (a, b) {
+            (Value::Int(a), Value::Int(b)) => a.cmp(b),
+            (Value::Float(a), Value::Float(b)) => {
+                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            (Value::String(a), Value::String(b)) => a.cmp(b),
+            (Value::Int(a), Value::Float(b)) => (*a as f64)
+                .partial_cmp(b)
+                .unwrap_or(std::cmp::Ordering::Equal),
+            (Value::Float(a), Value::Int(b)) => a
+                .partial_cmp(&(*b as f64))
+                .unwrap_or(std::cmp::Ordering::Equal),
+            _ => std::cmp::Ordering::Equal,
+        }
     }
 
     fn array_reverse(

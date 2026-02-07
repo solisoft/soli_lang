@@ -1093,10 +1093,14 @@ let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
 let sorted = sort(unsorted);
 print(sorted);  // [1, 1, 2, 3, 4, 5, 6, 9]
 
-// Custom sort
+// Sort by hash key
 let people = [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}, {"name": "Charlie", "age": 35}];
-let sorted_people = sort_by(people, fn(p) p["age"]);
-print(sorted_people);  // Sorted by age: Bob, Alice, Charlie
+let by_age = people.sort_by("age");
+print(by_age);  // Sorted by age: Bob, Alice, Charlie
+
+// Sort by function
+let by_name = people.sort_by(fn(p) p.get("name"));
+print(by_name);  // Sorted by name: Alice, Bob, Charlie
 ```
 
 ### Hashes
@@ -2579,7 +2583,11 @@ let last = pop(arr);  // 6, arr is now [1, 2, 3, 4, 5]
 
 // Sort
 let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
-let sorted = sort(unsorted);  // [1, 1, 2, 3, 4, 5, 6, 9]
+let sorted = unsorted.sort();  // [1, 1, 2, 3, 4, 5, 6, 9]
+
+// Sort by key
+let items = [{"name": "Bob"}, {"name": "Alice"}];
+let sorted_items = items.sort_by("name");  // [{name: Alice}, {name: Bob}]
 
 // Reverse
 let reversed = reverse([1, 2, 3]);  // [3, 2, 1]

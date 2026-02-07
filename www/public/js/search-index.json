@@ -413,6 +413,7 @@
       "signature": "http_parallel(requests)",
       "description": "Execute multiple requests of different methods in parallel",
       "keywords": ["http", "parallel", "batch", "concurrent"]
+    },
     {
       "title": "JSON",
       "type": "class",
@@ -1573,6 +1574,15 @@
       "signature": "Base64.decode(value)",
       "description": "Decode a Base64 string back to the original string",
       "keywords": ["base64", "decode", "decoding", "binary", "convert"]
+    },
+    {
+      "title": ".sort_by()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-sort-by",
+      "signature": "array.sort_by(key) / array.sort_by(fn)",
+      "description": "Sort an array of hashes by a key, or use a function to extract the sort value",
+      "keywords": ["array", "sort", "sort_by", "order", "hash", "key"]
     }
   ]
 }

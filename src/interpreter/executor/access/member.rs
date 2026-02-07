@@ -219,9 +219,9 @@ impl Interpreter {
         // Handle array methods: map, filter, each, reduce, find, any?, all?, sort, reverse, uniq, compact, flatten, first, last, empty?, include?, sample, shuffle, take, drop, zip, sum, min, max
         match name {
             "length" | "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?" | "sort"
-            | "reverse" | "uniq" | "compact" | "flatten" | "first" | "last" | "empty?"
-            | "include?" | "sample" | "shuffle" | "take" | "drop" | "zip" | "sum" | "min"
-            | "max" | "push" | "pop" | "clear" | "get" | "to_string" | "join" => {
+            | "sort_by" | "reverse" | "uniq" | "compact" | "flatten" | "first" | "last"
+            | "empty?" | "include?" | "sample" | "shuffle" | "take" | "drop" | "zip" | "sum"
+            | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string" | "join" => {
                 Ok(Value::Method(ValueMethod {
                     receiver: Box::new(obj_val),
                     method_name: name.to_string(),

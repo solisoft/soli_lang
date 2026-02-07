@@ -301,6 +301,35 @@ print(by_length);  // ["pie", "apple", "cherry"]</code></pre>
                 </div>
             </section>
 
+            <section id="method-sort-by" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-sort-by" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.sort_by(key)</code> / <code class="text-lg font-mono text-indigo-400">.sort_by(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Sort an array of hashes by a key, or use a function to extract the sort value from each element.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let people = [
+  { "name": "Charlie", "age": 30 },
+  { "name": "Alice", "age": 25 },
+  { "name": "Bob", "age": 20 }
+];
+
+// Sort by hash key (string argument)
+let by_name = people.sort_by("name");
+print(by_name.map(fn(p) p.get("name")));  // [Alice, Bob, Charlie]
+
+let by_age = people.sort_by("age");
+print(by_age.map(fn(p) p.get("age")));  // [20, 25, 30]
+
+// Sort by function (for computed values)
+let words = ["cherry", "pie", "apple"];
+let by_length = words.sort_by(fn(w) len(w));
+print(by_length);  // [pie, apple, cherry]</code></pre>
+                </div>
+            </section>
+
             <section id="method-reverse" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-reverse" class="group flex items-center gap-2 mb-3">

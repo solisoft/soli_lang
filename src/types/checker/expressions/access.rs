@@ -72,6 +72,10 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),
+            "sort_by" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
             "first" | "last" | "sample" | "min" | "max" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(inner_type.clone()),
