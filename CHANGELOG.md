@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/solisoft/soli_lang/compare/v0.13.0...v0.14.0) (2026-02-07)
+
+
+### Features
+
+* **array:** add `sort_by` method for sorting arrays by key or function ([799151e](https://github.com/solisoft/soli_lang/commit/799151e0dc6b79bba9d8f0672937d5ef7e6d0e58))
+
 ## [0.13.0](https://github.com/solisoft/soli_lang/compare/v0.12.0...v0.13.0) (2026-02-06)
 
 
