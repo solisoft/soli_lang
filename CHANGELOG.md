@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/solisoft/soli_lang/compare/v0.14.0...v0.15.0) (2026-02-07)
+
+
+### Features
+
+* **request-handling:** enhance non-blocking request sending and improve worker distribution ([19fd116](https://github.com/solisoft/soli_lang/commit/19fd116ff83f211971060e299d69945e28fba58c))
+
 ## [0.14.0](https://github.com/solisoft/soli_lang/compare/v0.13.0...v0.14.0) (2026-02-07)
 
 
