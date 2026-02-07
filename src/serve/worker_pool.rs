@@ -45,6 +45,8 @@ impl HotReloadVersions {
 pub(crate) struct WorkerQueues {
     senders: Vec<channel::Sender<RequestData>>,
     receivers: Vec<channel::Receiver<RequestData>>,
+    /// Shared round-robin counter across all senders for even distribution.
+    next_worker: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl WorkerQueues {
@@ -58,14 +60,19 @@ impl WorkerQueues {
             receivers.push(rx);
         }
 
-        Self { senders, receivers }
+        Self {
+            senders,
+            receivers,
+            next_worker: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        }
     }
 
-    /// Get a sender that round-robins across workers (lock-free)
+    /// Get a sender that round-robins across workers (lock-free).
+    /// All senders share the same counter for even distribution across connections.
     pub(crate) fn get_sender(&self) -> WorkerSender {
         WorkerSender {
             senders: self.senders.clone(),
-            next_worker: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            next_worker: self.next_worker.clone(),
         }
     }
 
@@ -83,13 +90,17 @@ pub(crate) struct WorkerSender {
 }
 
 impl WorkerSender {
+    /// Non-blocking try_send - returns the data back if the target queue is full.
+    /// Used from async context to avoid blocking tokio worker threads.
     #[allow(clippy::result_large_err)]
-    pub(crate) fn send(&self, data: RequestData) -> Result<(), channel::SendError<RequestData>> {
-        // Round-robin distribution (lock-free)
+    pub(crate) fn try_send(
+        &self,
+        data: RequestData,
+    ) -> Result<(), channel::TrySendError<RequestData>> {
         let worker = self
             .next_worker
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             % self.senders.len();
-        self.senders[worker].send(data)
+        self.senders[worker].try_send(data)
     }
 }

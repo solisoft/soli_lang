@@ -57,6 +57,11 @@
                     <td class="py-3 px-4 text-gray-400">Authentication password</td>
                     <td class="py-3 px-4 text-gray-500">None</td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_API_KEY</code></td>
+                    <td class="py-3 px-4 text-gray-400">API key for SoliDB authentication</td>
+                    <td class="py-3 px-4 text-gray-500">None</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -72,6 +77,7 @@ SOLIDB_HOST=http://localhost:6745
 SOLIDB_DATABASE=default
 SOLIDB_USERNAME=admin
 SOLIDB_PASSWORD=admin
+SOLIDB_API_KEY=your-api-key-here
 
 # Application Settings
 # APP_ENV=development
@@ -128,7 +134,8 @@ SOLIDB_DATABASE=myapp_test</code></pre>
 SOLIDB_HOST=https://db.example.com
 SOLIDB_DATABASE=myapp_production
 SOLIDB_USERNAME=prod_user
-SOLIDB_PASSWORD=secure_password_here</code></pre>
+SOLIDB_PASSWORD=secure_password_here
+SOLIDB_API_KEY=your-production-api-key</code></pre>
                 </div>
             </div>
         </div>
@@ -296,7 +303,8 @@ db.query("INSERT { name: @name, email: @email } INTO users", {
 SOLIDB_HOST=http://localhost:6745
 SOLIDB_DATABASE=myapp_development
 SOLIDB_USERNAME=
-SOLIDB_PASSWORD=</code></pre>
+SOLIDB_PASSWORD=
+SOLIDB_API_KEY=</code></pre>
         </div>
     </div>
 

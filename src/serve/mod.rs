@@ -1402,12 +1402,36 @@ async fn handle_hyper_request(
         response_tx,
     };
 
-    let send_result = request_tx.send(request_data);
+    // Non-blocking send: use try_send + async yield to avoid blocking tokio threads.
+    // Blocking send() here would deadlock under high concurrency because:
+    // - Full queues block tokio worker threads on send()
+    // - Workers' Handle::block_on() futures need the tokio I/O driver to complete
+    // - Blocked tokio threads can't drive the I/O driver → permanent deadlock
+    let mut pending_data = Some(request_data);
+    let deadline =
+        tokio::time::Instant::now() + Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS);
+    let send_ok = loop {
+        if let Some(data) = pending_data.take() {
+            match request_tx.try_send(data) {
+                Ok(()) => break true,
+                Err(crossbeam::channel::TrySendError::Full(returned)) => {
+                    if tokio::time::Instant::now() >= deadline {
+                        break false;
+                    }
+                    pending_data = Some(returned);
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                Err(crossbeam::channel::TrySendError::Disconnected(_)) => {
+                    break false;
+                }
+            }
+        }
+    };
 
-    if send_result.is_err() {
+    if !send_ok {
         return Ok(Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
-            .body(Full::new(Bytes::from("Server shutting down")))
+            .body(Full::new(Bytes::from("Server busy")))
             .unwrap());
     }
 
