@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/solisoft/soli_lang/compare/v0.15.0...v0.16.0) (2026-02-07)
+
+
+### Features
+
+* **msgpack:** integrate MessagePack serialization and deserialization ([0febc61](https://github.com/solisoft/soli_lang/commit/0febc61138c50c7a096268b6fdd25954b13827ba))
+
 ## [0.15.0](https://github.com/solisoft/soli_lang/compare/v0.14.0...v0.15.0) (2026-02-07)
 
 
