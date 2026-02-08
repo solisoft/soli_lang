@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.0](https://github.com/solisoft/soli_lang/compare/v0.17.0...v0.18.0) (2026-02-08)
+
+
+### Features
+
+* **ci:** add build-binaries job to CI workflow for multi-platform releases ([ec8894e](https://github.com/solisoft/soli_lang/commit/ec8894ed0339eacd6853ce26ebf9eef14c293a07))
+* **ci:** add Rust test step to CI workflow ([28895fb](https://github.com/solisoft/soli_lang/commit/28895fb1a69bd1e6a4b24dcde0dc0b07a05b85ae))
+
 ## [0.17.0](https://github.com/solisoft/soli_lang/compare/v0.16.0...v0.17.0) (2026-02-08)
 
 
