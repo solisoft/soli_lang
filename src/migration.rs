@@ -64,7 +64,8 @@ fn load_single_env_file(path: &Path) {
                 let value = value.trim_matches('"').trim_matches('\'');
                 // Only set if not already set in environment
                 if std::env::var(key).is_err() {
-                    std::env::set_var(key, value);
+                    // TODO: Audit that the environment access only happens in single-threaded code.
+                    unsafe { std::env::set_var(key, value) };
                 }
             }
         }

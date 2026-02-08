@@ -164,7 +164,7 @@ fn register_math_class(env: &mut Environment) {
         Rc::new(NativeFunction::new("Math.random", Some(0), |_args| {
             use rand::Rng;
             let mut rng = rand::thread_rng();
-            Ok(Value::Float(rng.gen::<f64>()))
+            Ok(Value::Float(rng.r#gen::<f64>()))
         })),
     );
 

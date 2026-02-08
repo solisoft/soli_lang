@@ -152,7 +152,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
@@ -168,7 +168,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(text) => Ok(Value::String(text)),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::get(&url).call() {
                         Ok(response) => response
@@ -182,7 +182,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::String,
                 ))
-            }
+            }}
         })),
     );
 
@@ -218,7 +218,7 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client
@@ -240,7 +240,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(text) => Ok(Value::String(text)),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::post(&url)
                         .set("Content-Type", &content_type)
@@ -257,7 +257,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::String,
                 ))
-            }
+            }}
         })),
     );
 
@@ -293,7 +293,7 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client
@@ -315,7 +315,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(text) => Ok(Value::String(text)),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::put(&url)
                         .set("Content-Type", &content_type)
@@ -332,7 +332,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::String,
                 ))
-            }
+            }}
         })),
     );
 
@@ -368,7 +368,7 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client
@@ -390,7 +390,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(text) => Ok(Value::String(text)),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::patch(&url)
                         .set("Content-Type", &content_type)
@@ -407,7 +407,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::String,
                 ))
-            }
+            }}
         })),
     );
 
@@ -426,7 +426,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client
@@ -446,7 +446,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(text) => Ok(Value::String(text)),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::delete(&url).call() {
                         Ok(response) => response
@@ -460,7 +460,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::String,
                 ))
-            }
+            }}
         })),
     );
 
@@ -479,7 +479,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client.head(&url).send().await.map_err(|e| e.to_string())?;
@@ -493,7 +493,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(text) => Ok(Value::String(text)),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::head(&url).call() {
                         Ok(response) => {
@@ -504,7 +504,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::String,
                 ))
-            }
+            }}
         })),
     );
 
@@ -523,7 +523,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client
@@ -548,7 +548,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(v) => Ok(v),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::get(&url).set("Accept", "application/json").call() {
                         Ok(response) => response
@@ -562,7 +562,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::Json,
                 ))
-            }
+            }}
         })),
     );
 
@@ -583,7 +583,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client
@@ -609,7 +609,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(v) => Ok(v),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::post(&url)
                         .set("Content-Type", "application/json")
@@ -626,7 +626,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::Json,
                 ))
-            }
+            }}
         })),
     );
 
@@ -647,7 +647,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client
@@ -673,7 +673,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(v) => Ok(v),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::put(&url)
                         .set("Content-Type", "application/json")
@@ -690,7 +690,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::Json,
                 ))
-            }
+            }}
         })),
     );
 
@@ -711,7 +711,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let resp = client
@@ -737,7 +737,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(v) => Ok(v),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_http_future(
                     move || match ureq::patch(&url)
                         .set("Content-Type", "application/json")
@@ -754,7 +754,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::Json,
                 ))
-            }
+            }}
         })),
     );
 
@@ -815,7 +815,7 @@ pub fn register_http_class(env: &mut Environment) {
                 None
             };
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 let method_clone = method.clone();
                 let body_opt_clone = body_opt.clone();
@@ -859,7 +859,7 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(v) => Ok(v),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 let method_clone = method.clone();
                 let body_opt_clone = body_opt.clone();
                 let headers_vec_clone = headers_vec.clone();
@@ -931,7 +931,7 @@ pub fn register_http_class(env: &mut Environment) {
                     },
                     HttpFutureKind::FullResponse,
                 ))
-            }
+            }}
         })),
     );
 

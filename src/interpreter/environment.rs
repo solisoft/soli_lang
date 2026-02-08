@@ -132,6 +132,18 @@ impl Environment {
         self.enclosing.clone()
     }
 
+    /// Get all bindings (variables + constants) from this scope and all enclosing scopes.
+    /// Used by VM integration to copy interpreter globals into VM globals.
+    pub fn get_all_bindings(&self) -> HashMap<String, Value> {
+        let mut all = HashMap::new();
+        if let Some(ref enclosing) = self.enclosing {
+            all.extend(enclosing.borrow().get_all_bindings());
+        }
+        all.extend(self.values.clone());
+        all.extend(self.consts.clone());
+        all
+    }
+
     /// Get all variables from this scope and all enclosing scopes.
     /// Used for debugging (breakpoints).
     pub fn get_all_variables(&self) -> HashMap<String, Value> {

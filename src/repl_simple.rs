@@ -417,11 +417,11 @@ impl SimpleRepl {
 
     fn cmd_inspect(&self, expr: &str) {
         let env = self.interpreter.global_env();
-        if let Some(value) = env.borrow().get(expr) {
+        match env.borrow().get(expr) { Some(value) => {
             println!("{}: {:?}", expr, value);
-        } else {
+        } _ => {
             println!("Error: '{}' not found in scope", expr);
-        }
+        }}
     }
 
     fn execute_single(&mut self, line: &str) {

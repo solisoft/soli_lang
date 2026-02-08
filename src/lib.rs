@@ -24,6 +24,7 @@ pub mod solidb_http;
 pub mod span;
 pub mod template;
 pub mod types;
+pub mod vm;
 
 use ast::expr::Argument;
 use error::SolilangError;

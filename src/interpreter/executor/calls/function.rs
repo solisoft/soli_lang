@@ -218,7 +218,7 @@ impl Interpreter {
 
             Value::Instance(inst) => {
                 // Callable instance
-                if let Some(method) = inst.borrow().get_method("call") {
+                match inst.borrow().get_method("call") { Some(method) => {
                     match method {
                         Value::Function(func) => {
                             let required_arity = func.arity();
@@ -280,9 +280,9 @@ impl Interpreter {
                             span,
                         )),
                     }
-                } else {
+                } _ => {
                     Err(RuntimeError::type_error("instance is not callable", span))
-                }
+                }}
             }
 
             Value::Super(superclass) => {

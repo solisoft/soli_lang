@@ -688,7 +688,7 @@ impl TuiRepl {
         };
 
         // Capture stdout during execution
-        if let Ok(mut buf) = BufferRedirect::stdout() {
+        match BufferRedirect::stdout() { Ok(mut buf) => {
             let exec_result = self.run_interpreter(&source);
 
             // Read captured output
@@ -704,12 +704,12 @@ impl TuiRepl {
             if let Err(e) = exec_result {
                 self.input.add_error(&e);
             }
-        } else {
+        } _ => {
             // Fallback if stdout capture fails
             if let Err(e) = self.run_interpreter(&source) {
                 self.input.add_error(&e);
             }
-        }
+        }}
     }
 
     fn run_interpreter(&mut self, source: &str) -> Result<(), String> {

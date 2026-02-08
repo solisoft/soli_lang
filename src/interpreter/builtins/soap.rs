@@ -89,7 +89,7 @@ pub fn register_soap_class(env: &mut Environment) {
                 }
             }
 
-            if let Some(rt) = get_tokio_handle() {
+            match get_tokio_handle() { Some(rt) => {
                 let client = get_http_client().clone();
                 match rt.block_on(async move {
                     let mut request = client.post(&url);
@@ -142,9 +142,9 @@ pub fn register_soap_class(env: &mut Environment) {
                     Ok(v) => Ok(v),
                     Err(e) => Err(e),
                 }
-            } else {
+            } _ => {
                 Ok(spawn_soap_future(url, headers, envelope))
-            }
+            }}
         })),
     );
 
@@ -470,16 +470,16 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
         buf.clear();
     }
 
-    if let Some((name, attrs)) = stack.pop() {
+    match stack.pop() { Some((name, attrs)) => {
         let mut root = IndexMap::new();
         root.insert(
             HashKey::String(name),
             Value::Hash(Rc::new(RefCell::new(attrs))),
         );
         Ok(Value::Hash(Rc::new(RefCell::new(root))))
-    } else {
+    } _ => {
         Ok(Value::Null)
-    }
+    }}
 }
 
 fn value_to_xml(value: &Value, element_name: &str) -> String {

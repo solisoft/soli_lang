@@ -411,16 +411,16 @@ fn rename_declaration(stmt: &Stmt, new_name: &str) -> Stmt {
     let mut new_stmt = stmt.clone();
 
     match &mut new_stmt.kind {
-        StmtKind::Function(ref mut decl) => {
+        StmtKind::Function(decl) => {
             decl.name = new_name.to_string();
         }
-        StmtKind::Class(ref mut decl) => {
+        StmtKind::Class(decl) => {
             decl.name = new_name.to_string();
         }
-        StmtKind::Interface(ref mut decl) => {
+        StmtKind::Interface(decl) => {
             decl.name = new_name.to_string();
         }
-        StmtKind::Let { ref mut name, .. } => {
+        StmtKind::Let { name, .. } => {
             *name = new_name.to_string();
         }
         _ => {}

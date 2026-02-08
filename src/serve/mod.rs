@@ -833,6 +833,20 @@ fn worker_loop(
 
     let _worker_routes = get_routes();
 
+    // Create VM for production mode (bytecode execution for handler calls)
+    let mut vm: Option<crate::vm::Vm> = if !dev_mode {
+        let mut vm = crate::vm::Vm::new();
+        // Copy all globals from interpreter environment into VM
+        // This includes all native builtins, classes, and user-defined functions
+        let all_globals = interpreter.environment.borrow().get_all_bindings();
+        for (name, value) in all_globals {
+            vm.globals.insert(name, value);
+        }
+        Some(vm)
+    } else {
+        None
+    };
+
     let check_interval = Duration::from_millis(server_constants::WORKER_POLL_INTERVAL_MS);
     let mut ws_event_rx_inner = Some(ws_event_rx);
     let ws_registry_inner = Some(ws_registry);
@@ -862,6 +876,13 @@ fn worker_loop(
             // Re-define DSL helpers (controllers may shadow get/post/put/delete/patch)
             if let Err(e) = define_routes_dsl(interpreter) {
                 eprintln!("Worker {}: Error redefining routes DSL: {}", worker_id, e);
+            }
+            // Update VM globals after controller reload
+            if let Some(ref mut vm) = vm {
+                let all_globals = interpreter.environment.borrow().get_all_bindings();
+                for (name, value) in all_globals {
+                    vm.globals.insert(name, value);
+                }
             }
         }
 
@@ -951,7 +972,7 @@ fn worker_loop(
         for _ in 0..server_constants::BATCH_SIZE {
             match work_rx.try_recv() {
                 Ok(data) => {
-                    let resp_data = handle_request(interpreter, &data, dev_mode);
+                    let resp_data = handle_request(interpreter, &mut vm, &data, dev_mode);
                     let _ = data.response_tx.send(resp_data);
                 }
                 Err(channel::TryRecvError::Empty) => {
@@ -973,7 +994,7 @@ fn worker_loop(
                 clear_template_cache();
             }
 
-            let resp_data = handle_request(interpreter, &data, dev_mode);
+            let resp_data = handle_request(interpreter, &mut vm, &data, dev_mode);
             let _ = data.response_tx.send(resp_data);
         }
     }
@@ -2100,7 +2121,7 @@ fn handle_liveview_event(
                         let mut state = new_state.clone();
                         if let (
                             serde_json::Value::Object(old),
-                            serde_json::Value::Object(ref mut new_obj),
+                            serde_json::Value::Object(new_obj),
                         ) = (&instance.state, &mut state)
                         {
                             if let Some(id) = old.get("id") {
@@ -2255,6 +2276,7 @@ fn value_to_json(value: &Value) -> serde_json::Value {
 /// Call the route handler with the request hash.
 fn call_handler(
     interpreter: &mut Interpreter,
+    mut vm: Option<&mut crate::vm::Vm>,
     handler_name: &str,
     request_hash: Value,
     dev_mode: bool,
@@ -2264,6 +2286,7 @@ fn call_handler(
     if handler_name.contains('#') {
         if let Some(response) = call_oop_controller_action(
             interpreter,
+            vm.as_deref_mut(),
             handler_name,
             &request_hash,
             dev_mode,
@@ -2276,6 +2299,35 @@ fn call_handler(
 
     // Use CONTROLLERS registry to look up handler by full name (controller#action)
     let handler_result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
+
+    // Try VM execution in production mode for function-based handlers
+    if let Some(ref mut vm) = vm {
+        if !vm.failed_handlers.contains(handler_name) {
+            if let Ok(ref handler_value) = handler_result {
+                match vm.call_value_direct(
+                    handler_value.clone(),
+                    vec![request_hash.clone()],
+                    Span::default(),
+                ) {
+                    Ok(result) => {
+                        vm.reset();
+                        let (status, headers, body) = extract_response(&result);
+                        let headers: Vec<_> = headers.into_iter().collect();
+                        return ResponseData {
+                            status,
+                            headers,
+                            body,
+                        };
+                    }
+                    Err(_) => {
+                        // VM execution failed — remember and skip VM for this handler
+                        vm.failed_handlers.insert(handler_name.to_string());
+                        vm.reset();
+                    }
+                }
+            }
+        }
+    }
 
     // Push stack frame for the handler (source path will be set from the function when called)
     interpreter.push_frame(handler_name, crate::span::Span::new(0, 0, 1, 1), None);
@@ -2420,6 +2472,7 @@ fn controller_has_hooks(controller_key: &str) -> bool {
 /// Returns Some(ResponseData) if handled, None if not an OOP controller.
 fn call_oop_controller_action(
     interpreter: &mut Interpreter,
+    vm: Option<&mut crate::vm::Vm>,
     handler_name: &str,
     request_hash: &Value,
     dev_mode: bool,
@@ -2514,6 +2567,7 @@ fn call_oop_controller_action(
     // For OOP controllers, the method is inside the class, not in the global environment
     let action_result = call_class_method(
         interpreter,
+        vm,
         &class_rc,
         &controller_instance,
         action_name,
@@ -2587,6 +2641,7 @@ fn call_oop_controller_action(
 /// Call a method on a class instance.
 fn call_class_method(
     interpreter: &mut Interpreter,
+    vm: Option<&mut crate::vm::Vm>,
     class: &Rc<crate::interpreter::value::Class>,
     _instance: &Value,
     method_name: &str,
@@ -2594,10 +2649,32 @@ fn call_class_method(
 ) -> Result<Value, RuntimeError> {
     // Look up the method in the class
     if let Some(method) = class.methods.get(method_name) {
-        // Push stack frame for the method call with the method's source path
         let method_span = method
             .span
             .unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1));
+
+        // Try VM execution in production mode
+        if let Some(vm) = vm {
+            let handler_key = format!("{}#{}", class.name, method_name);
+            if !vm.failed_handlers.contains(&handler_key) {
+                match vm.call_value_direct(
+                    Value::Function(method.clone()),
+                    vec![request_hash.clone()],
+                    Span::default(),
+                ) {
+                    Ok(result) => {
+                        vm.reset();
+                        return Ok(result);
+                    }
+                    Err(_) => {
+                        vm.failed_handlers.insert(handler_key);
+                        vm.reset();
+                    }
+                }
+            }
+        }
+
+        // Interpreter fallback path
         interpreter.push_frame(
             &format!("{}#{}", class.name, method_name),
             method_span,
@@ -2955,6 +3032,7 @@ fn parse_request_body(
 /// Handle a single request (called on interpreter thread)
 fn handle_request(
     interpreter: &mut Interpreter,
+    vm: &mut Option<crate::vm::Vm>,
     data: &RequestData,
     dev_mode: bool,
 ) -> ResponseData {
@@ -3122,6 +3200,7 @@ fn handle_request(
     if scoped_middleware.is_empty() && !has_middleware() {
         return finalize_response(call_handler(
             interpreter,
+            vm.as_mut(),
             &handler_name,
             request_hash,
             dev_mode,
@@ -3325,6 +3404,7 @@ fn handle_request(
     // Call the route handler
     finalize_response(call_handler(
         interpreter,
+        vm.as_mut(),
         &handler_name,
         request_hash,
         dev_mode,

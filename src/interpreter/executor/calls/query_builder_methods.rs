@@ -55,7 +55,7 @@ impl Interpreter {
             }
         };
         let bind_vars = match &arguments[1] {
-            Value::Hash(ref hash) => {
+            Value::Hash(hash) => {
                 let mut map = std::collections::HashMap::new();
                 for (k, v) in hash.borrow().iter() {
                     if let crate::interpreter::value::HashKey::String(key) = k {

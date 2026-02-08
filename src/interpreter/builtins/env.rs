@@ -49,7 +49,8 @@ pub fn register_env_builtins(env: &mut Environment) {
                 }
             };
 
-            env::set_var(name, value);
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { env::set_var(name, value) };
             Ok(Value::Null)
         })),
     );
@@ -67,7 +68,8 @@ pub fn register_env_builtins(env: &mut Environment) {
                 }
             };
 
-            env::remove_var(name);
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { env::remove_var(name) };
             Ok(Value::Null)
         })),
     );

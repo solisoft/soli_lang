@@ -14,6 +14,7 @@ use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt};
 use crate::interpreter::builtins::model::QueryBuilder;
 use crate::interpreter::environment::Environment;
 use crate::span::Span;
+use crate::vm::upvalue::VmClosure;
 
 /// A hashable key type for use in IndexMap.
 /// This wraps primitive Value types that can be used as hash keys.
@@ -125,6 +126,8 @@ pub enum Value {
     QueryBuilder(Rc<RefCell<QueryBuilder>>),
     /// Super reference - used for super.method() calls, carries the superclass
     Super(Rc<Class>),
+    /// VM bytecode closure (used by the bytecode VM)
+    VmClosure(Rc<VmClosure>),
 }
 
 /// The type of HTTP future result
@@ -190,6 +193,7 @@ impl Value {
             Value::Breakpoint => "Breakpoint".to_string(),
             Value::QueryBuilder(_) => "QueryBuilder".to_string(),
             Value::Super(_) => "Super".to_string(),
+            Value::VmClosure(_) => "Function".to_string(),
         }
     }
 
@@ -245,7 +249,8 @@ impl Value {
             Value::String(s) if s.is_empty() => false,
             Value::Array(arr) if arr.borrow().is_empty() => false,
             Value::Hash(hash) if hash.borrow().is_empty() => false,
-            Value::Future(_) => true, // Futures are truthy (they represent pending work)
+            Value::Future(_) => true,
+            Value::VmClosure(_) => true,
             _ => true,
         }
     }
@@ -376,6 +381,7 @@ impl fmt::Display for Value {
                 }
             }
             Value::Super(class) => write!(f, "<super of {}>", class.name),
+            Value::VmClosure(c) => write!(f, "<fn {}>", c.proto.name),
         }
     }
 }
@@ -845,11 +851,11 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
 pub fn unwrap_value(value: &Value) -> Value {
     match value {
         Value::Instance(inst) => {
-            if let Some(inner) = inst.borrow().fields.get("__value").cloned() {
+            match inst.borrow().fields.get("__value").cloned() { Some(inner) => {
                 unwrap_value(&inner)
-            } else {
+            } _ => {
                 value.clone()
-            }
+            }}
         }
         _ => value.clone(),
     }

@@ -11,7 +11,7 @@ fn extract_middleware_from_value(value: &Value) -> Vec<Value> {
 
     if let Value::String(name) = value {
         // Single middleware name as string
-        if let Some(mw) = crate::serve::get_middleware_by_name(name) {
+        match crate::serve::get_middleware_by_name(name) { Some(mw) => {
             if mw.global_only {
                 eprintln!(
                     "Warning: Middleware '{}' is global_only and cannot be scoped",
@@ -20,14 +20,14 @@ fn extract_middleware_from_value(value: &Value) -> Vec<Value> {
             } else {
                 middleware.push(mw.handler.clone());
             }
-        } else {
+        } _ => {
             eprintln!("Warning: Middleware '{}' not found", name);
-        }
+        }}
     } else if let Value::Array(arr) = value {
         for item in arr.borrow().iter() {
             if let Value::String(name) = item {
                 // Look up the middleware function by name
-                if let Some(mw) = crate::serve::get_middleware_by_name(name) {
+                match crate::serve::get_middleware_by_name(name) { Some(mw) => {
                     if mw.global_only {
                         eprintln!(
                             "Warning: Middleware '{}' is global_only and cannot be scoped",
@@ -36,9 +36,9 @@ fn extract_middleware_from_value(value: &Value) -> Vec<Value> {
                     } else {
                         middleware.push(mw.handler.clone());
                     }
-                } else {
+                } _ => {
                     eprintln!("Warning: Middleware '{}' not found", name);
-                }
+                }}
             } else {
                 // If it's already a function value, use it directly
                 middleware.push(item.clone());

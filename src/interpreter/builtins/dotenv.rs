@@ -24,7 +24,8 @@ fn load_single_env_file(path: &Path) -> Result<i64, String> {
         }
 
         if let Some((key, value)) = parse_env_line(line) {
-            std::env::set_var(&key, &value);
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { std::env::set_var(&key, &value) };
             loaded += 1;
         }
     }
