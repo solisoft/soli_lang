@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/solisoft/soli_lang/compare/v0.16.0...v0.17.0) (2026-02-08)
+
+
+### Features
+
+* **ci:** enhance CI workflow with auto-merge functionality for release PRs ([6e8296d](https://github.com/solisoft/soli_lang/commit/6e8296dbd385c7a9a02197cb425080a9d812d3e2))
+
+
+### Bug Fixes
+
+* **ci:** improve auto-merge logic for release PRs ([c2ab222](https://github.com/solisoft/soli_lang/commit/c2ab222b5e1e7219458c2fd75cc0d7dfacadc054))
+
 ## [0.16.0](https://github.com/solisoft/soli_lang/compare/v0.15.0...v0.16.0) (2026-02-07)
 
 
