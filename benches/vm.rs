@@ -54,12 +54,8 @@ fn fibonacci_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("fib_recursive_comparison");
     let source = load_program("fib_recursive");
 
-    group.bench_function("treewalk", |b| {
-        b.iter(|| run_treewalk(black_box(&source)))
-    });
-    group.bench_function("vm", |b| {
-        b.iter(|| run_vm(black_box(&source)))
-    });
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
 
     group.finish();
 }
@@ -68,12 +64,8 @@ fn fib_iterative_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("fib_iterative_comparison");
     let source = load_program("fib_iterative");
 
-    group.bench_function("treewalk", |b| {
-        b.iter(|| run_treewalk(black_box(&source)))
-    });
-    group.bench_function("vm", |b| {
-        b.iter(|| run_vm(black_box(&source)))
-    });
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
 
     group.finish();
 }
@@ -82,12 +74,8 @@ fn loop_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("loop_sum_comparison");
     let source = load_program("loop_sum");
 
-    group.bench_function("treewalk", |b| {
-        b.iter(|| run_treewalk(black_box(&source)))
-    });
-    group.bench_function("vm", |b| {
-        b.iter(|| run_vm(black_box(&source)))
-    });
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
 
     group.finish();
 }

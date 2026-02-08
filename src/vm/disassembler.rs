@@ -97,7 +97,11 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Call(argc) => out.push_str(&format!("CALL         {:>5}", argc)),
         Op::Closure(idx) => {
             let val = chunk.constants.get(*idx as usize);
-            out.push_str(&format!("CLOSURE      {:>5} ({})", idx, format_constant(val)));
+            out.push_str(&format!(
+                "CLOSURE      {:>5} ({})",
+                idx,
+                format_constant(val)
+            ));
         }
         Op::Return => out.push_str("RETURN"),
         Op::Array(n) => out.push_str(&format!("ARRAY        {:>5}", n)),

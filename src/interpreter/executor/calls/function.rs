@@ -218,8 +218,8 @@ impl Interpreter {
 
             Value::Instance(inst) => {
                 // Callable instance
-                match inst.borrow().get_method("call") { Some(method) => {
-                    match method {
+                match inst.borrow().get_method("call") {
+                    Some(method) => match method {
                         Value::Function(func) => {
                             let required_arity = func.arity();
                             let full_arity = func.full_arity();
@@ -279,10 +279,9 @@ impl Interpreter {
                             "callable object method is not a function",
                             span,
                         )),
-                    }
-                } _ => {
-                    Err(RuntimeError::type_error("instance is not callable", span))
-                }}
+                    },
+                    _ => Err(RuntimeError::type_error("instance is not callable", span)),
+                }
             }
 
             Value::Super(superclass) => {

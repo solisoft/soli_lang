@@ -127,7 +127,10 @@ impl Vm {
                 Ok(())
             }
             Value::Class(class) => {
-                class.static_fields.borrow_mut().insert(name.to_string(), value);
+                class
+                    .static_fields
+                    .borrow_mut()
+                    .insert(name.to_string(), value);
                 Ok(())
             }
             Value::Hash(hash) => {
@@ -153,7 +156,10 @@ impl Vm {
             Value::Class(c) => c.clone(),
             _ => {
                 return Err(RuntimeError::type_error(
-                    format!("Superclass must be a class, got {}", superclass_val.type_name()),
+                    format!(
+                        "Superclass must be a class, got {}",
+                        superclass_val.type_name()
+                    ),
                     span,
                 ));
             }

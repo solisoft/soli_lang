@@ -18,10 +18,18 @@ impl Compiler {
                 self.compile_expr(expr)?;
                 self.emit(Op::Pop, line);
             }
-            StmtKind::Let { name, type_annotation: _, initializer } => {
+            StmtKind::Let {
+                name,
+                type_annotation: _,
+                initializer,
+            } => {
                 self.compile_let(name, initializer.as_ref(), false, line, stmt.span)?;
             }
-            StmtKind::Const { name, type_annotation: _, initializer } => {
+            StmtKind::Const {
+                name,
+                type_annotation: _,
+                initializer,
+            } => {
                 self.compile_let(name, Some(initializer), true, line, stmt.span)?;
             }
             StmtKind::Block(stmts) => {
@@ -31,13 +39,21 @@ impl Compiler {
                 }
                 self.end_scope(line);
             }
-            StmtKind::If { condition, then_branch, else_branch } => {
+            StmtKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
                 self.compile_if_stmt(condition, then_branch, else_branch.as_deref(), line)?;
             }
             StmtKind::While { condition, body } => {
                 self.compile_while(condition, body, line)?;
             }
-            StmtKind::For { variable, iterable, body } => {
+            StmtKind::For {
+                variable,
+                iterable,
+                body,
+            } => {
                 self.compile_for(variable, iterable, body, line)?;
             }
             StmtKind::Return(expr) => {
@@ -52,8 +68,19 @@ impl Compiler {
                 self.compile_expr(expr)?;
                 self.emit(Op::Throw, line);
             }
-            StmtKind::Try { try_block, catch_var, catch_block, finally_block } => {
-                self.compile_try(try_block, catch_var.as_deref(), catch_block.as_deref(), finally_block.as_deref(), line)?;
+            StmtKind::Try {
+                try_block,
+                catch_var,
+                catch_block,
+                finally_block,
+            } => {
+                self.compile_try(
+                    try_block,
+                    catch_var.as_deref(),
+                    catch_block.as_deref(),
+                    finally_block.as_deref(),
+                    line,
+                )?;
             }
             StmtKind::Function(decl) => {
                 self.compile_function_decl(decl, line)?;

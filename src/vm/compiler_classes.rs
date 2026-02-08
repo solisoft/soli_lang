@@ -133,11 +133,8 @@ impl Compiler {
         fields: &[FieldDecl],
         line: usize,
     ) -> CompileResult<()> {
-        let _dummy = self.start_function(
-            FunctionType::Constructor,
-            "init".to_string(),
-            &ctor.params,
-        );
+        let _dummy =
+            self.start_function(FunctionType::Constructor, "init".to_string(), &ctor.params);
 
         self.begin_scope();
 
@@ -175,7 +172,10 @@ impl Compiler {
         self.emit(Op::GetLocal(0), line);
         self.emit(Op::Return, line);
 
-        let mut proto = std::mem::replace(&mut self.proto, super::chunk::FunctionProto::new(String::new()));
+        let mut proto = std::mem::replace(
+            &mut self.proto,
+            super::chunk::FunctionProto::new(String::new()),
+        );
         proto.upvalue_descriptors = std::mem::take(&mut self.upvalues);
         proto.is_method = true;
 

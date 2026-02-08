@@ -34,7 +34,11 @@ impl Compiler {
             ExprKind::Variable(name) => {
                 self.compile_variable_get(name, line)?;
             }
-            ExprKind::Binary { left, operator, right } => {
+            ExprKind::Binary {
+                left,
+                operator,
+                right,
+            } => {
                 self.compile_binary(left, *operator, right, line)?;
             }
             ExprKind::Unary { operator, operand } => {
@@ -70,7 +74,10 @@ impl Compiler {
             ExprKind::Super => {
                 self.compile_super(line)?;
             }
-            ExprKind::New { class_expr, arguments } => {
+            ExprKind::New {
+                class_expr,
+                arguments,
+            } => {
                 self.compile_new(class_expr, arguments, line)?;
             }
             ExprKind::Array(elements) => {
@@ -106,20 +113,52 @@ impl Compiler {
                 self.compile_expr(right)?;
                 self.patch_jump(jump);
             }
-            ExprKind::Lambda { params, return_type: _, body } => {
+            ExprKind::Lambda {
+                params,
+                return_type: _,
+                body,
+            } => {
                 self.compile_lambda(params, body, line)?;
             }
-            ExprKind::If { condition, then_branch, else_branch } => {
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
                 self.compile_if_expr(condition, then_branch, else_branch.as_deref(), line)?;
             }
             ExprKind::Match { expression, arms } => {
                 self.compile_match(expression, arms, line)?;
             }
-            ExprKind::ListComprehension { element, variable, iterable, condition } => {
-                self.compile_list_comprehension(element, variable, iterable, condition.as_deref(), line)?;
+            ExprKind::ListComprehension {
+                element,
+                variable,
+                iterable,
+                condition,
+            } => {
+                self.compile_list_comprehension(
+                    element,
+                    variable,
+                    iterable,
+                    condition.as_deref(),
+                    line,
+                )?;
             }
-            ExprKind::HashComprehension { key, value, variable, iterable, condition } => {
-                self.compile_hash_comprehension(key, value, variable, iterable, condition.as_deref(), line)?;
+            ExprKind::HashComprehension {
+                key,
+                value,
+                variable,
+                iterable,
+                condition,
+            } => {
+                self.compile_hash_comprehension(
+                    key,
+                    value,
+                    variable,
+                    iterable,
+                    condition.as_deref(),
+                    line,
+                )?;
             }
             ExprKind::InterpolatedString(parts) => {
                 self.compile_interpolated_string(parts, line)?;
@@ -182,12 +221,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn compile_unary(
-        &mut self,
-        op: UnaryOp,
-        operand: &Expr,
-        line: usize,
-    ) -> CompileResult<()> {
+    fn compile_unary(&mut self, op: UnaryOp, operand: &Expr, line: usize) -> CompileResult<()> {
         self.compile_expr(operand)?;
         match op {
             UnaryOp::Negate => self.emit(Op::Negate, line),
@@ -276,12 +310,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn compile_pipeline(
-        &mut self,
-        left: &Expr,
-        right: &Expr,
-        line: usize,
-    ) -> CompileResult<()> {
+    fn compile_pipeline(&mut self, left: &Expr, right: &Expr, line: usize) -> CompileResult<()> {
         // x |> f(a, b) compiles as f(x, a, b)
         match &right.kind {
             ExprKind::Call { callee, arguments } => {
@@ -412,12 +441,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn compile_assign(
-        &mut self,
-        target: &Expr,
-        value: &Expr,
-        line: usize,
-    ) -> CompileResult<()> {
+    fn compile_assign(&mut self, target: &Expr, value: &Expr, line: usize) -> CompileResult<()> {
         match &target.kind {
             ExprKind::Variable(name) => {
                 self.compile_expr(value)?;

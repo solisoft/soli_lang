@@ -152,7 +152,9 @@ impl Compiler {
     }
 
     pub fn add_string_constant(&mut self, s: &str) -> u16 {
-        self.proto.chunk.add_constant(Constant::String(s.to_string()))
+        self.proto
+            .chunk
+            .add_constant(Constant::String(s.to_string()))
     }
 
     // --- Scope management ---
@@ -188,7 +190,12 @@ impl Compiler {
         });
     }
 
-    pub fn declare_variable(&mut self, name: &str, is_const: bool, span: Span) -> CompileResult<()> {
+    pub fn declare_variable(
+        &mut self,
+        name: &str,
+        is_const: bool,
+        span: Span,
+    ) -> CompileResult<()> {
         if self.scope_depth == 0 {
             return Ok(()); // globals are handled differently
         }
@@ -271,8 +278,10 @@ impl Compiler {
         for param in params {
             new_compiler.add_local(param.name.clone(), false);
         }
-        new_compiler.proto.arity = params.iter().filter(|p| p.default_value.is_none()).count() as u8;
-        new_compiler.proto.defaults = params.iter().filter(|p| p.default_value.is_some()).count() as u8;
+        new_compiler.proto.arity =
+            params.iter().filter(|p| p.default_value.is_none()).count() as u8;
+        new_compiler.proto.defaults =
+            params.iter().filter(|p| p.default_value.is_some()).count() as u8;
         new_compiler.proto.param_names = params.iter().map(|p| p.name.clone()).collect();
 
         // Swap self with the new compiler, storing self as enclosing

@@ -850,13 +850,10 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
 /// For other values, returns the value as-is.
 pub fn unwrap_value(value: &Value) -> Value {
     match value {
-        Value::Instance(inst) => {
-            match inst.borrow().fields.get("__value").cloned() { Some(inner) => {
-                unwrap_value(&inner)
-            } _ => {
-                value.clone()
-            }}
-        }
+        Value::Instance(inst) => match inst.borrow().fields.get("__value").cloned() {
+            Some(inner) => unwrap_value(&inner),
+            _ => value.clone(),
+        },
         _ => value.clone(),
     }
 }

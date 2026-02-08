@@ -120,7 +120,14 @@ impl Vm {
             }
 
             let op = frame.closure.proto.chunk.code[ip];
-            let line = frame.closure.proto.chunk.lines.get(ip).copied().unwrap_or(0);
+            let line = frame
+                .closure
+                .proto
+                .chunk
+                .lines
+                .get(ip)
+                .copied()
+                .unwrap_or(0);
             let span = Span::new(0, 0, line, 0);
 
             // Advance IP
@@ -128,7 +135,8 @@ impl Vm {
 
             match op {
                 Op::Constant(idx) => {
-                    let constant = &self.frames[frame_idx].closure.proto.chunk.constants[idx as usize];
+                    let constant =
+                        &self.frames[frame_idx].closure.proto.chunk.constants[idx as usize];
                     let value = constant_to_value(constant);
                     self.push(value);
                 }
@@ -331,7 +339,8 @@ impl Vm {
                     self.call_value(argc as usize, span)?;
                 }
                 Op::Closure(idx) => {
-                    let constant = &self.frames[frame_idx].closure.proto.chunk.constants[idx as usize];
+                    let constant =
+                        &self.frames[frame_idx].closure.proto.chunk.constants[idx as usize];
                     if let Constant::Function(proto) = constant {
                         let proto = proto.clone();
                         let mut upvalues = Vec::new();
@@ -342,7 +351,9 @@ impl Vm {
                                 let upvalue = self.capture_upvalue(slot);
                                 upvalues.push(upvalue);
                             } else {
-                                let upvalue = self.frames[frame_idx].closure.upvalues[desc.index as usize].clone();
+                                let upvalue = self.frames[frame_idx].closure.upvalues
+                                    [desc.index as usize]
+                                    .clone();
                                 upvalues.push(upvalue);
                             }
                         }
@@ -659,7 +670,11 @@ impl Vm {
                     None
                 }
             }
-            IterState::Hash { keys, values: _, index } => {
+            IterState::Hash {
+                keys,
+                values: _,
+                index,
+            } => {
                 if *index < keys.len() {
                     let key = keys[*index].to_value();
                     *index += 1;
@@ -731,11 +746,7 @@ impl Vm {
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             _ => Err(RuntimeError::type_error(
-                format!(
-                    "Cannot add {} and {}",
-                    a.type_name(),
-                    b.type_name()
-                ),
+                format!("Cannot add {} and {}", a.type_name(), b.type_name()),
                 span,
             )),
         }
@@ -859,13 +870,13 @@ impl Vm {
                 } else {
                     *i as usize
                 };
-                arr.get(idx).cloned().ok_or_else(|| {
-                    RuntimeError::IndexOutOfBounds {
+                arr.get(idx)
+                    .cloned()
+                    .ok_or_else(|| RuntimeError::IndexOutOfBounds {
                         index: *i,
                         length: arr.len(),
                         span,
-                    }
-                })
+                    })
             }
             (Value::Hash(hash), key) => {
                 if let Some(hash_key) = HashKey::from_value(key) {
@@ -885,14 +896,13 @@ impl Vm {
                 } else {
                     *i as usize
                 };
-                chars
-                    .get(idx)
-                    .map(|c| Value::String(c.to_string()))
-                    .ok_or(RuntimeError::IndexOutOfBounds {
+                chars.get(idx).map(|c| Value::String(c.to_string())).ok_or(
+                    RuntimeError::IndexOutOfBounds {
                         index: *i,
                         length: chars.len(),
                         span,
-                    })
+                    },
+                )
             }
             _ => Err(RuntimeError::type_error(
                 format!(
@@ -974,10 +984,10 @@ fn constant_to_value(constant: &Constant) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::interpreter::value::NativeFunction;
     use crate::lexer::Scanner;
     use crate::parser::Parser;
     use crate::vm::compiler::Compiler;
-    use crate::interpreter::value::NativeFunction;
 
     fn compile_and_run(source: &str) -> Result<Value, crate::error::RuntimeError> {
         let tokens = Scanner::new(source).scan_tokens().expect("lexer error");

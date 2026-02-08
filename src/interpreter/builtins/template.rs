@@ -404,11 +404,10 @@ fn inject_template_helpers(data: &Value) -> Value {
                         };
 
                         // Get public directory
-                        let public_dir = match PUBLIC_DIR.lock() { Ok(dir_guard) => {
-                            dir_guard.clone()
-                        } _ => {
-                            None
-                        }};
+                        let public_dir = match PUBLIC_DIR.lock() {
+                            Ok(dir_guard) => dir_guard.clone(),
+                            _ => None,
+                        };
 
                         let public_dir = match public_dir {
                             Some(dir) => dir,

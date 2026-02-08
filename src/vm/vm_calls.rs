@@ -21,20 +21,14 @@ impl Vm {
         let callee = self.stack[callee_idx].clone();
 
         match callee {
-            Value::VmClosure(closure) => {
-                self.call_closure(closure, argc, span)
-            }
-            Value::NativeFunction(ref native) => {
-                self.call_native(native, argc, span)
-            }
+            Value::VmClosure(closure) => self.call_closure(closure, argc, span),
+            Value::NativeFunction(ref native) => self.call_native(native, argc, span),
             Value::Function(ref func) => {
                 // Tree-walking function called from VM — shouldn't happen in pure VM mode
                 // but needed for interop during transition
                 self.call_native_wrapper(func, argc, span)
             }
-            Value::Class(ref class) => {
-                self.call_class(class, argc, span)
-            }
+            Value::Class(ref class) => self.call_class(class, argc, span),
             Value::Method(ref method) => {
                 // Call a bound method (array.map, etc.)
                 let receiver = (*method.receiver).clone();

@@ -574,39 +574,42 @@ pub fn register_base64_class(env: &mut Environment) {
 
 /// Wrap a string value in a String class instance.
 pub fn wrap_string(value: String, env: &Environment) -> Value {
-    match env.get("String") { Some(Value::Class(class)) => {
-        let mut inst = Instance::new(class.clone());
-        inst.set("__value".to_string(), Value::String(value));
-        Value::Instance(Rc::new(RefCell::new(inst)))
-    } _ => {
-        Value::String(value)
-    }}
+    match env.get("String") {
+        Some(Value::Class(class)) => {
+            let mut inst = Instance::new(class.clone());
+            inst.set("__value".to_string(), Value::String(value));
+            Value::Instance(Rc::new(RefCell::new(inst)))
+        }
+        _ => Value::String(value),
+    }
 }
 
 /// Wrap an array value in an Array class instance.
 pub fn wrap_array(value: Vec<Value>, env: &Environment) -> Value {
-    match env.get("Array") { Some(Value::Class(class)) => {
-        let mut inst = Instance::new(class.clone());
-        inst.set(
-            "__value".to_string(),
-            Value::Array(Rc::new(RefCell::new(value))),
-        );
-        Value::Instance(Rc::new(RefCell::new(inst)))
-    } _ => {
-        Value::Array(Rc::new(RefCell::new(value)))
-    }}
+    match env.get("Array") {
+        Some(Value::Class(class)) => {
+            let mut inst = Instance::new(class.clone());
+            inst.set(
+                "__value".to_string(),
+                Value::Array(Rc::new(RefCell::new(value))),
+            );
+            Value::Instance(Rc::new(RefCell::new(inst)))
+        }
+        _ => Value::Array(Rc::new(RefCell::new(value))),
+    }
 }
 
 /// Wrap a hash value in a Hash class instance.
 pub fn wrap_hash(value: IndexMap<HashKey, Value>, env: &Environment) -> Value {
-    match env.get("Hash") { Some(Value::Class(class)) => {
-        let mut inst = Instance::new(class.clone());
-        inst.set(
-            "__value".to_string(),
-            Value::Hash(Rc::new(RefCell::new(value))),
-        );
-        Value::Instance(Rc::new(RefCell::new(inst)))
-    } _ => {
-        Value::Hash(Rc::new(RefCell::new(value)))
-    }}
+    match env.get("Hash") {
+        Some(Value::Class(class)) => {
+            let mut inst = Instance::new(class.clone());
+            inst.set(
+                "__value".to_string(),
+                Value::Hash(Rc::new(RefCell::new(value))),
+            );
+            Value::Instance(Rc::new(RefCell::new(inst)))
+        }
+        _ => Value::Hash(Rc::new(RefCell::new(value))),
+    }
 }

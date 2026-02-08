@@ -152,24 +152,25 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
+
+                        resp.text().await.map_err(|e| e.to_string())
+                    }) {
+                        Ok(text) => Ok(Value::String(text)),
+                        Err(e) => Err(e),
                     }
-
-                    resp.text().await.map_err(|e| e.to_string())
-                }) {
-                    Ok(text) => Ok(Value::String(text)),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::get(&url).call() {
                         Ok(response) => response
                             .into_string()
@@ -181,8 +182,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::String,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -218,30 +219,31 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client
-                        .post(&url)
-                        .header("Content-Type", content_type)
-                        .body(body)
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client
+                            .post(&url)
+                            .header("Content-Type", content_type)
+                            .body(body)
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
+
+                        resp.text().await.map_err(|e| e.to_string())
+                    }) {
+                        Ok(text) => Ok(Value::String(text)),
+                        Err(e) => Err(e),
                     }
-
-                    resp.text().await.map_err(|e| e.to_string())
-                }) {
-                    Ok(text) => Ok(Value::String(text)),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::post(&url)
                         .set("Content-Type", &content_type)
                         .send_string(&body)
@@ -256,8 +258,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::String,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -293,30 +295,31 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client
-                        .put(&url)
-                        .header("Content-Type", content_type)
-                        .body(body)
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client
+                            .put(&url)
+                            .header("Content-Type", content_type)
+                            .body(body)
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
+
+                        resp.text().await.map_err(|e| e.to_string())
+                    }) {
+                        Ok(text) => Ok(Value::String(text)),
+                        Err(e) => Err(e),
                     }
-
-                    resp.text().await.map_err(|e| e.to_string())
-                }) {
-                    Ok(text) => Ok(Value::String(text)),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::put(&url)
                         .set("Content-Type", &content_type)
                         .send_string(&body)
@@ -331,8 +334,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::String,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -368,30 +371,31 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client
-                        .patch(&url)
-                        .header("Content-Type", content_type)
-                        .body(body)
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client
+                            .patch(&url)
+                            .header("Content-Type", content_type)
+                            .body(body)
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
+
+                        resp.text().await.map_err(|e| e.to_string())
+                    }) {
+                        Ok(text) => Ok(Value::String(text)),
+                        Err(e) => Err(e),
                     }
-
-                    resp.text().await.map_err(|e| e.to_string())
-                }) {
-                    Ok(text) => Ok(Value::String(text)),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::patch(&url)
                         .set("Content-Type", &content_type)
                         .send_string(&body)
@@ -406,8 +410,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::String,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -426,28 +430,29 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client
-                        .delete(&url)
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client
+                            .delete(&url)
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
+
+                        resp.text().await.map_err(|e| e.to_string())
+                    }) {
+                        Ok(text) => Ok(Value::String(text)),
+                        Err(e) => Err(e),
                     }
-
-                    resp.text().await.map_err(|e| e.to_string())
-                }) {
-                    Ok(text) => Ok(Value::String(text)),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::delete(&url).call() {
                         Ok(response) => response
                             .into_string()
@@ -459,8 +464,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::String,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -479,22 +484,23 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client.head(&url).send().await.map_err(|e| e.to_string())?;
-                    let status = resp.status().as_u16();
-                    Ok(format!(
-                        "{} {}",
-                        status,
-                        resp.status().canonical_reason().unwrap_or("")
-                    ))
-                }) {
-                    Ok(text) => Ok(Value::String(text)),
-                    Err(e) => Err(e),
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client.head(&url).send().await.map_err(|e| e.to_string())?;
+                        let status = resp.status().as_u16();
+                        Ok(format!(
+                            "{} {}",
+                            status,
+                            resp.status().canonical_reason().unwrap_or("")
+                        ))
+                    }) {
+                        Ok(text) => Ok(Value::String(text)),
+                        Err(e) => Err(e),
+                    }
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::head(&url).call() {
                         Ok(response) => {
                             let status = response.status();
@@ -503,8 +509,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::String,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -523,33 +529,34 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client
-                        .get(&url)
-                        .header("Accept", "application/json")
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client
+                            .get(&url)
+                            .header("Accept", "application/json")
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
-                    }
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
 
-                    let text = resp.text().await.map_err(|e| e.to_string())?;
-                    match serde_json::from_str::<serde_json::Value>(&text) {
-                        Ok(json) => json_to_value(&json),
-                        Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+                        let text = resp.text().await.map_err(|e| e.to_string())?;
+                        match serde_json::from_str::<serde_json::Value>(&text) {
+                            Ok(json) => json_to_value(&json),
+                            Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+                        }
+                    }) {
+                        Ok(v) => Ok(v),
+                        Err(e) => Err(e),
                     }
-                }) {
-                    Ok(v) => Ok(v),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::get(&url).set("Accept", "application/json").call() {
                         Ok(response) => response
                             .into_string()
@@ -561,8 +568,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::Json,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -583,34 +590,35 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client
-                        .post(&url)
-                        .header("Content-Type", "application/json")
-                        .body(json_body)
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client
+                            .post(&url)
+                            .header("Content-Type", "application/json")
+                            .body(json_body)
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
-                    }
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
 
-                    let text = resp.text().await.map_err(|e| e.to_string())?;
-                    match serde_json::from_str::<serde_json::Value>(&text) {
-                        Ok(json) => json_to_value(&json),
-                        Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+                        let text = resp.text().await.map_err(|e| e.to_string())?;
+                        match serde_json::from_str::<serde_json::Value>(&text) {
+                            Ok(json) => json_to_value(&json),
+                            Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+                        }
+                    }) {
+                        Ok(v) => Ok(v),
+                        Err(e) => Err(e),
                     }
-                }) {
-                    Ok(v) => Ok(v),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::post(&url)
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
@@ -625,8 +633,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::Json,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -647,34 +655,35 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client
-                        .put(&url)
-                        .header("Content-Type", "application/json")
-                        .body(json_body)
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client
+                            .put(&url)
+                            .header("Content-Type", "application/json")
+                            .body(json_body)
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
-                    }
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
 
-                    let text = resp.text().await.map_err(|e| e.to_string())?;
-                    match serde_json::from_str::<serde_json::Value>(&text) {
-                        Ok(json) => json_to_value(&json),
-                        Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+                        let text = resp.text().await.map_err(|e| e.to_string())?;
+                        match serde_json::from_str::<serde_json::Value>(&text) {
+                            Ok(json) => json_to_value(&json),
+                            Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+                        }
+                    }) {
+                        Ok(v) => Ok(v),
+                        Err(e) => Err(e),
                     }
-                }) {
-                    Ok(v) => Ok(v),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::put(&url)
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
@@ -689,8 +698,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::Json,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -711,34 +720,35 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let resp = client
-                        .patch(&url)
-                        .header("Content-Type", "application/json")
-                        .body(json_body)
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let resp = client
+                            .patch(&url)
+                            .header("Content-Type", "application/json")
+                            .body(json_body)
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
 
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(format!("HTTP {} error: {}", status.as_u16(), body));
-                    }
+                        let status = resp.status();
+                        if !status.is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                        }
 
-                    let text = resp.text().await.map_err(|e| e.to_string())?;
-                    match serde_json::from_str::<serde_json::Value>(&text) {
-                        Ok(json) => json_to_value(&json),
-                        Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+                        let text = resp.text().await.map_err(|e| e.to_string())?;
+                        match serde_json::from_str::<serde_json::Value>(&text) {
+                            Ok(json) => json_to_value(&json),
+                            Err(e) => Err(format!("Failed to parse JSON: {}", e)),
+                        }
+                    }) {
+                        Ok(v) => Ok(v),
+                        Err(e) => Err(e),
                     }
-                }) {
-                    Ok(v) => Ok(v),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_http_future(
+                _ => Ok(spawn_http_future(
                     move || match ureq::patch(&url)
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
@@ -753,8 +763,8 @@ pub fn register_http_class(env: &mut Environment) {
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
                     },
                     HttpFutureKind::Json,
-                ))
-            }}
+                )),
+            }
         })),
     );
 
@@ -815,123 +825,134 @@ pub fn register_http_class(env: &mut Environment) {
                 None
             };
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                let method_clone = method.clone();
-                let body_opt_clone = body_opt.clone();
-                let headers_vec_clone = headers_vec.clone();
-                match rt.block_on(async move {
-                    let mut request = match method_clone.as_str() {
-                        "GET" => client.get(&url),
-                        "POST" => client.post(&url),
-                        "PUT" => client.put(&url),
-                        "DELETE" => client.delete(&url),
-                        "PATCH" => client.patch(&url),
-                        "HEAD" => client.head(&url),
-                        _ => return Err(format!("Unsupported HTTP method: {}", method_clone)),
-                    };
-
-                    for (key, value) in &headers_vec_clone {
-                        request = request.header(key.as_str(), value.as_str());
-                    }
-
-                    if let Some(body) = body_opt_clone {
-                        request = request.body(body);
-                    }
-
-                    let resp = request.send().await.map_err(|e| e.to_string())?;
-
-                    let status = resp.status().as_u16();
-                    let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
-
-                    let mut headers_map = serde_json::Map::new();
-                    for (name, value) in resp.headers().iter() {
-                        if let Ok(v) = value.to_str() {
-                            headers_map
-                                .insert(name.to_string(), serde_json::Value::String(v.to_string()));
-                        }
-                    }
-
-                    let body = resp.text().await.map_err(|e| e.to_string())?;
-
-                    create_http_response(status, status_text, headers_map, body)
-                }) {
-                    Ok(v) => Ok(v),
-                    Err(e) => Err(e),
-                }
-            } _ => {
-                let method_clone = method.clone();
-                let body_opt_clone = body_opt.clone();
-                let headers_vec_clone = headers_vec.clone();
-                Ok(spawn_http_future(
-                    move || {
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    let method_clone = method.clone();
+                    let body_opt_clone = body_opt.clone();
+                    let headers_vec_clone = headers_vec.clone();
+                    match rt.block_on(async move {
                         let mut request = match method_clone.as_str() {
-                            "GET" => ureq::get(&url),
-                            "POST" => ureq::post(&url),
-                            "PUT" => ureq::put(&url),
-                            "DELETE" => ureq::delete(&url),
-                            "PATCH" => ureq::patch(&url),
-                            "HEAD" => ureq::head(&url),
+                            "GET" => client.get(&url),
+                            "POST" => client.post(&url),
+                            "PUT" => client.put(&url),
+                            "DELETE" => client.delete(&url),
+                            "PATCH" => client.patch(&url),
+                            "HEAD" => client.head(&url),
                             _ => return Err(format!("Unsupported HTTP method: {}", method_clone)),
                         };
 
                         for (key, value) in &headers_vec_clone {
-                            request = request.set(key, value);
+                            request = request.header(key.as_str(), value.as_str());
                         }
 
-                        let response = if let Some(body) = body_opt_clone {
-                            request.send_string(&body)
-                        } else {
-                            request.call()
-                        };
+                        if let Some(body) = body_opt_clone {
+                            request = request.body(body);
+                        }
 
-                        match response {
-                            Ok(resp) => {
-                                let status = resp.status();
-                                let status_text = resp.status_text().to_string();
+                        let resp = request.send().await.map_err(|e| e.to_string())?;
 
-                                let mut headers_map = serde_json::Map::new();
-                                for name in resp.headers_names() {
-                                    if let Some(value) = resp.header(&name) {
-                                        headers_map.insert(
-                                            name,
-                                            serde_json::Value::String(value.to_string()),
-                                        );
-                                    }
+                        let status = resp.status().as_u16();
+                        let status_text =
+                            resp.status().canonical_reason().unwrap_or("").to_string();
+
+                        let mut headers_map = serde_json::Map::new();
+                        for (name, value) in resp.headers().iter() {
+                            if let Ok(v) = value.to_str() {
+                                headers_map.insert(
+                                    name.to_string(),
+                                    serde_json::Value::String(v.to_string()),
+                                );
+                            }
+                        }
+
+                        let body = resp.text().await.map_err(|e| e.to_string())?;
+
+                        create_http_response(status, status_text, headers_map, body)
+                    }) {
+                        Ok(v) => Ok(v),
+                        Err(e) => Err(e),
+                    }
+                }
+                _ => {
+                    let method_clone = method.clone();
+                    let body_opt_clone = body_opt.clone();
+                    let headers_vec_clone = headers_vec.clone();
+                    Ok(spawn_http_future(
+                        move || {
+                            let mut request = match method_clone.as_str() {
+                                "GET" => ureq::get(&url),
+                                "POST" => ureq::post(&url),
+                                "PUT" => ureq::put(&url),
+                                "DELETE" => ureq::delete(&url),
+                                "PATCH" => ureq::patch(&url),
+                                "HEAD" => ureq::head(&url),
+                                _ => {
+                                    return Err(format!(
+                                        "Unsupported HTTP method: {}",
+                                        method_clone
+                                    ))
                                 }
+                            };
 
-                                let body = resp
-                                    .into_string()
-                                    .map_err(|e| format!("Failed to read response body: {}", e))?;
-
-                                let result = serde_json::json!({
-                                    "status": status,
-                                    "status_text": status_text,
-                                    "headers": headers_map,
-                                    "body": body
-                                });
-
-                                Ok(result.to_string())
+                            for (key, value) in &headers_vec_clone {
+                                request = request.set(key, value);
                             }
-                            Err(ureq::Error::Status(code, resp)) => {
-                                let status_text = resp.status_text().to_string();
-                                let body = resp.into_string().unwrap_or_default();
 
-                                let result = serde_json::json!({
-                                    "status": code,
-                                    "status_text": status_text,
-                                    "headers": {},
-                                    "body": body
-                                });
+                            let response = if let Some(body) = body_opt_clone {
+                                request.send_string(&body)
+                            } else {
+                                request.call()
+                            };
 
-                                Ok(result.to_string())
+                            match response {
+                                Ok(resp) => {
+                                    let status = resp.status();
+                                    let status_text = resp.status_text().to_string();
+
+                                    let mut headers_map = serde_json::Map::new();
+                                    for name in resp.headers_names() {
+                                        if let Some(value) = resp.header(&name) {
+                                            headers_map.insert(
+                                                name,
+                                                serde_json::Value::String(value.to_string()),
+                                            );
+                                        }
+                                    }
+
+                                    let body = resp.into_string().map_err(|e| {
+                                        format!("Failed to read response body: {}", e)
+                                    })?;
+
+                                    let result = serde_json::json!({
+                                        "status": status,
+                                        "status_text": status_text,
+                                        "headers": headers_map,
+                                        "body": body
+                                    });
+
+                                    Ok(result.to_string())
+                                }
+                                Err(ureq::Error::Status(code, resp)) => {
+                                    let status_text = resp.status_text().to_string();
+                                    let body = resp.into_string().unwrap_or_default();
+
+                                    let result = serde_json::json!({
+                                        "status": code,
+                                        "status_text": status_text,
+                                        "headers": {},
+                                        "body": body
+                                    });
+
+                                    Ok(result.to_string())
+                                }
+                                Err(e) => Err(format!("HTTP request failed: {}", e)),
                             }
-                            Err(e) => Err(format!("HTTP request failed: {}", e)),
-                        }
-                    },
-                    HttpFutureKind::FullResponse,
-                ))
-            }}
+                        },
+                        HttpFutureKind::FullResponse,
+                    ))
+                }
+            }
         })),
     );
 

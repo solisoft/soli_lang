@@ -77,11 +77,14 @@ impl Interpreter {
                     if i >= arr.len() {
                         return Ok(None);
                     }
-                    match self.match_pattern(&arr[i], elem_pattern)? { Some(elem_bindings) => {
-                        bindings.extend(elem_bindings);
-                    } _ => {
-                        return Ok(None);
-                    }}
+                    match self.match_pattern(&arr[i], elem_pattern)? {
+                        Some(elem_bindings) => {
+                            bindings.extend(elem_bindings);
+                        }
+                        _ => {
+                            return Ok(None);
+                        }
+                    }
                 }
 
                 if let Some(rest_name) = rest {
@@ -104,11 +107,14 @@ impl Interpreter {
                 for (field_name, field_pattern) in fields {
                     let hash_key = HashKey::String(field_name.clone());
                     if let Some(val) = hash.get(&hash_key) {
-                        match self.match_pattern(val, field_pattern)? { Some(field_bindings) => {
-                            bindings.extend(field_bindings);
-                        } _ => {
-                            return Ok(None);
-                        }}
+                        match self.match_pattern(val, field_pattern)? {
+                            Some(field_bindings) => {
+                                bindings.extend(field_bindings);
+                            }
+                            _ => {
+                                return Ok(None);
+                            }
+                        }
                     } else {
                         return Ok(None);
                     }
@@ -143,16 +149,21 @@ impl Interpreter {
                 let mut bindings = Vec::new();
 
                 for (field_name, field_pattern) in fields {
-                    match instance.borrow().fields.get(field_name) { Some(field_value) => {
-                        match self.match_pattern(field_value, field_pattern)?
-                        { Some(field_bindings) => {
-                            bindings.extend(field_bindings);
-                        } _ => {
+                    match instance.borrow().fields.get(field_name) {
+                        Some(field_value) => {
+                            match self.match_pattern(field_value, field_pattern)? {
+                                Some(field_bindings) => {
+                                    bindings.extend(field_bindings);
+                                }
+                                _ => {
+                                    return Ok(None);
+                                }
+                            }
+                        }
+                        _ => {
                             return Ok(None);
-                        }}
-                    } _ => {
-                        return Ok(None);
-                    }}
+                        }
+                    }
                 }
 
                 Ok(Some(bindings))

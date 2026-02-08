@@ -89,62 +89,64 @@ pub fn register_soap_class(env: &mut Environment) {
                 }
             }
 
-            match get_tokio_handle() { Some(rt) => {
-                let client = get_http_client().clone();
-                match rt.block_on(async move {
-                    let mut request = client.post(&url);
+            match get_tokio_handle() {
+                Some(rt) => {
+                    let client = get_http_client().clone();
+                    match rt.block_on(async move {
+                        let mut request = client.post(&url);
 
-                    for (key, value) in &headers {
-                        request = request.header(key.as_str(), value.as_str());
-                    }
-
-                    let resp = request
-                        .body(envelope)
-                        .send()
-                        .await
-                        .map_err(|e| e.to_string())?;
-
-                    let status = resp.status().as_u16();
-                    let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
-
-                    let mut resp_headers = IndexMap::new();
-                    for (name, value) in resp.headers().iter() {
-                        if let Ok(v) = value.to_str() {
-                            resp_headers.insert(
-                                HashKey::String(name.to_string()),
-                                Value::String(v.to_string()),
-                            );
+                        for (key, value) in &headers {
+                            request = request.header(key.as_str(), value.as_str());
                         }
+
+                        let resp = request
+                            .body(envelope)
+                            .send()
+                            .await
+                            .map_err(|e| e.to_string())?;
+
+                        let status = resp.status().as_u16();
+                        let status_text =
+                            resp.status().canonical_reason().unwrap_or("").to_string();
+
+                        let mut resp_headers = IndexMap::new();
+                        for (name, value) in resp.headers().iter() {
+                            if let Ok(v) = value.to_str() {
+                                resp_headers.insert(
+                                    HashKey::String(name.to_string()),
+                                    Value::String(v.to_string()),
+                                );
+                            }
+                        }
+
+                        let body = resp.text().await.map_err(|e| e.to_string())?;
+
+                        let parsed_xml = parse_xml_to_value(&body).unwrap_or(Value::Null);
+
+                        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+                        result.insert(
+                            HashKey::String("status".to_string()),
+                            Value::Int(status as i64),
+                        );
+                        result.insert(
+                            HashKey::String("status_text".to_string()),
+                            Value::String(status_text),
+                        );
+                        result.insert(
+                            HashKey::String("headers".to_string()),
+                            Value::Hash(Rc::new(RefCell::new(resp_headers))),
+                        );
+                        result.insert(HashKey::String("body".to_string()), Value::String(body));
+                        result.insert(HashKey::String("parsed".to_string()), parsed_xml);
+
+                        Ok(Value::Hash(Rc::new(RefCell::new(result))))
+                    }) {
+                        Ok(v) => Ok(v),
+                        Err(e) => Err(e),
                     }
-
-                    let body = resp.text().await.map_err(|e| e.to_string())?;
-
-                    let parsed_xml = parse_xml_to_value(&body).unwrap_or(Value::Null);
-
-                    let mut result: IndexMap<HashKey, Value> = IndexMap::new();
-                    result.insert(
-                        HashKey::String("status".to_string()),
-                        Value::Int(status as i64),
-                    );
-                    result.insert(
-                        HashKey::String("status_text".to_string()),
-                        Value::String(status_text),
-                    );
-                    result.insert(
-                        HashKey::String("headers".to_string()),
-                        Value::Hash(Rc::new(RefCell::new(resp_headers))),
-                    );
-                    result.insert(HashKey::String("body".to_string()), Value::String(body));
-                    result.insert(HashKey::String("parsed".to_string()), parsed_xml);
-
-                    Ok(Value::Hash(Rc::new(RefCell::new(result))))
-                }) {
-                    Ok(v) => Ok(v),
-                    Err(e) => Err(e),
                 }
-            } _ => {
-                Ok(spawn_soap_future(url, headers, envelope))
-            }}
+                _ => Ok(spawn_soap_future(url, headers, envelope)),
+            }
         })),
     );
 
@@ -470,16 +472,17 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
         buf.clear();
     }
 
-    match stack.pop() { Some((name, attrs)) => {
-        let mut root = IndexMap::new();
-        root.insert(
-            HashKey::String(name),
-            Value::Hash(Rc::new(RefCell::new(attrs))),
-        );
-        Ok(Value::Hash(Rc::new(RefCell::new(root))))
-    } _ => {
-        Ok(Value::Null)
-    }}
+    match stack.pop() {
+        Some((name, attrs)) => {
+            let mut root = IndexMap::new();
+            root.insert(
+                HashKey::String(name),
+                Value::Hash(Rc::new(RefCell::new(attrs))),
+            );
+            Ok(Value::Hash(Rc::new(RefCell::new(root))))
+        }
+        _ => Ok(Value::Null),
+    }
 }
 
 fn value_to_xml(value: &Value, element_name: &str) -> String {
