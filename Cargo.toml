@@ -1,6 +1,6 @@
 [package]
 name = "solilang"
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 description = "A statically-typed, class-based OOP language with pipeline operators"
 authors = ["Solilang Team"]
