@@ -121,6 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -139,6 +140,50 @@ jobs:
           if [ -n "$PR" ]; then
             gh pr merge "$PR" --auto --squash
           fi
+
+  build-binaries:
+    needs: release
+    if: needs.release.outputs.release_created == 'true'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: soli-linux-amd64.tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: soli-darwin-amd64.tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: soli-darwin-arm64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: soli-windows-amd64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: matrix.os != 'windows-latest'
+        run: tar czf ${{ matrix.artifact }} -C target/${{ matrix.target }}/release soli
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/soli.exe -DestinationPath ${{ matrix.artifact }}
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ${{ needs.release.outputs.tag_name }} ${{ matrix.artifact }}
 
   publish:
     needs: release
