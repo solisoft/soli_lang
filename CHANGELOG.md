@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.0](https://github.com/solisoft/soli_lang/compare/v0.18.0...v0.19.0) (2026-02-08)
+
+
+### Features
+
+* **ci:** add Docker build and push step to CI workflow ([63d9f93](https://github.com/solisoft/soli_lang/commit/63d9f932010d643177f8dd486ce93adcf115f9f0))
+* **ci:** enhance CI workflow for multi-platform builds ([3068075](https://github.com/solisoft/soli_lang/commit/30680751f8a4d2cc3ba5ff8e5f59bab3ac862f75))
+
 ## [0.18.0](https://github.com/solisoft/soli_lang/compare/v0.17.0...v0.18.0) (2026-02-08)
 
 
