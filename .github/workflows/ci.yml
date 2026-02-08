@@ -122,11 +122,21 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Release Please
         id: release
         uses: googleapis/release-please-action@v4
         with:
           release-type: rust
+
+      - name: Auto-merge release PR
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=$(gh pr list --label "autorelease: pending" --json number -q '.[0].number')
+          [ -n "$PR" ] && gh pr merge "$PR" --auto --squash
 
   publish:
     needs: release
