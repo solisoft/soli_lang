@@ -135,8 +135,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PR=$(gh pr list --label "autorelease: pending" --json number -q '.[0].number')
-          [ -n "$PR" ] && gh pr merge "$PR" --auto --squash
+          PR=$(gh pr list --label "autorelease: pending" --json number --jq '.[0].number // empty' || true)
+          if [ -n "$PR" ]; then
+            gh pr merge "$PR" --auto --squash
+          fi
 
   publish:
     needs: release
