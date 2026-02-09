@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.20.0](https://github.com/solisoft/soli_lang/compare/v0.19.0...v0.20.0) (2026-02-09)
+
+
+### Features
+
+* **ci:** update CI workflow for improved packaging and Docker integration ([a7b008b](https://github.com/solisoft/soli_lang/commit/a7b008b859349867b14aee995d5b47a01f31822f))
+* **ci:** update permissions in CI workflow ([9a3effc](https://github.com/solisoft/soli_lang/commit/9a3effc5aba9f862068b855b9c97821225520a07))
+* **parser:** add support for optional parentheses in function declarations ([567f301](https://github.com/solisoft/soli_lang/commit/567f3011337230c7ed3564f18ed849c3c5c3c2f5))
+
+
+### Bug Fixes
+
+* **ci:** allow auto-merge step to continue on error ([afa4f76](https://github.com/solisoft/soli_lang/commit/afa4f76b952a8ccf927df81f50fd838b0e82050f))
+
 ## [0.19.0](https://github.com/solisoft/soli_lang/compare/v0.18.0...v0.19.0) (2026-02-08)
 
 
