@@ -152,6 +152,44 @@ describe("Implicit Returns", fn() {
     });
 });
 
+describe("Optional Parentheses", fn() {
+    test("fn without parens", fn() {
+        fn greet {
+            return "hello";
+        }
+        assert_eq(greet(), "hello");
+    });
+
+    test("fn without parens with implicit return", fn() {
+        fn five { 5 }
+        assert_eq(five(), 5);
+    });
+
+    test("fn with empty parens still works", fn() {
+        fn greet() {
+            return "hello";
+        }
+        assert_eq(greet(), "hello");
+    });
+
+    test("fn with params still requires parens", fn() {
+        fn add(a, b) {
+            return a + b;
+        }
+        assert_eq(add(2, 3), 5);
+    });
+
+    test("class method without parens", fn() {
+        class Greeter {
+            fn hello {
+                return "hi";
+            }
+        }
+        let g = new Greeter();
+        assert_eq(g.hello(), "hi");
+    });
+});
+
 describe("Closures", fn() {
     test("closure captures outer variable", fn() {
         let multiplier = 3;

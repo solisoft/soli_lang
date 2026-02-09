@@ -109,7 +109,9 @@ impl Parser {
     }
 
     pub(crate) fn parse_parameters(&mut self) -> ParseResult<Vec<Parameter>> {
-        self.expect(&TokenKind::LeftParen)?;
+        if !self.match_token(&TokenKind::LeftParen) {
+            return Ok(Vec::new());
+        }
 
         let mut params = Vec::new();
         if !self.check(&TokenKind::RightParen) {

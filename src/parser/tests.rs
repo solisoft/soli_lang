@@ -163,6 +163,48 @@ mod tests {
         }
     }
 
+    fn parse_stmt(source: &str) -> StmtKind {
+        let tokens = Scanner::new(source).scan_tokens().unwrap();
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse().unwrap();
+        program.statements.into_iter().next().unwrap().kind
+    }
+
+    #[test]
+    fn test_fn_no_parens() {
+        match parse_stmt("fn demo { 1 }") {
+            StmtKind::Function(f) => {
+                assert_eq!(f.name, "demo");
+                assert!(f.params.is_empty());
+            }
+            other => panic!("Expected function, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fn_empty_parens() {
+        match parse_stmt("fn demo() { 1 }") {
+            StmtKind::Function(f) => {
+                assert_eq!(f.name, "demo");
+                assert!(f.params.is_empty());
+            }
+            other => panic!("Expected function, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fn_with_params() {
+        match parse_stmt("fn add(a, b) { a + b }") {
+            StmtKind::Function(f) => {
+                assert_eq!(f.name, "add");
+                assert_eq!(f.params.len(), 2);
+                assert_eq!(f.params[0].name, "a");
+                assert_eq!(f.params[1].name, "b");
+            }
+            other => panic!("Expected function, got {:?}", other),
+        }
+    }
+
     #[test]
     fn test_not_keyword_equals_bang() {
         let bang_expr = parse_expr("!true;");

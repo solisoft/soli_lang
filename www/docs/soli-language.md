@@ -595,7 +595,12 @@ if (len(items) > 0) {
 ### Function Declaration
 
 ```soli
-// No parameters, no return
+// No parameters — parentheses are optional
+fn say_hello {
+    print("Hello!");
+}
+
+// Equivalent with explicit empty parentheses
 fn say_hello() {
     print("Hello!");
 }
