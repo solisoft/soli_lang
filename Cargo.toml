@@ -42,7 +42,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net",
 tokio-stream = "0.1"
 tokio-tungstenite = "0.24"
 hyper-tungstenite = "0.15"
-bytes = "1.5"
+bytes = "1.11.1"
 uuid = { version = "1", features = ["v4", "fast-rng", "serde"] }
 tungstenite = "0.24"
 lazy_static = "1.4"
@@ -95,7 +95,10 @@ quick-xml = { version = "0.36", features = ["serialize"] }
 # Archive extraction for git archive
 flate2 = "1.0"
 tar = "0.4"
-tempdir = "0.3"
+tempfile = "3"
+
+# Pinned transitive dependency to fix RUSTSEC-2026-0009
+time = ">=0.3.47"
 
 [dev-dependencies]
 pretty_assertions = "1.4"

@@ -54,6 +54,31 @@ describe("Hash Access", fn() {
     });
 });
 
+describe("Hash.from_entries", fn() {
+    test("creates hash from key-value pairs", fn() {
+        let pair1 = ["a", 1];
+        let pair2 = ["b", 2];
+        let h = Hash.from_entries([pair1, pair2]);
+        assert_eq(h["a"], 1);
+        assert_eq(h["b"], 2);
+        assert_eq(len(h), 2);
+    });
+
+    test("roundtrip with entries()", fn() {
+        let original = {"x" => 10, "y" => 20, "z" => 30};
+        let rebuilt = Hash.from_entries(original.entries());
+        assert_eq(rebuilt["x"], 10);
+        assert_eq(rebuilt["y"], 20);
+        assert_eq(rebuilt["z"], 30);
+        assert_eq(len(rebuilt), 3);
+    });
+
+    test("empty array creates empty hash", fn() {
+        let h = Hash.from_entries([]);
+        assert_eq(len(h), 0);
+    });
+});
+
 describe("Hash Edge Cases", fn() {
     test("nested hash access", fn() {
         let h = {

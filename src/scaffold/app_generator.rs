@@ -302,9 +302,9 @@ pub fn replace_placeholders(app_path: &Path, name: &str) -> Result<(), String> {
 pub fn create_from_template(name: &str, app_path: &Path, template_url: &str) -> Result<(), String> {
     use flate2::read::GzDecoder;
     use tar;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
-    let temp_dir = TempDir::new("soli-template").map_err(|e| e.to_string())?;
+    let temp_dir = TempDir::new().map_err(|e| e.to_string())?;
     let archive_path = temp_dir.path().join("template.tar.gz");
 
     println!();

@@ -305,6 +305,40 @@ pub fn register_hash_class(env: &mut Environment) {
         })),
     );
 
+    hash_static_methods.insert(
+        "from_entries".to_string(),
+        Rc::new(NativeFunction::new("Hash.from_entries", Some(1), {
+            move |args| {
+                let arr = match args.first() {
+                    Some(Value::Array(a)) => a.borrow().clone(),
+                    _ => return Err("Hash.from_entries() expects an Array".to_string()),
+                };
+                let mut map = IndexMap::new();
+                for (i, item) in arr.iter().enumerate() {
+                    match item {
+                        Value::Array(pair) => {
+                            let pair = pair.borrow();
+                            if pair.len() != 2 {
+                                return Err(format!(
+                                    "Hash.from_entries(): entry at index {} must have exactly 2 elements, got {}",
+                                    i, pair.len()
+                                ));
+                            }
+                            let key = HashKey::from_value(&pair[0]).ok_or_else(|| {
+                                format!("Hash.from_entries(): unhashable key at index {}", i)
+                            })?;
+                            map.insert(key, pair[1].clone());
+                        }
+                        _ => return Err(format!(
+                            "Hash.from_entries(): entry at index {} must be an Array [key, value]", i
+                        )),
+                    }
+                }
+                Ok(Value::Hash(Rc::new(RefCell::new(map))))
+            }
+        })),
+    );
+
     let hash_class = Class {
         name: "Hash".to_string(),
         superclass: None,
