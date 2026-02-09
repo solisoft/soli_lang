@@ -9,7 +9,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  workflows: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -121,6 +120,7 @@ jobs:
 
       - name: Auto-merge release PR
         if: steps.release.outputs.prs_created == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
