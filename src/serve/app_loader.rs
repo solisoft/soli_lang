@@ -403,12 +403,47 @@ pub(crate) fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), Run
     interpreter.interpret(&program)
 }
 
+/// Reload all controllers in a worker thread.
+/// This ensures OOP controllers are properly registered in the environment
+/// before routes are reloaded.
+pub(crate) fn reload_controllers_in_worker(
+    worker_id: usize,
+    interpreter: &mut Interpreter,
+    controllers_dir: &Path,
+    file_tracker: &mut FileTracker,
+) {
+    let controller_files = match scan_controllers(controllers_dir) {
+        Ok(files) => files,
+        Err(e) => {
+            eprintln!(
+                "Worker {}: Error scanning controllers directory: {}",
+                worker_id, e
+            );
+            return;
+        }
+    };
+
+    for controller_path in &controller_files {
+        if let Err(e) = load_controller(interpreter, controller_path, file_tracker) {
+            eprintln!(
+                "Worker {}: Error reloading controller {}: {}",
+                worker_id,
+                controller_path.display(),
+                e
+            );
+        }
+    }
+}
+
 /// Reload routes in a worker thread.
-/// Clears existing routes, resets router context, and re-executes routes.sl.
+/// Clears existing routes, resets router context, reloads controllers, and re-executes routes.sl.
+/// This ensures that OOP controllers are properly loaded before routes are registered.
 pub(crate) fn reload_routes_in_worker(
     worker_id: usize,
     interpreter: &mut Interpreter,
     routes_file: &Path,
+    controllers_dir: &Path,
+    file_tracker: &mut FileTracker,
 ) {
     // 1. Clear existing routes
     crate::interpreter::builtins::server::clear_routes();
@@ -419,7 +454,10 @@ pub(crate) fn reload_routes_in_worker(
     // 3. Reset router context
     crate::interpreter::builtins::router::reset_router_context();
 
-    // 4. Re-execute routes.sl (DSL helpers are already defined in interpreter)
+    // 4. Reload controllers to ensure OOP controller classes are available
+    reload_controllers_in_worker(worker_id, interpreter, controllers_dir, file_tracker);
+
+    // 5. Re-execute routes.sl (DSL helpers are already defined in interpreter)
     if routes_file.exists() {
         if let Err(e) = execute_file(interpreter, routes_file) {
             eprintln!("Worker {}: Error reloading routes: {}", worker_id, e);
@@ -427,6 +465,6 @@ pub(crate) fn reload_routes_in_worker(
         }
     }
 
-    // 5. Rebuild route index
+    // 6. Rebuild route index
     crate::interpreter::builtins::server::rebuild_route_index();
 }

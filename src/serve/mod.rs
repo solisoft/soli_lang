@@ -924,7 +924,14 @@ fn worker_loop(
         // Routes changed - reload routes.sl
         if current_routes != last_routes_version {
             last_routes_version = current_routes;
-            reload_routes_in_worker(worker_id, interpreter, &routes_file);
+            let mut file_tracker = FileTracker::new();
+            reload_routes_in_worker(
+                worker_id,
+                interpreter,
+                &routes_file,
+                &controllers_dir,
+                &mut file_tracker,
+            );
         }
 
         // Process WebSocket events first (quick non-blocking check)
