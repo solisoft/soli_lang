@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.0](https://github.com/solisoft/soli_lang/compare/v0.20.0...v0.21.0) (2026-02-10)
+
+
+### Features
+
+* **hash:** add Hash.from_entries method for creating hashes from key-value pairs ([7e7539a](https://github.com/solisoft/soli_lang/commit/7e7539a81f8f28dd8abf595d3fcd9fa79e234fe7))
+* **routes:** enhance route reloading by adding controller reloading in worker threads ([b3db676](https://github.com/solisoft/soli_lang/commit/b3db676f50e72750bfbf28147989a586c4296a86))
+
 ## [0.20.0](https://github.com/solisoft/soli_lang/compare/v0.19.0...v0.20.0) (2026-02-09)
 
 
