@@ -103,19 +103,29 @@ jobs:
         run: ./bin/soli test tests/
 
   release:
-    needs: tests
+    needs: [build-binaries, docker, publish]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create GitHub Release
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: soli-*.tar.gz
+          merge-multiple: false
+
+      - name: Create GitHub Release with binaries
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create ${{ github.ref_name }} --generate-notes
+        run: |
+          find artifacts -name '*.tar.gz' -exec cp {} . \;
+          gh release create ${{ github.ref_name }} --generate-notes *.tar.gz
 
   build-binaries:
-    needs: release
+    needs: tests
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
         include:
@@ -154,13 +164,15 @@ jobs:
       - name: Package
         run: tar czf ${{ matrix.artifact }} -C target/${{ matrix.target }}/release soli
 
-      - name: Upload release asset
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.ref_name }} ${{ matrix.artifact }}
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
 
   docker:
-    needs: release
+    needs: tests
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -189,7 +201,8 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
 
   publish:
-    needs: release
+    needs: tests
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: main
     steps:
