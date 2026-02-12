@@ -14,12 +14,7 @@
         Prerequisites
     </h2>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">Rust & Cargo</h3>
-            <p class="text-sm text-gray-400">Latest stable version</p>
-            <code class="text-xs text-indigo-300 mt-2 block">rustc --version</code>
-        </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h3 class="font-semibold text-white mb-2">Node.js</h3>
             <p class="text-sm text-gray-400">v16 or higher (for Tailwind CSS)</p>
@@ -39,13 +34,24 @@
 
     <h3 class="text-xl font-semibold text-white mb-4 flex items-center gap-2">
         <span class="inline-flex items-center rounded-md bg-green-500/20 px-2 py-1 text-xs font-medium text-green-400 ring-1 ring-inset ring-green-500/40">Recommended</span>
-        Simple Installation
+        Quick Install
     </h3>
 
-    <pre data-filename="Terminal"><code class="language-bash text-sm">cargo install solilang
+    <pre data-filename="Terminal"><code class="language-bash text-sm">curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh</code></pre>
 
-# Verify installation
-soli --version</code></pre>
+    <p class="text-gray-400 mt-4 mb-2 text-sm">
+        This detects your OS and architecture, downloads the latest release binary, and installs it to <code class="text-indigo-300">~/.local/bin</code>.
+    </p>
+
+    <p class="text-gray-400 mb-8 text-sm">
+        For system-wide installation:
+    </p>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm">curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh -s -- --system</code></pre>
+
+    <h3 class="text-xl font-semibold text-white mb-4 mt-8">Via Cargo</h3>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm">cargo install solilang</code></pre>
 
     <h3 class="text-xl font-semibold text-white mb-4 mt-8">From Source</h3>
 

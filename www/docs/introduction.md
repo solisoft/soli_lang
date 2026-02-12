@@ -24,8 +24,11 @@ The MVC pattern separates your application into three main layers:
 ## Quick Start
 
 ```bash
+# Install Soli
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh
+
 # Clone the MVC template
-git clone https://github.com/solilang/mvc-template myapp
+git clone https://github.com/solisoft/mvc-template myapp
 cd myapp
 
 # Install dependencies

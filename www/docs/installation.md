@@ -2,13 +2,26 @@
 
 ## Prerequisites
 
-- Rust and Cargo (latest stable)
 - Node.js (v16 or higher)
 - npm or yarn
 
 ## Install SoliLang
 
-### Simple Installation (Recommended)
+### Quick Install (Recommended)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh
+```
+
+This detects your OS and architecture, downloads the latest release binary, and installs it to `~/.local/bin`.
+
+For system-wide installation:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh -s -- --system
+```
+
+### Via Cargo
 
 ```bash
 cargo install solilang
@@ -18,8 +31,8 @@ cargo install solilang
 
 ```bash
 # Clone the repository
-git clone https://github.com/solilang/solilang.git
-cd solilang
+git clone https://github.com/solisoft/soli_lang.git
+cd soli_lang
 
 # Build the project
 cargo build --release
