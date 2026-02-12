@@ -464,15 +464,17 @@ impl<'a> Scanner<'a> {
     fn scan_number(&mut self, first: char) -> Result<Token, LexerError> {
         let mut value = String::from(first);
         let mut is_float = false;
+        let mut has_decimal_point = false;
 
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() {
                 value.push(c);
                 self.advance();
-            } else if c == '.' && !is_float {
+            } else if c == '.' && !has_decimal_point {
                 // Check if next char is a digit (to distinguish from method calls)
                 if let Some(next) = self.peek_next() {
                     if next.is_ascii_digit() {
+                        has_decimal_point = true;
                         is_float = true;
                         value.push(c);
                         self.advance();
@@ -490,7 +492,37 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        if is_float {
+        // Check for D suffix (Decimal literal)
+        if self.peek() == Some('D') {
+            // Decimal literal must have a decimal point
+            if !has_decimal_point {
+                return Err(LexerError::invalid_number(
+                    format!(
+                        "{}D - Decimal literals require decimal places (e.g., 19.99D)",
+                        value
+                    ),
+                    self.current_span(),
+                ));
+            }
+            self.advance(); // consume D
+                            // Normalize decimal: remove trailing zeros after decimal point but keep at least one digit
+            let decimal_value = if let Some(dot_pos) = value.find('.') {
+                let before_dot = &value[..dot_pos];
+                let after_dot = &value[dot_pos + 1..];
+                // Remove trailing zeros from fractional part
+                let trimmed = after_dot.trim_end_matches('0');
+                if trimmed.is_empty() {
+                    // All zeros after decimal, keep just the integer part with ".00"
+                    format!("{}.00", before_dot)
+                } else {
+                    // Keep the fractional part with at least one digit
+                    format!("{}.{}", before_dot, trimmed)
+                }
+            } else {
+                value.clone()
+            };
+            Ok(self.make_token(TokenKind::DecimalLiteral(decimal_value)))
+        } else if is_float {
             let n: f64 = value
                 .parse()
                 .map_err(|_| LexerError::invalid_number(value.clone(), self.current_span()))?;

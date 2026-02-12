@@ -5,7 +5,7 @@
 <h1 align="center">Soli MVC Framework</h1>
 
 <p align="center">
-  <strong>A modern, high-performance web framework combining elegant syntax with blazing fast execution.</strong>
+  <strong>A dynamically-typed, high-performance web framework with optional type annotations.</strong>
 </p>
 
 <p align="center">

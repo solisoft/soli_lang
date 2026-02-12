@@ -236,6 +236,7 @@ impl TypeChecker {
                 let literal_type = match literal {
                     ExprKind::IntLiteral(_) => Type::Int,
                     ExprKind::FloatLiteral(_) => Type::Float,
+                    ExprKind::DecimalLiteral(_) => Type::Decimal(0),
                     ExprKind::StringLiteral(_) => Type::String,
                     ExprKind::BoolLiteral(_) => Type::Bool,
                     ExprKind::Null => Type::Null,

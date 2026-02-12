@@ -8,6 +8,7 @@ pub enum TokenKind {
     // Literals
     IntLiteral(i64),
     FloatLiteral(f64),
+    DecimalLiteral(String), // String representation of decimal value (e.g., "19.99")
     StringLiteral(String),
     InterpolatedString(Vec<String>), // Parts for interpolation
     BoolLiteral(bool),
@@ -60,6 +61,7 @@ pub enum TokenKind {
     // Type keywords
     Int,
     Float,
+    Decimal,
     Bool,
     String,
     Void,
@@ -153,6 +155,7 @@ impl TokenKind {
             "Int" => Some(TokenKind::Int),
             "Float" => Some(TokenKind::Float),
             "Bool" => Some(TokenKind::Bool),
+            "Decimal" => Some(TokenKind::Decimal),
             "String" => Some(TokenKind::String),
             "Void" => Some(TokenKind::Void),
             _ => None,
@@ -165,6 +168,7 @@ impl std::fmt::Display for TokenKind {
         match self {
             TokenKind::IntLiteral(n) => write!(f, "{}", n),
             TokenKind::FloatLiteral(n) => write!(f, "{}", n),
+            TokenKind::DecimalLiteral(s) => write!(f, "{}", s),
             TokenKind::StringLiteral(s) => write!(f, "\"{}\"", s),
             TokenKind::InterpolatedString(parts) => {
                 write!(f, "interp\"{}\"", parts.join("...("))
@@ -211,6 +215,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::As => write!(f, "as"),
             TokenKind::Int => write!(f, "Int"),
             TokenKind::Float => write!(f, "Float"),
+            TokenKind::Decimal => write!(f, "Decimal"),
             TokenKind::Bool => write!(f, "Bool"),
             TokenKind::String => write!(f, "String"),
             TokenKind::Void => write!(f, "Void"),

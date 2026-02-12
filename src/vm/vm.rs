@@ -971,6 +971,12 @@ fn constant_to_value(constant: &Constant) -> Value {
     match constant {
         Constant::Int(n) => Value::Int(*n),
         Constant::Float(n) => Value::Float(*n),
+        Constant::Decimal(s) => {
+            use crate::interpreter::value::DecimalValue;
+            let decimal: rust_decimal::Decimal = s.parse().unwrap_or_default();
+            let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
+            Value::Decimal(DecimalValue(decimal, precision))
+        }
         Constant::String(s) => Value::String(s.clone()),
         Constant::Bool(b) => Value::Bool(*b),
         Constant::Null => Value::Null,

@@ -9,6 +9,8 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
 use indexmap::IndexMap;
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 
 use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt};
 use crate::interpreter::builtins::model::QueryBuilder;
@@ -16,11 +18,52 @@ use crate::interpreter::environment::Environment;
 use crate::span::Span;
 use crate::vm::upvalue::VmClosure;
 
+/// A Decimal value wrapper for financial calculations.
+/// Uses rust_decimal for exact decimal arithmetic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecimalValue(pub Decimal, pub u32); // (value, precision)
+
+impl DecimalValue {
+    /// Create a new DecimalValue from a string representation
+    pub fn from_str(s: &str, precision: u32) -> Result<Self, String> {
+        let decimal: Decimal = s.parse().map_err(|_| format!("Invalid decimal: {}", s))?;
+        Ok(Self(decimal, precision))
+    }
+
+    /// Get the precision (number of decimal places)
+    pub fn precision(&self) -> u32 {
+        self.1
+    }
+
+    /// Get the underlying decimal value
+    pub fn value(&self) -> &Decimal {
+        &self.0
+    }
+
+    /// Convert to f64 (loss of precision)
+    pub fn to_f64(&self) -> f64 {
+        self.0.to_f64().unwrap_or(0.0)
+    }
+}
+
+impl std::fmt::Display for DecimalValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Hash for DecimalValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
 /// A hashable key type for use in IndexMap.
 /// This wraps primitive Value types that can be used as hash keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HashKey {
     Int(i64),
+    Decimal(DecimalValue), // Hashable Decimal
     String(String),
     Bool(bool),
     Null,
@@ -31,6 +74,7 @@ impl Hash for HashKey {
         std::mem::discriminant(self).hash(state);
         match self {
             HashKey::Int(n) => n.hash(state),
+            HashKey::Decimal(d) => d.hash(state),
             HashKey::String(s) => s.hash(state),
             HashKey::Bool(b) => b.hash(state),
             HashKey::Null => {}
@@ -43,6 +87,7 @@ impl HashKey {
     pub fn from_value(value: &Value) -> Option<HashKey> {
         match value {
             Value::Int(n) => Some(HashKey::Int(*n)),
+            Value::Decimal(d) => Some(HashKey::Decimal(d.clone())),
             Value::String(s) => Some(HashKey::String(s.clone())),
             Value::Bool(b) => Some(HashKey::Bool(*b)),
             Value::Null => Some(HashKey::Null),
@@ -55,6 +100,7 @@ impl HashKey {
     pub fn to_value(&self) -> Value {
         match self {
             HashKey::Int(n) => Value::Int(*n),
+            HashKey::Decimal(d) => Value::Decimal(d.clone()),
             HashKey::String(s) => Value::String(s.clone()),
             HashKey::Bool(b) => Value::Bool(*b),
             HashKey::Null => Value::Null,
@@ -66,6 +112,7 @@ impl std::fmt::Display for HashKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             HashKey::Int(n) => write!(f, "{}", n),
+            HashKey::Decimal(d) => write!(f, "{}", d),
             HashKey::String(s) => write!(f, "{}", s),
             HashKey::Bool(b) => write!(f, "{}", b),
             HashKey::Null => write!(f, "null"),
@@ -98,6 +145,8 @@ pub enum Value {
     Int(i64),
     /// Floating point value
     Float(f64),
+    /// Decimal value (exact arithmetic for financial calculations)
+    Decimal(DecimalValue),
     /// String value
     String(String),
     /// Boolean value
@@ -179,6 +228,7 @@ impl Value {
         match self {
             Value::Int(_) => "int".to_string(),
             Value::Float(_) => "float".to_string(),
+            Value::Decimal(_) => "decimal".to_string(),
             Value::String(_) => "string".to_string(),
             Value::Bool(_) => "bool".to_string(),
             Value::Null => "null".to_string(),
@@ -246,6 +296,7 @@ impl Value {
             Value::Bool(b) => *b,
             Value::Null => false,
             Value::Int(0) => false,
+            Value::Decimal(_) => true,
             Value::String(s) if s.is_empty() => false,
             Value::Array(arr) if arr.borrow().is_empty() => false,
             Value::Hash(hash) if hash.borrow().is_empty() => false,
@@ -260,7 +311,7 @@ impl Value {
     pub fn is_hashable(&self) -> bool {
         matches!(
             self,
-            Value::Int(_) | Value::String(_) | Value::Bool(_) | Value::Null
+            Value::Int(_) | Value::Decimal(_) | Value::String(_) | Value::Bool(_) | Value::Null
         )
     }
 
@@ -274,6 +325,7 @@ impl Value {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::Decimal(a), Value::Decimal(b)) => a == b,
             (Value::Int(a), Value::Float(b)) => (*a as f64) == *b,
             (Value::Float(a), Value::Int(b)) => *a == (*b as f64),
             (Value::String(a), Value::String(b)) => a == b,
@@ -289,6 +341,7 @@ impl PartialEq for Value {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::Decimal(a), Value::Decimal(b)) => a == b,
             (Value::Int(a), Value::Float(b)) => (*a as f64) == *b,
             (Value::Float(a), Value::Int(b)) => *a == (*b as f64),
             (Value::String(a), Value::String(b)) => a == b,
@@ -327,6 +380,7 @@ impl fmt::Display for Value {
         match self {
             Value::Int(n) => write!(f, "{}", n),
             Value::Float(n) => write!(f, "{}", n),
+            Value::Decimal(d) => write!(f, "{}", d),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Null => write!(f, "null"),
@@ -792,7 +846,16 @@ pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
                 Err("Invalid JSON number".to_string())
             }
         }
-        serde_json::Value::String(s) => Ok(Value::String(s.clone())),
+        serde_json::Value::String(s) => {
+            // Try to parse as decimal first
+            if let Ok(d) = s.parse::<Decimal>() {
+                // Count decimal places
+                let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
+                Ok(Value::Decimal(DecimalValue(d, precision)))
+            } else {
+                Ok(Value::String(s.clone()))
+            }
+        }
         serde_json::Value::Array(arr) => {
             let items: Result<Vec<Value>, String> = arr.iter().map(json_to_value).collect();
             Ok(Value::Array(Rc::new(RefCell::new(items?))))
@@ -814,6 +877,7 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
         Value::Float(f) => Ok(serde_json::Value::Number(
             serde_json::Number::from_f64(*f).ok_or_else(|| "Invalid float".to_string())?,
         )),
+        Value::Decimal(d) => Ok(serde_json::Value::String(d.to_string())),
         Value::String(s) => Ok(serde_json::Value::String(s.clone())),
         Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
         Value::Null => Ok(serde_json::Value::Null),
@@ -855,5 +919,381 @@ pub fn unwrap_value(value: &Value) -> Value {
             _ => value.clone(),
         },
         _ => value.clone(),
+    }
+}
+
+#[cfg(test)]
+mod decimal_tests {
+    use super::*;
+    use rust_decimal::Decimal;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_decimal_value_creation() {
+        let decimal = Decimal::from_str("19.99").unwrap();
+        let decimal_value = DecimalValue(decimal, 2);
+
+        assert_eq!(decimal_value.precision(), 2);
+        assert_eq!(decimal_value.to_string(), "19.99");
+    }
+
+    #[test]
+    fn test_decimal_value_from_str() {
+        let result = DecimalValue::from_str("19.99", 2);
+        assert!(result.is_ok());
+        let decimal_value = result.unwrap();
+        assert_eq!(decimal_value.precision(), 2);
+        assert_eq!(decimal_value.to_string(), "19.99");
+    }
+
+    #[test]
+    fn test_decimal_value_from_str_invalid() {
+        let result = DecimalValue::from_str("not_a_decimal", 2);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decimal_value_to_f64() {
+        let decimal = Decimal::from_str("19.99").unwrap();
+        let decimal_value = DecimalValue(decimal, 2);
+
+        let f64_val = decimal_value.to_f64();
+        assert!((f64_val - 19.99).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_decimal_value_display() {
+        let decimal = Decimal::from_str("123.45").unwrap();
+        let decimal_value = DecimalValue(decimal, 2);
+
+        let display = format!("{}", decimal_value);
+        assert_eq!(display, "123.45");
+    }
+
+    #[test]
+    fn test_decimal_value_clone() {
+        let decimal = Decimal::from_str("99.99").unwrap();
+        let original = DecimalValue(decimal, 2);
+        let cloned = original.clone();
+
+        assert_eq!(original.to_string(), cloned.to_string());
+        assert_eq!(original.precision(), cloned.precision());
+    }
+
+    #[test]
+    fn test_decimal_value_hash() {
+        let decimal1 = Decimal::from_str("10.00").unwrap();
+        let decimal2 = Decimal::from_str("10.00").unwrap();
+        let decimal3 = Decimal::from_str("20.00").unwrap();
+
+        let dv1 = DecimalValue(decimal1, 2);
+        let dv2 = DecimalValue(decimal2, 2);
+        let dv3 = DecimalValue(decimal3, 2);
+
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hash;
+
+        let mut hasher1 = DefaultHasher::new();
+        dv1.hash(&mut hasher1);
+        let hash1 = hasher1.finish();
+
+        let mut hasher2 = DefaultHasher::new();
+        dv2.hash(&mut hasher2);
+        let hash2 = hasher2.finish();
+
+        let mut hasher3 = DefaultHasher::new();
+        dv3.hash(&mut hasher3);
+        let hash3 = hasher3.finish();
+
+        assert_eq!(hash1, hash2);
+        assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn test_hash_key_decimal() {
+        let decimal = Decimal::from_str("19.99").unwrap();
+        let decimal_value = DecimalValue(decimal, 2);
+
+        let hash_key = HashKey::Decimal(decimal_value.clone());
+        let back_to_value = hash_key.to_value();
+
+        match back_to_value {
+            Value::Decimal(dv) => {
+                assert_eq!(dv.to_string(), decimal_value.to_string());
+            }
+            _ => panic!("Expected Decimal value"),
+        }
+    }
+
+    #[test]
+    fn test_json_to_value_decimal_string() {
+        let json = serde_json::Value::String("19.99".to_string());
+        let result = json_to_value(&json);
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+
+        match value {
+            Value::Decimal(dv) => {
+                assert_eq!(dv.to_string(), "19.99");
+            }
+            _ => panic!("Expected Decimal value, got {:?}", value.type_name()),
+        }
+    }
+
+    #[test]
+    fn test_json_to_value_decimal_string_precision() {
+        let json = serde_json::Value::String("0.0675".to_string());
+        let result = json_to_value(&json);
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+
+        match value {
+            Value::Decimal(dv) => {
+                assert_eq!(dv.precision(), 4);
+                assert_eq!(dv.to_string(), "0.0675");
+            }
+            _ => panic!("Expected Decimal value"),
+        }
+    }
+
+    #[test]
+    fn test_json_to_value_decimal_integer_string() {
+        let json = serde_json::Value::String("100".to_string());
+        let result = json_to_value(&json);
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+
+        match value {
+            Value::Decimal(dv) => {
+                assert_eq!(dv.precision(), 0);
+                assert_eq!(dv.to_string(), "100");
+            }
+            _ => panic!("Expected Decimal value"),
+        }
+    }
+
+    #[test]
+    fn test_value_to_json_decimal() {
+        let decimal = Decimal::from_str("19.99").unwrap();
+        let decimal_value = DecimalValue(decimal, 2);
+        let value = Value::Decimal(decimal_value);
+
+        let result = value_to_json(&value);
+
+        assert!(result.is_ok());
+        let json = result.unwrap();
+
+        match json {
+            serde_json::Value::String(s) => {
+                assert_eq!(s, "19.99");
+            }
+            _ => panic!("Expected JSON string"),
+        }
+    }
+
+    #[test]
+    fn test_value_decimal_type_name() {
+        let decimal = Decimal::from_str("19.99").unwrap();
+        let decimal_value = DecimalValue(decimal, 2);
+        let value = Value::Decimal(decimal_value);
+
+        assert_eq!(value.type_name(), "decimal");
+    }
+
+    #[test]
+    fn test_value_decimal_is_truthy() {
+        let decimal = Decimal::from_str("0.00").unwrap();
+        let decimal_value = DecimalValue(decimal, 2);
+        let value = Value::Decimal(decimal_value);
+
+        assert!(value.is_truthy());
+    }
+
+    #[test]
+    fn test_value_decimal_is_hashable() {
+        let decimal = Decimal::from_str("19.99").unwrap();
+        let decimal_value = DecimalValue(decimal, 2);
+        let value = Value::Decimal(decimal_value);
+
+        assert!(value.is_hashable());
+    }
+
+    #[test]
+    fn test_value_decimal_equality() {
+        let decimal1 = Decimal::from_str("19.99").unwrap();
+        let decimal2 = Decimal::from_str("19.99").unwrap();
+        let decimal3 = Decimal::from_str("20.00").unwrap();
+
+        let value1 = Value::Decimal(DecimalValue(decimal1, 2));
+        let value2 = Value::Decimal(DecimalValue(decimal2, 2));
+        let value3 = Value::Decimal(DecimalValue(decimal3, 2));
+
+        assert_eq!(value1, value2);
+        assert_ne!(value1, value3);
+    }
+
+    #[test]
+    fn test_value_decimal_partial_eq() {
+        let decimal = Decimal::from_str("10.00").unwrap();
+        let value = Value::Decimal(DecimalValue(decimal, 2));
+
+        assert!(value == Value::Decimal(DecimalValue(Decimal::from_str("10.00").unwrap(), 2)));
+        assert!(value != Value::Decimal(DecimalValue(Decimal::from_str("20.00").unwrap(), 2)));
+    }
+
+    #[test]
+    fn test_decimal_precision_variations() {
+        let test_cases = vec![
+            ("0.1", 1),
+            ("0.01", 2),
+            ("0.001", 3),
+            ("0.0001", 4),
+            ("123.45", 2),
+            ("1000", 0),
+        ];
+
+        for (input, expected_precision) in test_cases {
+            let json = serde_json::Value::String(input.to_string());
+            let result = json_to_value(&json);
+
+            assert!(result.is_ok(), "Failed for input: {}", input);
+            let value = result.unwrap();
+
+            match value {
+                Value::Decimal(dv) => {
+                    assert_eq!(
+                        dv.precision(),
+                        expected_precision,
+                        "Precision mismatch for input: {}",
+                        input
+                    );
+                }
+                _ => panic!("Expected Decimal value for input: {}", input),
+            }
+        }
+    }
+
+    #[test]
+    fn test_decimal_zero_values() {
+        let zero_values = vec!["0", "0.0", "0.00", "0.000"];
+
+        for input in zero_values {
+            let json = serde_json::Value::String(input.to_string());
+            let result = json_to_value(&json);
+
+            assert!(result.is_ok(), "Failed for zero input: {}", input);
+            let value = result.unwrap();
+
+            match value {
+                Value::Decimal(dv) => {
+                    let dv_str = dv.to_string();
+                    assert!(
+                        dv_str == "0" || dv_str == "0.0" || dv_str == "0.00" || dv_str == "0.000",
+                        "Unexpected zero format for input {}: got {}",
+                        input,
+                        dv_str
+                    );
+                }
+                _ => panic!("Expected Decimal value for zero input: {}", input),
+            }
+        }
+    }
+
+    #[test]
+    fn test_decimal_negative_values() {
+        let json = serde_json::Value::String("-19.99".to_string());
+        let result = json_to_value(&json);
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+
+        match value {
+            Value::Decimal(dv) => {
+                assert_eq!(dv.to_string(), "-19.99");
+            }
+            _ => panic!("Expected Decimal value for negative input"),
+        }
+    }
+
+    #[test]
+    fn test_decimal_large_values() {
+        let json = serde_json::Value::String("9999999999.99".to_string());
+        let result = json_to_value(&json);
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+
+        match value {
+            Value::Decimal(dv) => {
+                assert_eq!(dv.to_string(), "9999999999.99");
+            }
+            _ => panic!("Expected Decimal value for large input"),
+        }
+    }
+
+    #[test]
+    fn test_decimal_in_array_json() {
+        let json = serde_json::Value::Array(vec![
+            serde_json::Value::String("10.00".to_string()),
+            serde_json::Value::String("20.50".to_string()),
+            serde_json::Value::String("30.75".to_string()),
+        ]);
+
+        let result = json_to_value(&json);
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+
+        match value {
+            Value::Array(arr_ref) => {
+                let arr = arr_ref.borrow();
+                assert_eq!(arr.len(), 3);
+
+                match &arr[0] {
+                    Value::Decimal(dv) => assert_eq!(dv.to_string(), "10.00"),
+                    _ => panic!("Expected Decimal in array"),
+                }
+            }
+            _ => panic!("Expected Array value"),
+        }
+    }
+
+    #[test]
+    fn test_decimal_in_hash_json() {
+        let mut map = serde_json::Map::new();
+        map.insert(
+            "price".to_string(),
+            serde_json::Value::String("19.99".to_string()),
+        );
+        map.insert(
+            "name".to_string(),
+            serde_json::Value::String("Widget".to_string()),
+        );
+        let json = serde_json::Value::Object(map);
+
+        let result = json_to_value(&json);
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+
+        match value {
+            Value::Hash(hash_ref) => {
+                let hash = hash_ref.borrow();
+                let price_key = HashKey::String("price".to_string());
+
+                if let Some(price_value) = hash.get(&price_key) {
+                    match price_value {
+                        Value::Decimal(dv) => assert_eq!(dv.to_string(), "19.99"),
+                        _ => panic!("Expected Decimal value for price"),
+                    }
+                } else {
+                    panic!("Price key not found in hash");
+                }
+            }
+            _ => panic!("Expected Hash value"),
+        }
     }
 }

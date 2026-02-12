@@ -178,6 +178,9 @@ impl Compiler {
             ExprKind::FloatLiteral(n) => {
                 self.emit_constant(Constant::Float(*n), line);
             }
+            ExprKind::DecimalLiteral(s) => {
+                self.emit_constant(Constant::Decimal(s.clone()), line);
+            }
             ExprKind::StringLiteral(s) => {
                 self.emit_constant(Constant::String(s.clone()), line);
             }

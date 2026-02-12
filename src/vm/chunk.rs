@@ -13,6 +13,8 @@ pub enum Constant {
     String(String),
     Bool(bool),
     Null,
+    /// Decimal value stored as string (parsed at runtime)
+    Decimal(String),
     /// A compiled function prototype.
     Function(Rc<FunctionProto>),
 }

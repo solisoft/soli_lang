@@ -10,6 +10,8 @@ pub enum Type {
     Int,
     /// Primitive float type
     Float,
+    /// Decimal type with precision (number of decimal places)
+    Decimal(u32),
     /// Primitive boolean type
     Bool,
     /// Primitive string type
@@ -44,11 +46,14 @@ pub enum Type {
 
 impl Type {
     pub fn is_numeric(&self) -> bool {
-        matches!(self, Type::Int | Type::Float)
+        matches!(self, Type::Int | Type::Float | Type::Decimal(_))
     }
 
     pub fn is_primitive(&self) -> bool {
-        matches!(self, Type::Int | Type::Float | Type::Bool | Type::String)
+        matches!(
+            self,
+            Type::Int | Type::Float | Type::Decimal(_) | Type::Bool | Type::String
+        )
     }
 
     /// Check if this type is assignable to another type.
@@ -124,6 +129,7 @@ impl fmt::Display for Type {
         match self {
             Type::Int => write!(f, "Int"),
             Type::Float => write!(f, "Float"),
+            Type::Decimal(precision) => write!(f, "Decimal({})", precision),
             Type::Bool => write!(f, "Bool"),
             Type::String => write!(f, "String"),
             Type::Void => write!(f, "Void"),

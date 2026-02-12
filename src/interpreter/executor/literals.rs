@@ -35,6 +35,14 @@ impl Interpreter {
         match literal {
             ExprKind::IntLiteral(n) => Ok(Value::Int(*n)),
             ExprKind::FloatLiteral(n) => Ok(Value::Float(*n)),
+            ExprKind::DecimalLiteral(s) => {
+                use crate::interpreter::value::DecimalValue;
+                let decimal: rust_decimal::Decimal = s.parse().map_err(|_| {
+                    RuntimeError::type_error("invalid decimal literal", Span::default())
+                })?;
+                let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
+                Ok(Value::Decimal(DecimalValue(decimal, precision)))
+            }
             ExprKind::StringLiteral(s) => Ok(Value::String(s.clone())),
             ExprKind::BoolLiteral(b) => Ok(Value::Bool(*b)),
             ExprKind::Null => Ok(Value::Null),

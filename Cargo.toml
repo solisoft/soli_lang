@@ -1,8 +1,8 @@
 [package]
 name = "solilang"
-version = "0.21.1"
+version = "0.22.0"
 edition = "2021"
-description = "A statically-typed, class-based OOP language with pipeline operators"
+description = "A dynamically-typed, class-based OOP language with optional type annotations and pipeline operators"
 authors = ["Solilang Team"]
 license = "MIT"
 repository = "https://github.com/solisoft/soli_lang"
@@ -22,6 +22,9 @@ full = ["coverage"]
 thiserror = "1.0"
 colored = "2.1"
 dirs = "5.0"
+
+# Decimal type for financial calculations
+rust_decimal = { version = "1.34", features = ["std", "serde"] }
 
 # TUI support
 ratatui = "0.26"

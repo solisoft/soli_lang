@@ -368,6 +368,7 @@ fn build_json_from_value(value: &Value) -> String {
                     let key = match k {
                         HashKey::String(s) => format!("\"{}\"", s),
                         HashKey::Int(i) => i.to_string(),
+                        HashKey::Decimal(d) => d.to_string(),
                         HashKey::Bool(b) => b.to_string(),
                         HashKey::Null => "null".to_string(),
                     };
@@ -520,6 +521,7 @@ fn value_to_xml(value: &Value, element_name: &str) -> String {
                 let key = match k {
                     HashKey::String(s) => s.clone(),
                     HashKey::Int(i) => i.to_string(),
+                    HashKey::Decimal(d) => d.to_string(),
                     HashKey::Bool(b) => b.to_string(),
                     HashKey::Null => "null".to_string(),
                 };
@@ -591,6 +593,7 @@ fn get_value_string(value: &Value) -> String {
                     let key = match k {
                         HashKey::String(s) => s.clone(),
                         HashKey::Int(i) => i.to_string(),
+                        HashKey::Decimal(d) => d.to_string(),
                         HashKey::Bool(b) => b.to_string(),
                         HashKey::Null => "null".to_string(),
                     };

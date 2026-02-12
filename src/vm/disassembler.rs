@@ -176,6 +176,7 @@ fn format_constant(val: Option<&Constant>) -> String {
     match val {
         Some(Constant::Int(n)) => format!("{}", n),
         Some(Constant::Float(n)) => format!("{}", n),
+        Some(Constant::Decimal(s)) => format!("{}D", s),
         Some(Constant::String(s)) => format!("\"{}\"", s),
         Some(Constant::Bool(b)) => format!("{}", b),
         Some(Constant::Null) => "null".to_string(),

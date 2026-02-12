@@ -35,6 +35,9 @@ impl Parser {
         match &token.kind {
             TokenKind::IntLiteral(n) => Ok(Expr::new(ExprKind::IntLiteral(*n), start_span)),
             TokenKind::FloatLiteral(n) => Ok(Expr::new(ExprKind::FloatLiteral(*n), start_span)),
+            TokenKind::DecimalLiteral(s) => {
+                Ok(Expr::new(ExprKind::DecimalLiteral(s.clone()), start_span))
+            }
             TokenKind::StringLiteral(s) => {
                 Ok(Expr::new(ExprKind::StringLiteral(s.clone()), start_span))
             }

@@ -461,7 +461,8 @@ impl CoverageTracker {
             Unary { operand, .. } => {
                 self.collect_lines_from_expr(path, lines, operand);
             }
-            IntLiteral(_) | FloatLiteral(_) | StringLiteral(_) | BoolLiteral(_) | Null => {}
+            IntLiteral(_) | FloatLiteral(_) | DecimalLiteral(_) | StringLiteral(_)
+            | BoolLiteral(_) | Null => {}
             Variable(_) => {}
             Assign { value, .. } => {
                 self.collect_lines_from_expr(path, lines, value);

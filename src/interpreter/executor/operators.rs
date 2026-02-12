@@ -3,6 +3,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use rust_decimal::prelude::ToPrimitive;
+
 use crate::ast::*;
 use crate::error::RuntimeError;
 use crate::interpreter::value::Value;
@@ -68,6 +70,29 @@ impl Interpreter {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
+            (Value::Decimal(a), Value::Decimal(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                Ok(Value::Decimal(DecimalValue(
+                    a.0 + b.0,
+                    std::cmp::max(a.1, b.1),
+                )))
+            }
+            (Value::Decimal(a), Value::Int(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                let b_dec = rust_decimal::Decimal::from(*b);
+                Ok(Value::Decimal(DecimalValue(a.0 + b_dec, a.1)))
+            }
+            (Value::Int(b), Value::Decimal(a)) => {
+                use crate::interpreter::value::DecimalValue;
+                let b_dec = rust_decimal::Decimal::from(*b);
+                Ok(Value::Decimal(DecimalValue(b_dec + a.0, a.1)))
+            }
+            (Value::Decimal(a), Value::Float(b)) => {
+                Ok(Value::Float(a.value().to_f64().unwrap_or(0.0) + b))
+            }
+            (Value::Float(a), Value::Decimal(b)) => {
+                Ok(Value::Float(a + b.value().to_f64().unwrap_or(0.0)))
+            }
             (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
             (Value::String(a), b) => Ok(Value::String(format!("{}{}", a, b))),
             (a, Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
@@ -84,6 +109,29 @@ impl Interpreter {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - *b as f64)),
+            (Value::Decimal(a), Value::Decimal(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                Ok(Value::Decimal(DecimalValue(
+                    a.0 - b.0,
+                    std::cmp::max(a.1, b.1),
+                )))
+            }
+            (Value::Decimal(a), Value::Int(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                let b_dec = rust_decimal::Decimal::from(*b);
+                Ok(Value::Decimal(DecimalValue(a.0 - b_dec, a.1)))
+            }
+            (Value::Int(b), Value::Decimal(a)) => {
+                use crate::interpreter::value::DecimalValue;
+                let b_dec = rust_decimal::Decimal::from(*b);
+                Ok(Value::Decimal(DecimalValue(b_dec - a.0, a.1)))
+            }
+            (Value::Decimal(a), Value::Float(b)) => {
+                Ok(Value::Float(a.value().to_f64().unwrap_or(0.0) - b))
+            }
+            (Value::Float(a), Value::Decimal(b)) => {
+                Ok(Value::Float(a - b.value().to_f64().unwrap_or(0.0)))
+            }
             _ => Err(RuntimeError::type_error(
                 format!(
                     "cannot subtract {} from {}",
@@ -101,6 +149,26 @@ impl Interpreter {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
+            (Value::Decimal(a), Value::Decimal(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                Ok(Value::Decimal(DecimalValue(a.0 * b.0, a.1 + b.1)))
+            }
+            (Value::Decimal(a), Value::Int(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                let b_dec = rust_decimal::Decimal::from(*b);
+                Ok(Value::Decimal(DecimalValue(a.0 * b_dec, a.1)))
+            }
+            (Value::Int(b), Value::Decimal(a)) => {
+                use crate::interpreter::value::DecimalValue;
+                let b_dec = rust_decimal::Decimal::from(*b);
+                Ok(Value::Decimal(DecimalValue(b_dec * a.0, a.1)))
+            }
+            (Value::Decimal(a), Value::Float(b)) => {
+                Ok(Value::Float(a.value().to_f64().unwrap_or(0.0) * b))
+            }
+            (Value::Float(a), Value::Decimal(b)) => {
+                Ok(Value::Float(a * b.value().to_f64().unwrap_or(0.0)))
+            }
             (Value::String(s), Value::Int(n)) | (Value::Int(n), Value::String(s)) => {
                 Ok(Value::String(s.repeat(*n as usize)))
             }
@@ -145,6 +213,35 @@ impl Interpreter {
                     Ok(Value::Float(a / *b as f64))
                 }
             }
+            (Value::Decimal(a), Value::Decimal(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                if b.0.is_zero() {
+                    Err(RuntimeError::division_by_zero(span))
+                } else {
+                    Ok(Value::Decimal(DecimalValue(
+                        a.0 / b.0,
+                        std::cmp::max(a.1, b.1),
+                    )))
+                }
+            }
+            (Value::Decimal(a), Value::Int(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                if *b == 0 {
+                    Err(RuntimeError::division_by_zero(span))
+                } else {
+                    let b_dec = rust_decimal::Decimal::from(*b);
+                    Ok(Value::Decimal(DecimalValue(a.0 / b_dec, a.1)))
+                }
+            }
+            (Value::Int(b), Value::Decimal(a)) => {
+                use crate::interpreter::value::DecimalValue;
+                if a.0.is_zero() {
+                    Err(RuntimeError::division_by_zero(span))
+                } else {
+                    let b_dec = rust_decimal::Decimal::from(*b);
+                    Ok(Value::Decimal(DecimalValue(b_dec / a.0, a.1)))
+                }
+            }
             _ => Err(RuntimeError::type_error(
                 format!(
                     "cannot divide {} by {}",
@@ -168,6 +265,17 @@ impl Interpreter {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 % b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a % *b as f64)),
+            (Value::Decimal(a), Value::Decimal(b)) => {
+                use crate::interpreter::value::DecimalValue;
+                if b.0.is_zero() {
+                    Err(RuntimeError::division_by_zero(span))
+                } else {
+                    Ok(Value::Decimal(DecimalValue(
+                        a.0 % b.0,
+                        std::cmp::max(a.1, b.1),
+                    )))
+                }
+            }
             _ => Err(RuntimeError::type_error(
                 format!(
                     "cannot modulo {} by {}",
@@ -194,6 +302,27 @@ impl Interpreter {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a, *b))),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a as f64, *b))),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(cmp(*a, *b as f64))),
+            (Value::Decimal(a), Value::Decimal(b)) => {
+                let left_f64 = a.value().to_f64().unwrap_or(0.0);
+                let right_f64 = b.value().to_f64().unwrap_or(0.0);
+                Ok(Value::Bool(cmp(left_f64, right_f64)))
+            }
+            (Value::Decimal(a), Value::Int(b)) => {
+                let left_f64 = a.value().to_f64().unwrap_or(0.0);
+                Ok(Value::Bool(cmp(left_f64, *b as f64)))
+            }
+            (Value::Int(b), Value::Decimal(a)) => {
+                let right_f64 = a.value().to_f64().unwrap_or(0.0);
+                Ok(Value::Bool(cmp(*b as f64, right_f64)))
+            }
+            (Value::Decimal(a), Value::Float(b)) => {
+                let left_f64 = a.value().to_f64().unwrap_or(0.0);
+                Ok(Value::Bool(cmp(left_f64, *b)))
+            }
+            (Value::Float(a), Value::Decimal(b)) => {
+                let right_f64 = b.value().to_f64().unwrap_or(0.0);
+                Ok(Value::Bool(cmp(*a, right_f64)))
+            }
             (Value::String(a), Value::String(b)) => {
                 // Lexicographic comparison for strings
                 Ok(Value::Bool(
@@ -230,6 +359,10 @@ impl Interpreter {
             UnaryOp::Negate => match val {
                 Value::Int(n) => Ok(Value::Int(-n)),
                 Value::Float(n) => Ok(Value::Float(-n)),
+                Value::Decimal(n) => {
+                    use crate::interpreter::value::DecimalValue;
+                    Ok(Value::Decimal(DecimalValue(-n.0, n.1)))
+                }
                 _ => Err(RuntimeError::type_error(
                     format!("cannot negate {}", val.type_name()),
                     span,

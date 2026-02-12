@@ -39,6 +39,8 @@ pub enum ExprKind {
     IntLiteral(i64),
     /// Float literal: 3.14
     FloatLiteral(f64),
+    /// Decimal literal (exact arithmetic): 19.99D
+    DecimalLiteral(String),
     /// String literal: "hello"
     StringLiteral(String),
     /// Interpolated string: "Hello \(name)!"
