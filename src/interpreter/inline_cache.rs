@@ -24,13 +24,6 @@ lazy_static! {
 pub struct HiddenClassId(pub u32);
 
 #[derive(Debug, Clone)]
-pub struct PropertyCacheEntry {
-    pub symbol_id: SymbolId,
-    pub hidden_class_id: HiddenClassId,
-    pub offset: usize,
-}
-
-#[derive(Debug, Clone)]
 pub struct MethodCacheEntry {
     pub symbol_id: SymbolId,
     pub hidden_class_id: HiddenClassId,
@@ -40,7 +33,7 @@ pub struct MethodCacheEntry {
 
 #[derive(Debug, Clone)]
 pub struct PropertyInlineCache {
-    entries: Vec<PropertyCacheEntry>,
+    entries: HashMap<(SymbolId, HiddenClassId), usize>,
     max_entries: usize,
 }
 
@@ -53,18 +46,13 @@ impl Default for PropertyInlineCache {
 impl PropertyInlineCache {
     pub fn new() -> Self {
         Self {
-            entries: Vec::with_capacity(4),
+            entries: HashMap::with_capacity(4),
             max_entries: 4,
         }
     }
 
     pub fn lookup(&self, symbol_id: SymbolId, hidden_class_id: HiddenClassId) -> Option<usize> {
-        for entry in &self.entries {
-            if entry.symbol_id == symbol_id && entry.hidden_class_id == hidden_class_id {
-                return Some(entry.offset);
-            }
-        }
-        None
+        self.entries.get(&(symbol_id, hidden_class_id)).copied()
     }
 
     pub fn insert(
@@ -73,24 +61,12 @@ impl PropertyInlineCache {
         hidden_class_id: HiddenClassId,
         offset: usize,
     ) -> bool {
-        if let Some(entry) = self
-            .entries
-            .iter_mut()
-            .find(|e| e.symbol_id == symbol_id && e.hidden_class_id == hidden_class_id)
-        {
-            entry.offset = offset;
-            return true;
+        let key = (symbol_id, hidden_class_id);
+        if self.entries.len() >= self.max_entries && !self.entries.contains_key(&key) {
+            return false;
         }
-        if self.entries.len() < self.max_entries {
-            self.entries.push(PropertyCacheEntry {
-                symbol_id,
-                hidden_class_id,
-                offset,
-            });
-            true
-        } else {
-            false
-        }
+        self.entries.insert(key, offset);
+        true
     }
 
     pub fn is_monomorphic(&self) -> bool {
@@ -223,28 +199,6 @@ impl InlineCacheRegistry {
             cache.clear();
         }
     }
-}
-
-pub fn ic_get_property<'a>(
-    cache: &PropertyInlineCache,
-    symbol_id: SymbolId,
-    hidden_class_id: HiddenClassId,
-    fields: &'a HashMap<SymbolId, crate::interpreter::Value>,
-) -> Option<&'a crate::interpreter::Value> {
-    if let Some(_offset) = cache.lookup(symbol_id, hidden_class_id) {}
-    fields.get(&symbol_id)
-}
-
-pub fn ic_set_property(
-    cache: &mut PropertyInlineCache,
-    symbol_id: SymbolId,
-    hidden_class_id: HiddenClassId,
-    offset: usize,
-    fields: &mut HashMap<SymbolId, crate::interpreter::Value>,
-    value: crate::interpreter::Value,
-) {
-    cache.insert(symbol_id, hidden_class_id, offset);
-    fields.insert(symbol_id, value);
 }
 
 #[cfg(test)]

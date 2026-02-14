@@ -63,10 +63,10 @@ impl Vm {
             }
             Value::Hash(hash) => {
                 let hash = hash.borrow();
-                if let Some(val) = hash.get(&HashKey::String(name.to_string())) {
+                let key = HashKey::String(name.to_string());
+                if let Some(val) = hash.get(&key) {
                     Ok(val.clone())
                 } else {
-                    // Hash methods like .keys, .values, .length, etc.
                     Ok(Value::Method(ValueMethod {
                         receiver: Box::new(object.clone()),
                         method_name: name.to_string(),
@@ -106,7 +106,7 @@ impl Vm {
                 })
             }
             _ => Err(RuntimeError::NoSuchProperty {
-                value_type: object.type_name(),
+                value_type: object.type_name().to_string(),
                 property: name.to_string(),
                 span,
             }),
@@ -280,7 +280,10 @@ impl Vm {
 
                 Ok(())
             }
-            _ => Err(RuntimeError::NotAClass(class_val.type_name(), span)),
+            _ => Err(RuntimeError::NotAClass(
+                class_val.type_name().to_string(),
+                span,
+            )),
         }
     }
 }

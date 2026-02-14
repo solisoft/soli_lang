@@ -14,64 +14,61 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/bin/
             ~/.cargo/registry/
             ~/.cargo/git/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ github.sha }}
 
-      - name: Build
-        run: cargo build --release
-
-      - name: Run Rust tests
+      - name: Run tests
         run: cargo test
 
-      - name: Upload soli binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: soli-binary
-          path: target/release/soli
-
   clippy:
-    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/bin/
             ~/.cargo/registry/
             ~/.cargo/git/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ github.sha }}
 
       - name: Clippy
         run: cargo clippy -- -D warnings
 
   fmt:
-    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,8 +81,40 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
-  tests:
-    needs: [clippy, fmt]
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            target/
+          key: ${{ runner.os }}-cargo-${{ github.sha }}
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Upload soli binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: soli-binary
+          path: target/release/soli
+
+  language-tests:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,49 +132,37 @@ jobs:
         run: ./bin/soli test tests/
 
   release:
-    needs: [build-binaries, docker, publish]
+    needs: [test, clippy, fmt, language-tests]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all binary artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          pattern: soli-*.tar.gz
-          merge-multiple: false
-
-      - name: Create GitHub Release with binaries
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          find artifacts -name '*.tar.gz' -exec cp {} . \;
-          gh release create ${{ github.ref_name }} --generate-notes *.tar.gz
+        run: gh release create ${{ github.ref_name }} --draft --generate-notes
 
   build-binaries:
-    needs: tests
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: soli-linux-amd64.tar.gz
-            cross: false
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            artifact: soli-linux-arm64.tar.gz
-            cross: true
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact: soli-darwin-amd64.tar.gz
-            cross: false
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: soli-darwin-arm64.tar.gz
-            cross: false
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: soli-linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: soli-linux-arm64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: soli-darwin-amd64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: soli-darwin-arm64
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -154,25 +171,63 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross
-        if: matrix.cross
-        run: cargo install cross
+      - name: Install system dependencies (Linux x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev pkg-config
+          sudo dpkg --add-architecture arm64
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          # Pin existing sources to amd64 (handles both .list and .sources formats)
+          if ls /etc/apt/sources.list.d/*.list 1>/dev/null 2>&1; then
+            sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list.d/*.list
+          fi
+          if ls /etc/apt/sources.list.d/*.sources 1>/dev/null 2>&1; then
+            sudo sed -i '/^Types: /a Architectures: amd64' /etc/apt/sources.list.d/*.sources
+          fi
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs) main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev:arm64
 
       - name: Build
-        run: ${{ matrix.cross && 'cross' || 'cargo' }} build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          PKG_CONFIG_PATH_aarch64_unknown_linux_gnu: /usr/lib/aarch64-linux-gnu/pkgconfig
+          PKG_CONFIG_ALLOW_CROSS: 1
 
-      - name: Package
-        run: tar czf ${{ matrix.artifact }} -C target/${{ matrix.target }}/release soli
+      - name: Package binary
+        run: |
+          ls -la target/${{ matrix.target }}/release/soli
+          tar -czf ${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/release soli
 
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz
+
+  publish-release:
+    needs: [build-binaries]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit ${{ github.ref_name }} --draft=false
 
   docker:
-    needs: tests
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish-release
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -201,12 +256,16 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
 
   publish:
-    needs: tests
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish-release
     runs-on: ubuntu-latest
     environment: main
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

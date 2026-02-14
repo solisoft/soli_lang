@@ -188,13 +188,7 @@ impl HiddenClassObject {
             .and_then(|hc| hc.get_property_offset(symbol_id, &HIDDEN_CLASS_REGISTRY))
         {
             if offset < self.fields.len() {
-                return self.fields.get(offset).and_then(|(s, v)| {
-                    if *s == symbol_id {
-                        Some(v)
-                    } else {
-                        None
-                    }
-                });
+                return self.fields.get(offset).map(|(_, v)| v);
             }
         }
         self.fields

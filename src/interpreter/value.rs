@@ -224,26 +224,26 @@ impl std::fmt::Debug for HttpFutureKind {
 }
 
 impl Value {
-    pub fn type_name(&self) -> String {
+    pub fn type_name(&self) -> &'static str {
         match self {
-            Value::Int(_) => "int".to_string(),
-            Value::Float(_) => "float".to_string(),
-            Value::Decimal(_) => "decimal".to_string(),
-            Value::String(_) => "string".to_string(),
-            Value::Bool(_) => "bool".to_string(),
-            Value::Null => "null".to_string(),
-            Value::Array(_) => "array".to_string(),
-            Value::Hash(_) => "hash".to_string(),
-            Value::Function(_) => "Function".to_string(),
-            Value::NativeFunction(_) => "Function".to_string(),
-            Value::Class(_) => "Class".to_string(),
-            Value::Instance(inst) => inst.borrow().class.name.clone(),
-            Value::Future(_) => "Future".to_string(),
-            Value::Method(_) => "Method".to_string(),
-            Value::Breakpoint => "Breakpoint".to_string(),
-            Value::QueryBuilder(_) => "QueryBuilder".to_string(),
-            Value::Super(_) => "Super".to_string(),
-            Value::VmClosure(_) => "Function".to_string(),
+            Value::Int(_) => "int",
+            Value::Float(_) => "float",
+            Value::Decimal(_) => "decimal",
+            Value::String(_) => "string",
+            Value::Bool(_) => "bool",
+            Value::Null => "null",
+            Value::Array(_) => "array",
+            Value::Hash(_) => "hash",
+            Value::Function(_) => "Function",
+            Value::NativeFunction(_) => "Function",
+            Value::Class(_) => "Class",
+            Value::Instance(_) => "Instance",
+            Value::Future(_) => "Future",
+            Value::Method(_) => "Method",
+            Value::Breakpoint => "Breakpoint",
+            Value::QueryBuilder(_) => "QueryBuilder",
+            Value::Super(_) => "Super",
+            Value::VmClosure(_) => "Function",
         }
     }
 
