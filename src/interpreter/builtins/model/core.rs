@@ -6,7 +6,6 @@ use std::rc::Rc;
 use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
 
-use crate::solidb_http::SoliDBClient;
 use lazy_static::lazy_static;
 use reqwest;
 
@@ -71,6 +70,7 @@ static CACHED_DB_CONFIG: OnceLock<CachedDbConfig> = OnceLock::new();
 
 struct CachedDbConfig {
     cursor_url: String,
+    database: String,
     api_key: Option<String>,
 }
 
@@ -93,9 +93,15 @@ fn get_db_config() -> &'static CachedDbConfig {
         let api_key = std::env::var("SOLIDB_API_KEY").ok();
         CachedDbConfig {
             cursor_url,
+            database,
             api_key,
         }
     })
+}
+
+/// Get database name.
+pub fn get_database_name() -> &'static str {
+    &get_db_config().database
 }
 
 /// Get cursor URL.
@@ -347,7 +353,7 @@ impl Model {
         // ====================================================================
 
         // Model.create(data) - Insert document with validation
-        use super::crud::exec_db_json;
+        use super::crud::{exec_insert, json_to_value};
         use super::validation::{build_validation_result, run_validations};
         use crate::interpreter::value::value_to_json;
         use crate::interpreter::value::HashKey;
@@ -385,31 +391,33 @@ impl Model {
                 };
                 let data_value = data_value?;
 
-                Ok(exec_db_json(move || {
-                    let client = SoliDBClient::connect(&DB_CONFIG.host)
-                        .map_err(|e| format!("Failed to connect: {}", e))?;
+                let result = exec_insert(&collection, None, data_value.clone());
 
-                    let id = client
-                        .insert(&collection, None, data_value.clone())
-                        .map_err(|e| format!("Create failed: {}", e))?;
+                match result {
+                    Ok(id) => {
+                        let mut result_map = serde_json::Map::new();
+                        result_map.insert("valid".to_string(), serde_json::Value::Bool(true));
 
-                    // Build result with record - direct JSON construction
-                    let mut result_map = serde_json::Map::new();
-                    result_map.insert("valid".to_string(), serde_json::Value::Bool(true));
+                        if let serde_json::Value::Object(mut data_map) = data_value {
+                            data_map.insert("id".to_string(), id);
+                            result_map
+                                .insert("record".to_string(), serde_json::Value::Object(data_map));
+                        }
 
-                    // Add the record with id
-                    if let serde_json::Value::Object(mut data_map) = data_value {
-                        data_map.insert("id".to_string(), id);
-                        result_map
-                            .insert("record".to_string(), serde_json::Value::Object(data_map));
+                        Ok(Value::Hash(Rc::new(RefCell::new(
+                            result_map
+                                .into_iter()
+                                .map(|(k, v)| (HashKey::String(k), json_to_value(&v)))
+                                .collect(),
+                        ))))
                     }
-
-                    Ok(serde_json::Value::Object(result_map))
-                }))
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
             })),
         );
 
         // Model.find(id) - Get by ID
+        use super::crud::exec_get;
         native_static_methods.insert(
             "find".to_string(),
             Rc::new(NativeFunction::new("Model.find", Some(2), |args| {
@@ -426,17 +434,10 @@ impl Model {
                     None => return Err("Model.find() requires id argument".to_string()),
                 };
 
-                Ok(exec_db_json(move || {
-                    let client = SoliDBClient::connect(&DB_CONFIG.host)
-                        .map_err(|e| format!("Failed to connect: {}", e))?;
-
-                    let doc = client
-                        .get(&collection, &id)
-                        .map_err(|e| format!("Find failed: {}", e))?;
-
-                    // Return doc or null if not found
-                    Ok(doc.unwrap_or(serde_json::Value::Null))
-                }))
+                match exec_get(&collection, &id) {
+                    Ok(doc) => Ok(json_to_value(&doc)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
             })),
         );
 
@@ -488,13 +489,13 @@ impl Model {
         );
 
         // Model.all() - Get all documents (uses async HTTP for high performance)
-        use super::crud::exec_async_query;
+        use super::crud::exec_auto_collection;
         native_static_methods.insert(
             "all".to_string(),
             Rc::new(NativeFunction::new("Model.all", Some(1), |args| {
                 let collection = get_collection_from_class(&args)?;
                 let sdbql = format!("FOR doc IN {} RETURN doc", collection);
-                Ok(exec_async_query(sdbql))
+                Ok(exec_auto_collection(sdbql, &collection))
             })),
         );
 
@@ -510,6 +511,7 @@ impl Model {
         );
 
         // Model.update(id, data) - Update document
+        use super::crud::exec_update;
         native_static_methods.insert(
             "update".to_string(),
             Rc::new(NativeFunction::new("Model.update", Some(3), |args| {
@@ -544,20 +546,15 @@ impl Model {
                 };
                 let data_value = data_value?;
 
-                Ok(exec_db_json(move || {
-                    let client = SoliDBClient::connect(&DB_CONFIG.host)
-                        .map_err(|e| format!("Failed to connect: {}", e))?;
-
-                    client
-                        .update(&collection, &id, data_value, true)
-                        .map_err(|e| format!("Update failed: {}", e))?;
-
-                    Ok(serde_json::Value::String("Updated".to_string()))
-                }))
+                match exec_update(&collection, &id, data_value, true) {
+                    Ok(result) => Ok(json_to_value(&result)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
             })),
         );
 
         // Model.delete(id) - Delete document
+        use super::crud::exec_delete;
         native_static_methods.insert(
             "delete".to_string(),
             Rc::new(NativeFunction::new("Model.delete", Some(2), |args| {
@@ -574,40 +571,31 @@ impl Model {
                     None => return Err("Model.delete() requires id argument".to_string()),
                 };
 
-                Ok(exec_db_json(move || {
-                    let client = SoliDBClient::connect(&DB_CONFIG.host)
-                        .map_err(|e| format!("Failed to connect: {}", e))?;
-
-                    client
-                        .delete(&collection, &id)
-                        .map_err(|e| format!("Delete failed: {}", e))?;
-
-                    Ok(serde_json::Value::String("Deleted".to_string()))
-                }))
+                match exec_delete(&collection, &id) {
+                    Ok(result) => Ok(json_to_value(&result)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
             })),
         );
 
         // Model.count() - Count documents
+        use super::crud::exec_query;
         native_static_methods.insert(
             "count".to_string(),
             Rc::new(NativeFunction::new("Model.count", Some(1), |args| {
                 let collection = get_collection_from_class(&args)?;
 
-                Ok(exec_db_json(move || {
-                    let client = SoliDBClient::connect(&DB_CONFIG.host)
-                        .map_err(|e| format!("Failed to connect: {}", e))?;
+                let sdbql = format!(
+                    "FOR doc IN {} COLLECT WITH COUNT INTO count RETURN count",
+                    collection
+                );
 
-                    let sdbql = format!(
-                        "FOR doc IN {} COLLECT WITH COUNT INTO count RETURN count",
-                        collection
-                    );
-                    let results = client
-                        .query(&sdbql, None)
-                        .map_err(|e| format!("Query failed: {}", e))?;
-
-                    // Return directly as JSON array - skip string serialization
-                    Ok(serde_json::Value::Array(results))
-                }))
+                match exec_query(&collection, sdbql) {
+                    Ok(results) => Ok(Value::Array(Rc::new(RefCell::new(
+                        results.iter().map(json_to_value).collect(),
+                    )))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
             })),
         );
 

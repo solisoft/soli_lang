@@ -95,8 +95,8 @@ pub use core::{
     update_metadata, Model, ModelMetadata, DB_CONFIG, MODEL_REGISTRY,
 };
 pub use crud::{
-    exec_async_query, exec_async_query_raw, exec_async_query_with_binds, exec_db_json,
-    json_to_value,
+    exec_async_query, exec_async_query_raw, exec_async_query_with_binds, exec_auto_collection,
+    exec_auto_collection_with_binds, exec_db_json, json_to_value,
 };
 pub use query::{
     execute_query_builder, execute_query_builder_count, execute_query_builder_first, QueryBuilder,

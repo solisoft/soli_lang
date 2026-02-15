@@ -184,7 +184,11 @@ pub fn render_nodes_with_path(
         if let Err(e) = result {
             if let Some(path) = template_path {
                 // Check if error already has path info
-                if !e.contains(".html.erb") && !e.contains(".erb") {
+                if !e.contains(".html.slv")
+                    && !e.contains(".slv")
+                    && !e.contains(".html.erb")
+                    && !e.contains(".erb")
+                {
                     if let Some(line) = node_line {
                         return Err(format!("{} at {}:{}", e, path, line));
                     }

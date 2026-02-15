@@ -10,6 +10,12 @@ Create model files in `app/models/`. The collection name is **automatically deri
 - `BlogPost` → `"blog_posts"`
 - `UserProfile` → `"user_profiles"`
 
+**Automatic Collection Creation**: When you call a Model method (like `create()`, `all()`, `find()`, etc.) on a collection that doesn't exist yet, SoliLang will automatically create the collection for you. This means you can start using your models immediately without running migrations first.
+
+- `User` → `"users"`
+- `BlogPost` → `"blog_posts"`
+- `UserProfile` → `"user_profiles"`
+
 ```soli
 // app/models/user.sl
 class User extends Model { }
@@ -23,6 +29,8 @@ class BlogPost extends Model { }
 That's it! No need to manually specify collection names or field definitions.
 
 ## CRUD Operations
+
+> **Auto-creation**: All Model operations automatically create the collection if it doesn't exist. This only happens on the first call that encounters a missing collection.
 
 ### Creating Records
 
@@ -373,7 +381,16 @@ describe("User model", fn() {
 4. **Use callbacks wisely** - Keep them focused and avoid heavy operations
 5. **Add custom methods** - Encapsulate business logic in model methods
 6. **Use relationships** - Create methods that return related models
+7. **Use migrations in production** - Define indexes and schema for optimal performance
 
 ## Database Migrations
 
-To manage your database schema, see the [Migrations Guide](/docs/migrations) for creating collections and indexes.
+> **Note**: Collections are now automatically created when you first use a Model. You can start using your models immediately without creating migrations.
+
+However, for production applications, we recommend using migrations to:
+- Define indexes for better query performance
+- Set collection options (e.g., key options, sharding)
+- Document your schema
+- Handle schema changes over time
+
+See the [Migrations Guide](/docs/migrations) for creating collections and indexes.

@@ -97,11 +97,11 @@ Located in `app/views/<resource>/`:
 
 | File | Purpose |
 |------|---------|
-| `index.html.erb` | Table view of all records |
-| `show.html.erb` | Detail view of single record |
-| `new.html.erb` | Create form |
-| `edit.html.erb` | Edit form |
-| `_form.html.erb` | Shared partial used by new/edit |
+| `index.html.slv` | Table view of all records |
+| `show.html.slv` | Detail view of single record |
+| `new.html.slv` | Create form |
+| `edit.html.slv` | Edit form |
+| `_form.html.slv` | Shared partial used by new/edit |
 
 ### Tests
 

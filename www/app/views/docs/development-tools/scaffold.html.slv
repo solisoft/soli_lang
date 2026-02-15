@@ -245,7 +245,7 @@
     <h4 class="text-lg font-medium text-gray-300 mb-3">Index View</h4>
     <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
-            <span class="text-sm font-mono text-gray-400">app/views/users/index.html.erb</span>
+            <span class="text-sm font-mono text-gray-400">app/views/users/index.html.slv</span>
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"p-6"</span><span class="text-blue-400">&gt;</span>
@@ -281,7 +281,7 @@
     <h4 class="text-lg font-medium text-gray-300 mb-3">Form Partial (shared by new/edit)</h4>
     <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
-            <span class="text-sm font-mono text-gray-400">app/views/users/_form.html.erb</span>
+            <span class="text-sm font-mono text-gray-400">app/views/users/_form.html.slv</span>
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;form</span> <span class="text-purple-400">action=</span><span class="text-green-400">"/users"</span> <span class="text-purple-400">method=</span><span class="text-green-400">"POST"</span><span class="text-blue-400">&gt;</span>
@@ -295,7 +295,7 @@
     <h4 class="text-lg font-medium text-gray-300 mb-3">New View</h4>
     <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
-            <span class="text-sm font-mono text-gray-400">app/views/users/new.html.erb</span>
+            <span class="text-sm font-mono text-gray-400">app/views/users/new.html.slv</span>
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;h1</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-2xl font-bold mb-6"</span><span class="text-blue-400">&gt;</span>New User<span class="text-blue-400">&lt;/h1&gt;</span>
@@ -309,7 +309,7 @@
     <h4 class="text-lg font-medium text-gray-300 mb-3">Edit View</h4>
     <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
-            <span class="text-sm font-mono text-gray-400">app/views/users/edit.html.erb</span>
+            <span class="text-sm font-mono text-gray-400">app/views/users/edit.html.slv</span>
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;h1</span> <span class="text-purple-400">class=</span><span class="text-green-400">"text-2xl font-bold mb-6"</span><span class="text-blue-400">&gt;</span>Edit User<span class="text-blue-400">&lt;/h1&gt;</span>
@@ -323,7 +323,7 @@
     <h4 class="text-lg font-medium text-gray-300 mb-3">Show View</h4>
     <div class="mb-6 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
-            <span class="text-sm font-mono text-gray-400">app/views/users/show.html.erb</span>
+            <span class="text-sm font-mono text-gray-400">app/views/users/show.html.slv</span>
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-html"><span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"p-6"</span><span class="text-blue-400">&gt;</span>
@@ -559,7 +559,7 @@
                 <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Run migrations: <code class="mx-1 text-indigo-300">soli db:migrate up</code>
+                Collections are auto-created - no migration needed!
             </li>
             <li class="flex items-center gap-2">
                 <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -572,6 +572,12 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Visit: <code class="mx-1 text-indigo-300">http://localhost:3000/posts</code>
+            </li>
+            <li class="flex items-center gap-2 mt-2">
+                <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span class="text-sm text-indigo-300">Tip: Use migrations to define indexes for better query performance in production.</span>
             </li>
         </ul>
     </div>

@@ -289,7 +289,7 @@ Set the layout in your controller:
 ```soli
 class PostsController extends Controller {
     static {
-        this.layout = "posts";  # Uses layouts/posts.html.erb
+        this.layout = "posts";  # Uses layouts/posts.html.slv
     }
 
     fn show(req: Any) -> Any {

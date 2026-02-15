@@ -173,7 +173,18 @@ impl<'a> Scanner<'a> {
             }
 
             // String literals
-            '"' => self.scan_string(),
+            '"' => {
+                if self.peek() == Some('"') && self.peek_at(1) == Some('"') {
+                    // We already advanced past the first " (in advance() call at start of scan_token)
+                    // So peek() is at second ", peek_at(1) is at third "
+                    // Advance twice more to get past the second and third quotes
+                    self.advance(); // consume second "
+                    self.advance(); // consume third "
+                    self.scan_triple_quote_string()
+                } else {
+                    self.scan_string()
+                }
+            }
             '\'' => self.scan_string(),
 
             // Numbers
@@ -409,6 +420,108 @@ impl<'a> Scanner<'a> {
                         break;
                     } else {
                         value.push(']');
+                        self.advance();
+                    }
+                }
+                Some('\n') => {
+                    value.push('\n');
+                    self.advance();
+                    self.line += 1;
+                    self.column = 1;
+                }
+                Some(c) => {
+                    value.push(c);
+                    self.advance();
+                }
+            }
+        }
+
+        let end_position = self.current_pos;
+        let end_column = self.column;
+        let span = Span::new(start_position, end_position, start_line, end_column);
+
+        Ok(Token::new(TokenKind::StringLiteral(value), span))
+    }
+
+    /// Scan a triple-quoted multiline string delimited by """ and """.
+    /// Content is raw (no escape sequences processed).
+    ///
+    /// Closing: """" (4 quotes) to allow """ inside content
+    fn scan_triple_quote_string(&mut self) -> Result<Token, LexerError> {
+        let start_position = self.start_pos;
+        let start_line = self.start_line;
+        let mut value = String::new();
+
+        loop {
+            match self.peek() {
+                None => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some('"') => {
+                    // Check for at least 3 quotes (""")
+                    if self.peek_next() == Some('"') && self.peek_at(1) == Some('"') {
+                        // Check if it's exactly 3 or 4+ quotes
+                        if self.peek_at(2) == Some('"') {
+                            // We have at least 4 quotes starting here
+                            // Check what comes after the 4th quote
+                            let after_fourth = self.peek_at(3);
+
+                            if after_fourth.is_none() {
+                                // Nothing after 4th quote - closing
+                                self.advance();
+                                self.advance();
+                                self.advance();
+                                self.advance();
+                                break;
+                            } else if after_fourth == Some('"') {
+                                // 5+ quotes - closing (consume all)
+                                let mut count = 0;
+                                while self.peek_at(count) == Some('"') {
+                                    count += 1;
+                                }
+                                for _ in 0..count {
+                                    self.advance();
+                                }
+                                break;
+                            } else if after_fourth == Some(' ')
+                                || after_fourth == Some('\n')
+                                || after_fourth == Some('\t')
+                            {
+                                // Whitespace after 4 quotes - check if there's more content after whitespace
+                                // For now: treat as closing only if followed by nothing or whitespace+EOF
+                                // This is conservative but avoids the edge case
+                                let after_whitespace = self.peek_at(4);
+                                if after_whitespace.is_none() {
+                                    // Nothing after whitespace - closing
+                                    self.advance();
+                                    self.advance();
+                                    self.advance();
+                                    self.advance();
+                                    break;
+                                } else {
+                                    // There's something after whitespace - could be content
+                                    // For this edge case, just treat as content
+                                    value.push('"');
+                                    self.advance();
+                                    self.advance();
+                                    self.advance();
+                                }
+                            } else {
+                                // Non-whitespace after 4 quotes - content
+                                value.push('"');
+                                self.advance();
+                                self.advance();
+                                self.advance();
+                            }
+                        } else {
+                            // Exactly 3 quotes, treat as content
+                            value.push('"');
+                            self.advance();
+                            self.advance();
+                            self.advance();
+                        }
+                    } else {
+                        value.push('"');
                         self.advance();
                     }
                 }
@@ -940,6 +1053,48 @@ mod tests {
     fn test_empty_multiline_string() {
         assert_eq!(
             scan("[[]]"),
+            vec![TokenKind::StringLiteral("".to_string()), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn test_triple_quote_string() {
+        assert_eq!(
+            scan("\"\"\"hello\"\"\""),
+            vec![
+                TokenKind::StringLiteral("hello".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_triple_quote_string_with_newlines() {
+        assert_eq!(
+            scan("\"\"\"line1\nline2\"\"\""),
+            vec![
+                TokenKind::StringLiteral("line1\nline2".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_triple_quote_string_raw() {
+        // Backslash-n should be literal, not a newline (triple quotes are raw)
+        assert_eq!(
+            scan("\"\"\"hello\\nworld\"\"\""),
+            vec![
+                TokenKind::StringLiteral("hello\\nworld".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_empty_triple_quote_string() {
+        assert_eq!(
+            scan("\"\"\"\"\"\""),
             vec![TokenKind::StringLiteral("".to_string()), TokenKind::Eof]
         );
     }

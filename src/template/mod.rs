@@ -157,7 +157,7 @@ impl TemplateCache {
         let layout_name = layout_name.trim_start_matches("layouts/");
         let layout_name = layout_name.trim_start_matches("layouts");
 
-        // Use the cache for layouts too (layouts/name.html.erb)
+        // Use the cache for layouts too (layouts/name.html.slv)
         let layout_template = format!("layouts/{}", layout_name);
 
         match self.resolve_template_path(&layout_template) {
@@ -206,13 +206,25 @@ impl TemplateCache {
 
     /// Actually resolve the template path (file system lookup).
     fn do_resolve_template_path(&self, name: &str) -> Result<PathBuf, String> {
-        // Try with .html.erb extension
+        // Try with .html.slv extension (new)
+        let path = self.views_dir.join(format!("{}.html.slv", name));
+        if path.exists() {
+            return Ok(path);
+        }
+
+        // Try with .slv extension (new)
+        let path = self.views_dir.join(format!("{}.slv", name));
+        if path.exists() {
+            return Ok(path);
+        }
+
+        // Try with .html.erb extension (backward compat)
         let path = self.views_dir.join(format!("{}.html.erb", name));
         if path.exists() {
             return Ok(path);
         }
 
-        // Try with .erb extension
+        // Try with .erb extension (backward compat)
         let path = self.views_dir.join(format!("{}.erb", name));
         if path.exists() {
             return Ok(path);

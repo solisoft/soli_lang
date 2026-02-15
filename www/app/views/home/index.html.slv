@@ -324,11 +324,11 @@
 <span class="text-gray-500"># Generated files:</span>
 <span class="text-indigo-400">app/models/blog_posts_model.sl</span>
 <span class="text-indigo-400">app/controllers/blog_posts_controller.sl</span>
-<span class="text-indigo-400">app/views/blog_posts/index.html.erb</span>
-<span class="text-indigo-400">app/views/blog_posts/show.html.erb</span>
-<span class="text-indigo-400">app/views/blog_posts/new.html.erb</span>
-<span class="text-indigo-400">app/views/blog_posts/edit.html.erb</span>
-<span class="text-indigo-400">app/views/blog_posts/_form.html.erb</span>
+<span class="text-indigo-400">app/views/blog_posts/index.html.slv</span>
+<span class="text-indigo-400">app/views/blog_posts/show.html.slv</span>
+<span class="text-indigo-400">app/views/blog_posts/new.html.slv</span>
+<span class="text-indigo-400">app/views/blog_posts/edit.html.slv</span>
+<span class="text-indigo-400">app/views/blog_posts/_form.html.slv</span>
 <span class="text-indigo-400">tests/models/blog_posts_test.sl</span>
 <span class="text-indigo-400">tests/controllers/blog_posts_controller_test.sl</span>
 <span class="text-indigo-400">db/migrations/*create_blog_posts_*.sl</span>
@@ -564,7 +564,7 @@
         // Filename
         const filenames = {
             'model': 'app/models/post.sl',
-            'view': 'app/views/posts/index.html.erb',
+            'view': 'app/views/posts/index.html.slv',
             'controller': 'app/controllers/posts_controller.sl'
         };
         document.getElementById('filename-display').textContent = filenames[tab];

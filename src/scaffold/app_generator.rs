@@ -65,7 +65,7 @@ pub fn create_home_controller(app_path: &Path) -> Result<(), String> {
 /// Create the application layout
 pub fn create_layout(app_path: &Path) -> Result<(), String> {
     write_file(
-        &app_path.join("app/views/layouts/application.html.erb"),
+        &app_path.join("app/views/layouts/application.html.slv"),
         app::LAYOUT_TEMPLATE,
     )
 }
@@ -73,7 +73,7 @@ pub fn create_layout(app_path: &Path) -> Result<(), String> {
 /// Create the home index view
 pub fn create_index_view(app_path: &Path) -> Result<(), String> {
     write_file(
-        &app_path.join("app/views/home/index.html.erb"),
+        &app_path.join("app/views/home/index.html.slv"),
         app::INDEX_VIEW_TEMPLATE,
     )
 }

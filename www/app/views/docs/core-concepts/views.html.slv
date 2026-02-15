@@ -28,7 +28,7 @@
     
     <h3 class="text-xl font-semibold text-white mb-4">Output Variables</h3>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.erb</label>
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Basic variable output --&gt;
 &lt;h1&gt;&lt;%= title %&gt;&lt;/h1&gt;
@@ -44,7 +44,7 @@
 
     <h3 class="text-xl font-semibold text-white mb-4">Control Flow</h3>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.erb</label>
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Conditionals --&gt;
 &lt;% if user_logged_in %&gt;
@@ -513,7 +513,7 @@
 
     <h3 class="text-xl font-semibold text-white mb-4">Complete Example</h3>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/posts/show.html.erb</label>
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/posts/show.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;article class="post"&gt;
     &lt;h1&gt;&lt;%= post["title"] %&gt;&lt;/h1&gt;
@@ -553,7 +553,7 @@
     <p class="text-gray-400 mb-6">Layouts define the outer shell of your pages. Use <code>&lt;%= yield %&gt;</code> to inject the view content.</p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/layouts/application.html.erb</label>
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/layouts/application.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!DOCTYPE html&gt;
 &lt;html&gt;
@@ -577,7 +577,7 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Usage</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Render _user_card.html.erb --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Render _user_card.html.slv --&gt;
 &lt;%= render_partial("partials/user_card", { "user": user }) %&gt;</code></pre>
         </div>
     </div>

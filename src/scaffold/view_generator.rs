@@ -76,8 +76,8 @@ fn create_resource_index_view(
         2 + fields.len(),
     );
 
-    write_file(&view_dir.join("index.html.erb"), &content)?;
-    println!("  Created: {}/index.html.erb", view_dir.display());
+    write_file(&view_dir.join("index.html.slv"), &content)?;
+    println!("  Created: {}/index.html.slv", view_dir.display());
     Ok(())
 }
 
@@ -115,8 +115,8 @@ fn create_show_view(
         &detail_rows,
     );
 
-    write_file(&view_dir.join("show.html.erb"), &content)?;
-    println!("  Created: {}/show.html.erb", view_dir.display());
+    write_file(&view_dir.join("show.html.slv"), &content)?;
+    println!("  Created: {}/show.html.slv", view_dir.display());
     Ok(())
 }
 
@@ -149,13 +149,13 @@ fn create_form_view(
         method,
     );
 
-    let filename = format!("{}.html.erb", action);
+    let filename = format!("{}.html.slv", action);
     write_file(&view_dir.join(&filename), &content)?;
     println!("  Created: {}/{}", view_dir.display(), filename);
     Ok(())
 }
 
-/// Create the form partial (_form.html.erb)
+/// Create the form partial (_form.html.slv)
 pub fn create_form_partial(
     app_path: &Path,
     name: &str,
@@ -221,9 +221,9 @@ pub fn create_form_partial(
     let content =
         view::form_partial_template(&model_var, &resource_name, &model_title, &field_inputs);
 
-    let partial_path = view_dir.join("_form.html.erb");
+    let partial_path = view_dir.join("_form.html.slv");
     write_file(&partial_path, &content)?;
-    println!("  Created: {}/_form.html.erb", view_dir.display());
+    println!("  Created: {}/_form.html.slv", view_dir.display());
 
     Ok(())
 }

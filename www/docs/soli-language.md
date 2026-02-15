@@ -112,6 +112,13 @@ let greeting = "Hello, World!";
 let multiline = "Line 1\nLine 2\tTabbed";
 let raw = r"Path: C:\Users\name";  // Raw string (no escape processing)
 
+// Multiline strings
+let poem = """The fog comes
+on little cat feet.""";
+
+let story = [[Once upon
+a time in
+the wild west.]];
 // Bool - Boolean values
 let is_valid = true;
 let is_complete = false;
@@ -305,6 +312,22 @@ print(s.ends_with("!"));      // true
 // String transformation
 let snake_case = "HelloWorld".snake_case();  // "hello_world"
 let camel_case = "hello_world".camel_case(); // "helloWorld"
+
+// String interpolation
+let name = "World";
+let greeting = "Hello #{name}!";           // "Hello World!"
+let a = 2;
+let b = 3;
+let result = "Sum is #{a + b}";             // "Sum is 5"
+let first = "John";
+let last = "Doe";
+let full = "#{first} #{last}";              // "John Doe"
+let text = "hello";
+let upper = "Upper: #{text.upper()}";        // "Upper: HELLO"
+let items = ["Alice", "Bob"];
+let first_item = "First: #{items[0]}";       // "First: Alice"
+let person = {"name": "Charlie"};
+let person_name = "Name: #{person["name"]}"; // "Name: Charlie"
 ```
 
 ### Type Coercion

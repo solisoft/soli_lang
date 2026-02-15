@@ -669,9 +669,9 @@ Use get/post/put/delete helpers
 |-----------|----------|
 | Controllers | `app/controllers/{name}_controller.sl` |
 | Middleware | `app/middleware/{name}.sl` |
-| Views | `app/views/{controller}/{action}.html.erb` |
-| Layouts | `app/views/layouts/{name}.html.erb` |
-| Partials | `app/views/{controller}/_{name}.html.erb` |
+| Views | `app/views/{controller}/{action}.html.slv` |
+| Layouts | `app/views/layouts/{name}.html.slv` |
+| Partials | `app/views/{controller}/_{name}.html.slv` |
 | Routes | `config/routes.sl` |
 | Conventions | `.soli/conventions/*.json` |
 | Examples | `.soli/examples/*.sl` |

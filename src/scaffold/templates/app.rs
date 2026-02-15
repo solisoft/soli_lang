@@ -160,7 +160,7 @@ pub const INDEX_VIEW_TEMPLATE: &str = r##"<div class="min-h-screen relative over
                     <div class="mt-3 text-slate-500"># Create a new controller</div>
                     <div class="text-emerald-400">vim app/controllers/posts_controller.sl</div>
                     <div class="mt-3 text-slate-500"># Create a view</div>
-                    <div class="text-emerald-400">vim app/views/posts/index.html.erb</div>
+                    <div class="text-emerald-400">vim app/views/posts/index.html.slv</div>
                     <div class="mt-3 text-slate-500"># Restart with hot reload</div>
                     <div class="text-emerald-400">soli serve . --dev</div>
                 </div>

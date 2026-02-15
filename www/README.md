@@ -32,7 +32,7 @@ Visit [http://localhost:3000](http://localhost:3000) for the app, and [http://lo
 When running in dev mode (`--dev`), Soli automatically handles Tailwind CSS:
 
 - **On startup**: Compiles Tailwind CSS automatically
-- **On view changes**: Recompiles when you edit `.erb` template files
+- **On view changes**: Recompiles when you edit `.slv` template files
 - **On source CSS changes**: Recompiles when files in `app/assets/css/` change
 
 No need to run a separate Tailwind watcher - just use `soli serve . --dev`!

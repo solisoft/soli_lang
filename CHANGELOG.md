@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* **model:** auto-create collections when Model operations are called on non-existent collections ([#PR](https://github.com/solisoft/soli_lang/pull/XXX))
+
 ## [0.21.0](https://github.com/solisoft/soli_lang/compare/v0.20.0...v0.21.0) (2026-02-10)
 
 

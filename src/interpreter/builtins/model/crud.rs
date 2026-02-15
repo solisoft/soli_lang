@@ -9,7 +9,7 @@ use crate::interpreter::builtins::http_class::get_http_client;
 use crate::interpreter::value::{HashKey, Value};
 use crate::serve::get_tokio_handle;
 
-use super::core::{get_api_key, get_cursor_url};
+use super::core::{get_api_key, get_cursor_url, get_database_name};
 
 /// Execute DB operation that returns serde_json::Value directly.
 /// This skips the double JSON conversion (Value -> String -> Value).
@@ -182,4 +182,234 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
         Ok(text) => Value::String(text),
         Err(e) => Value::String(format!("Error: {}", e)),
     }
+}
+
+fn is_collection_not_found_error(error: &str) -> bool {
+    let error_lower = error.to_lowercase();
+    error_lower.contains("collection")
+        && (error_lower.contains("not found")
+            || error_lower.contains("not exist")
+            || error_lower.contains("does not exist")
+            || error_lower.contains("unknown collection"))
+}
+
+fn create_collection_sync(name: &str) -> Result<(), String> {
+    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let host = host
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .to_string();
+    let database = get_database_name();
+    let url = format!("http://{}/_api/database/{}/collection", host, database);
+    let api_key = std::env::var("SOLIDB_API_KEY").ok();
+
+    let body = serde_json::json!({ "name": name }).to_string();
+
+    let rt = get_tokio_handle().ok_or("No tokio runtime available")?;
+    let client = get_http_client().clone();
+
+    rt.block_on(async move {
+        let mut request = client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(body);
+
+        if let Some(key) = api_key {
+            request = request.header("X-API-Key", key);
+        }
+
+        let resp = request
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Create collection failed: {} - {}", status, body));
+        }
+
+        Ok(())
+    })
+}
+
+/// Execute query with automatic collection creation on collection-related error.
+/// This is used for Model operations to auto-create collections when they don't exist.
+pub fn exec_with_auto_collection(
+    sdbql: String,
+    bind_vars: Option<HashMap<String, serde_json::Value>>,
+    collection_name: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let result = exec_async_query_with_binds(sdbql.clone(), bind_vars.clone());
+
+    if let Err(ref e) = result {
+        if is_collection_not_found_error(e) {
+            if let Err(create_err) = create_collection_sync(collection_name) {
+                return Err(format!(
+                    "Collection '{}' not found, and failed to create it: {}",
+                    collection_name, create_err
+                ));
+            }
+            return exec_async_query_with_binds(sdbql, bind_vars);
+        }
+    }
+
+    result
+}
+
+/// Execute query returning Value with automatic collection creation.
+pub fn exec_auto_collection(sdbql: String, collection_name: &str) -> Value {
+    match exec_with_auto_collection(sdbql, None, collection_name) {
+        Ok(results) => {
+            let values: Vec<Value> = results.iter().map(json_to_value).collect();
+            Value::Array(Rc::new(RefCell::new(values)))
+        }
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
+}
+
+/// Execute query with binds returning Value with automatic collection creation.
+pub fn exec_auto_collection_with_binds(
+    sdbql: String,
+    bind_vars: HashMap<String, serde_json::Value>,
+    collection_name: &str,
+) -> Value {
+    match exec_with_auto_collection(sdbql, Some(bind_vars), collection_name) {
+        Ok(results) => {
+            let values: Vec<Value> = results.iter().map(json_to_value).collect();
+            Value::Array(Rc::new(RefCell::new(values)))
+        }
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
+}
+
+use crate::interpreter::builtins::model::core::DB_CONFIG;
+use crate::solidb_http::SoliDBClient;
+
+/// Execute a SoliDBClient insert operation with automatic collection creation.
+pub fn exec_insert(
+    collection: &str,
+    key: Option<&str>,
+    document: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let client =
+        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+
+    let result = client
+        .insert(collection, key, document.clone())
+        .map_err(|e| format!("Create failed: {}", e));
+
+    if let Err(ref e) = result {
+        if is_collection_not_found_error(e) {
+            create_collection_sync(collection)?;
+            let client = SoliDBClient::connect(&DB_CONFIG.host)
+                .map_err(|e| format!("Failed to connect: {}", e))?;
+            return client
+                .insert(collection, key, document)
+                .map_err(|e| format!("Create failed: {}", e));
+        }
+    }
+
+    result
+}
+
+/// Execute a SoliDBClient get operation with automatic collection creation.
+pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    let client =
+        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+
+    let result = client
+        .get(collection, key)
+        .map_err(|e| format!("Find failed: {}", e))
+        .map(|doc| doc.unwrap_or(serde_json::Value::Null));
+
+    if let Err(ref e) = result {
+        if is_collection_not_found_error(e) {
+            create_collection_sync(collection)?;
+            let client = SoliDBClient::connect(&DB_CONFIG.host)
+                .map_err(|e| format!("Failed to connect: {}", e))?;
+            return client
+                .get(collection, key)
+                .map_err(|e| format!("Find failed: {}", e))
+                .map(|doc| doc.unwrap_or(serde_json::Value::Null));
+        }
+    }
+
+    result
+}
+
+/// Execute a SoliDBClient update operation with automatic collection creation.
+pub fn exec_update(
+    collection: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    let client =
+        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+
+    let result = client
+        .update(collection, key, document.clone(), merge)
+        .map_err(|e| format!("Update failed: {}", e));
+
+    if let Err(ref e) = result {
+        if is_collection_not_found_error(e) {
+            create_collection_sync(collection)?;
+            let client = SoliDBClient::connect(&DB_CONFIG.host)
+                .map_err(|e| format!("Failed to connect: {}", e))?;
+            return client
+                .update(collection, key, document, merge)
+                .map_err(|e| format!("Update failed: {}", e))
+                .map(|_| serde_json::Value::String("Updated".to_string()));
+        }
+    }
+
+    result.map(|_| serde_json::Value::String("Updated".to_string()))
+}
+
+/// Execute a SoliDBClient delete operation with automatic collection creation.
+pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    let client =
+        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+
+    let result = client
+        .delete(collection, key)
+        .map_err(|e| format!("Delete failed: {}", e));
+
+    if let Err(ref e) = result {
+        if is_collection_not_found_error(e) {
+            create_collection_sync(collection)?;
+            let client = SoliDBClient::connect(&DB_CONFIG.host)
+                .map_err(|e| format!("Failed to connect: {}", e))?;
+            return client
+                .delete(collection, key)
+                .map_err(|e| format!("Delete failed: {}", e))
+                .map(|_| serde_json::Value::String("Deleted".to_string()));
+        }
+    }
+
+    result.map(|_| serde_json::Value::String("Deleted".to_string()))
+}
+
+/// Execute a SoliDBClient query operation with automatic collection creation.
+pub fn exec_query(collection: &str, sdbql: String) -> Result<Vec<serde_json::Value>, String> {
+    let client =
+        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+
+    let result = client
+        .query(&sdbql, None)
+        .map_err(|e| format!("Query failed: {}", e));
+
+    if let Err(ref e) = result {
+        if is_collection_not_found_error(e) {
+            create_collection_sync(collection)?;
+            let client = SoliDBClient::connect(&DB_CONFIG.host)
+                .map_err(|e| format!("Failed to connect: {}", e))?;
+            return client
+                .query(&sdbql, None)
+                .map_err(|e| format!("Query failed: {}", e));
+        }
+    }
+
+    result
 }

@@ -250,9 +250,10 @@ let found = User.find(user["id"]);</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
-    <p class="text-gray-400 mb-6">For raw database queries, use SDBQL (SoliDB Query Language):</p>
+    <p class="text-gray-400 mb-6">For raw database queries, use the <code>db</code> object or the <code>@sdql{}</code> query block syntax.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <h3 class="text-lg font-semibold text-white mb-4">Using db.query()</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// SDBQL query with bind parameters
 let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
@@ -265,6 +266,82 @@ db.query("INSERT { name: @name, email: @email } INTO users", {
     "email": "bob@example.com"
 });</code></pre>
         </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Using @sdql{} Query Block</h3>
+    <p class="text-gray-400 mb-4">The <code>@sdql{}</code> syntax provides a more readable way to write database queries with interpolation:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Simple query with interpolation
+let users = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{age}
+    RETURN u
+};
+
+// Query with multiple interpolations
+let results = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{min_age} AND u.city == #{city}
+    SORT u.name ASC
+    LIMIT #{limit}
+    RETURN u
+};
+
+// Insert with interpolation
+@sdql{
+    INSERT {
+        name: #{name},
+        email: #{email},
+        created_at: NOW()
+    } INTO users
+};
+
+// Update with interpolation
+@sdql{
+    UPDATE #{user_id} IN users
+    SET {
+        last_login: NOW()
+    }
+};
+
+// Delete with interpolation
+@sdql{
+    REMOVE #{user_id} IN users
+};</code></pre>
+        </div>
+    </div>
+
+    <div class="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-8">
+        <p class="text-indigo-200/80 text-sm"><strong>Note:</strong> The <code>@sdql{}</code> block supports:</p>
+        <ul class="text-indigo-200/80 text-sm mt-2 space-y-1 list-disc list-inside">
+            <li><strong>String interpolation</strong> using <code>#{expression}</code> - expressions are evaluated at runtime</li>
+            <li><strong>Multi-line queries</strong> for better readability</li>
+            <li><strong>All SDBQL operations</strong>: FOR, FILTER, SORT, LIMIT, RETURN, INSERT, UPDATE, REMOVE</li>
+        </ul>
+    </div>
+
+    <h4 class="text-md font-semibold text-white mb-3">When to Use Each Syntax</h4>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Approach</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Use Case</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">db.query()</code> with <code class="text-indigo-300">@param</code></td>
+                    <td class="py-3 px-4 text-gray-400">When parameters should be passed separately (traditional parameterized queries)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">@sdql{}</code> with <code class="text-indigo-300">#{expr}</code></td>
+                    <td class="py-3 px-4 text-gray-400">When you want inline interpolation and more readable multi-line queries</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Security Best Practices</h2>

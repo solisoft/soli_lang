@@ -633,7 +633,7 @@ fn run_hyper_server_worker_pool(
                             middleware_changed = true;
                         } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
                             helpers_changed = true;
-                        } else if name.ends_with(".erb") {
+                        } else if name.ends_with(".erb") || name.ends_with(".slv") {
                             views_changed = true;
                         }
                     }
@@ -3788,23 +3788,29 @@ fn render_error_page(
 
     // If the error is from a view file, add a stack frame for it AFTER controllers
     // The error format can be either:
-    // 1. "error at line:col in path/file.html.erb" (from interpreter)
-    // 2. "error in path/file.html.erb at line:col" (alternative format)
-    // 3. "error at path/file.html.erb:line" (new template renderer format)
-    // 4. "error in path/file.html.erb" (no line info, use line 1)
+    // 1. "error at line:col in path/file.html.slv" (from interpreter)
+    // 2. "error in path/file.html.slv at line:col" (alternative format)
+    // 3. "error at path/file.html.slv:line" (new template renderer format)
+    // 4. "error in path/file.html.slv" (no line info, use line 1)
 
-    // Try format 1: "at line:col in file.html.erb"
-    let view_pattern1 =
-        regex::Regex::new(r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").ok();
-    // Try format 2: "in file.html.erb at line:col"
-    let view_pattern2 =
-        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)) at (\d+):(\d+)").ok();
-    // Try format 3: "at file.html.erb:line" (new template renderer format)
+    // Try format 1: "at line:col in file.html.slv"
+    let view_pattern1 = regex::Regex::new(
+        r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb))",
+    )
+    .ok();
+    // Try format 2: "in file.html.slv at line:col"
+    let view_pattern2 = regex::Regex::new(
+        r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb)) at (\d+):(\d+)",
+    )
+    .ok();
+    // Try format 3: "at file.html.slv:line" (new template renderer format)
     let view_pattern3 =
-        regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)):(\d+)").ok();
-    // Try format 4: "in file.html.erb" (no line number)
+        regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb)):(\d+)")
+            .ok();
+    // Try format 4: "in file.html.slv" (no line number)
     let view_pattern4 =
-        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))(?:\s|$)").ok();
+        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb))(?:\s|$)")
+            .ok();
 
     let mut view_added = false;
 
@@ -3943,18 +3949,21 @@ struct SpanInfo {
 }
 
 fn extract_span_from_error(error_msg: &str) -> SpanInfo {
-    // Try to find file path pattern - supports .sl, .html.erb, and .erb files
+    // Try to find file path pattern - supports .sl, .html.slv, .slv, .html.erb, and .erb files
     // Include @ for paths like /home/user@domain.com/...
-    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl))").unwrap();
+    let file_re =
+        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb|\.sl))")
+            .unwrap();
     let file = file_re
         .captures(error_msg)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string());
 
-    // Try format "at file.html.erb:line" first (new template renderer format)
+    // Try format "at file.html.slv:line" first (new template renderer format)
     // This prioritizes view file errors over controller errors
     let at_file_line_re =
-        regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb)):(\d+)").unwrap();
+        regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb)):(\d+)")
+            .unwrap();
     if let Some(caps) = at_file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps
@@ -3983,9 +3992,10 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
         return SpanInfo { file, line, column };
     }
 
-    // Try to find patterns like "file.sl:line" or "file.html.erb:line"
+    // Try to find patterns like "file.sl:line" or "file.html.slv:line"
     let file_line_re =
-        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl)):(\d+)").unwrap();
+        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb|\.sl)):(\d+)")
+            .unwrap();
     if let Some(caps) = file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps
@@ -4022,8 +4032,10 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
 
 /// Extract file path from a stack frame string like "func_name at ./path/file.sl:10"
 fn extract_file_from_frame(frame: &str) -> Option<String> {
-    // Support .sl, .html.erb, and .erb files (include @ for paths like /home/user@domain.com/...)
-    let file_re = regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl))").ok()?;
+    // Support .sl, .html.slv, .slv, .html.erb, and .erb files (include @ for paths like /home/user@domain.com/...)
+    let file_re =
+        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb|\.sl))")
+            .ok()?;
     file_re
         .captures(frame)
         .and_then(|caps| caps.get(1))
@@ -4084,14 +4096,16 @@ pub fn render_dev_error_page(
     let mut stack_frames = Vec::new();
     let mut frame_index = 0;
 
-    // Regex to find file paths with line numbers - supports .sl, .html.erb, .erb (include @ for paths)
+    // Regex to find file paths with line numbers - supports .sl, .html.slv, .slv, .html.erb, .erb (include @ for paths)
     let file_regex =
-        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb|\.sl)):(\d+)").unwrap();
+        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb|\.sl)):(\d+)")
+            .unwrap();
     // Regex to find span info after "at" (line:column)
     let span_regex = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
-    // Regex to find view files in error messages (e.g., "error in /path/to/file.html.erb")
+    // Regex to find view files in error messages (e.g., "error in /path/to/file.html.slv")
     let view_file_regex =
-        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.erb|\.erb))").unwrap();
+        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb))")
+            .unwrap();
 
     for frame in stack_trace.iter() {
         // Skip "Error: ..." entries - they're not actual stack frames
@@ -4133,8 +4147,13 @@ pub fn render_dev_error_page(
         }
 
         // Helper to check if string contains a source file extension
-        let contains_source_ext =
-            |s: &str| s.contains(".sl") || s.contains(".html.erb") || s.contains(".erb");
+        let contains_source_ext = |s: &str| {
+            s.contains(".sl")
+                || s.contains(".html.slv")
+                || s.contains(".slv")
+                || s.contains(".html.erb")
+                || s.contains(".erb")
+        };
 
         // Determine display name based on frame type
         let (display_name, icon_html) = if is_view_frame {
@@ -4737,7 +4756,7 @@ fn render_production_error_page(status_code: u16, message: &str) -> String {
     let request_id = format!("{:08x}", rand::random::<u32>());
 
     // Try to render a custom error template first
-    // Custom templates should be placed in app/views/errors/{status_code}.html.erb
+    // Custom templates should be placed in app/views/errors/{status_code}.html.slv (or .slv)
     // Available context variables: status, message, request_id
     if let Some(custom_html) = crate::interpreter::builtins::template::render_error_template(
         status_code,

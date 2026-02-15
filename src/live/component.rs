@@ -127,22 +127,30 @@ pub fn get_counter_component() -> Result<ComponentInstance, String> {
 }
 
 /// Render a component and return its HTML.
-/// Supports both .sliv and .html.erb extensions.
+/// Supports .slv and .html.slv extensions (new), with backward compat for .sliv and .html.erb.
 pub fn render_component(component_name: &str, state: &JsonValue) -> Result<String, String> {
     let app_root = get_app_root();
 
-    // Try .html.erb first, then fall back to .sliv
-    let erb_path = app_root.join(format!("app/views/live/{}.html.erb", component_name));
+    // Try .html.slv first (new), then .slv, then fall back to .html.erb and .sliv (backward compat)
+    let html_slv_path = app_root.join(format!("app/views/live/{}.html.slv", component_name));
+    let slv_path = app_root.join(format!("app/views/live/{}.slv", component_name));
+    let html_erb_path = app_root.join(format!("app/views/live/{}.html.erb", component_name));
     let sliv_path = app_root.join(format!("app/views/live/{}.sliv", component_name));
 
-    let template_path = if erb_path.exists() {
-        erb_path
+    let template_path = if html_slv_path.exists() {
+        html_slv_path
+    } else if slv_path.exists() {
+        slv_path
+    } else if html_erb_path.exists() {
+        html_erb_path
     } else if sliv_path.exists() {
         sliv_path
     } else {
         return Err(format!(
-            "Template not found: {} or {}",
-            erb_path.display(),
+            "Template not found: {}, {}, {}, or {}",
+            html_slv_path.display(),
+            slv_path.display(),
+            html_erb_path.display(),
             sliv_path.display()
         ));
     };

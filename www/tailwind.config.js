@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "./app/views/**/*.{erb,html,html.erb,etlua}",
+    "./app/views/**/*.{slv,html,html.slv,html.erb,etlua}",
     "./app/controllers/**/*.sl",
     "./app/helpers/**/*.sl"
   ],

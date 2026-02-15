@@ -225,7 +225,7 @@ fn create(req: Any) -> Any {
 ### Views
 
 ```erb
-<!-- app/views/posts/index.html.erb -->
+<!-- app/views/posts/index.html.slv -->
 <h1><%= title %></h1>
 
 <% for post in posts %>

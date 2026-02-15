@@ -203,23 +203,23 @@ pub fn print_scaffold_success_message(name: &str) {
         to_snake_case(name)
     );
     println!(
-        "    \x1b[36mapp/views/{}/index.html.erb\x1b[0m",
+        "    \x1b[36mapp/views/{}/index.html.slv\x1b[0m",
         to_snake_case_plural(name)
     );
     println!(
-        "    \x1b[36mapp/views/{}/show.html.erb\x1b[0m",
+        "    \x1b[36mapp/views/{}/show.html.slv\x1b[0m",
         to_snake_case_plural(name)
     );
     println!(
-        "    \x1b[36mapp/views/{}/new.html.erb\x1b[0m",
+        "    \x1b[36mapp/views/{}/new.html.slv\x1b[0m",
         to_snake_case_plural(name)
     );
     println!(
-        "    \x1b[36mapp/views/{}/edit.html.erb\x1b[0m",
+        "    \x1b[36mapp/views/{}/edit.html.slv\x1b[0m",
         to_snake_case_plural(name)
     );
     println!(
-        "    \x1b[36mapp/views/{}/_form.html.erb\x1b[0m",
+        "    \x1b[36mapp/views/{}/_form.html.slv\x1b[0m",
         to_snake_case_plural(name)
     );
     println!();

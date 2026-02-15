@@ -81,12 +81,17 @@ let raw = r"C:\Users\name";       // Single backslashes work</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Use triple quotes for multiline strings. Preserves newlines and indentation.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Multiline strings with triple quotes
+                    <p class="text-gray-400 mb-3">Use triple quotes or bracket syntax for multiline strings. Preserves newlines and indentation.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">// Triple quote syntax (recommended)
 let poem = """The fog comes
 on little cat feet.
 It sits looking
-over harbor and city."""
+over harbor and city.""";
+
+// Bracket syntax [[ ]]
+let story = [[Once upon
+a time in
+the wild west.]];
 
 // HTML template example
 let html = """<div class="container">
@@ -100,7 +105,7 @@ FROM users
 WHERE active = true
 ORDER BY created_at DESC""";</code></pre>
                     <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 mt-3">
-                        <p class="text-yellow-300 text-sm"><strong>Note:</strong> The leading newline and indentation are preserved as-is. Use <code class="text-yellow-300">trim()</code> to remove leading/trailing whitespace if needed.</p>
+                        <p class="text-yellow-300 text-sm"><strong>Note:</strong> Both syntaxes create raw strings (no escape processing). The leading newline and indentation are preserved as-is. Use <code class="text-yellow-300">trim()</code> to remove leading/trailing whitespace if needed.</p>
                     </div>
                 </div>
             </section>
@@ -126,6 +131,43 @@ let status = "Active: " + true;       // "Active: true"
 let name = "Alice";
 let age = 30;
 let intro = "My name is " + name + " and I am " + str(age) + " years old.";</code></pre>
+                </div>
+            </section>
+
+            <section id="string-interpolation" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#string-interpolation" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">String Interpolation</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Embed expressions directly in strings using <code class="text-indigo-400">#{expression}</code> syntax.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">// Basic variable interpolation
+let name = "World";
+let greeting = "Hello #{name}!";           // "Hello World!"
+
+// Arithmetic expressions
+let a = 2;
+let b = 3;
+let result = "Sum is #{a + b}";             // "Sum is 5"
+
+// Multiple interpolations
+let first = "John";
+let last = "Doe";
+let full = "#{first} #{last}";              // "John Doe"
+
+// Method calls
+let text = "hello";
+let upper = "Upper: #{text.upper()}";        // "Upper: HELLO"
+
+// Array access
+let items = ["Alice", "Bob"];
+let first_item = "First: #{items[0]}";       // "First: Alice"
+
+// Hash access
+let person = {"name": "Charlie"};
+let person_name = "Name: #{person["name"]}"; // "Name: Charlie"</code></pre>
                 </div>
             </section>
 

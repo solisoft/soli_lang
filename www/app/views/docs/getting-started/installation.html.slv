@@ -127,9 +127,9 @@ soli serve . --dev</code></pre>
 │   ├── models/               # Data models
 │   └── views/                # Templates
 │       ├── home/
-│       │   └── index.html.erb
+│       │   └── index.html.slv
 │       └── layouts/
-│           └── application.html.erb
+│           └── application.html.slv
 ├── config/
 │   └── routes.sl           # Route definitions
 ├── db/

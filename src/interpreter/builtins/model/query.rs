@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::interpreter::symbol::SymbolId;
 use crate::interpreter::value::Value;
 
-use super::crud::{exec_async_query_with_binds, json_to_value};
+use super::crud::{exec_auto_collection, exec_auto_collection_with_binds};
 
 /// A query builder for chainable database queries.
 /// Uses SDBQL filter expressions with symbol-based bind variables for O(1) lookup.
@@ -106,39 +106,39 @@ impl QueryBuilder {
 
 /// Execute a QueryBuilder and return results.
 pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
     let (query, bind_vars) = qb.build_query();
-    let bind_vars_opt = if bind_vars.is_empty() {
-        None
-    } else {
-        Some(bind_vars)
-    };
 
-    match exec_async_query_with_binds(query, bind_vars_opt) {
-        Ok(results) => json_to_value(&serde_json::Value::Array(results)),
-        Err(e) => Value::String(format!("Error: {}", e)),
+    if bind_vars.is_empty() {
+        exec_auto_collection(query, &collection)
+    } else {
+        exec_auto_collection_with_binds(query, bind_vars, &collection)
     }
 }
 
 /// Execute a QueryBuilder for first result only.
 pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
     let mut qb_with_limit = qb.clone();
     qb_with_limit.set_limit(1);
     let (query, bind_vars) = qb_with_limit.build_query();
-    let bind_vars_opt = if bind_vars.is_empty() {
-        None
+
+    let result = if bind_vars.is_empty() {
+        exec_auto_collection(query, &collection)
     } else {
-        Some(bind_vars)
+        exec_auto_collection_with_binds(query, bind_vars, &collection)
     };
 
-    match exec_async_query_with_binds(query, bind_vars_opt) {
-        Ok(results) => {
-            let first = results
-                .into_iter()
-                .next()
-                .unwrap_or(serde_json::Value::Null);
-            json_to_value(&first)
+    match result {
+        Value::Array(arr) => {
+            let first = arr.borrow().iter().next().cloned().unwrap_or(Value::Null);
+            first
         }
-        Err(e) => Value::String(format!("Error: {}", e)),
+        other => other,
     }
 }
 
@@ -167,14 +167,9 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
 
     query.push_str(" COLLECT WITH COUNT INTO count RETURN count");
 
-    let bind_vars_opt = if bind_vars_str.is_empty() {
-        None
+    if bind_vars_str.is_empty() {
+        exec_auto_collection(query, &collection)
     } else {
-        Some(bind_vars_str)
-    };
-
-    match exec_async_query_with_binds(query, bind_vars_opt) {
-        Ok(results) => json_to_value(&serde_json::Value::Array(results)),
-        Err(e) => Value::String(format!("Error: {}", e)),
+        exec_auto_collection_with_binds(query, bind_vars_str, &collection)
     }
 }

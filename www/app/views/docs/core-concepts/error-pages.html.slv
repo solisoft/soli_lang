@@ -179,12 +179,12 @@
 <pre><code class="language-bash text-sm">app/
   views/
     errors/
-      400.html.erb    # Custom 400 Bad Request page
-      403.html.erb    # Custom 403 Forbidden page
-      404.html.erb    # Custom 404 Not Found page
-      500.html.erb    # Custom 500 Internal Server Error page
-      502.html.erb    # Custom 502 Bad Gateway page
-      503.html.erb    # Custom 503 Service Unavailable page</code></pre>
+      400.html.slv    # Custom 400 Bad Request page
+      403.html.slv    # Custom 403 Forbidden page
+      404.html.slv    # Custom 404 Not Found page
+      500.html.slv    # Custom 500 Internal Server Error page
+      502.html.slv    # Custom 502 Bad Gateway page
+      503.html.slv    # Custom 503 Service Unavailable page</code></pre>
             </div>
         </div>
 

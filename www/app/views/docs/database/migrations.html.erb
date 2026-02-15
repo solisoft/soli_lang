@@ -15,6 +15,13 @@
         Each migration contains <code>up()</code> and <code>down()</code> functions for applying and rolling back changes.
     </p>
 
+    <div class="my-6 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-8">
+        <p class="text-yellow-300 text-sm">
+            <strong>Note:</strong> Collections are now automatically created when you first use a Model. You can start using your models immediately without creating migrations.
+            However, for production applications, we recommend using migrations to define indexes for better query performance, set collection options, and document your schema.
+        </p>
+    </div>
+
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260122143052_create_users.sl</label>
         <div class="p-4 overflow-x-auto">

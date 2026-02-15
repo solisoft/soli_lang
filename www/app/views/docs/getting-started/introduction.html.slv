@@ -85,9 +85,9 @@
 │   │   └── user.sl
 │   ├── views/            # HTML templates
 │   │   ├── layouts/      # Shared layouts
-│   │   │   └── application.html.erb
+│   │   │   └── application.html.slv
 │   │   └── home/
-│   │       └── index.html.erb
+│   │       └── index.html.slv
 │   └── middleware/       # Request interceptors
 │       └── auth.sl
 ├── config/
@@ -130,7 +130,7 @@ get("/users/:id", "users#show");</code></pre>
                 <span class="flex h-6 w-6 items-center justify-center rounded-full bg-pink-500/20 text-pink-400 text-xs font-bold">3</span>
                 Build a View
             </h3>
-            <pre data-filename="app/views/home/index.html.erb"><code class="language-erb text-sm">&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt;
+            <pre data-filename="app/views/home/index.html.slv"><code class="language-erb text-sm">&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt;
 &lt;p&gt;Start building something amazing.&lt;/p&gt;</code></pre>
         </div>
     </div>

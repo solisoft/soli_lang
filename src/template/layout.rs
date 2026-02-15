@@ -206,7 +206,11 @@ pub fn render_layout_nodes_with_path(
         // Add layout path and line context to errors
         if let Err(e) = result {
             if let Some(path) = layout_path {
-                if !e.contains(".html.erb") && !e.contains(".erb") {
+                if !e.contains(".html.slv")
+                    && !e.contains(".slv")
+                    && !e.contains(".html.erb")
+                    && !e.contains(".erb")
+                {
                     if let Some(line) = node_line {
                         return Err(format!("{} at {}:{}", e, path, line));
                     }

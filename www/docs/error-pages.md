@@ -50,12 +50,12 @@ You can create custom error pages for any HTTP status code by placing templates 
 app/
   views/
     errors/
-      400.html.erb    # Custom 400 Bad Request page
-      403.html.erb    # Custom 403 Forbidden page
-      404.html.erb    # Custom 404 Not Found page
-      500.html.erb    # Custom 500 Internal Server Error page
-      502.html.erb    # Custom 502 Bad Gateway page
-      503.html.erb    # Custom 503 Service Unavailable page
+      400.html.slv    # Custom 400 Bad Request page
+      403.html.slv    # Custom 403 Forbidden page
+      404.html.slv    # Custom 404 Not Found page
+      500.html.slv    # Custom 500 Internal Server Error page
+      502.html.slv    # Custom 502 Bad Gateway page
+      503.html.slv    # Custom 503 Service Unavailable page
 ```
 
 ### Template Variables
@@ -166,7 +166,7 @@ fn show(req: Any) -> Any {
         };
     }
     
-    render("users/show.html.erb", { "user": user })
+    render("users/show.html.slv", { "user": user })
 }
 ```
 
@@ -192,7 +192,7 @@ This ensures:
 ### Error pages not showing custom templates
 
 1. Verify templates are in `app/views/errors/` (not `app/views/layouts/errors/` or another location)
-2. Ensure template files have the correct extension (`.html.erb` or `.erb`)
+2. Ensure template files have the correct extension (`.html.slv` or `.slv`)
 3. Check that the status code in the filename matches the HTTP status
 4. Verify the application is running in production mode (`--no-dev`)
 

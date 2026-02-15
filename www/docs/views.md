@@ -562,7 +562,7 @@ fn mail_to(email, text = null) {
 Wrap views in a common layout:
 
 ```erb
-<!-- app/views/layouts/application.html.erb -->
+<!-- app/views/layouts/application.html.slv -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -600,7 +600,7 @@ fn index(req: Any) -> Any {
 Reuse template fragments:
 
 ```erb
-<!-- app/views/partials/user_card.html.erb -->
+<!-- app/views/partials/user_card.html.slv -->
 <div class="user-card">
     <h3><%= user.name %></h3>
     <p><%= user.email %></p>
@@ -660,16 +660,16 @@ Access in template:
 ```
 app/views/
 ├── home/
-│   ├── index.html.erb
-│   └── show.html.erb
+│   ├── index.html.slv
+│   └── show.html.slv
 ├── users/
-│   ├── _form.html.erb
-│   ├── edit.html.erb
-│   └── show.html.erb
+│   ├── _form.html.slv
+│   ├── edit.html.slv
+│   └── show.html.slv
 ├── partials/
-│   ├── _header.html.erb
-│   └── _footer.html.erb
+│   ├── _header.html.slv
+│   └── _footer.html.slv
 └── layouts/
-    ├── application.html.erb
-    └── docs.html.erb
+    ├── application.html.slv
+    └── docs.html.slv
 ```
