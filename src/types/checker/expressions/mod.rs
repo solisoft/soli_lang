@@ -22,6 +22,7 @@ impl TypeChecker {
             | ExprKind::FloatLiteral(_)
             | ExprKind::DecimalLiteral(_)
             | ExprKind::StringLiteral(_)
+            | ExprKind::CommandSubstitution(_)
             | ExprKind::BoolLiteral(_)
             | ExprKind::Null => self.check_literal(&expr.kind),
 

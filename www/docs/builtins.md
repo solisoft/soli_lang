@@ -2961,6 +2961,72 @@ let xml = SOAP.to_xml(data, "catalog")
 
 ---
 
+## System Class
+
+The `System` class provides methods for executing system commands.
+
+### System.run(command)
+
+Runs a command asynchronously and returns a Future.
+
+**Parameters:**
+- `command` (String) - The command to execute
+
+**Returns:** Future<Hash> - A future that resolves to `{ stdout: String, stderr: String, exit_code: Int }`
+
+**Example:**
+```soli
+let result = System.run("echo hello")
+// result is a Future that auto-resolves when used
+
+// Access properties directly (auto-resolves)
+print(result.stdout)   // "hello"
+print(result.exit_code) // 0
+
+// Or resolve manually
+let output = await(result)
+print(output["stdout"])
+```
+
+### System.run_sync(command)
+
+Runs a command synchronously (blocking).
+
+**Parameters:**
+- `command` (String) - The command to execute
+
+**Returns:** Hash - `{ stdout: String, stderr: String, exit_code: Int }`
+
+**Example:**
+```soli
+let result = System.run_sync("ls -la")
+print(result["stdout"])
+print(result["exit_code"])
+```
+
+### Command Substitution
+
+You can use backtick syntax for convenient command execution:
+
+```soli
+let result = `echo hello`
+print(result.stdout)  // "hello"
+
+// With shell features
+let files = `ls *.sl`
+print(files.stdout)
+
+// Access exit code
+let status = `grep pattern file`
+if status.exit_code != 0 {
+    println("Pattern not found")
+}
+```
+
+The command substitution uses `System.run()` internally, so it returns a Future that auto-resolves when accessed.
+
+---
+
 ## See Also
 
 - [Soli Language Reference](/docs/soli-language) - Core language syntax and features

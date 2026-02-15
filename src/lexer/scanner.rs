@@ -187,6 +187,9 @@ impl<'a> Scanner<'a> {
             }
             '\'' => self.scan_string(),
 
+            // Backtick command substitution: `command`
+            '`' => self.scan_backtick_string(),
+
             // Numbers
             c if c.is_ascii_digit() => self.scan_number(c),
 
@@ -399,6 +402,38 @@ impl<'a> Scanner<'a> {
         } else {
             Ok(Token::new(TokenKind::StringLiteral(value), span))
         }
+    }
+
+    /// Scan a backtick command substitution: `command`
+    fn scan_backtick_string(&mut self) -> Result<Token, LexerError> {
+        let start_position = self.start_pos;
+        let start_line = self.line;
+        let mut value = String::new();
+
+        loop {
+            match self.peek() {
+                None => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some('`') => {
+                    self.advance(); // consume closing backtick
+                    break;
+                }
+                Some('\n') => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some(c) => {
+                    value.push(c);
+                    self.advance();
+                }
+            }
+        }
+
+        let end_position = self.current_pos;
+        let end_column = self.column;
+        let span = Span::new(start_position, end_position, start_line, end_column);
+
+        Ok(Token::new(TokenKind::BacktickString(value), span))
     }
 
     /// Scan a Lua-style multiline string delimited by [[ and ]].

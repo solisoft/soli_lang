@@ -35,6 +35,7 @@ impl Interpreter {
                 Ok(Value::Decimal(DecimalValue(decimal, precision)))
             }
             ExprKind::StringLiteral(s) => Ok(Value::String(s.clone())),
+            ExprKind::CommandSubstitution(cmd) => self.evaluate_system_run(cmd, expr.span),
             ExprKind::BoolLiteral(b) => Ok(Value::Bool(*b)),
             ExprKind::Null => Ok(Value::Null),
 
@@ -369,5 +370,31 @@ impl Interpreter {
         }
 
         Ok(Value::Hash(Rc::new(RefCell::new(result))))
+    }
+
+    pub(crate) fn evaluate_system_run(&mut self, cmd: &str, _span: Span) -> RuntimeResult<Value> {
+        use crate::interpreter::value::HttpFutureKind;
+        use std::sync::mpsc::{self, Receiver, Sender};
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
+        let (program, args_vec) = crate::interpreter::builtins::system::parse_command(cmd);
+
+        let (tx, rx): (Sender<Result<String, String>>, Receiver<_>) = mpsc::channel();
+
+        thread::spawn(move || {
+            let result = crate::interpreter::builtins::system::execute_command(&program, &args_vec);
+            let json = match result {
+                Ok(data) => serde_json::to_string(&data).map_err(|e| e.to_string()),
+                Err(e) => Err(e),
+            };
+            tx.send(json).ok();
+        });
+
+        let future_state = crate::interpreter::value::FutureState::Pending {
+            receiver: rx,
+            kind: HttpFutureKind::SystemResult,
+        };
+        Ok(Value::Future(Arc::new(Mutex::new(future_state))))
     }
 }

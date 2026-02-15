@@ -19,6 +19,7 @@ pub enum TokenKind {
     DecimalLiteral(String), // String representation of decimal value (e.g., "19.99")
     StringLiteral(String),
     InterpolatedString(Vec<String>), // Parts for interpolation
+    BacktickString(String),          // Command substitution: `command`
     BoolLiteral(bool),
 
     // SDBQL query block with #{...} interpolation
@@ -187,6 +188,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::InterpolatedString(parts) => {
                 write!(f, "interp\"{}\"", parts.join("...("))
             }
+            TokenKind::BacktickString(s) => write!(f, "`{}`", s),
             TokenKind::SdqlBlock { query, .. } => {
                 write!(f, "@sdql{{{}}}...", &query[..query.len().min(30)])
             }

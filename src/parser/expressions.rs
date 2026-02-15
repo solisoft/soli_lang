@@ -44,6 +44,10 @@ impl Parser {
             TokenKind::InterpolatedString(parts) => {
                 self.parse_interpolated_string(parts.clone(), start_span)
             }
+            TokenKind::BacktickString(s) => Ok(Expr::new(
+                ExprKind::CommandSubstitution(s.clone()),
+                start_span,
+            )),
             TokenKind::SdqlBlock {
                 query,
                 interpolations,

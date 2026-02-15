@@ -14,6 +14,7 @@ impl TypeChecker {
             ExprKind::FloatLiteral(_) => Ok(Type::Float),
             ExprKind::DecimalLiteral(_) => Ok(Type::Decimal(0)),
             ExprKind::StringLiteral(_) => Ok(Type::String),
+            ExprKind::CommandSubstitution(_) => Ok(Type::Future(Box::new(Type::Any))),
             ExprKind::BoolLiteral(_) => Ok(Type::Bool),
             ExprKind::Null => Ok(Type::Null),
             _ => unreachable!("Expected literal expression kind"),

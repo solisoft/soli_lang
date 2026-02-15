@@ -28,6 +28,12 @@ impl Compiler {
             ExprKind::StringLiteral(s) => {
                 self.emit_constant(Constant::String(s.clone()), line);
             }
+            ExprKind::CommandSubstitution(_) => {
+                return Err(CompileError::new(
+                    "Command substitution `...` is not supported in compiled mode",
+                    expr.span,
+                ));
+            }
             ExprKind::BoolLiteral(b) => {
                 self.emit(if *b { Op::True } else { Op::False }, line);
             }

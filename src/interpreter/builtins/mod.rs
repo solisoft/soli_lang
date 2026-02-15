@@ -44,6 +44,7 @@ pub mod session_helpers;
 pub mod soap;
 pub mod solidb;
 pub mod strings;
+pub mod system;
 pub mod template;
 pub mod test_dsl;
 pub mod test_server;
@@ -280,6 +281,9 @@ pub fn register_builtins(env: &mut Environment) {
 
     // Register collection classes (String, Array, Hash, Set, Range, Base64)
     collections::register_collection_classes(env);
+
+    // Register system builtins (System.run, System.run_sync)
+    system::register_system_builtins(env);
 }
 
 /// Register the Error class and built-in error types.

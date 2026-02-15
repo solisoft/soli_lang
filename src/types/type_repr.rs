@@ -32,6 +32,8 @@ pub enum Type {
         params: Vec<Type>,
         return_type: Box<Type>,
     },
+    /// Future type (async result)
+    Future(Box<Type>),
     /// Class type
     Class(ClassType),
     /// Interface type
@@ -152,6 +154,7 @@ impl fmt::Display for Type {
                 }
                 write!(f, ") -> {}", return_type)
             }
+            Type::Future(inner) => write!(f, "Future<{}>", inner),
             Type::Class(class) => write!(f, "{}", class.name),
             Type::Interface(iface) => write!(f, "{}", iface.name),
             Type::Var(id) => write!(f, "?T{}", id),

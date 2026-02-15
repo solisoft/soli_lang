@@ -1,0 +1,130 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-orange-400 via-red-400 to-pink-400 bg-clip-text text-transparent">System Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Execute shell commands directly from Soli. Run commands asynchronously with auto-resolving futures or synchronously with blocking calls.
+        </p>
+    </div>
+
+    <!-- System.run -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">System.run(command)</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <p class="text-gray-300 mb-4">
+                Runs a command asynchronously and returns a Future that resolves to a Hash containing <code>stdout</code>, <code>stderr</code>, and <code>exit_code</code>.
+            </p>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Parameters</h3>
+            <ul class="list-disc list-inside text-gray-300 mb-4 space-y-1">
+                <li><code>command</code> (String) - The command to execute</li>
+            </ul>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Returns</h3>
+            <p class="text-gray-300 mb-4">Future&lt;Hash&gt; - A future that resolves to:</p>
+            <ul class="list-disc list-inside text-gray-300 mb-4 space-y-1 ml-4">
+                <li><code>stdout</code> (String) - Standard output</li>
+                <li><code>stderr</code> (String) - Standard error</li>
+                <li><code>exit_code</code> (Int) - Exit code (0 for success)</li>
+            </ul>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
+            <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code>let result = System.run("echo hello")
+# result is a Future
+
+# Access properties directly (auto-resolves)
+print(result.stdout)   # "hello"
+print(result.exit_code) # 0
+
+# Or resolve manually
+let output = await(result)
+print(output["stdout"])</code></pre>
+        </div>
+    </section>
+
+    <!-- System.run_sync -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">System.run_sync(command)</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <p class="text-gray-300 mb-4">
+                Runs a command synchronously (blocking) and returns the result immediately.
+            </p>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Parameters</h3>
+            <ul class="list-disc list-inside text-gray-300 mb-4 space-y-1">
+                <li><code>command</code> (String) - The command to execute</li>
+            </ul>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Returns</h3>
+            <p class="text-gray-300 mb-4">Hash - Contains <code>stdout</code>, <code>stderr</code>, and <code>exit_code</code>.</p>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
+            <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code>let result = System.run_sync("ls -la")
+print(result["stdout"])
+print(result["exit_code"])</code></pre>
+        </div>
+    </section>
+
+    <!-- Command Substitution -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Command Substitution</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <p class="text-gray-300 mb-4">
+                Use backtick syntax for convenient command execution. This is syntactic sugar for <code>System.run()</code>.
+            </p>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
+            <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code># Simple command
+let result = `echo hello`
+print(result.stdout)  # "hello"
+
+# With shell features
+let files = `ls *.sl`
+print(files.stdout)
+
+# Access exit code
+let status = `grep pattern file`
+if status.exit_code != 0 {
+    println("Pattern not found")
+}</code></pre>
+
+            <div class="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <p class="text-amber-300">
+                    <strong>Note:</strong> Command substitution uses <code>System.run()</code> internally, so it returns a Future that auto-resolves when accessed. This means you can access properties directly without explicitly awaiting.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Shell Features -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Shell Features</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <p class="text-gray-300 mb-4">
+                Commands are parsed to detect shell metacharacters. If detected, the command is executed via <code>sh -c</code>:
+            </p>
+            <ul class="list-disc list-inside text-gray-300 space-y-2">
+                <li>Pipes: <code>|</code></li>
+                <li>Redirection: <code>&gt;</code>, <code>&lt;</code></li>
+                <li>Background: <code>&</code></li>
+                <li>Sequential: <code>;</code></li>
+                <li>Environment: <code>$VAR</code></li>
+                <li>Subshells: <code>()</code>, <code>``</code></li>
+                <li>Quotes: <code>'</code>, <code>"</code></li>
+                <li>Globbing: <code>*</code>, <code>?</code>, <code>[]</code></li>
+                <li>Braces: <code>{}</code>, <code>~</code></li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- See Also -->
+    <section>
+        <h2 class="text-2xl font-bold text-white mb-6">See Also</h2>
+        <ul class="space-y-2">
+            <li><a href="/docs/builtins/core" class="text-indigo-400 hover:text-indigo-300">Core Functions</a> - print, input, type conversions</li>
+            <li><a href="/docs/soli-language" class="text-indigo-400 hover:text-indigo-300">Soli Language</a> - Futures and async patterns</li>
+        </ul>
+    </section>
+</div>

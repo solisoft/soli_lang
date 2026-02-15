@@ -186,6 +186,10 @@ fn builtins_core(req) {
     render_docs("docs/builtins/core", "Core Functions", "builtins", "core")
 }
 
+fn builtins_system(req) {
+    render_docs("docs/builtins/system", "System Functions", "builtins", "system")
+}
+
 fn builtins_http(req) {
     render_docs("docs/builtins/http", "HTTP Functions", "builtins", "http")
 }

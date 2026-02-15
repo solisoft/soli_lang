@@ -18,6 +18,7 @@ impl TypeChecker {
         let obj_type = self.check_expr(object)?;
 
         match obj_type {
+            Type::Future(_inner) => Ok(Type::Any),
             Type::Class(class) => {
                 // Look up the class in the environment to get the full definition with methods
                 let class_def = self.env.get_class(&class.name);

@@ -119,6 +119,12 @@ on little cat feet.""";
 let story = [[Once upon
 a time in
 the wild west.]];
+
+// Command substitution - execute shell commands
+let files = `ls *.sl`;        // Returns Future<{stdout, stderr, exit_code}>
+let output = files.stdout;     // Auto-resolves when accessed
+let code = files.exit_code;    // Exit code (0 = success)
+
 // Bool - Boolean values
 let is_valid = true;
 let is_complete = false;

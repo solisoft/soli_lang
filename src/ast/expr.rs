@@ -45,6 +45,8 @@ pub enum ExprKind {
     StringLiteral(String),
     /// Interpolated string: "Hello \(name)!"
     InterpolatedString(Vec<InterpolatedPart>),
+    /// Command substitution: `ls -l`
+    CommandSubstitution(String),
 
     /// SDBQL query block: @sdql{ FOR u IN users FILTER u.age >= #{age} RETURN u }
     SdqlBlock {

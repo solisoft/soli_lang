@@ -20,6 +20,28 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         let obj_val = self.evaluate(object)?;
         match obj_val {
+            Value::Future(future) => {
+                let value = Value::Future(future);
+                let resolved = value.resolve().map_err(|e| RuntimeError::new(e, span))?;
+                match resolved {
+                    Value::Hash(hash) => {
+                        let hash_key = crate::interpreter::value::HashKey::String(name.to_string());
+                        if let Some(v) = hash.borrow().get(&hash_key) {
+                            return Ok(v.clone());
+                        }
+                        Err(RuntimeError::NoSuchProperty {
+                            value_type: "Hash".to_string(),
+                            property: name.to_string(),
+                            span,
+                        })
+                    }
+                    _ => Err(RuntimeError::NoSuchProperty {
+                        value_type: resolved.type_name(),
+                        property: name.to_string(),
+                        span,
+                    }),
+                }
+            }
             Value::Instance(inst) => self.instance_member_access(inst, name, span),
             Value::Class(ref class) => self.class_member_access(class, name, span, &obj_val),
             Value::Super(ref superclass) => self.super_member_access(superclass, name, span),

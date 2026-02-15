@@ -188,6 +188,8 @@ pub enum HttpFutureKind {
     Json,
     /// Returns full response hash (status, headers, body)
     FullResponse,
+    /// Returns SystemResult (for System.run())
+    SystemResult,
 }
 
 /// State of a Future value
@@ -219,6 +221,7 @@ impl std::fmt::Debug for HttpFutureKind {
             HttpFutureKind::String => write!(f, "String"),
             HttpFutureKind::Json => write!(f, "Json"),
             HttpFutureKind::FullResponse => write!(f, "FullResponse"),
+            HttpFutureKind::SystemResult => write!(f, "SystemResult"),
         }
     }
 }
@@ -827,6 +830,35 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
             match serde_json::from_str::<serde_json::Value>(raw_data) {
                 Ok(json) => json_to_value(&json),
                 Err(e) => Err(format!("Failed to parse response: {}", e)),
+            }
+        }
+        HttpFutureKind::SystemResult => {
+            // Parse JSON: {"stdout": "...", "stderr": "...", "exit_code": N}
+            #[derive(serde::Deserialize)]
+            struct SystemResultJson {
+                stdout: String,
+                stderr: String,
+                exit_code: i32,
+            }
+            match serde_json::from_str::<SystemResultJson>(raw_data) {
+                Ok(data) => {
+                    // Create a simple hash with the result data using IndexMap
+                    let mut hash: IndexMap<HashKey, Value> = IndexMap::new();
+                    hash.insert(
+                        HashKey::String("stdout".to_string()),
+                        Value::String(data.stdout),
+                    );
+                    hash.insert(
+                        HashKey::String("stderr".to_string()),
+                        Value::String(data.stderr),
+                    );
+                    hash.insert(
+                        HashKey::String("exit_code".to_string()),
+                        Value::Int(data.exit_code as i64),
+                    );
+                    Ok(Value::Hash(Rc::new(RefCell::new(hash))))
+                }
+                Err(e) => Err(format!("Failed to parse SystemResult: {}", e)),
             }
         }
     }

@@ -1178,6 +1178,30 @@ impl TypeEnvironment {
             },
         );
         self.classes.insert("SOAP".to_string(), soap_class);
+
+        // System class
+        let mut system_class = ClassType::new("System".to_string());
+        system_class.methods.insert(
+            "run".to_string(),
+            MethodInfo {
+                name: "run".to_string(),
+                params: vec![("command".to_string(), Type::String)],
+                return_type: Type::Future(Box::new(Type::Any)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        system_class.methods.insert(
+            "run_sync".to_string(),
+            MethodInfo {
+                name: "run_sync".to_string(),
+                params: vec![("command".to_string(), Type::String)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("System".to_string(), system_class);
     }
 
     /// Enter a new scope.

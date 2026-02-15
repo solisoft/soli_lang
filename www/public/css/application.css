@@ -2724,6 +2724,11 @@ video {
   --tw-gradient-stops: var(--tw-gradient-from), rgb(168 85 247 / 0.2) var(--tw-gradient-via-position), var(--tw-gradient-to);
 }
 
+.via-red-400 {
+  --tw-gradient-to: rgb(248 113 113 / 0)  var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), #f87171 var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
 .via-teal-400 {
   --tw-gradient-to: rgb(45 212 191 / 0)  var(--tw-gradient-to-position);
   --tw-gradient-stops: var(--tw-gradient-from), #2dd4bf var(--tw-gradient-via-position), var(--tw-gradient-to);

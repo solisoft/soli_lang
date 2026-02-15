@@ -67,6 +67,7 @@ get("/docs/language/modules", "docs#language_modules");
 // Builtins Reference
 get("/docs/builtins", "docs#builtins_index");
 get("/docs/builtins/core", "docs#builtins_core");
+get("/docs/builtins/system", "docs#builtins_system");
 get("/docs/builtins/http", "docs#builtins_http");
 get("/docs/builtins/json", "docs#builtins_json");
 get("/docs/builtins/crypto", "docs#builtins_crypto");
