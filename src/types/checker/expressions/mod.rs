@@ -101,6 +101,9 @@ impl TypeChecker {
 
             // String interpolation
             ExprKind::InterpolatedString(parts) => self.check_interpolated_string(parts),
+
+            // SDBQL query block - returns array of documents
+            ExprKind::SdqlBlock { .. } => Ok(Type::Any),
         }
     }
 

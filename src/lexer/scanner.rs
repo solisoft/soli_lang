@@ -182,6 +182,21 @@ impl<'a> Scanner<'a> {
             // Identifiers and keywords
             c if c.is_alphabetic() || c == '_' => self.scan_identifier(c),
 
+            // SDBQL query block: @sdql{ ... }
+            '@' => {
+                if self.peek() == Some('s')
+                    && self.peek_at(1) == Some('d')
+                    && self.peek_at(2) == Some('q')
+                    && self.peek_at(3) == Some('l')
+                    && self.peek_at(4) == Some('{')
+                {
+                    self.scan_sdql_block()
+                } else {
+                    // Regular identifier starting with @
+                    self.scan_identifier('@')
+                }
+            }
+
             _ => Err(LexerError::unexpected_char(c, self.current_span())),
         }
     }
@@ -290,17 +305,23 @@ impl<'a> Scanner<'a> {
                         value.push('\'');
                     }
                 }
+                Some('#') => {
+                    // Check for #{ interpolation start
+                    if self.peek_next() == Some('{') {
+                        // Start of interpolation
+                        has_interpolation = true;
+                        paren_depth = 1; // Start counting braces
+                        value.push_str("#{");
+                        self.advance(); // #
+                        self.advance(); // {
+                    } else {
+                        value.push('#');
+                        self.advance();
+                    }
+                }
                 Some('\\') => {
                     self.advance();
                     match self.peek() {
-                        Some('(') => {
-                            // Start of interpolation - keep the escape sequence for parser
-                            has_interpolation = true;
-                            paren_depth = 1; // Start counting parentheses
-                            value.push('\\');
-                            value.push('(');
-                            self.advance();
-                        }
                         Some('n') => {
                             self.advance();
                             value.push('\n');
@@ -333,20 +354,20 @@ impl<'a> Scanner<'a> {
                         }
                     }
                 }
-                Some('(') => {
+                Some('{') => {
                     if has_interpolation {
                         paren_depth += 1;
                     }
                     self.advance();
-                    value.push('(');
+                    value.push('{');
                 }
-                Some(')') => {
+                Some('}') => {
                     if has_interpolation && paren_depth > 0 {
                         paren_depth -= 1;
                     }
                     // Don't break here - the " will break the loop when we see it
                     self.advance();
-                    value.push(')');
+                    value.push('}');
                 }
                 Some(c) => {
                     self.advance();
@@ -411,30 +432,170 @@ impl<'a> Scanner<'a> {
         Ok(Token::new(TokenKind::StringLiteral(value), span))
     }
 
+    /// Scan a SDBQL query block: @sdql{ ... #{interpolation} ... }
+    fn scan_sdql_block(&mut self) -> Result<Token, LexerError> {
+        let start_position = self.start_pos;
+        let start_line = self.start_line;
+
+        // Consume "@sdql{"
+        self.advance(); // @
+        self.advance(); // s
+        self.advance(); // d
+        self.advance(); // q
+        self.advance(); // l
+        self.advance(); // {
+
+        let mut value = String::new();
+        let mut brace_depth = 1;
+        let mut hash_brace_depth = 0;
+        let mut in_hash_brace = false;
+
+        loop {
+            match self.peek() {
+                None => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some('#') => {
+                    if self.peek_next() == Some('{') {
+                        // Start of interpolation #{...
+                        in_hash_brace = true;
+                        hash_brace_depth = 1;
+                        value.push_str("#{");
+                        self.advance(); // #
+                        self.advance(); // {
+                    } else {
+                        value.push('#');
+                        self.advance();
+                    }
+                }
+                Some('{') => {
+                    if in_hash_brace {
+                        hash_brace_depth += 1;
+                    } else {
+                        brace_depth += 1;
+                    }
+                    value.push('{');
+                    self.advance();
+                }
+                Some('}') => {
+                    if in_hash_brace {
+                        hash_brace_depth -= 1;
+                        if hash_brace_depth == 0 {
+                            in_hash_brace = false;
+                        }
+                    } else {
+                        brace_depth -= 1;
+                        if brace_depth == 0 {
+                            self.advance(); // consume final }
+                            break;
+                        }
+                    }
+                    value.push('}');
+                    self.advance();
+                }
+                Some('\n') => {
+                    value.push('\n');
+                    self.advance();
+                    self.line += 1;
+                    self.column = 1;
+                }
+                Some(c) => {
+                    value.push(c);
+                    self.advance();
+                }
+            }
+        }
+
+        let end_position = self.current_pos;
+        let end_column = self.column;
+        let span = Span::new(start_position, end_position, start_line, end_column);
+
+        // Parse interpolations from the query
+        let interpolations = Self::parse_sdql_interpolations(&value);
+
+        Ok(Token::new(
+            TokenKind::SdqlBlock {
+                query: value,
+                interpolations,
+            },
+            span,
+        ))
+    }
+
+    /// Parse #{...} interpolations from SDBQL query
+    fn parse_sdql_interpolations(query: &str) -> Vec<crate::lexer::token::SdqlInterpolation> {
+        let mut interpolations = Vec::new();
+        let mut chars = query.char_indices().peekable();
+        let mut in_hash_brace = false;
+        let mut expr_start = 0;
+        let mut brace_depth = 0;
+        let mut current_expr = String::new();
+
+        while let Some((i, c)) = chars.next() {
+            if c == '#' && chars.peek().map(|(_, c)| *c) == Some('{') {
+                // Start of new interpolation
+                if !current_expr.is_empty() {
+                    current_expr.clear();
+                }
+                in_hash_brace = true;
+                brace_depth = 1;
+                chars.next(); // consume {
+                expr_start = i + 2; // position after #{
+                current_expr.push('{'); // Start the expression with brace
+            } else if in_hash_brace {
+                match c {
+                    '{' => {
+                        brace_depth += 1;
+                        current_expr.push(c);
+                    }
+                    '}' => {
+                        brace_depth -= 1;
+                        if brace_depth == 0 {
+                            // End of interpolation
+                            in_hash_brace = false;
+                            interpolations.push(crate::lexer::token::SdqlInterpolation {
+                                expr: current_expr.clone(),
+                                start: expr_start,
+                                end: i,
+                            });
+                            current_expr.clear();
+                        } else {
+                            current_expr.push(c);
+                        }
+                    }
+                    _ => {
+                        current_expr.push(c);
+                    }
+                }
+            }
+        }
+
+        interpolations
+    }
+
     fn parse_interpolation_parts(s: &str) -> Vec<String> {
         let mut parts = Vec::new();
         let mut current = String::new();
         let mut chars = s.chars().peekable();
-        let _paren_depth = 0;
 
         while let Some(c) = chars.next() {
-            if c == '\\' {
-                if chars.peek() == Some(&'(') {
-                    // Start of interpolation
+            if c == '#' {
+                if chars.peek() == Some(&'{') {
+                    // Start of interpolation #{
                     if !current.is_empty() {
                         parts.push(current);
                     }
                     current = String::new();
-                    chars.next(); // consume (
-                    let mut _paren_depth = 1;
-                    // Read until matching )
+                    chars.next(); // consume {
+                    let mut brace_depth = 1;
+                    // Read until matching }
                     for c2 in chars.by_ref() {
-                        if c2 == '(' {
-                            _paren_depth += 1;
+                        if c2 == '{' {
+                            brace_depth += 1;
                             current.push(c2);
-                        } else if c2 == ')' {
-                            _paren_depth -= 1;
-                            if _paren_depth == 0 {
+                        } else if c2 == '}' {
+                            brace_depth -= 1;
+                            if brace_depth == 0 {
                                 break;
                             }
                             current.push(c2);
@@ -444,7 +605,7 @@ impl<'a> Scanner<'a> {
                     }
                     // The expression is in current - push it as-is for parser to handle
                     // Add a special marker to indicate this is an expression
-                    parts.push(format!("\\({})", current));
+                    parts.push(format!("#{{{}}}", current));
                     current = String::new();
                 } else {
                     current.push(c);
@@ -728,7 +889,7 @@ mod tests {
 
     #[test]
     fn test_interpolated_string() {
-        let tokens = scan(r#" "Hello \(name)!" "#);
+        let tokens = scan(r#" "Hello #{name}!" "#);
         println!("TEST OUTPUT: {:?}", tokens);
         // Should have: Literal("Hello "), InterpolatedString marker, Literal("name"), Literal("!")
     }

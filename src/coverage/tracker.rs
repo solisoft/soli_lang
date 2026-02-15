@@ -598,6 +598,7 @@ impl CoverageTracker {
                     }
                 }
             }
+            SdqlBlock { .. } => {}
         }
     }
 }

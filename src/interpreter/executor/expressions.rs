@@ -135,6 +135,12 @@ impl Interpreter {
                 self.evaluate_interpolated_string(parts, expr.span)
             }
 
+            // SDBQL query block
+            ExprKind::SdqlBlock {
+                query,
+                interpolations,
+            } => self.evaluate_sdql_block(query, interpolations, expr.span),
+
             // Pattern matching
             ExprKind::Match { expression, arms } => {
                 self.evaluate_match(expression, arms, expr.span)

@@ -166,6 +166,12 @@ impl Compiler {
             ExprKind::InterpolatedString(parts) => {
                 self.compile_interpolated_string(parts, line)?;
             }
+            ExprKind::SdqlBlock {
+                query,
+                interpolations,
+            } => {
+                self.compile_sdql_block(query, interpolations, line)?;
+            }
             ExprKind::Await(inner) => {
                 // Compile the inner expression — awaiting is handled at runtime
                 self.compile_expr(inner)?;
@@ -549,6 +555,28 @@ impl Compiler {
             }
         }
         self.emit(Op::BuildString(count as u16), line);
+        Ok(())
+    }
+
+    fn compile_sdql_block(
+        &mut self,
+        query: &str,
+        interpolations: &[crate::ast::expr::SdqlInterpolation],
+        line: usize,
+    ) -> CompileResult<()> {
+        // For now, just compile the query as a string constant
+        // The runtime will handle interpolations
+        // TODO: Implement proper interpolation handling
+        let _ = interpolations; // suppress warning for now
+        self.emit_constant(Constant::String(query.to_string()), line);
+
+        // Emit a call to a builtin function to execute the SDBQL
+        // For now, we'll use a placeholder - will be implemented later
+        // This will call the runtime function that executes the query
+        let fn_idx = self.add_string_constant("__sdql_exec");
+        self.emit(Op::GetGlobal(fn_idx), line);
+        self.emit(Op::Call(1), line);
+
         Ok(())
     }
 

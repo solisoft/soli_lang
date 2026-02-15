@@ -45,6 +45,13 @@ pub enum ExprKind {
     StringLiteral(String),
     /// Interpolated string: "Hello \(name)!"
     InterpolatedString(Vec<InterpolatedPart>),
+
+    /// SDBQL query block: @sdql{ FOR u IN users FILTER u.age >= #{age} RETURN u }
+    SdqlBlock {
+        query: String,
+        interpolations: Vec<SdqlInterpolation>,
+    },
+
     /// Boolean literal: true, false
     BoolLiteral(bool),
     /// Null literal
@@ -175,6 +182,14 @@ pub enum InterpolatedPart {
     Literal(String),
     /// Expression to interpolate: \(expr)
     Expression(Expr),
+}
+
+/// Interpolation in SDBQL query block: #{expression}
+#[derive(Debug, Clone, PartialEq)]
+pub struct SdqlInterpolation {
+    pub expr: String,
+    pub start: usize,
+    pub end: usize,
 }
 
 /// A single arm in a match expression.

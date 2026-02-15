@@ -44,6 +44,23 @@ impl Parser {
             TokenKind::InterpolatedString(parts) => {
                 self.parse_interpolated_string(parts.clone(), start_span)
             }
+            TokenKind::SdqlBlock {
+                query,
+                interpolations,
+            } => Ok(Expr::new(
+                ExprKind::SdqlBlock {
+                    query: query.clone(),
+                    interpolations: interpolations
+                        .iter()
+                        .map(|i| crate::ast::expr::SdqlInterpolation {
+                            expr: i.expr.clone(),
+                            start: i.start,
+                            end: i.end,
+                        })
+                        .collect(),
+                },
+                start_span,
+            )),
             TokenKind::BoolLiteral(b) => Ok(Expr::new(ExprKind::BoolLiteral(*b), start_span)),
             TokenKind::Null => Ok(Expr::new(ExprKind::Null, start_span)),
 
@@ -1107,10 +1124,10 @@ impl Parser {
         let mut interpolated_parts = Vec::new();
 
         for part in parts {
-            if part.starts_with("\\(") {
+            if part.starts_with("#{") {
                 // This is an expression - parse it
-                // The format is \(expr), so we need to extract expr and parse it
-                let expr_content = &part[2..part.len() - 1]; // Remove \( and )
+                // The format is #{expr}, so we need to extract expr and parse it
+                let expr_content = &part[2..part.len() - 1]; // Remove #{ and }
                                                              // Parse the expression from the content
                 let expr = self.parse_expression_from_string(expr_content)?;
                 interpolated_parts.push(InterpolatedPart::Expression(expr));

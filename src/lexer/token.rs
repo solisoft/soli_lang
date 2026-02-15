@@ -2,6 +2,14 @@
 
 use crate::span::Span;
 
+/// Interpolation in SDBQL query block: #{expression}
+#[derive(Debug, Clone, PartialEq)]
+pub struct SdqlInterpolation {
+    pub expr: String,
+    pub start: usize,
+    pub end: usize,
+}
+
 /// All token types in Solilang.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -12,6 +20,12 @@ pub enum TokenKind {
     StringLiteral(String),
     InterpolatedString(Vec<String>), // Parts for interpolation
     BoolLiteral(bool),
+
+    // SDBQL query block with #{...} interpolation
+    SdqlBlock {
+        query: String,
+        interpolations: Vec<SdqlInterpolation>,
+    },
 
     // Identifiers and keywords
     Identifier(String),
@@ -172,6 +186,9 @@ impl std::fmt::Display for TokenKind {
             TokenKind::StringLiteral(s) => write!(f, "\"{}\"", s),
             TokenKind::InterpolatedString(parts) => {
                 write!(f, "interp\"{}\"", parts.join("...("))
+            }
+            TokenKind::SdqlBlock { query, .. } => {
+                write!(f, "@sdql{{{}}}...", &query[..query.len().min(30)])
             }
             TokenKind::BoolLiteral(b) => write!(f, "{}", b),
             TokenKind::Identifier(s) => write!(f, "{}", s),
