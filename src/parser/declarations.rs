@@ -213,7 +213,7 @@ impl Parser {
                 }
             }
 
-            let (visibility, is_static) = self.parse_modifiers();
+            let (visibility, is_static, is_const) = self.parse_modifiers();
 
             if self.check(&TokenKind::New) {
                 if constructor.is_some() {
@@ -235,7 +235,7 @@ impl Parser {
                 // Parse class-level statements like validates(...), before_save(...)
                 class_statements.push(self.parse_class_level_statement()?);
             } else {
-                fields.push(self.parse_field(visibility, is_static)?);
+                fields.push(self.parse_field(visibility, is_static, is_const)?);
             }
         }
 
@@ -310,9 +310,10 @@ impl Parser {
         Ok(statements)
     }
 
-    fn parse_modifiers(&mut self) -> (Visibility, bool) {
+    fn parse_modifiers(&mut self) -> (Visibility, bool, bool) {
         let mut visibility = Visibility::Public;
         let mut is_static = false;
+        let mut is_const = false;
 
         loop {
             if self.match_token(&TokenKind::Public) {
@@ -323,12 +324,14 @@ impl Parser {
                 visibility = Visibility::Protected;
             } else if self.match_token(&TokenKind::Static) {
                 is_static = true;
+            } else if self.match_token(&TokenKind::Const) {
+                is_const = true;
             } else {
                 break;
             }
         }
 
-        (visibility, is_static)
+        (visibility, is_static, is_const)
     }
 
     fn parse_constructor(&mut self) -> ParseResult<ConstructorDecl> {
@@ -369,15 +372,35 @@ impl Parser {
         })
     }
 
-    fn parse_field(&mut self, visibility: Visibility, is_static: bool) -> ParseResult<FieldDecl> {
+    fn parse_field(
+        &mut self,
+        visibility: Visibility,
+        is_static: bool,
+        is_const: bool,
+    ) -> ParseResult<FieldDecl> {
         let start_span = self.current_span();
         let name = self.expect_identifier()?;
 
-        self.expect(&TokenKind::Colon)?;
-        let type_annotation = self.parse_type()?;
+        // Type annotation: required for regular fields, optional for const fields
+        let type_annotation = if self.match_token(&TokenKind::Colon) {
+            Some(self.parse_type()?)
+        } else if !is_const {
+            return Err(ParserError::general(
+                "expected ':' and type annotation for field declaration",
+                self.current_span(),
+            ));
+        } else {
+            None
+        };
 
+        // Initializer: required for const fields, optional for regular fields
         let initializer = if self.match_token(&TokenKind::Equal) {
             Some(self.expression()?)
+        } else if is_const {
+            return Err(ParserError::general(
+                "const field must have an initializer",
+                self.current_span(),
+            ));
         } else {
             None
         };
@@ -388,6 +411,7 @@ impl Parser {
         Ok(FieldDecl {
             visibility,
             is_static,
+            is_const,
             name,
             type_annotation,
             initializer,

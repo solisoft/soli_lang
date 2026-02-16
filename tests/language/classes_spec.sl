@@ -542,3 +542,116 @@ describe("Nested Classes", fn() {
         assert_eq(child.introduce(), "Child of Parent");
     });
 });
+
+describe("Const Fields", fn() {
+    test("const instance field declaration", fn() {
+        class Config {
+            const MAX_LENGTH = 500
+        }
+        let c = new Config();
+        assert_eq(c.MAX_LENGTH, 500);
+    });
+
+    test("static const field declaration", fn() {
+        class Message {
+            static const TYPE_REPLY = "reply"
+            static const TYPE_FORWARD = "forward"
+        }
+        assert_eq(Message.TYPE_REPLY, "reply");
+        assert_eq(Message.TYPE_FORWARD, "forward");
+    });
+
+    test("const field with type annotation", fn() {
+        class Limits {
+            const MAX_SIZE: Int = 1000
+        }
+        let l = new Limits();
+        assert_eq(l.MAX_SIZE, 1000);
+    });
+
+    test("static const field with type annotation", fn() {
+        class Api {
+            static const VERSION: String = "2.0"
+        }
+        assert_eq(Api.VERSION, "2.0");
+    });
+
+    test("const instance field cannot be reassigned", fn() {
+        class Immutable {
+            const VALUE = 42
+        }
+        let obj = new Immutable();
+        let error_thrown = false;
+        try {
+            obj.VALUE = 100;
+        } catch (e) {
+            error_thrown = true;
+        }
+        assert_eq(error_thrown, true);
+        assert_eq(obj.VALUE, 42);
+    });
+
+    test("static const field cannot be reassigned", fn() {
+        class Constants {
+            static const PI = 3.14159
+        }
+        let error_thrown = false;
+        try {
+            Constants.PI = 0;
+        } catch (e) {
+            error_thrown = true;
+        }
+        assert_eq(error_thrown, true);
+        assert_eq(Constants.PI, 3.14159);
+    });
+
+    test("const field accessible via this in method", fn() {
+        class Settings {
+            const LIMIT = 10
+
+            fn get_limit() {
+                return this.LIMIT;
+            }
+        }
+        let s = new Settings();
+        assert_eq(s.get_limit(), 10);
+    });
+
+    test("static const field accessible from method", fn() {
+        class Counter {
+            static const MAX = 100
+
+            static fn get_max() {
+                return Counter.MAX;
+            }
+        }
+        assert_eq(Counter.get_max(), 100);
+    });
+
+    test("mixed const and mutable fields", fn() {
+        class Item {
+            const CATEGORY = "default"
+            name: String = "unnamed"
+
+            new(name: String) {
+                this.name = name;
+            }
+        }
+        let item = new Item("Widget");
+        assert_eq(item.CATEGORY, "default");
+        assert_eq(item.name, "Widget");
+        item.name = "Updated";
+        assert_eq(item.name, "Updated");
+    });
+
+    test("mixed static const and static mutable fields", fn() {
+        class Registry {
+            static const TYPE = "singleton"
+            static count: Int = 0
+        }
+        assert_eq(Registry.TYPE, "singleton");
+        assert_eq(Registry.count, 0);
+        Registry.count = 5;
+        assert_eq(Registry.count, 5);
+    });
+});

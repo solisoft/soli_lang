@@ -1,7 +1,7 @@
 //! Statement execution.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::expr::Argument;
@@ -353,11 +353,19 @@ impl Interpreter {
 
         let mut fields = HashMap::new();
         let mut static_field_initializers = HashMap::new();
+        let mut const_fields = HashSet::new();
+        let mut static_const_fields = HashSet::new();
         for field in &decl.fields {
             if field.is_static {
                 static_field_initializers.insert(field.name.clone(), field.initializer.clone());
+                if field.is_const {
+                    static_const_fields.insert(field.name.clone());
+                }
             } else {
                 fields.insert(field.name.clone(), field.initializer.clone());
+                if field.is_const {
+                    const_fields.insert(field.name.clone());
+                }
             }
         }
 
@@ -372,8 +380,9 @@ impl Interpreter {
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            all_methods_cache: RefCell::new(None),
-            all_native_methods_cache: RefCell::new(None),
+            const_fields,
+            static_const_fields,
+            ..Default::default()
         };
 
         let class_rc = Rc::new(class);

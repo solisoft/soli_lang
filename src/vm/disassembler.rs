@@ -146,6 +146,14 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("STATIC_FIELD {:>5} ({})", idx, name));
         }
+        Op::ConstField(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("CONST_FIELD  {:>5} ({})", idx, name));
+        }
+        Op::StaticConstField(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("ST_CONST_FLD {:>5} ({})", idx, name));
+        }
         Op::TryBegin(catch, finally) => {
             out.push_str(&format!("TRY_BEGIN    c:{} f:{}", catch, finally));
         }

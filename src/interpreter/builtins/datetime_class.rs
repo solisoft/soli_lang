@@ -445,8 +445,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             fields: HashMap::new(),
                             constructor: None,
                             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            all_methods_cache: RefCell::new(None),
-                            all_native_methods_cache: RefCell::new(None),
+                            ..Default::default()
                         }));
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -486,8 +485,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             fields: HashMap::new(),
                             constructor: None,
                             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            all_methods_cache: RefCell::new(None),
-                            all_native_methods_cache: RefCell::new(None),
+                            ..Default::default()
                         }));
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -527,8 +525,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             fields: HashMap::new(),
                             constructor: None,
                             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            all_methods_cache: RefCell::new(None),
-                            all_native_methods_cache: RefCell::new(None),
+                            ..Default::default()
                         }));
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -568,8 +565,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             fields: HashMap::new(),
                             constructor: None,
                             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            all_methods_cache: RefCell::new(None),
-                            all_native_methods_cache: RefCell::new(None),
+                            ..Default::default()
                         }));
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -642,8 +638,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 fields: HashMap::new(),
                 constructor: None,
                 nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                all_methods_cache: RefCell::new(None),
-                all_native_methods_cache: RefCell::new(None),
+                ..Default::default()
             }));
             inst.set(
                 "_ts".to_string(),
@@ -668,8 +663,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 fields: HashMap::new(),
                 constructor: None,
                 nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                all_methods_cache: RefCell::new(None),
-                all_native_methods_cache: RefCell::new(None),
+                ..Default::default()
             }));
             inst.set(
                 "_ts".to_string(),
@@ -701,8 +695,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     fields: HashMap::new(),
                     constructor: None,
                     nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    all_methods_cache: RefCell::new(None),
-                    all_native_methods_cache: RefCell::new(None),
+                    ..Default::default()
                 }));
                 inst.set("_ts".to_string(), Value::Int(timestamp));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -746,8 +739,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     fields: HashMap::new(),
                     constructor: None,
                     nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    all_methods_cache: RefCell::new(None),
-                    all_native_methods_cache: RefCell::new(None),
+                    ..Default::default()
                 }));
                 inst.set("_ts".to_string(), Value::Int(0));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -778,8 +770,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 fields: HashMap::new(),
                 constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                all_methods_cache: RefCell::new(None),
-                all_native_methods_cache: RefCell::new(None),
+                ..Default::default()
             }));
             inst.set("_ts".to_string(), Value::Int(ts_nanos));
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -798,8 +789,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
     env.define(
         "DateTime".to_string(),
@@ -838,8 +828,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             fields: HashMap::new(),
                             constructor: None,
                             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            all_methods_cache: RefCell::new(None),
-                            all_native_methods_cache: RefCell::new(None),
+                            ..Default::default()
                         }));
                         dur.set("seconds".to_string(), Value::Float((t2 - t1) as f64));
                         Ok(Value::Instance(Rc::new(RefCell::new(dur))))
@@ -872,8 +861,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     fields: HashMap::new(),
                     constructor: None,
                     nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    all_methods_cache: RefCell::new(None),
-                    all_native_methods_cache: RefCell::new(None),
+                    ..Default::default()
                 }));
                 dur.set("seconds".to_string(), Value::Float(s));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
@@ -903,8 +891,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     fields: HashMap::new(),
                     constructor: None,
                     nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    all_methods_cache: RefCell::new(None),
-                    all_native_methods_cache: RefCell::new(None),
+                    ..Default::default()
                 }));
                 dur.set("seconds".to_string(), Value::Float(m * 60.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
@@ -934,8 +921,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     fields: HashMap::new(),
                     constructor: None,
                     nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    all_methods_cache: RefCell::new(None),
-                    all_native_methods_cache: RefCell::new(None),
+                    ..Default::default()
                 }));
                 dur.set("seconds".to_string(), Value::Float(h * 3600.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
@@ -965,8 +951,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     fields: HashMap::new(),
                     constructor: None,
                     nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    all_methods_cache: RefCell::new(None),
-                    all_native_methods_cache: RefCell::new(None),
+                    ..Default::default()
                 }));
                 dur.set("seconds".to_string(), Value::Float(d * 86400.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
@@ -996,8 +981,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     fields: HashMap::new(),
                     constructor: None,
                     nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    all_methods_cache: RefCell::new(None),
-                    all_native_methods_cache: RefCell::new(None),
+                    ..Default::default()
                 }));
                 dur.set("seconds".to_string(), Value::Float(w * 86400.0 * 7.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
@@ -1039,8 +1023,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
     env.define(
         "Duration".to_string(),

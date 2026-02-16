@@ -122,6 +122,10 @@ pub enum Op {
     Field(u16),
     /// Add a static field with initializer to a class. Name from constant index.
     StaticField(u16),
+    /// Add a const field to a class. Name from constant index.
+    ConstField(u16),
+    /// Add a static const field to a class. Name from constant index.
+    StaticConstField(u16),
 
     // --- Exceptions ---
     /// Begin a try block. Operands: catch_offset, finally_offset.

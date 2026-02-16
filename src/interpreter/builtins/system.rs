@@ -108,8 +108,7 @@ fn system_class() -> Value {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
 
     Value::Class(Rc::new(class))

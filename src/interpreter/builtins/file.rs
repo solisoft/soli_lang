@@ -275,8 +275,7 @@ fn register_file_class(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
 
     env.define("File".to_string(), Value::Class(Rc::new(file_class)));

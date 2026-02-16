@@ -302,8 +302,7 @@ fn register_error_classes(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
     env.define("Error".to_string(), Value::Class(Rc::new(error_class)));
 
@@ -321,8 +320,7 @@ fn register_error_classes(env: &mut Environment) {
             fields: HashMap::new(),
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            all_methods_cache: RefCell::new(None),
-            all_native_methods_cache: RefCell::new(None),
+            ..Default::default()
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -332,8 +330,7 @@ fn register_error_classes(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
     env.define(
         "ValueError".to_string(),
@@ -354,8 +351,7 @@ fn register_error_classes(env: &mut Environment) {
             fields: HashMap::new(),
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            all_methods_cache: RefCell::new(None),
-            all_native_methods_cache: RefCell::new(None),
+            ..Default::default()
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -365,8 +361,7 @@ fn register_error_classes(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
     env.define(
         "TypeError".to_string(),
@@ -387,8 +382,7 @@ fn register_error_classes(env: &mut Environment) {
             fields: HashMap::new(),
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            all_methods_cache: RefCell::new(None),
-            all_native_methods_cache: RefCell::new(None),
+            ..Default::default()
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -398,8 +392,7 @@ fn register_error_classes(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
     env.define(
         "KeyError".to_string(),
@@ -420,8 +413,7 @@ fn register_error_classes(env: &mut Environment) {
             fields: HashMap::new(),
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            all_methods_cache: RefCell::new(None),
-            all_native_methods_cache: RefCell::new(None),
+            ..Default::default()
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -431,8 +423,7 @@ fn register_error_classes(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
     env.define(
         "IndexError".to_string(),
@@ -453,8 +444,7 @@ fn register_error_classes(env: &mut Environment) {
             fields: HashMap::new(),
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            all_methods_cache: RefCell::new(None),
-            all_native_methods_cache: RefCell::new(None),
+            ..Default::default()
         })),
         methods: HashMap::new(),
         static_methods: HashMap::new(),
@@ -464,8 +454,7 @@ fn register_error_classes(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
     env.define(
         "RuntimeError".to_string(),

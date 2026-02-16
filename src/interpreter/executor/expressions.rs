@@ -212,10 +212,22 @@ impl Interpreter {
                 let obj_val = self.evaluate(object)?;
                 match obj_val {
                     Value::Instance(inst) => {
+                        if inst.borrow().class.const_fields.contains(name.as_str()) {
+                            return Err(RuntimeError::type_error(
+                                format!("cannot reassign const field '{}'", name),
+                                target.span,
+                            ));
+                        }
                         inst.borrow_mut().set(name.clone(), new_value.clone());
                         Ok(new_value)
                     }
                     Value::Class(class) => {
+                        if class.static_const_fields.contains(name.as_str()) {
+                            return Err(RuntimeError::type_error(
+                                format!("cannot reassign static const field '{}'", name),
+                                target.span,
+                            ));
+                        }
                         // Set static field on class
                         class
                             .static_fields
@@ -372,6 +384,7 @@ impl Interpreter {
         Ok(Value::Hash(Rc::new(RefCell::new(result))))
     }
 
+    #[allow(clippy::arc_with_non_send_sync)]
     pub(crate) fn evaluate_system_run(&mut self, cmd: &str, _span: Span) -> RuntimeResult<Value> {
         use crate::interpreter::value::HttpFutureKind;
         use std::sync::mpsc::{self, Receiver, Sender};

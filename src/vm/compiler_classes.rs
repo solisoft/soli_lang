@@ -91,11 +91,12 @@ impl Compiler {
             self.emit(Op::Null, line);
         }
 
-        if field.is_static {
-            self.emit(Op::StaticField(name_idx), line);
-        } else {
-            self.emit(Op::Field(name_idx), line);
-        }
+        match (field.is_static, field.is_const) {
+            (true, true) => self.emit(Op::StaticConstField(name_idx), line),
+            (true, false) => self.emit(Op::StaticField(name_idx), line),
+            (false, true) => self.emit(Op::ConstField(name_idx), line),
+            (false, false) => self.emit(Op::Field(name_idx), line),
+        };
         Ok(())
     }
 

@@ -167,8 +167,9 @@ pub enum Visibility {
 pub struct FieldDecl {
     pub visibility: Visibility,
     pub is_static: bool,
+    pub is_const: bool,
     pub name: String,
-    pub type_annotation: TypeAnnotation,
+    pub type_annotation: Option<TypeAnnotation>,
     pub initializer: Option<Expr>,
     pub span: Span,
 }

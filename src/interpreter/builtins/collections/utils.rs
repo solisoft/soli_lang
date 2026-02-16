@@ -38,8 +38,7 @@ fn register_string_class(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     });
 
     env.define("String".to_string(), Value::Class(empty_class.clone()));
@@ -484,8 +483,7 @@ fn register_string_class(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
 
     env.assign("String", Value::Class(Rc::new(string_class)));
@@ -565,8 +563,7 @@ pub fn register_base64_class(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        all_methods_cache: RefCell::new(None),
-        all_native_methods_cache: RefCell::new(None),
+        ..Default::default()
     };
 
     env.define("Base64".to_string(), Value::Class(Rc::new(base64_class)));

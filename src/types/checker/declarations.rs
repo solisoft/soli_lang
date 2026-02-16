@@ -23,7 +23,11 @@ impl TypeChecker {
 
         // Add fields
         for field in &decl.fields {
-            let ty = self.resolve_type(&field.type_annotation);
+            let ty = if let Some(ref ta) = field.type_annotation {
+                self.resolve_type(ta)
+            } else {
+                Type::Any
+            };
             class_type.fields.insert(
                 field.name.clone(),
                 FieldInfo {

@@ -1,7 +1,7 @@
 //! Runtime values for the Solilang interpreter.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -605,6 +605,10 @@ pub struct Class {
     pub constructor: Option<Rc<Function>>,
     /// Nested classes defined within this class - using RefCell for interior mutability
     pub nested_classes: Rc<RefCell<HashMap<String, Rc<Class>>>>,
+    /// Instance field names declared as `const` (immutable after initialization).
+    pub const_fields: HashSet<String>,
+    /// Static field names declared as `const` (immutable after initialization).
+    pub static_const_fields: HashSet<String>,
     /// Flattened method cache for O(1) lookups including inherited methods.
     /// This is computed lazily on first access and includes all methods from the inheritance chain.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
@@ -627,6 +631,8 @@ impl Default for Class {
             fields: HashMap::new(),
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
+            const_fields: HashSet::new(),
+            static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         }
@@ -659,6 +665,8 @@ impl Class {
             fields,
             constructor,
             nested_classes,
+            const_fields: HashSet::new(),
+            static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
         }

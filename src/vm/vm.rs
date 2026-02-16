@@ -519,6 +519,20 @@ impl Vm {
                         cls.static_fields.borrow_mut().insert(name, value);
                     }
                 }
+                Op::ConstField(idx) => {
+                    let name = self.read_string_constant(frame_idx, idx);
+                    let init_value = self.pop();
+                    // Const field initializer handled by constructor compilation
+                    let _ = (name, init_value);
+                }
+                Op::StaticConstField(idx) => {
+                    let name = self.read_string_constant(frame_idx, idx);
+                    let value = self.pop();
+                    let class = self.peek(0).clone();
+                    if let Value::Class(ref cls) = class {
+                        cls.static_fields.borrow_mut().insert(name, value);
+                    }
+                }
 
                 // --- Exceptions ---
                 Op::TryBegin(catch_offset, finally_offset) => {
