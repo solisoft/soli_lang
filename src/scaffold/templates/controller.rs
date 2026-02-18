@@ -17,7 +17,7 @@ class {controller_name} extends Controller {{
     }}
 
     // GET /{resource}
-    fn index(req: Any) -> Any {{
+    fn index(req) {{
         let {model_var}s = {model_name}.all();
         return render("{resource}/index", {{
             "{model_var}s": {model_var}s,
@@ -26,7 +26,7 @@ class {controller_name} extends Controller {{
     }}
 
     // GET /{resource}/:id
-    fn show(req: Any) -> Any {{
+    fn show(req) {{
         let id = req.params["id"];
         let {model_var} = {model_name}.find(id);
         if {model_var} == null {{
@@ -39,7 +39,7 @@ class {controller_name} extends Controller {{
     }}
 
     // GET /{resource}/new
-    fn new(req: Any) -> Any {{
+    fn new(req) {{
         return render("{resource}/new", {{
             "{model_var}": {{}},
             "title": "New {model_name}"
@@ -47,7 +47,7 @@ class {controller_name} extends Controller {{
     }}
 
     // GET /{resource}/:id/edit
-    fn edit(req: Any) -> Any {{
+    fn edit(req) {{
         let id = req.params["id"];
         let {model_var} = {model_name}.find(id);
         if {model_var} == null {{
@@ -60,7 +60,7 @@ class {controller_name} extends Controller {{
     }}
 
     // POST /{resource}
-    fn create(req: Any) -> Any {{
+    fn create(req) {{
         let permitted = this._permit_params(req.params);
         let result = {model_name}.create(permitted);
         if result["valid"] == true {{
@@ -73,7 +73,7 @@ class {controller_name} extends Controller {{
     }}
 
     // PATCH/PUT /{resource}/:id
-    fn update(req: Any) -> Any {{
+    fn update(req) {{
         let id = req.params["id"];
         let permitted = this._permit_params(req.params);
         {model_name}.update(id, permitted);
@@ -81,7 +81,7 @@ class {controller_name} extends Controller {{
     }}
 
     // DELETE /{resource}/:id
-    fn delete(req: Any) -> Any {{
+    fn delete(req) {{
         let id = req.params["id"];
         {model_name}.delete(id);
         return redirect("/{resource}");

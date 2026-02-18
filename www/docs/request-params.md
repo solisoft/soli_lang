@@ -20,7 +20,7 @@ Use `req["all"]` to access all parameters unified:
 // Request: POST /users/123/profile?name=alice&age=30
 // Body: {"bio": "Developer", "age": "25"}
 
-fn update_profile(req: Any) -> Any {
+fn update_profile(req) {
     // Unified access to all params
     let all = req["all"];
 
@@ -45,7 +45,7 @@ When the same parameter exists in multiple sources, values are merged with this 
 // Request: PUT /items/42?status=active
 // Body: {"status": "urgent", "quantity": "5"}
 
-fn update_item(req: Any) -> Any {
+fn update_item(req) {
     let all = req["all"];
 
     // "status" appears in both query and body
@@ -67,7 +67,7 @@ fn update_item(req: Any) -> Any {
 You can still access individual parameter sources separately:
 
 ```soli
-fn handler(req: Any) -> Any {
+fn handler(req) {
     // Route parameters only
     let id = req["params"]["id"];
 
@@ -90,7 +90,7 @@ fn handler(req: Any) -> Any {
 ## Complete Example: Search with Pagination
 
 ```soli
-fn search(req: Any) -> Any {
+fn search(req) {
     let all = req["all"];
 
     // Unified params allow flexible API design

@@ -145,14 +145,14 @@ let result = validate({
 ```soli
 // app/controllers/users_controller.sl
 
-fn new(req: Any) -> Any {
+fn new(req) {
     {
         "status": 200,
         "body": render("users/new.html", {})
     }
 }
 
-fn create(req: Any) -> Any {
+fn create(req) {
     let schema = {
         "username": V.string().required()
             .min_length(3)

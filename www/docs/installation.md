@@ -75,7 +75,7 @@ post("/contact", "home#contact");
 Create controllers in `app/controllers/`:
 
 ```soli
-fn index(req: Any) -> Any {
+fn index(req) {
     return render("home/index", {
         "title": "Welcome"
     });

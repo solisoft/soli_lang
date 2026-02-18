@@ -81,6 +81,24 @@ class Users extends Model {
 
 Standard CRUD actions:
 
+```soli
+class UsersController extends Controller {
+    fn index(req) {
+        let users = Users.all();
+        return render("users/index", { "users": users });
+    }
+
+    fn show(req) {
+        let id = req.params["id"];
+        let user = Users.find(id);
+        if user == null {
+            return error(404, "User not found");
+        }
+        return render("users/show", { "user": user });
+    }
+}
+```
+
 | Action | Method | Path | Description |
 |--------|--------|------|-------------|
 | index | GET | /users | List all records |

@@ -749,6 +749,90 @@ let responses = http_parallel([
 ])
 ```
 
+## HTTP Server Functions
+
+Create a lightweight HTTP server without the full MVC framework. For MVC apps, use `get/post` in `config/routes.sl` instead.
+
+### http_server_get(path, handler_name)
+
+Register a GET route handler.
+
+**Parameters:**
+- `path` (String) - Route path (e.g., "/users", "/users/:id")
+- `handler_name` (String) - Handler function name
+
+**Example:**
+```soli
+fn health(req) {
+    return {"status": 200, "body": "OK"};
+}
+
+http_server_get("/health", "health");
+http_server_get("/users/:id", "get_user");
+```
+
+### http_server_post(path, handler_name)
+
+Register a POST route handler.
+
+**Example:**
+```soli
+fn create_user(req) {
+    let name = req["json"]["name"];
+    return {"status": 201, "body": "Created: " + name};
+}
+
+http_server_post("/users", "create_user");
+```
+
+### http_server_put(path, handler_name)
+
+Register a PUT route handler.
+
+### http_server_delete(path, handler_name)
+
+Register a DELETE route handler.
+
+### http_server_route(method, path, handler_name)
+
+Register a route for any HTTP method.
+
+**Example:**
+```soli
+http_server_route("PATCH", "/users/:id", "patch_user");
+```
+
+### http_server_listen(port)
+
+Start the HTTP server (blocking call).
+
+**Parameters:**
+- `port` (Int) - Port number to listen on
+
+**Example:**
+```soli
+// Define routes
+http_server_get("/", "home");
+http_server_get("/health", "health");
+http_server_post("/api/users", "create_user");
+
+// Start server (blocks)
+http_server_listen(3000);
+```
+
+**Handler Function Signature:**
+```soli
+fn my_handler(req) -> Any {
+    let id = req["params"]["id"];           // Path parameters
+    let name = req["query"]["name"];         // Query string
+    let data = req["json"]["field"];         // JSON body
+    let token = req["headers"]["Authorization"];  // Headers
+    
+    return {"status": 200, "body": "Hello"};
+    // Or use helpers: render_json(), render_text(), redirect()
+}
+```
+
 ---
 
 ## JSON Functions
@@ -2231,6 +2315,94 @@ let translations = {
 I18n.plural("items", 0, null, translations)  // "No items"
 I18n.plural("items", 1, null, translations)  // "1 item"
 I18n.plural("items", 5, null, translations)  // "Many items"
+```
+
+### Loading from External Files
+
+Load translations from external JSON files at application startup. This is typically done in `app.sl` to make translations available globally.
+
+**JSON File Format:**
+
+```json
+{
+    "app": {
+        "title": "My Application",
+        "welcome": "Welcome!"
+    },
+    "nav": {
+        "home": "Home",
+        "about": "About"
+    },
+    "common": {
+        "save": "Save",
+        "cancel": "Cancel"
+    }
+}
+```
+
+**Helper Functions:**
+
+```soli
+let i18n_translations = {};
+
+fn flatten_dict(dict, prefix) -> Hash {
+    let result = {};
+    for (pair in entries(dict)) {
+        let key = pair[0];
+        let value = pair[1];
+        let full_key = prefix + "." + key;
+        if (type(value) == "Hash") {
+            let nested = flatten_dict(value, full_key);
+            for (np in entries(nested)) {
+                result[np[0]] = np[1];
+            }
+        } else {
+            result[full_key] = value;
+        }
+    }
+    return result;
+}
+
+fn i18n_load_translations(locale, dict) {
+    let flat = flatten_dict(dict, locale);
+    for (pair in entries(flat)) {
+        i18n_translations[pair[0]] = pair[1];
+    }
+}
+```
+
+**Loading in app.sl:**
+
+```soli
+// Load translation files from locales/ directory
+let en_data = json_parse(slurp("locales/en.json"));
+let fr_data = json_parse(slurp("locales/fr.json"));
+let de_data = json_parse(slurp("locales/de.json"));
+
+i18n_load_translations("en", en_data);
+i18n_load_translations("fr", fr_data);
+i18n_load_translations("de", de_data);
+
+// Set default locale
+I18n.set_locale("en");
+
+// Define routes
+http_server_get("/", "home#index");
+http_server_listen(3000);
+```
+
+**Using in Controllers:**
+
+```soli
+fn home_index(req) {
+    let welcome = I18n.translate("app.welcome", null, i18n_translations);
+    let home_link = I18n.translate("nav.home", null, i18n_translations);
+    
+    return render("home/index", {
+        "welcome": welcome,
+        "nav_home": home_link
+    });
+}
 ```
 
 ### I18n.format_number(number, locale?)

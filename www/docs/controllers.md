@@ -9,14 +9,14 @@ Create a file in `app/controllers/` with a `_controller.sl` suffix:
 ```soli
 // app/controllers/users_controller.sl
 class UsersController extends Controller {
-    fn index(req: Any) -> Any {
+    fn index(req) {
         render("users/index", {
             "title": "Users",
             "users": []
         })
     }
 
-    fn show(req: Any) -> Any {
+    fn show(req) {
         let user_id = req.params["id"];
         render("users/show", {
             "title": "User Details",
@@ -35,8 +35,8 @@ Controllers are classes that extend the base `Controller` class:
 ```soli
 class PostsController extends Controller {
     // Actions go here
-    fn index(req: Any) -> Any { /* ... */ }
-    fn show(req: Any) -> Any { /* ... */ }
+    fn index(req) { /* ... */ }
+    fn show(req) { /* ... */ }
 }
 ```
 
@@ -68,16 +68,16 @@ Each public function in a controller is an action:
 
 ```soli
 class PostsController extends Controller {
-    fn index(req: Any) -> Any { /* List posts */ }
-    fn show(req: Any) -> Any { /* Show single post */ }
-    fn new(req: Any) -> Any { /* Show new post form */ }
-    fn create(req: Any) -> Any { /* Create new post */ }
-    fn edit(req: Any) -> Any { /* Show edit form */ }
-    fn update(req: Any) -> Any { /* Update post */ }
-    fn delete(req: Any) -> Any { /* Delete post */ }
+    fn index(req) { /* List posts */ }
+    fn show(req) { /* Show single post */ }
+    fn new(req) { /* Show new post form */ }
+    fn create(req) { /* Create new post */ }
+    fn edit(req) { /* Show edit form */ }
+    fn update(req) { /* Update post */ }
+    fn delete(req) { /* Delete post */ }
 
     # Private helper methods (not exposed as actions)
-    fn _validate_post(req: Any) -> Bool {
+    fn _validate_post(req) -> Bool {
         req.params["title"] != null
     }
 }
@@ -108,7 +108,7 @@ class ApplicationController extends Controller {
     }
 
     # Shared helper method available to all subclasses
-    fn _current_user(req: Any) -> Any {
+    fn _current_user(req) {
         req["current_user"]
     }
 }
@@ -134,7 +134,7 @@ class PostsController extends ApplicationController {
         };
     }
 
-    fn index(req: Any) -> Any {
+    fn index(req) {
         # Can use inherited _current_user helper
         let user = this._current_user(req);
         let posts = Post.all();
@@ -144,7 +144,7 @@ class PostsController extends ApplicationController {
         })
     }
 
-    fn show(req: Any) -> Any {
+    fn show(req) {
         # req["post"] is set by before_action
         render("posts/show", { "post": req["post"] })
     }
@@ -221,7 +221,7 @@ this.after_action(:create, :update) = fn(req, response) {
 Access request data through the `req` parameter:
 
 ```soli
-fn create(req: Any) -> Any {
+fn create(req) {
     # Path parameters
     let id = req.params["id"];
 
@@ -257,7 +257,7 @@ The request object is automatically injected into your controller:
 
 ```soli
 class PostsController extends Controller {
-    fn show(req: Any) -> Any {
+    fn show(req) {
         # Access params directly
         let id = req.params["id"];
 
@@ -274,7 +274,7 @@ class PostsController extends Controller {
 ### Render a Template
 
 ```soli
-fn index(req: Any) -> Any {
+fn index(req) {
     render("home/index", {
         "title": "Welcome",
         "message": "Hello!"
@@ -292,12 +292,12 @@ class PostsController extends Controller {
         this.layout = "posts";  # Uses layouts/posts.html.slv
     }
 
-    fn show(req: Any) -> Any {
+    fn show(req) {
         render("posts/show", { "post": req["post"] })
     }
 
     # Skip layout for specific action
-    fn json_only(req: Any) -> Any {
+    fn json_only(req) {
         render_json({ "data": "value" }, layout: false)
     }
 }
@@ -306,14 +306,14 @@ class PostsController extends Controller {
 ### Redirect
 
 ```soli
-fn create(req: Any) -> Any {
+fn create(req) {
     # Process form data...
 
     # Redirect to another page
     redirect("/users")
 }
 
-fn update(req: Any) -> Any {
+fn update(req) {
     # After update, redirect to show page
     let user_id = req.params["id"];
     redirect("/users/" + user_id)
@@ -323,7 +323,7 @@ fn update(req: Any) -> Any {
 ### JSON Response
 
 ```soli
-fn api_users(req: Any) -> Any {
+fn api_users(req) {
     render_json({
         "users": [
             {"id": 1, "name": "Alice"},
@@ -336,7 +336,7 @@ fn api_users(req: Any) -> Any {
 ### Plain Text
 
 ```soli
-fn ping(req: Any) -> Any {
+fn ping(req) {
     render_text("pong")
 }
 ```
@@ -344,7 +344,7 @@ fn ping(req: Any) -> Any {
 ### Error Response
 
 ```soli
-fn show(req: Any) -> Any {
+fn show(req) {
     let id = req.params["id"];
     if id == "" {
         return error(400, "Missing ID");
@@ -372,7 +372,7 @@ class PostsController extends Controller {
         };
     }
 
-    fn show(req: Any) -> Any {
+    fn show(req) {
         # Access the post set by before_action
         let post = req["post"];
 
@@ -380,7 +380,7 @@ class PostsController extends Controller {
     }
 
     # Access request parameters
-    fn _get_id(req: Any) -> String {
+    fn _get_id(req) -> String {
         req.params["id"]
     }
 }
@@ -391,7 +391,7 @@ class PostsController extends Controller {
 Validate and sanitize input:
 
 ```soli
-fn create(req: Any) -> Any {
+fn create(req) {
     let params = req.form;
     let clean_params = {
         "name": params["name"] ?? "",

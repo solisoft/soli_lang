@@ -18,7 +18,7 @@
             <div>
                 <h4 class="text-lg font-semibold text-green-400 mb-1">Zero Configuration</h4>
                 <p class="text-green-200/80 text-sm">
-                    Live reload is enabled by default in development mode. No browser extensions or complex build tools required.
+                    Use the <code>--dev</code> flag to enable live reload. No browser extensions or complex build tools required.
                 </p>
             </div>
         </div>
@@ -59,21 +59,21 @@
     <p class="text-gray-400 mb-6">Use the CLI to start your app in development mode:</p>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <pre data-filename="Terminal"><code class="language-bash text-sm"># Run with hot reload (default)
-soli serve .
+        <pre data-filename="Terminal"><code class="language-bash text-sm"># Run with hot reload
+soli serve . --dev
 
 # Specify port
-soli serve . --port 8080</code></pre>
+soli serve . --dev --port 8080</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Styling with Tailwind</h2>
     <p class="text-gray-400 mb-6">
-        Soli handles asset compilation automatically. When you start the server with <code>soli serve</code>, it will automatically compile your assets, including Tailwind CSS, without needing any complex build steps.
+        Soli handles asset compilation automatically. When you start the server with <code>soli serve --dev</code>, it will automatically compile your assets, including Tailwind CSS, without needing any complex build steps.
     </p>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <pre data-filename="Terminal"><code class="language-bash text-sm"># Just run the server!
-soli serve .</code></pre>
+        <pre data-filename="Terminal"><code class="language-bash text-sm"># Just run the server with --dev!
+soli serve . --dev</code></pre>
     </div>
 
     <div class="my-8 p-6 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-12">

@@ -613,9 +613,9 @@ Use get/post/put/delete helpers
 | Response Type | Return Format | Example |
 |--------------|---------------|---------|
 | HTML View | `render(template, data)` | `return render("posts/index", {"posts": posts});` |
-| JSON | `{"status": N, "body": json_stringify(data)}` | `return {"status": 200, "body": json_stringify({"id": 1})};` |
-| Redirect | `{"status": 302, "headers": {"Location": url}}` | `return {"status": 302, "headers": {"Location": "/posts"}};` |
-| Raw | `{"status": N, "body": string}` | `return {"status": 404, "body": "Not found"};` |
+| JSON | `render_json(data, status?)` | `return render_json({"id": 1});` |
+| Plain Text | `render_text(text, status?)` | `return render_text("pong");` |
+| Redirect | `redirect(url)` | `return redirect("/posts");` |
 
 ### Request Access Patterns
 
@@ -641,7 +641,7 @@ Use get/post/put/delete helpers
 **When generating controllers:**
 1. Extend `Controller` base class
 2. Use `fn method(req: Any) -> Any` signature
-3. Return `render()` for HTML, dict for JSON/redirect
+3. Return `render()` for HTML, `render_json()` for JSON, `render_text()` for text, `redirect("/path")` for redirect
 4. Access params via `req["params"]`, body via `req["json"]`
 
 **When generating middleware:**

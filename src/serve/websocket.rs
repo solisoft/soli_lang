@@ -785,6 +785,18 @@ pub fn clear_websocket_routes() {
     routes.clear();
 }
 
+/// Take all WebSocket routes (consumes and returns them).
+pub fn take_websocket_routes() -> Vec<WebSocketRoute> {
+    let mut routes = WEBSOCKET_ROUTES.lock().unwrap();
+    std::mem::take(&mut *routes)
+}
+
+/// Restore WebSocket routes from a previous state.
+pub fn restore_websocket_routes(routes: Vec<WebSocketRoute>) {
+    let mut ws_routes = WEBSOCKET_ROUTES.lock().unwrap();
+    *ws_routes = routes;
+}
+
 // Global WebSocket registry for use from tokio threads
 lazy_static::lazy_static! {
     pub static ref GLOBAL_WS_REGISTRY: std::sync::Arc<WebSocketRegistry> = std::sync::Arc::new(WebSocketRegistry::new());

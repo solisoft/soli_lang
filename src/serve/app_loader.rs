@@ -445,26 +445,49 @@ pub(crate) fn reload_routes_in_worker(
     controllers_dir: &Path,
     file_tracker: &mut FileTracker,
 ) {
-    // 1. Clear existing routes
-    crate::interpreter::builtins::server::clear_routes();
+    // 1. Save current routes before clearing (for rollback on failure)
+    let saved_routes = crate::interpreter::builtins::server::take_routes();
+    let saved_ws_routes = crate::serve::websocket::take_websocket_routes();
 
-    // 2. Clear WebSocket routes
-    crate::serve::websocket::clear_websocket_routes();
-
-    // 3. Reset router context
+    // 2. Reset router context
     crate::interpreter::builtins::router::reset_router_context();
 
-    // 4. Reload controllers to ensure OOP controller classes are available
+    // 3. Reload controllers to ensure OOP controller classes are available
     reload_controllers_in_worker(worker_id, interpreter, controllers_dir, file_tracker);
 
-    // 5. Re-execute routes.sl (DSL helpers are already defined in interpreter)
-    if routes_file.exists() {
-        if let Err(e) = execute_file(interpreter, routes_file) {
-            eprintln!("Worker {}: Error reloading routes: {}", worker_id, e);
-            return;
-        }
+    // 4. Clear old routes and re-execute routes.sl
+    crate::interpreter::builtins::server::clear_routes();
+    crate::serve::websocket::clear_websocket_routes();
+
+    // Define route DSL functions before executing routes.sl
+    if let Err(e) = define_routes_dsl(interpreter) {
+        eprintln!(
+            "Worker {}: Error defining route DSL: {} - restoring previous routes",
+            worker_id, e
+        );
+        crate::interpreter::builtins::server::restore_routes(saved_routes);
+        crate::serve::websocket::restore_websocket_routes(saved_ws_routes);
+        crate::interpreter::builtins::server::rebuild_route_index();
+        return;
     }
 
-    // 6. Rebuild route index
+    let reload_result = if routes_file.exists() {
+        execute_file(interpreter, routes_file)
+    } else {
+        Ok(())
+    };
+
+    // 5. Rebuild route index
     crate::interpreter::builtins::server::rebuild_route_index();
+
+    // 6. If reload failed, restore previous routes
+    if let Err(e) = reload_result {
+        eprintln!(
+            "Worker {}: Error reloading routes: {} - restoring previous routes",
+            worker_id, e
+        );
+        crate::interpreter::builtins::server::restore_routes(saved_routes);
+        crate::serve::websocket::restore_websocket_routes(saved_ws_routes);
+        crate::interpreter::builtins::server::rebuild_route_index();
+    }
 }

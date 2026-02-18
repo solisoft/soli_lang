@@ -380,4 +380,96 @@ ws.send(JSON.stringify({ event: 'stop_typing' }));</code></pre>
             <li>Presence diffs are only sent when users join/leave, not for every connection.</li>
         </ul>
     </div>
+
+    <!-- Server-Side Helper Functions -->
+    <h2 class="text-2xl font-bold text-white mb-6" id="server-functions">Server-Side Helper Functions</h2>
+    <p class="text-gray-400 mb-6">
+        These functions can be called from HTTP routes or other parts of your application to interact with WebSocket connections.
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <!-- ws_send -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_send">ws_send(connection_id, message)</h3>
+            <p class="text-gray-400 mb-4">Send a message to a specific WebSocket connection.</p>
+            <pre><code class="language-soli text-sm">ws_send("uuid-1234", json_encode({ "type": "notification" }));</code></pre>
+        </div>
+
+        <!-- ws_broadcast -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_broadcast">ws_broadcast(message)</h3>
+            <p class="text-gray-400 mb-4">Broadcast a message to all connected clients.</p>
+            <pre><code class="language-soli text-sm">ws_broadcast(json_encode({ "type": "announcement" }));</code></pre>
+        </div>
+
+        <!-- ws_broadcast_room -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_broadcast_room">ws_broadcast_room(channel, message)</h3>
+            <p class="text-gray-400 mb-4">Broadcast to all clients in a specific channel.</p>
+            <pre><code class="language-soli text-sm">ws_broadcast_room("room:lobby", json_encode({ "type": "chat" }));</code></pre>
+        </div>
+
+        <!-- ws_count -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_count">ws_count()</h3>
+            <p class="text-gray-400 mb-4">Get total number of active connections.</p>
+            <pre><code class="language-soli text-sm">let total = ws_count();</code></pre>
+        </div>
+
+        <!-- ws_join -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_join">ws_join(channel)</h3>
+            <p class="text-gray-400 mb-4">Join current connection to a channel.</p>
+            <pre><code class="language-soli text-sm">ws_join("room:lobby");</code></pre>
+        </div>
+
+        <!-- ws_leave -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_leave">ws_leave(channel)</h3>
+            <p class="text-gray-400 mb-4">Leave a channel.</p>
+            <pre><code class="language-soli text-sm">ws_leave("room:lobby");</code></pre>
+        </div>
+
+        <!-- ws_clients -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_clients">ws_clients()</h3>
+            <p class="text-gray-400 mb-4">Get all connected client IDs.</p>
+            <pre><code class="language-soli text-sm">let clients = ws_clients();</code></pre>
+        </div>
+
+        <!-- ws_clients_in -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_clients_in">ws_clients_in(channel)</h3>
+            <p class="text-gray-400 mb-4">Get all client IDs in a channel.</p>
+            <pre><code class="language-soli text-sm">let room_clients = ws_clients_in("room:lobby");</code></pre>
+        </div>
+
+        <!-- ws_close -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_close">ws_close(connection_id, reason)</h3>
+            <p class="text-gray-400 mb-4">Close a connection with a reason.</p>
+            <pre><code class="language-soli text-sm">ws_close("uuid-1234", "Session expired");</code></pre>
+        </div>
+
+        <!-- ws_list_presence -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_list_presence">ws_list_presence(channel)</h3>
+            <p class="text-gray-400 mb-4">Get all users in a channel with presence data.</p>
+            <pre><code class="language-soli text-sm">let users = ws_list_presence("room:lobby");</code></pre>
+        </div>
+
+        <!-- ws_presence_count -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_presence_count">ws_presence_count(channel)</h3>
+            <p class="text-gray-400 mb-4">Get unique user count in a channel.</p>
+            <pre><code class="language-soli text-sm">let count = ws_presence_count("room:lobby");</code></pre>
+        </div>
+
+        <!-- ws_get_presence -->
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_get_presence">ws_get_presence(channel, user_id)</h3>
+            <p class="text-gray-400 mb-4">Get presence data for a specific user.</p>
+            <pre><code class="language-soli text-sm">let user = ws_get_presence("room:lobby", "user_123");</code></pre>
+        </div>
+    </div>
 </div>

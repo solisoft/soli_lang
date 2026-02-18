@@ -588,7 +588,7 @@ Wrap views in a common layout:
 Use layout with render:
 
 ```soli
-fn index(req: Any) -> Any {
+fn index(req) {
     render("home/index", {
         "title": "Welcome"
     }, "layouts/application")
@@ -622,7 +622,7 @@ Include partials:
 Controllers pass data to views:
 
 ```soli
-fn show(req: Any) -> Any {
+fn show(req) {
     render("posts/show", {
         "title": "My Post",
         "post": post,

@@ -155,7 +155,7 @@ If your application already uses Tailwind CSS, you can use Tailwind classes:</``
 You can also handle errors explicitly in your controllers by returning appropriate responses:
 
 ```soli
-fn show(req: Any) -> Any {
+fn show(req) {
     let id = req["params"]["id"];
     let user = database.get_user(id);
     

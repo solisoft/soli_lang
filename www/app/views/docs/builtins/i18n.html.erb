@@ -120,6 +120,105 @@ I18n.plural("items", 5, "en", translations)   // "5 items"</code></pre>
         </section>
     </section>
 
+    <!-- Loading External Files -->
+    <section id="section-external-files" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Loading from External Files</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <p class="text-gray-400 mb-4">
+                Load translations from external JSON files at application startup. This is typically done in <code class="text-amber-400">app.sl</code> to make translations available globally.
+            </p>
+
+            <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">JSON File Format</h4>
+            <pre data-filename="locales/en.json"><code class="language-json text-sm">{
+    "app": {
+        "title": "My Application",
+        "welcome": "Welcome!"
+    },
+    "nav": {
+        "home": "Home",
+        "about": "About"
+    },
+    "common": {
+        "save": "Save",
+        "cancel": "Cancel"
+    }
+}</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h4 class="text-sm font-semibold text-gray-300 mb-2">Helper Functions</h4>
+            <p class="text-gray-400 text-sm mb-4">
+                Create a helper to load translations from JSON files. This flattens nested JSON into dot-notation keys.
+            </p>
+            <pre data-filename="Example"><code class="language-soli text-sm">let i18n_translations = {};
+
+fn flatten_dict(dict, prefix) -> Hash {
+    let result = {};
+    for (pair in entries(dict)) {
+        let key = pair[0];
+        let value = pair[1];
+        let full_key = prefix + "." + key;
+        if (type(value) == "Hash") {
+            let nested = flatten_dict(value, full_key);
+            for (np in entries(nested)) {
+                result[np[0]] = np[1];
+            }
+        } else {
+            result[full_key] = value;
+        }
+    }
+    return result;
+}
+
+fn i18n_load_translations(locale, dict) {
+    let flat = flatten_dict(dict, locale);
+    for (pair in entries(flat)) {
+        i18n_translations[pair[0]] = pair[1];
+    }
+}</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h4 class="text-sm font-semibold text-gray-300 mb-2">Loading in app.sl</h4>
+            <p class="text-gray-400 text-sm mb-4">
+                Load all translation files at application startup. They'll be available globally.
+            </p>
+            <pre data-filename="app.sl"><code class="language-soli text-sm">// Load translation files from locales/ directory
+let en_data = json_parse(slurp("locales/en.json"));
+let fr_data = json_parse(slurp("locales/fr.json"));
+let de_data = json_parse(slurp("locales/de.json"));
+
+i18n_load_translations("en", en_data);
+i18n_load_translations("fr", fr_data);
+i18n_load_translations("de", de_data);
+
+// Set default locale
+I18n.set_locale("en");
+
+// Define routes
+http_server_get("/", "home#index");
+http_server_listen(3000);</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h4 class="text-sm font-semibold text-gray-300 mb-2">Using Translations in Controllers</h4>
+            <p class="text-gray-400 text-sm mb-4">
+                Once loaded in app.sl, use translations anywhere in your controllers.
+            </p>
+            <pre data-filename="Example"><code class="language-soli text-sm">fn home_index(req) {
+    // Use global translations
+    let welcome = I18n.translate("app.welcome", null, i18n_translations);
+    let home_link = I18n.translate("nav.home", null, i18n_translations);
+    
+    return render("home/index", {
+        "welcome": welcome,
+        "nav_home": home_link
+    });
+}</code></pre>
+        </div>
+    </section>
+
     <!-- Formatting -->
     <section id="section-formatting" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Locale-Aware Formatting</h2>

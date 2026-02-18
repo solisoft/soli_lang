@@ -33,7 +33,8 @@ pub use middleware::{
 pub use router::{derive_routes_from_controller, ControllerRoute};
 pub use websocket::{
     clear_websocket_routes, get_websocket_routes, match_websocket_route, register_websocket_route,
-    WebSocketConnection, WebSocketEvent, WebSocketHandlerAction, WebSocketRegistry,
+    restore_websocket_routes, take_websocket_routes, WebSocketConnection, WebSocketEvent,
+    WebSocketHandlerAction, WebSocketRegistry,
 };
 
 use std::borrow::Cow;

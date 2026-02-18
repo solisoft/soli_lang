@@ -311,12 +311,12 @@ class BlogPost extends Model {
 
 // Usage in controller
 class UsersController extends Controller {
-    fn index(req: Any) -> Any {
+    fn index(req) {
         let users = User.all();
         render("users/index", { "users": users })
     }
 
-    fn show(req: Any) -> Any {
+    fn show(req) {
         let id = req["params"]["id"];
         let user = User.find(id);
         let posts = user.posts().order("created_at", "desc").limit(5).all();
@@ -326,7 +326,7 @@ class UsersController extends Controller {
         })
     }
 
-    fn create(req: Any) -> Any {
+    fn create(req) {
         let result = User.create({
             "name": req["params"]["name"],
             "email": req["params"]["email"],

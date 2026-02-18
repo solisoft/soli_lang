@@ -174,6 +174,10 @@ fn language_modules(req) {
     render_docs("docs/language/modules", "Modules", "language", "modules")
 }
 
+fn language_decimal(req) {
+    render_docs("docs/language/decimal", "Decimal", "language", "decimal")
+}
+
 // ============================================================================
 // Builtins Reference
 // ============================================================================

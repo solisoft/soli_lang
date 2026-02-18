@@ -19,7 +19,7 @@
         this.layout = "layouts/posts";
     }
 
-    fn index(req: Any) -> Any {
+    fn index(req) {
         let posts = Post.all();
         render("posts/index", {
             "title": "All Posts",
@@ -27,7 +27,7 @@
         })
     }
 
-    fn show(req: Any) -> Any {
+    fn show(req) {
         let id = req.params["id"];
         let post = Post.find(id);
 
@@ -47,8 +47,26 @@
         Execute code before or after actions. Perfect for authentication or data loading.
     </p>
 
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">this.layout</code>
+            <p class="text-sm text-gray-400 mt-1">Set the layout template for all actions</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">this.before_action</code>
+            <p class="text-sm text-gray-400 mt-1">Run code before action executes</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">this.after_action</code>
+            <p class="text-sm text-gray-400 mt-1">Run code after action executes</p>
+        </div>
+    </div>
+
     <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController {
     static {
+        // Set layout for all actions
+        this.layout = "layouts/posts";
+
         // Run before ALL actions
         this.before_action = fn(req) {
             print("Processing: " + req.path);
@@ -62,6 +80,13 @@
             req["post"] = post; // Pass to action
             req
         };
+
+        // Run after SPECIFIC actions
+        this.after_action(:create, :update) = fn(req, response) {
+            // Log activity after create/update
+            print("Action completed");
+            response
+        };
     }
     
     // ... actions ...
@@ -73,7 +98,7 @@
     </p>
 
     <pre data-filename="app/controllers/simple_controller.sl"><code class="language-soli text-sm">// GET /health
-fn health(req: Any) -> Any {
+fn health(req) {
     {
         "status": 200,
         "headers": {"Content-Type": "application/json"},

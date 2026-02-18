@@ -1583,6 +1583,132 @@
       "signature": "array.sort_by(key) / array.sort_by(fn)",
       "description": "Sort an array of hashes by a key, or use a function to extract the sort value",
       "keywords": ["array", "sort", "sort_by", "order", "hash", "key"]
+    },
+    {
+      "title": "render_json",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-render_json",
+      "signature": "render_json(data, status?)",
+      "description": "Render a JSON response with automatic Content-Type header",
+      "keywords": ["json", "response", "http", "api", "render"]
+    },
+    {
+      "title": "render_text",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-render_text",
+      "signature": "render_text(text, status?)",
+      "description": "Render a plain text response with automatic Content-Type header",
+      "keywords": ["text", "plain", "response", "http", "render"]
+    },
+    {
+      "title": "redirect",
+      "type": "function",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#fn-redirect",
+      "signature": "redirect(url)",
+      "description": "Create a redirect response (302 Found) to the specified URL",
+      "keywords": ["redirect", "http", "location", "forward"]
+    },
+    {
+      "title": "http_server_get",
+      "type": "function",
+      "category": "HTTP Server",
+      "path": "/docs/builtins/http#fn-http-server-get",
+      "signature": "http_server_get(path, handler_name)",
+      "description": "Register a GET route handler for the HTTP server",
+      "keywords": ["http_server", "server", "get", "route", "handler"]
+    },
+    {
+      "title": "http_server_post",
+      "type": "function",
+      "category": "HTTP Server",
+      "path": "/docs/builtins/http#fn-http-server-post",
+      "signature": "http_server_post(path, handler_name)",
+      "description": "Register a POST route handler for the HTTP server",
+      "keywords": ["http_server", "server", "post", "route", "handler"]
+    },
+    {
+      "title": "http_server_put",
+      "type": "function",
+      "category": "HTTP Server",
+      "path": "/docs/builtins/http#fn-http-server-put",
+      "signature": "http_server_put(path, handler_name)",
+      "description": "Register a PUT route handler for the HTTP server",
+      "keywords": ["http_server", "server", "put", "route", "handler"]
+    },
+    {
+      "title": "http_server_delete",
+      "type": "function",
+      "category": "HTTP Server",
+      "path": "/docs/builtins/http#fn-http-server-delete",
+      "signature": "http_server_delete(path, handler_name)",
+      "description": "Register a DELETE route handler for the HTTP server",
+      "keywords": ["http_server", "server", "delete", "route", "handler"]
+    },
+    {
+      "title": "http_server_route",
+      "type": "function",
+      "category": "HTTP Server",
+      "path": "/docs/builtins/http#fn-http-server-route",
+      "signature": "http_server_route(method, path, handler_name)",
+      "description": "Register a route handler for any HTTP method",
+      "keywords": ["http_server", "server", "route", "handler", "method"]
+    },
+    {
+      "title": "http_server_listen",
+      "type": "function",
+      "category": "HTTP Server",
+      "path": "/docs/builtins/http#fn-http-server-listen",
+      "signature": "http_server_listen(port)",
+      "description": "Start the HTTP server (blocking call)",
+      "keywords": ["http_server", "server", "listen", "port", "start"]
+    },
+    {
+      "title": "i18n_load_translations",
+      "type": "function",
+      "category": "I18n",
+      "path": "/docs/builtins/i18n#section-external-files",
+      "signature": "i18n_load_translations(locale, dict)",
+      "description": "Load translations from a dictionary into the global translations store (helper function)",
+      "keywords": ["i18n", "translation", "locale", "load", "external", "json", "files"]
+    },
+    {
+      "title": "ws_join",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/core-concepts/websockets#ws_join",
+      "signature": "ws_join(channel)",
+      "description": "Join the current WebSocket connection to a channel",
+      "keywords": ["websocket", "ws", "join", "channel", "subscribe"]
+    },
+    {
+      "title": "ws_leave",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/core-concepts/websockets#ws_leave",
+      "signature": "ws_leave(channel)",
+      "description": "Leave a channel",
+      "keywords": ["websocket", "ws", "leave", "channel", "unsubscribe"]
+    },
+    {
+      "title": "ws_clients",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/core-concepts/websockets#ws_clients",
+      "signature": "ws_clients()",
+      "description": "Get all connected client IDs",
+      "keywords": ["websocket", "ws", "clients", "connections", "list"]
+    },
+    {
+      "title": "ws_clients_in",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/core-concepts/websockets#ws_clients_in",
+      "signature": "ws_clients_in(channel)",
+      "description": "Get all client IDs in a specific channel",
+      "keywords": ["websocket", "ws", "clients", "channel", "connections"]
     }
   ]
 }

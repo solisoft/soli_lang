@@ -4,7 +4,7 @@ Soli MVC includes a live reload feature that automatically refreshes your browse
 
 ## How It Works
 
-When you run your application with the dev server, live reload is automatically enabled. The server establishes a WebSocket connection with your browser that listens for file change events.
+When you run your application with the `--dev` flag, live reload is enabled. The server establishes a WebSocket connection with your browser that listens for file change events.
 
 ### Connection Methods
 
@@ -17,18 +17,13 @@ The client automatically detects which method works best for your browser and se
 
 ## Usage
 
-Simply run your application in development mode:
-
-```bash
-cd /home/olivier.bonnaure@delupay.com/workspace/solilang/examples/mvc_app
-./dev.sh
-```
-
-Or use the Soli CLI with the `--dev` flag:
+Run your application with the `--dev` flag to enable live reload:
 
 ```bash
 soli run --dev
 ```
+
+Or use the dev script:
 
 When the server starts, you'll see a message indicating live reload is enabled:
 

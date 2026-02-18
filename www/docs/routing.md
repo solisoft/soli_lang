@@ -36,7 +36,7 @@ get("/posts/:post_id/comments/:comment_id", "comments#show");
 Access parameters in your controller:
 
 ```soli
-fn show(req: Any) -> Any {
+fn show(req) {
     let user_id = req.params["id"];
     // ...
 }
@@ -48,7 +48,7 @@ Query parameters are automatically parsed:
 
 ```soli
 // URL: /search?q=solilang&page=1
-fn search(req: Any) -> Any {
+fn search(req) {
     let query = req.query["q"];  // "solilang"
     let page = req.query["page"]; // "1"
     // ...

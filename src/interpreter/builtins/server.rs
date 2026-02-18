@@ -97,6 +97,21 @@ pub fn clear_routes() {
     ROUTE_INDEX.with(|index| *index.borrow_mut() = RouteIndex::new());
 }
 
+/// Take all routes (consumes and returns them), leaving empty routes.
+/// Used for hot reload to save routes before reloading.
+pub fn take_routes() -> Vec<Route> {
+    ROUTES.with(|routes| {
+        let mut r = routes.borrow_mut();
+        std::mem::take(&mut *r)
+    })
+}
+
+/// Restore routes from a previous state (after failed reload).
+pub fn restore_routes(routes: Vec<Route>) {
+    ROUTES.with(|r| *r.borrow_mut() = routes);
+    ROUTE_INDEX.with(|index| *index.borrow_mut() = RouteIndex::new());
+}
+
 /// Clear routes that match a specific path prefix.
 /// Used for hot reload to clear routes from a specific controller.
 pub fn clear_routes_for_prefix(prefix: &str) {

@@ -18,14 +18,14 @@ pub const HOME_CONTROLLER_TEMPLATE: &str = r#"// Home controller - handles the r
 
 class HomeController extends Controller {
     // GET /
-    fn index(req: Any) -> Any {
+    fn index(req) {
         return render("home/index", {
             "title": "Welcome"
         });
     }
 
     // GET /health
-    fn health(req: Any) -> Any {
+    fn health(req) {
         return {
             "status": 200,
             "headers": {"Content-Type": "application/json"},

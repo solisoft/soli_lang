@@ -15,7 +15,7 @@ pub struct Package {
     pub version: String,
     /// Package description
     pub description: Option<String>,
-    /// Main entry point (default: src/main.sl)
+    /// Main entry point (default: app.sl)
     pub main: String,
     /// Dependencies: name -> path or version
     pub dependencies: HashMap<String, Dependency>,
@@ -63,7 +63,7 @@ impl Package {
             name: name.to_string(),
             version: DEFAULT_VERSION.to_string(),
             description: None,
-            main: "src/main.sl".to_string(),
+            main: "app.sl".to_string(),
             dependencies: HashMap::new(),
         }
     }
@@ -227,13 +227,13 @@ mod tests {
 [package]
 name = "my-app"
 version = "1.0.0"
-main = "src/main.sl"
+main = "app.sl"
 "#;
 
         let pkg = Package::parse(content).unwrap();
         assert_eq!(pkg.name, "my-app");
         assert_eq!(pkg.version, "1.0.0");
-        assert_eq!(pkg.main, "src/main.sl");
+        assert_eq!(pkg.main, "app.sl");
     }
 
     #[test]

@@ -325,6 +325,134 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
         </section>
     </section>
 
+    <!-- HTTP Server Functions -->
+    <section id="section-http-server" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                </svg>
+            </span>
+            HTTP Server
+        </h2>
+        <p class="text-gray-400 mb-4">
+            Create a lightweight HTTP server without the full MVC framework. For MVC apps, use <code class="text-indigo-400">get/post</code> in <code class="text-indigo-400">config/routes.sl</code> instead.
+        </p>
+
+        <section id="fn-http-server-get" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-server-get" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_server_get(path, handler_name)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Register a GET route handler.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">path</code> : <code class="text-purple-400">String</code> - Route path (e.g., "/users", "/users/:id")</div>
+                    <div><code class="text-amber-400">handler_name</code> : <code class="text-purple-400">String</code> - Handler function name</div>
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">fn health(req) {
+    return {"status": 200, "body": "OK"};
+}
+
+http_server_get("/health", "health");
+http_server_get("/users/:id", "get_user");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-http-server-post" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-server-post" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_server_post(path, handler_name)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Register a POST route handler.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">fn create_user(req) {
+    let name = req["json"]["name"];
+    return {"status": 201, "body": "Created: " + name};
+}
+
+http_server_post("/users", "create_user");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-http-server-put" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-server-put" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_server_put(path, handler_name)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Register a PUT route handler.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">http_server_put("/users/:id", "update_user");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-http-server-delete" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-server-delete" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_server_delete(path, handler_name)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Register a DELETE route handler.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">http_server_delete("/users/:id", "delete_user");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-http-server-route" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-server-route" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_server_route(method, path, handler_name)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Register a route for any HTTP method.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">http_server_route("PATCH", "/users/:id", "patch_user");</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-http-server-listen" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-http-server-listen" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">http_server_listen(port)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Start the HTTP server (blocking call).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">port</code> : <code class="text-purple-400">Int</code> - Port number to listen on</div>
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">// Define routes
+http_server_get("/", "home");
+http_server_get("/health", "health");
+http_server_post("/api/users", "create_user");
+
+// Start server (blocks)
+http_server_listen(3000);</code></pre>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h4 class="text-sm font-semibold text-gray-300 mb-2">Handler Function Signature</h4>
+            <p class="text-gray-400 text-sm mb-4">
+                Handler functions receive a request object and should return a response.
+            </p>
+            <pre data-filename="Example"><code class="language-soli text-sm">fn my_handler(req) -> Any {
+    // Access request data
+    let id = req["params"]["id"];           // Path parameters
+    let name = req["query"]["name"];         // Query string
+    let data = req["json"]["field"];         // JSON body
+    let token = req["headers"]["Authorization"];  // Headers
+    
+    // Return response
+    return {"status": 200, "body": "Hello"};
+    
+    // Or use helpers
+    return render_json({"message": "Hello"});
+    return render_text("Plain text");
+    return redirect("/other-page");
+}</code></pre>
+        </div>
+    </section>
+
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
         <a href="/docs/builtins/core" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
