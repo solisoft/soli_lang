@@ -117,3 +117,48 @@ describe("Hash Edge Cases", fn() {
         assert_eq(h[2], "two");
     });
 });
+
+describe("Hash.dig", fn() {
+    test("dig nested hash keys", fn() {
+        let h = {"user" => {"profile" => {"name" => "Alice"}}};
+        assert_eq(h.dig("user", "profile", "name"), "Alice");
+    });
+
+    test("dig returns null for missing key", fn() {
+        let h = {"user" => {"name" => "Alice"}};
+        assert_null(h.dig("user", "age"));
+    });
+
+    test("dig returns null for missing intermediate key", fn() {
+        let h = {"user" => {"profile" => {"name" => "Bob"}}};
+        assert_null(h.dig("user", "settings", "theme"));
+    });
+
+    test("dig with array index", fn() {
+        let h = {"items" => [10, 20, 30]};
+        assert_eq(h.dig("items", 0), 10);
+        assert_eq(h.dig("items", 1), 20);
+        assert_eq(h.dig("items", 2), 30);
+    });
+
+    test("dig with mixed hash and array", fn() {
+        let h = {"users" => [{"name" => "Alice"}, {"name" => "Bob"}]};
+        assert_eq(h.dig("users", 0, "name"), "Alice");
+        assert_eq(h.dig("users", 1, "name"), "Bob");
+    });
+
+    test("dig returns null for out of bounds array index", fn() {
+        let h = {"items" => [10, 20]};
+        assert_null(h.dig("items", 5));
+    });
+
+    test("dig on empty hash returns null", fn() {
+        let h = {};
+        assert_null(h.dig("missing"));
+    });
+
+    test("dig with single key", fn() {
+        let h = {"name" => "Alice"};
+        assert_eq(h.dig("name"), "Alice");
+    });
+});

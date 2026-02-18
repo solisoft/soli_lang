@@ -225,6 +225,13 @@ describe("Collection Classes", fn() {
             assert(repr.contains("value"));
         });
 
+        test("Hash.to_string() formats hash correctly", fn() {
+            let h = {"a" => 1, "b" => 2};
+            let repr = h.to_string();
+            assert(repr.contains("a => 1"));
+            assert(repr.contains("b => 2"));
+        });
+
         test("Hash.length() returns entry count", fn() {
             let h = {"a": 1, "b": 2};
             assert_eq(h.length(), 2);
@@ -233,6 +240,11 @@ describe("Collection Classes", fn() {
         test("Hash.get() returns value by key", fn() {
             let h = {"name": "test"};
             assert_eq(h.get("name"), "test");
+        });
+
+        test("Hash.get() returns null for missing key", fn() {
+            let h = {"a": 1};
+            assert_null(h.get("missing"));
         });
 
         test("Hash.set() sets value by key", fn() {

@@ -560,27 +560,43 @@ impl Interpreter {
         }
 
         let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
-        let mut current = Value::Hash(Rc::new(RefCell::new(entries_map)));
+        let mut current: Option<Value> = Some(Value::Hash(Rc::new(RefCell::new(entries_map))));
         for key in arguments {
-            match current {
-                Value::Hash(ref hash) => {
-                    let hash_key = match key.to_hash_key() {
-                        Some(k) => k,
-                        None => return Ok(Value::Null),
-                    };
-                    let hash_ref = hash.borrow();
-                    match hash_ref.get(&hash_key).cloned() {
-                        Some(v) => {
-                            drop(hash_ref);
-                            current = v;
-                        }
-                        None => return Ok(Value::Null),
+            current = match current.take() {
+                Some(Value::Hash(hash)) => {
+                    let hash_key = key.to_hash_key();
+                    if let Some(hash_key) = hash_key {
+                        let hash_ref = hash.borrow();
+                        hash_ref.get(&hash_key).cloned()
+                    } else {
+                        None
                     }
                 }
-                _ => return Ok(Value::Null),
+                Some(Value::Array(arr)) => {
+                    if let Value::Int(idx) = key {
+                        let arr_ref = arr.borrow();
+                        let idx = if idx < 0 {
+                            arr_ref.len() as i64 + idx
+                        } else {
+                            idx
+                        };
+                        let idx = idx as usize;
+                        if idx < arr_ref.len() {
+                            Some(arr_ref[idx].clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if current.is_none() {
+                return Ok(Value::Null);
             }
         }
-        Ok(current)
+        Ok(current.unwrap_or(Value::Null))
     }
 
     fn hash_length(

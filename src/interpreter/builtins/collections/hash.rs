@@ -64,212 +64,6 @@ pub fn register_hash_class(env: &mut Environment) {
     );
 
     hash_native_methods.insert(
-        "get".to_string(),
-        Rc::new(NativeFunction::new("Hash.get", Some(1), |args| {
-            let this = match args.first() {
-                Some(Value::Instance(inst)) => inst,
-                _ => return Err("Hash.get() called on non-Hash".to_string()),
-            };
-            let key = match args.get(1) {
-                Some(k) => k.clone(),
-                None => return Err("Hash.get() requires a key".to_string()),
-            };
-            match this.borrow().fields.get("__value").cloned() {
-                Some(Value::Hash(hash)) => {
-                    let hash = hash.borrow();
-                    if let Some(hash_key) = HashKey::from_value(&key) {
-                        if let Some(v) = hash.get(&hash_key) {
-                            return Ok(v.clone());
-                        }
-                    }
-                    Ok(Value::Null)
-                }
-                _ => Err("Hash missing internal value".to_string()),
-            }
-        })),
-    );
-
-    hash_native_methods.insert(
-        "set".to_string(),
-        Rc::new(NativeFunction::new("Hash.set", Some(2), |args| {
-            let this = match args.first() {
-                Some(Value::Instance(inst)) => inst.clone(),
-                _ => return Err("Hash.set() called on non-Hash".to_string()),
-            };
-            let key = match args.get(1) {
-                Some(k) => k.clone(),
-                None => return Err("Hash.set() requires a key".to_string()),
-            };
-            let value = args.get(2).cloned().unwrap_or(Value::Null);
-            let value_opt = this.borrow().fields.get("__value").cloned();
-            match value_opt {
-                Some(Value::Hash(hash)) => {
-                    let mut hash = hash.borrow_mut();
-                    if let Some(hash_key) = HashKey::from_value(&key) {
-                        hash.insert(hash_key, value.clone());
-                    } else {
-                        return Err(
-                            "Hash key must be a hashable value (int, string, bool, or null)"
-                                .to_string(),
-                        );
-                    }
-                    Ok(value)
-                }
-                _ => Err("Hash missing internal value".to_string()),
-            }
-        })),
-    );
-
-    hash_native_methods.insert(
-        "has_key".to_string(),
-        Rc::new(NativeFunction::new("Hash.has_key", Some(1), |args| {
-            let this = match args.first() {
-                Some(Value::Instance(inst)) => inst,
-                _ => return Err("Hash.has_key() called on non-Hash".to_string()),
-            };
-            let key = match args.get(1) {
-                Some(k) => k.clone(),
-                None => return Err("Hash.has_key() requires a key".to_string()),
-            };
-            match this.borrow().fields.get("__value").cloned() {
-                Some(Value::Hash(hash)) => {
-                    let hash = hash.borrow();
-                    if let Some(hash_key) = HashKey::from_value(&key) {
-                        Ok(Value::Bool(hash.contains_key(&hash_key)))
-                    } else {
-                        Ok(Value::Bool(false))
-                    }
-                }
-                _ => Err("Hash missing internal value".to_string()),
-            }
-        })),
-    );
-
-    hash_native_methods.insert(
-        "keys".to_string(),
-        Rc::new(NativeFunction::new("Hash.keys", Some(0), |args| {
-            let this = match args.first() {
-                Some(Value::Instance(inst)) => inst,
-                _ => return Err("Hash.keys() called on non-Hash".to_string()),
-            };
-            match this.borrow().fields.get("__value").cloned() {
-                Some(Value::Hash(hash)) => {
-                    let hash = hash.borrow();
-                    let keys: Vec<Value> = hash.keys().map(|k| k.to_value()).collect();
-                    Ok(Value::Array(Rc::new(RefCell::new(keys))))
-                }
-                _ => Err("Hash missing internal value".to_string()),
-            }
-        })),
-    );
-
-    hash_native_methods.insert(
-        "values".to_string(),
-        Rc::new(NativeFunction::new("Hash.values", Some(0), |args| {
-            let this = match args.first() {
-                Some(Value::Instance(inst)) => inst,
-                _ => return Err("Hash.values() called on non-Hash".to_string()),
-            };
-            match this.borrow().fields.get("__value").cloned() {
-                Some(Value::Hash(hash)) => {
-                    let hash = hash.borrow();
-                    let values: Vec<Value> = hash.iter().map(|(_, v)| v.clone()).collect();
-                    Ok(Value::Array(Rc::new(RefCell::new(values))))
-                }
-                _ => Err("Hash missing internal value".to_string()),
-            }
-        })),
-    );
-
-    hash_native_methods.insert(
-        "delete".to_string(),
-        Rc::new(NativeFunction::new("Hash.delete", Some(1), |args| {
-            let this = match args.first() {
-                Some(Value::Instance(inst)) => inst.clone(),
-                _ => return Err("Hash.delete() called on non-Hash".to_string()),
-            };
-            let key = match args.get(1) {
-                Some(k) => k.clone(),
-                None => return Err("Hash.delete() requires a key".to_string()),
-            };
-            let value_opt = this.borrow().fields.get("__value").cloned();
-            match value_opt {
-                Some(Value::Hash(hash)) => {
-                    let mut hash = hash.borrow_mut();
-                    if let Some(hash_key) = HashKey::from_value(&key) {
-                        let removed_value = hash.shift_remove(&hash_key).unwrap_or(Value::Null);
-                        Ok(removed_value)
-                    } else {
-                        Ok(Value::Null)
-                    }
-                }
-                _ => Err("Hash missing internal value".to_string()),
-            }
-        })),
-    );
-
-    hash_native_methods.insert(
-        "merge".to_string(),
-        Rc::new(NativeFunction::new("Hash.merge", Some(1), {
-            let class_ref = empty_class.clone();
-            move |args| {
-                let this = match args.first() {
-                    Some(Value::Instance(inst)) => inst,
-                    _ => return Err("Hash.merge() called on non-Hash".to_string()),
-                };
-                let other = match args.get(1) {
-                    Some(Value::Hash(h)) => h.clone(),
-                    Some(Value::Instance(inst)) => {
-                        match inst.borrow().fields.get("__value").cloned() {
-                            Some(Value::Hash(h)) => h,
-                            _ => return Err("Hash.merge() requires hash argument".to_string()),
-                        }
-                    }
-                    _ => return Err("Hash.merge() requires hash argument".to_string()),
-                };
-                match this.borrow().fields.get("__value").cloned() {
-                    Some(Value::Hash(hash1)) => {
-                        let mut result: IndexMap<HashKey, Value> = hash1.borrow().clone();
-                        for (k2, v2) in other.borrow().iter() {
-                            result.insert(k2.clone(), v2.clone());
-                        }
-                        let mut inst = Instance::new(class_ref.clone());
-                        inst.set(
-                            "__value".to_string(),
-                            Value::Hash(Rc::new(RefCell::new(result))),
-                        );
-                        Ok(Value::Instance(Rc::new(RefCell::new(inst))))
-                    }
-                    _ => Err("Hash missing internal value".to_string()),
-                }
-            }
-        })),
-    );
-
-    hash_native_methods.insert(
-        "entries".to_string(),
-        Rc::new(NativeFunction::new("Hash.entries", Some(0), |args| {
-            let this = match args.first() {
-                Some(Value::Instance(inst)) => inst,
-                _ => return Err("Hash.entries() called on non-Hash".to_string()),
-            };
-            match this.borrow().fields.get("__value").cloned() {
-                Some(Value::Hash(hash)) => {
-                    let hash = hash.borrow();
-                    let pairs: Vec<Value> = hash
-                        .iter()
-                        .map(|(k, v)| {
-                            Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])))
-                        })
-                        .collect();
-                    Ok(Value::Array(Rc::new(RefCell::new(pairs))))
-                }
-                _ => Err("Hash missing internal value".to_string()),
-            }
-        })),
-    );
-
-    hash_native_methods.insert(
         "clear".to_string(),
         Rc::new(NativeFunction::new("Hash.clear", Some(0), |args| {
             let this = match args.first() {
@@ -281,6 +75,56 @@ pub fn register_hash_class(env: &mut Environment) {
                 Some(Value::Hash(hash)) => {
                     hash.borrow_mut().clear();
                     Ok(Value::Null)
+                }
+                _ => Err("Hash missing internal value".to_string()),
+            }
+        })),
+    );
+
+    hash_native_methods.insert(
+        "dig".to_string(),
+        Rc::new(NativeFunction::new("Hash.dig", Some(1), |args| {
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst,
+                _ => return Err("Hash.dig() called on non-Hash".to_string()),
+            };
+            let keys = &args[1..];
+            if keys.is_empty() {
+                return Err("Hash.dig() requires at least one key".to_string());
+            }
+            match this.borrow().fields.get("__value").cloned() {
+                Some(Value::Hash(hash)) => {
+                    let mut current: Option<Value> = Some(Value::Hash(hash));
+                    for key in keys {
+                        current = match current.take() {
+                            Some(Value::Hash(h)) => {
+                                let h = h.borrow();
+                                if let Some(hash_key) = HashKey::from_value(key) {
+                                    h.get(&hash_key).cloned()
+                                } else {
+                                    None
+                                }
+                            }
+                            Some(Value::Array(arr)) => {
+                                if let Value::Int(idx) = key {
+                                    let arr = arr.borrow();
+                                    let idx = *idx as usize;
+                                    if idx < arr.len() {
+                                        Some(arr[idx].clone())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        };
+                        if current.is_none() {
+                            return Ok(Value::Null);
+                        }
+                    }
+                    Ok(current.unwrap_or(Value::Null))
                 }
                 _ => Err("Hash missing internal value".to_string()),
             }

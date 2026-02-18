@@ -331,6 +331,26 @@ print(scores.fetch("Eve", 0));     // 0 (default)
                 </div>
             </section>
 
+            <section id="method-dig" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-dig" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.dig(*keys)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Retrieve a nested value from a hash or array using a sequence of keys/indices. Returns null if any key is not found. Works with both string keys for hashes and integer indices for arrays.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let data = {"user": {"profile": {"name": "Alice"}}};
+
+print(data.dig("user", "profile", "name"));  // "Alice"
+print(data.dig("user", "settings", "theme"));  // null (path not found)
+
+let nested = {"items": [10, 20, {"value": 99}]};
+print(nested.dig("items", 2, "value"));  // 99
+print(nested.dig("items", 5));  // null (index out of bounds)</code></pre>
+                </div>
+            </section>
+
             <section id="method-map-filter-each" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-map-filter-each" class="group flex items-center gap-2 mb-3">

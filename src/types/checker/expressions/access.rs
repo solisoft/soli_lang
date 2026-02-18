@@ -134,8 +134,12 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
             }),
-            "get" | "fetch" | "dig" => Ok(Type::Function {
+            "get" | "fetch" => Ok(Type::Function {
                 params: vec![key_type.clone()],
+                return_type: Box::new(value_type.clone()),
+            }),
+            "dig" => Ok(Type::Function {
+                params: vec![Type::Any], // variadic - accepts multiple keys
                 return_type: Box::new(value_type.clone()),
             }),
             "invert" => Ok(Type::Function {
