@@ -1,0 +1,437 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Database Configuration</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            SoliLang uses SoliDB as its database backend. Configure your database connection using environment variables.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Environment Variables</h2>
+    <p class="text-gray-400 mb-6">Database configuration is done through environment variables, typically stored in a <code>.env</code> file in your project root.</p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Required Variables</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Variable</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Default</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_HOST</code></td>
+                    <td class="py-3 px-4 text-gray-400">SoliDB server URL</td>
+                    <td class="py-3 px-4"><code class="text-green-300">http://localhost:6745</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_DATABASE</code></td>
+                    <td class="py-3 px-4 text-gray-400">Database name</td>
+                    <td class="py-3 px-4"><code class="text-green-300">default</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Optional Variables</h3>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Variable</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Default</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_USERNAME</code></td>
+                    <td class="py-3 px-4 text-gray-400">Authentication username</td>
+                    <td class="py-3 px-4 text-gray-500">None</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_PASSWORD</code></td>
+                    <td class="py-3 px-4 text-gray-400">Authentication password</td>
+                    <td class="py-3 px-4 text-gray-500">None</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_API_KEY</code></td>
+                    <td class="py-3 px-4 text-gray-400">API key for SoliDB authentication</td>
+                    <td class="py-3 px-4 text-gray-500">None</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">.env File</h2>
+    <p class="text-gray-400 mb-6">When you create a new project with <code>soli new myapp</code>, a <code>.env</code> file is automatically generated:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">.env</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Database Configuration
+SOLIDB_HOST=http://localhost:6745
+SOLIDB_DATABASE=default
+SOLIDB_USERNAME=admin
+SOLIDB_PASSWORD=admin
+SOLIDB_API_KEY=your-api-key-here
+
+# Application Settings
+# APP_ENV=development
+# APP_SECRET=your-secret-key-here</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Multiple Environments</h2>
+    <p class="text-gray-400 mb-6">Create environment-specific <code>.env</code> files for different environments:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-2">.env</h4>
+            <p class="text-xs text-gray-400">Development (default)</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-2">.env.test</h4>
+            <p class="text-xs text-gray-400">Test environment</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-2">.env.production</h4>
+            <p class="text-xs text-gray-400">Production environment</p>
+        </div>
+    </div>
+
+    <div class="space-y-6 mb-12">
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3">Development</h3>
+            <div class="rounded-lg bg-gray-900 overflow-hidden">
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># .env
+SOLIDB_HOST=http://localhost:6745
+SOLIDB_DATABASE=myapp_development</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3">Test</h3>
+            <div class="rounded-lg bg-gray-900 overflow-hidden">
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># .env.test
+SOLIDB_HOST=http://localhost:6745
+SOLIDB_DATABASE=myapp_test</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3">Production</h3>
+            <div class="rounded-lg bg-gray-900 overflow-hidden">
+                <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># .env.production
+SOLIDB_HOST=https://db.example.com
+SOLIDB_DATABASE=myapp_production
+SOLIDB_USERNAME=prod_user
+SOLIDB_PASSWORD=secure_password_here
+SOLIDB_API_KEY=your-production-api-key</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Setting APP_ENV</h2>
+    <p class="text-gray-400 mb-6">The <code>APP_ENV</code> environment variable controls which environment-specific <code>.env</code> file is loaded. When set, the system automatically:</p>
+
+    <ol class="text-gray-400 mb-6 list-decimal list-inside space-y-2">
+        <li>Loads the base <code>.env</code> file first</li>
+        <li>Then loads <code>.env.{APP_ENV}</code> to override values</li>
+    </ol>
+
+    <p class="text-gray-400 mb-8">This matches the convention used by Rails, Node.js, and other frameworks.</p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Option 1: Shell Environment (Recommended for CI/Production)</h3>
+    <p class="text-gray-400 mb-4">Set <code>APP_ENV</code> when running commands:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Run migrations in production
+APP_ENV=production soli db:migrate
+
+# Start server in test mode
+APP_ENV=test soli serve
+
+# Run with development settings (default)
+soli serve</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Option 2: In .env File (For Local Development)</h3>
+    <p class="text-gray-400 mb-4">Set <code>APP_ENV</code> in your base <code>.env</code> file:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># .env
+APP_ENV=development
+SOLIDB_DATABASE=myapp_development</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">File Loading Order</h3>
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-8">
+        <ol class="text-indigo-200/80 text-sm space-y-2 list-decimal list-inside">
+            <li><code>.env</code> &mdash; base configuration</li>
+            <li><code>.env.{APP_ENV}</code> &mdash; environment overrides</li>
+        </ol>
+    </div>
+
+    <p class="text-gray-400 mb-4">Environment-specific values override base values. For example:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># .env
+SOLIDB_DATABASE=myapp_development
+
+# .env.production
+SOLIDB_DATABASE=myapp_production</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">Running <code>APP_ENV=production soli serve</code> will use <code>myapp_production</code> as the database.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Starting SoliDB</h2>
+    <p class="text-gray-400 mb-6">Before running your application, start the SoliDB server:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Start SoliDB (default port 6745)
+solidb
+
+# Or specify a custom port
+solidb --port 6745
+
+# With data directory
+solidb --data ./data</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Verifying Connection</h2>
+    <p class="text-gray-400 mb-6">Test your database connection by running migrations:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">cd myapp
+soli db:migrate</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">If successful, you'll see:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="text-sm text-green-400">Running migrations for database: myapp_development
+All migrations are up to date.</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Using Models</h2>
+    <p class="text-gray-400 mb-6">Once configured, Models automatically connect to the database:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User extends Model end
+
+// These all use the configured database
+let users = User.all();
+let user = User.create({ "name": "Alice" });
+let found = User.find(user["id"]);</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
+    <p class="text-gray-400 mb-6">For raw database queries, use the <code>db</code> object or the <code>@sdql{}</code> query block syntax.</p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Using db.query()</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// SDBQL query with bind parameters
+let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
+    "age": 18
+});
+
+// Insert
+db.query("INSERT { name: @name, email: @email } INTO users", {
+    "name": "Bob",
+    "email": "bob@example.com"
+});</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Using @sdql{} Query Block</h3>
+    <p class="text-gray-400 mb-4">The <code>@sdql{}</code> syntax provides a more readable way to write database queries with interpolation:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Simple query with interpolation
+let users = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{age}
+    RETURN u
+};
+
+// Query with multiple interpolations
+let results = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{min_age} AND u.city == #{city}
+    SORT u.name ASC
+    LIMIT #{limit}
+    RETURN u
+};
+
+// Insert with interpolation
+@sdql{
+    INSERT {
+        name: #{name},
+        email: #{email},
+        created_at: NOW()
+    } INTO users
+};
+
+// Update with interpolation
+@sdql{
+    UPDATE #{user_id} IN users
+    SET {
+        last_login: NOW()
+    }
+};
+
+// Delete with interpolation
+@sdql{
+    REMOVE #{user_id} IN users
+};</code></pre>
+        </div>
+    </div>
+
+    <div class="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-8">
+        <p class="text-indigo-200/80 text-sm"><strong>Note:</strong> The <code>@sdql{}</code> block supports:</p>
+        <ul class="text-indigo-200/80 text-sm mt-2 space-y-1 list-disc list-inside">
+            <li><strong>String interpolation</strong> using <code>#{expression}</code> - expressions are evaluated at runtime</li>
+            <li><strong>Multi-line queries</strong> for better readability</li>
+            <li><strong>All SDBQL operations</strong>: FOR, FILTER, SORT, LIMIT, RETURN, INSERT, UPDATE, REMOVE</li>
+        </ul>
+    </div>
+
+    <h4 class="text-md font-semibold text-white mb-3">When to Use Each Syntax</h4>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Approach</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Use Case</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">db.query()</code> with <code class="text-indigo-300">@param</code></td>
+                    <td class="py-3 px-4 text-gray-400">When parameters should be passed separately (traditional parameterized queries)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">@sdql{}</code> with <code class="text-indigo-300">#{expr}</code></td>
+                    <td class="py-3 px-4 text-gray-400">When you want inline interpolation and more readable multi-line queries</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Security Best Practices</h2>
+
+    <div class="my-8 p-6 rounded-xl bg-red-500/10 border border-red-500/20 mb-8">
+        <h4 class="text-lg font-semibold text-red-400 mb-3 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            Important Security Rules
+        </h4>
+        <ul class="text-red-200/80 text-sm space-y-2">
+            <li><strong>Never commit <code>.env</code> files</strong> - Add <code>.env*</code> to <code>.gitignore</code></li>
+            <li><strong>Use strong passwords</strong> - Especially in production</li>
+            <li><strong>Use HTTPS in production</strong> - Set <code>SOLIDB_HOST=https://...</code></li>
+            <li><strong>Rotate credentials</strong> - Change passwords periodically</li>
+            <li><strong>Limit network access</strong> - Use firewalls to restrict database access</li>
+        </ul>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Example .gitignore</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-gitignore text-sm"># Environment files (contain secrets)
+.env
+.env.*
+!.env.example</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Example .env.example</h3>
+    <p class="text-gray-400 mb-4">Create a template for other developers (safe to commit):</p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># .env.example (commit this file)
+SOLIDB_HOST=http://localhost:6745
+SOLIDB_DATABASE=myapp_development
+SOLIDB_USERNAME=
+SOLIDB_PASSWORD=
+SOLIDB_API_KEY=</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Troubleshooting</h2>
+
+    <div class="space-y-6 mb-12">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">Connection Refused</h3>
+            <div class="rounded bg-gray-900 p-3 mb-3">
+                <code class="text-red-400 text-sm">Error: Failed to connect: Connection refused</code>
+            </div>
+            <p class="text-gray-400 text-sm mb-2"><strong>Solution:</strong> Make sure SoliDB is running:</p>
+            <code class="text-green-300 text-sm">solidb</code>
+        </div>
+
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">Authentication Failed</h3>
+            <div class="rounded bg-gray-900 p-3 mb-3">
+                <code class="text-red-400 text-sm">Error: Authentication failed</code>
+            </div>
+            <p class="text-gray-400 text-sm"><strong>Solution:</strong> Check your <code>SOLIDB_USERNAME</code> and <code>SOLIDB_PASSWORD</code> in <code>.env</code>.</p>
+        </div>
+
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">Database Not Found</h3>
+            <div class="rounded bg-gray-900 p-3 mb-3">
+                <code class="text-red-400 text-sm">Error: Database 'mydb' not found</code>
+            </div>
+            <p class="text-gray-400 text-sm"><strong>Solution:</strong> The database is created automatically on first use. Check your <code>SOLIDB_DATABASE</code> value.</p>
+        </div>
+
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2">Environment Variables Not Loading</h3>
+            <p class="text-gray-400 text-sm"><strong>Solution:</strong> Ensure <code>.env</code> is in your project root (same directory as <code>main.sl</code>).</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/docs/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn how to work with data using the ORM.</p>
+        </a>
+        <a href="/docs/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Migrations &rarr;</h3>
+            <p class="text-sm text-gray-400">Manage your database schema.</p>
+        </a>
+        <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Testing &rarr;</h3>
+            <p class="text-sm text-gray-400">Test with database isolation.</p>
+        </a>
+    </div>
+</div>

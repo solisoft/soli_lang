@@ -140,6 +140,9 @@ impl InputState {
     fn detect_multiline_needed(&self) -> bool {
         let line = self.line.as_string();
         let trimmed = line.trim();
+        if trimmed.contains("end") {
+            return false;
+        }
         trimmed.ends_with('{')
             || (trimmed.starts_with("class ") && !trimmed.ends_with('}'))
             || trimmed.starts_with("fn ")
@@ -506,7 +509,7 @@ impl TuiRepl {
             }
             Plus | Minus | Star | Slash | Percent | Equal | EqualEqual | BangEqual | Less
             | LessEqual | Greater | GreaterEqual | Bang | And | Or | Pipeline | Pipe
-            | NullishCoalescing | DoubleColon | Arrow | FatArrow | Spread | Range => {
+            | NullishCoalescing | SafeNavigation | DoubleColon | Arrow | FatArrow | Spread | Range => {
                 format!("\x1b[91m{}\x1b[0m", text) // Bright red
             }
             LeftParen | RightParen | LeftBrace | RightBrace | LeftBracket | RightBracket

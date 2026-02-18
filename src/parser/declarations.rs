@@ -156,7 +156,7 @@ impl Parser {
             None
         };
 
-        let body = self.block_statements()?;
+        let body = self.parse_function_body()?;
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
@@ -193,7 +193,27 @@ impl Parser {
             Vec::new()
         };
 
-        self.expect(&TokenKind::LeftBrace)?;
+        if self.match_token(&TokenKind::End) {
+            let span = start_span.merge(&self.previous_span());
+            return Ok(Stmt::new(
+                StmtKind::Class(ClassDecl {
+                    name,
+                    superclass,
+                    interfaces,
+                    fields: Vec::new(),
+                    methods: Vec::new(),
+                    constructor: None,
+                    static_block: None,
+                    class_statements: Vec::new(),
+                    nested_classes: Vec::new(),
+                    span,
+                }),
+                span,
+            ));
+        }
+
+        // Allow optional opening brace
+        self.match_token(&TokenKind::LeftBrace);
 
         let mut fields = Vec::new();
         let mut methods = Vec::new();
@@ -202,7 +222,10 @@ impl Parser {
         let mut class_statements = Vec::new();
         let mut nested_classes = Vec::new();
 
-        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+        while !self.check(&TokenKind::RightBrace)
+            && !self.check(&TokenKind::End)
+            && !self.is_at_end()
+        {
             if self.check(&TokenKind::Static) {
                 // Check if this is a static block: static { ... }
                 if let Some(next) = self.tokens.get(self.current + 1) {
@@ -239,7 +262,11 @@ impl Parser {
             }
         }
 
-        self.expect(&TokenKind::RightBrace)?;
+        if self.match_token(&TokenKind::End) {
+            // Class body ends with 'end'
+        } else {
+            self.expect(&TokenKind::RightBrace)?;
+        }
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
@@ -339,10 +366,33 @@ impl Parser {
         self.expect(&TokenKind::New)?;
 
         let params = self.parse_parameters()?;
-        let body = self.block_statements()?;
+        let body = self.parse_constructor_body()?;
         let span = start_span.merge(&self.previous_span());
 
         Ok(ConstructorDecl { params, body, span })
+    }
+
+    fn parse_constructor_body(&mut self) -> ParseResult<Vec<Stmt>> {
+        if self.match_token(&TokenKind::End) {
+            Ok(Vec::new())
+        } else if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
+            self.advance(); // consume {
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                statements.push(self.statement()?);
+            }
+            self.expect(&TokenKind::RightBrace)?;
+            Ok(statements)
+        } else {
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::End) && !self.is_at_end() {
+                statements.push(self.statement()?);
+            }
+            if !statements.is_empty() {
+                self.expect(&TokenKind::End)?;
+            }
+            Ok(statements)
+        }
     }
 
     fn parse_method(&mut self, visibility: Visibility, is_static: bool) -> ParseResult<MethodDecl> {
@@ -358,7 +408,7 @@ impl Parser {
             None
         };
 
-        let body = self.block_statements()?;
+        let body = self.parse_function_body()?;
         let span = start_span.merge(&self.previous_span());
 
         Ok(MethodDecl {
@@ -525,5 +575,28 @@ impl Parser {
             },
             span,
         ))
+    }
+
+    pub(crate) fn parse_function_body(&mut self) -> ParseResult<Vec<Stmt>> {
+        if self.match_token(&TokenKind::End) {
+            Ok(Vec::new())
+        } else if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
+            self.advance(); // consume {
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                statements.push(self.statement()?);
+            }
+            self.expect(&TokenKind::RightBrace)?;
+            Ok(statements)
+        } else {
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::End) && !self.is_at_end() {
+                statements.push(self.statement()?);
+            }
+            if !statements.is_empty() {
+                self.expect(&TokenKind::End)?;
+            }
+            Ok(statements)
+        }
     }
 }

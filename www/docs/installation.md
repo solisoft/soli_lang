@@ -75,11 +75,11 @@ post("/contact", "home#contact");
 Create controllers in `app/controllers/`:
 
 ```soli
-fn index(req) {
+fn index(req)
     return render("home/index", {
         "title": "Welcome"
-    });
-}
+    })
+end
 ```
 
 ### 3. Add Views

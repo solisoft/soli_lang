@@ -538,21 +538,21 @@ You can add your own helpers by editing `app/helpers/application_helper.sl`:
 // ... existing helpers ...
 
 // Custom helper: Format a phone number
-fn format_phone(number) {
+fn format_phone(number)
     let digits = replace(number, "[^0-9]", "")
-    if len(digits) == 10 {
+    if len(digits) == 10
         return "(" + substring(digits, 0, 3) + ") " + substring(digits, 3, 6) + "-" + substring(digits, 6, 10)
-    }
+    end
     number
-}
+end
 
 // Custom helper: Generate a mailto link
-fn mail_to(email, text = null) {
-    if text == null {
+fn mail_to(email, text = null)
+    if text == null
         text = email
-    }
+    end
     "<a href=\"mailto:" + html_escape(email) + "\">" + html_escape(text) + "</a>"
-}
+end
 ```
 
 ---
@@ -588,11 +588,11 @@ Wrap views in a common layout:
 Use layout with render:
 
 ```soli
-fn index(req) {
+fn index(req)
     render("home/index", {
         "title": "Welcome"
     }, "layouts/application")
-}
+end
 ```
 
 ## Partials
@@ -622,14 +622,14 @@ Include partials:
 Controllers pass data to views:
 
 ```soli
-fn show(req) {
+fn show(req)
     render("posts/show", {
         "title": "My Post",
         "post": post,
         "comments": comments,
         "author": author
     })
-}
+end
 ```
 
 Access in template:

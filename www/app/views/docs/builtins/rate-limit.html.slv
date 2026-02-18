@@ -1,0 +1,160 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-rose-400 via-pink-400 to-red-400 bg-clip-text text-transparent">RateLimiter Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Sliding window rate limiter for API protection and abuse prevention. Prevent brute force attacks and ensure fair resource usage.
+        </p>
+    </div>
+
+    <!-- Constructor -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">RateLimiter(key, limit, window_seconds)</h2>
+        <p class="text-gray-400 mb-4">Creates a new rate limiter instance for the given key.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">key</code> (String) - Rate limit key (e.g., "ip:192.168.1.1" or "user:123")</li>
+                <li><code class="text-purple-400">limit</code> (Int) - Maximum requests allowed in the window</li>
+                <li><code class="text-purple-400">window_seconds</code> (Int) - Time window in seconds</li>
+            </ul>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Example</span>
+            </div>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// Create a rate limiter for API access
+let limiter = RateLimiter("api:user123", 100, 60)</code></pre>
+        </div>
+    </section>
+
+    <!-- allowed -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">limiter.allowed()</h2>
+        <p class="text-gray-400 mb-4">Checks if a request is allowed under the rate limit using sliding window algorithm.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Bool - true if allowed, false if rate limited</span>
+            </div>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Example</span>
+            </div>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// Limit API calls to 100 per minute per IP
+let limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
+if !limiter.allowed() {
+    return { "status": 429, "body": "Too Many Requests" }
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- throttle -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">limiter.throttle()</h2>
+        <p class="text-gray-400 mb-4">Returns the number of seconds until the next request is allowed.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Int - Seconds to wait (0 if allowed immediately)</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- status -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">limiter.status()</h2>
+        <p class="text-gray-400 mb-4">Gets detailed rate limit status with remaining requests and reset time.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Hash with keys: <code class="text-purple-400">allowed</code>, <code class="text-purple-400">remaining</code>, <code class="text-purple-400">reset_in</code>, <code class="text-purple-400">limit</code>, <code class="text-purple-400">window</code></span>
+            </div>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let limiter = RateLimiter("api:" + api_key, 1000, 3600)
+let status = limiter.status()
+println("Remaining: " + str(status["remaining"]) + "/" + str(status["limit"]))</code></pre>
+        </div>
+    </section>
+
+    <!-- headers -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">limiter.headers()</h2>
+        <p class="text-gray-400 mb-4">Generates rate limit headers for HTTP responses.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Hash with: <code class="text-purple-400">X-RateLimit-Limit</code>, <code class="text-purple-400">X-RateLimit-Remaining</code>, <code class="text-purple-400">X-RateLimit-Reset</code></span>
+            </div>
+        </div>
+    </section>
+
+    <!-- reset -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">limiter.reset()</h2>
+        <p class="text-gray-400 mb-4">Resets the rate limit for this instance's key.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>
+                <span class="text-gray-300">Bool - true on success</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Static Methods -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Static Methods</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">RateLimiter.reset_all()</h3>
+                <p class="text-gray-400">Resets all rate limit counters.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">RateLimiter.cleanup()</h3>
+                <p class="text-gray-400">Cleans up expired rate limit entries.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Helper Functions -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Helper Functions</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">rate_limiter_from_ip(req, limit, window_seconds)</h3>
+                <p class="text-gray-400">Creates a RateLimiter instance based on client IP address (extracts from X-Forwarded-For or Remote-Addr).</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Complete Example -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// API middleware with rate limiting
+fn rate_limit_middleware(req)
+    let ip = req["headers"]["X-Forwarded-For"] || req["headers"]["Remote-Addr"]
+    let limiter = RateLimiter("api:" + ip, 100, 60)
+    
+    // Check rate limit (100 requests per minute)
+    if !limiter.allowed() {
+        let status = limiter.status()
+        let headers = limiter.headers()
+        
+        return {
+            "continue": false,
+            "response": {
+                "status": 429,
+                "headers": headers,
+                "body": json_stringify({
+                    "error": "Rate limit exceeded",
+                    "retry_after": status["reset_in"]
+                })
+            }
+        }
+    }
+    
+    { "continue": true, "request": req }
+end</code></pre></code></pre>
+        </div>
+    </section>
+</div>

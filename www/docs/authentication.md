@@ -7,13 +7,13 @@ SoliLang provides built-in JWT (JSON Web Token) functions for stateless authenti
 Use `jwt_sign()` to create tokens for authenticated users:
 
 ```soli
-fn login(req) {
+fn login(req)
     let data = req["json"];
     let username = data["username"];
     let password = data["password"];
 
     // Verify credentials (example)
-    if username == "admin" && password == "secret" {
+    if username == "admin" && password == "secret"
         let payload = {
             "sub": username,
             "role": "admin",
@@ -29,10 +29,10 @@ fn login(req) {
                 "expires_in": 3600
             })
         };
-    }
+    end
 
     {"status": 401, "body": "Invalid credentials"}
-}
+end
 ```
 
 ## Verifying Tokens
@@ -40,24 +40,24 @@ fn login(req) {
 Use `jwt_verify()` to validate tokens and extract claims:
 
 ```soli
-fn authenticate_middleware(req) {
+fn authenticate_middleware(req)
     let auth_header = req["headers"]["Authorization"];
 
-    if (auth_header == null || !Regex.matches("^Bearer ", auth_header)) {
+    if (auth_header == null || !Regex.matches("^Bearer ", auth_header))
         return {"status": 401, "body": "Missing or invalid Authorization header"};
-    }
+    end
 
     let token = Regex.replace("^Bearer ", auth_header, "");
     let result = jwt_verify(token, getenv("JWT_SECRET"));
 
-    if result["error"] == true {
+    if result["error"] == true
         return {"status": 401, "body": "Invalid token: " + result["message"]};
-    }
+    end
 
     // Token is valid - add user info to request
     req["current_user"] = result;
     null  // Continue to next middleware/controller
-}
+end
 ```
 
 ## Decoding Tokens
@@ -65,7 +65,7 @@ fn authenticate_middleware(req) {
 Use `jwt_decode()` to read token claims without verification:
 
 ```soli
-fn get_token_info(req) {
+fn get_token_info(req)
     let token = req["headers"]["Authorization"];
     let token = Regex.replace("^Bearer ", token, "");
 
@@ -80,7 +80,7 @@ fn get_token_info(req) {
             "expires": claims["exp"]
         })
     }
-}
+end
 ```
 
 ## API Reference

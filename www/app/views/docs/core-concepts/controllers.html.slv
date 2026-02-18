@@ -1,0 +1,203 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Controllers</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Controllers are the heart of your application. They handle HTTP requests, process data, and determine the response.
+            Soli supports both modern class-based controllers and simple function-based handlers.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Class-Based Controllers</h2>
+    <p class="text-gray-400 mb-4">
+        Recommended for most applications. They provide structure, inheritance, and powerful hooks like <code>before_action</code>.
+    </p>
+
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
+    static
+        this.layout = "layouts/posts";
+    end
+
+    fn index(req)
+        let posts = Post.all();
+        render("posts/index", {
+            "title": "All Posts",
+            "posts": posts
+        })
+    end
+
+    fn show(req)
+        let id = req.params["id"];
+        let post = Post.find(id);
+
+        if post == null
+            return error(404, "Post not found");
+        end
+
+        render("posts/show", {
+            "title": post["title"],
+            "post": post
+        })
+    end
+end</code></pre>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Lifecycle Hooks</h3>
+    <p class="text-gray-400 mb-4">
+        Execute code before or after actions. Perfect for authentication or data loading.
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">this.layout</code>
+            <p class="text-sm text-gray-400 mt-1">Set the layout template for all actions</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">this.before_action</code>
+            <p class="text-sm text-gray-400 mt-1">Run code before action executes</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">this.after_action</code>
+            <p class="text-sm text-gray-400 mt-1">Run code after action executes</p>
+        </div>
+    </div>
+
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
+    static
+        // Set layout for all actions
+        this.layout = "layouts/posts";
+
+        // Run before ALL actions
+        this.before_action = fn(req)
+            print("Processing: " + req.path);
+            req
+        end;
+
+        // Run before SPECIFIC actions only
+        this.before_action(:show, :edit) = fn(req)
+            let post = Post.find(req.params["id"]);
+            if post == null return error(404, "Not Found"); end
+            req["post"] = post; // Pass to action
+            req
+        end;
+
+        // Run after SPECIFIC actions
+        this.after_action(:create, :update) = fn(req, response)
+            // Log activity after create/update
+            print("Action completed");
+            response
+        end;
+    end
+    
+    // ... actions ...
+end</code></pre>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Function-Based Controllers</h2>
+    <p class="text-gray-400 mb-4">
+        Great for simple APIs or microservices where you don't need the full power of classes.
+    </p>
+
+    <pre data-filename="app/controllers/simple_controller.sl"><code class="language-soli text-sm">// GET /health
+fn health(req)
+    {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": "{\"status\":\"ok\"}"
+    }
+end</code></pre>
+
+    <h2 class="text-2xl font-bold text-white mb-6">The Request Object</h2>
+    <p class="text-gray-400 mb-4">Access all HTTP request details through the <code>req</code> parameter.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">req.params</code>
+            <p class="text-sm text-gray-400 mt-1">Route parameters & query strings</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">req.body</code>
+            <p class="text-sm text-gray-400 mt-1">Raw request body content</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">req.headers</code>
+            <p class="text-sm text-gray-400 mt-1">HTTP headers map</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">req.session</code>
+            <p class="text-sm text-gray-400 mt-1">User session data storage</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Response Types</h2>
+
+    <div class="space-y-6 mb-12">
+        <pre data-filename="Render View"><code class="language-soli text-sm">render("home/index", { "title": "Welcome" })</code></pre>
+
+        <pre data-filename="Redirect"><code class="language-soli text-sm">redirect("/login")</code></pre>
+
+        <pre data-filename="JSON API"><code class="language-soli text-sm">{
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": json_encode({ "data": posts })
+}</code></pre>
+
+        <pre data-filename="Error"><code class="language-soli text-sm">error(404, "Page Not Found")</code></pre>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
+            </svg>
+            Pro Tip: Keep Controllers Thin
+        </h4>
+        <p class="text-indigo-200/80">
+            Delegate complex business logic to Models or Service objects. 
+            Controllers should primarily focus on handling the HTTP request and selecting the correct response.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Best Practices</h2>
+    <ul class="space-y-4 mb-12">
+        <li class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Use <strong>class-based controllers</strong> for better organization and reuse.</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Create a base <code>ApplicationController</code> to share logic like auth across all controllers.</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Use <code>before_action</code> to load resources and DRY up your code.</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Prefix private helper methods with <code>_</code> to prevent them from becoming routes.</span>
+        </li>
+    </ul>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/docs/views" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Views & Templates &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn how to render dynamic HTML using ERB templates.</p>
+        </a>
+        <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Testing &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn how to test controllers with HTTP integration tests.</p>
+        </a>
+        <a href="/docs/middleware" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Middleware &rarr;</h3>
+            <p class="text-sm text-gray-400">Intercept requests to handle auth, logging, and more.</p>
+        </a>
+    </div>
+</div>

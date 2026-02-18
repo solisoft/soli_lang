@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use crate::ast::Parameter;
 use crate::ast::Stmt;
+use crate::ast::TypeAnnotation;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::{Function, Value};
 use crate::span::Span;
@@ -14,6 +15,7 @@ impl Interpreter {
         &mut self,
         params: &[Parameter],
         body: &[Stmt],
+        return_type: &Option<TypeAnnotation>,
         span: Span,
     ) -> RuntimeResult<Value> {
         let func = Function {
@@ -28,6 +30,7 @@ impl Interpreter {
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
             defining_superclass: None,
+            return_type: return_type.clone(),
         };
         Ok(Value::Function(Rc::new(func)))
     }

@@ -26,17 +26,17 @@ let schema = {
 
 let result = validate(req["json"], schema);
 
-if result["valid"] {
+if result["valid"]
     let data = result["data"];
     // Use validated and coerced data
     print("Email:", data["email"]);
     print("Age:", data["age"]);  // Already converted to int
-} else {
+else
     // Handle validation errors
-    for error in result["errors"] {
+    for error in result["errors"]
         print(error["field"], ":", error["message"]);
-    }
-}
+    end
+end
 ```
 
 ## Validator Methods
@@ -145,14 +145,14 @@ let result = validate({
 ```soli
 // app/controllers/users_controller.sl
 
-fn new(req) {
+fn new(req)
     {
         "status": 200,
         "body": render("users/new.html", {})
     }
-}
+end
 
-fn create(req) {
+fn create(req)
     let schema = {
         "username": V.string().required()
             .min_length(3)
@@ -166,19 +166,19 @@ fn create(req) {
 
     let result = validate(req["json"], schema);
 
-    if !result["valid"] {
+    if !result["valid"]
         return {
             "status": 422,
             "body": json_stringify({
                 "errors": result["errors"]
             })
         };
-    }
+    end
 
     let data = result["data"];
 
     // Check password confirmation
-    if data["password"] != data["confirm_password"] {
+    if data["password"] != data["confirm_password"]
         return {
             "status": 422,
             "body": json_stringify({
@@ -189,7 +189,7 @@ fn create(req) {
                 }]
             })
         };
-    }
+    end
 
     // Create user (example)
     let user = create_user(data["username"], data["email"], data["password"]);
@@ -198,7 +198,7 @@ fn create(req) {
         "status": 201,
         "body": json_stringify({"user": user})
     }
-}
+end
 ```
 
 ## API Reference

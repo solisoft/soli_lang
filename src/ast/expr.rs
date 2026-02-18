@@ -90,6 +90,9 @@ pub enum ExprKind {
     /// Member access: obj.field
     Member { object: Box<Expr>, name: String },
 
+    /// Safe navigation: obj&.field (returns null if obj is null)
+    SafeMember { object: Box<Expr>, name: String },
+
     /// Qualified name: Outer::Inner (for nested class access)
     QualifiedName { qualifier: Box<Expr>, name: String },
 

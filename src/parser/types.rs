@@ -37,6 +37,11 @@ impl Parser {
                 self.advance();
                 if name == "Fn" && self.check(&TokenKind::LeftParen) {
                     self.parse_function_type(start_span)?
+                } else if name.ends_with('?') {
+                    // Handle nullable suffix attached by lexer (e.g., "String?" -> Nullable(Named("String")))
+                    let base_name = name[..name.len() - 1].to_string();
+                    let base = TypeAnnotation::new(TypeKind::Named(base_name), start_span);
+                    TypeAnnotation::new(TypeKind::Nullable(Box::new(base)), start_span)
                 } else {
                     TypeAnnotation::new(TypeKind::Named(name), start_span)
                 }
@@ -75,12 +80,18 @@ impl Parser {
             }
         };
 
-        // Check for array suffix []
+        // Check for array suffix [] and nullable suffix ?
         let mut result = base_type;
         while self.match_token(&TokenKind::LeftBracket) {
             self.expect(&TokenKind::RightBracket)?;
             let span = start_span.merge(&self.previous_span());
             result = TypeAnnotation::new(TypeKind::Array(Box::new(result)), span);
+        }
+
+        // Check for nullable suffix ?
+        if self.match_token(&TokenKind::Question) {
+            let span = start_span.merge(&self.previous_span());
+            result = TypeAnnotation::new(TypeKind::Nullable(Box::new(result)), span);
         }
 
         Ok(result)

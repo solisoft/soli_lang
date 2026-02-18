@@ -76,24 +76,24 @@ Quick lookup for E2E controller testing helpers.
 ## Complete Example
 
 ```soli
-describe("PostsController", fn() {
-    before_each(fn() {
-        as_guest();
-    });
+describe("PostsController", fn()
+    before_each(fn()
+        as_guest()
+    end)
     
-    test("creates post", fn() {
-        login("user@example.com", "password");
+    test("creates post", fn()
+        login("user@example.com", "password")
         
         let response = post("/posts", {
             "title": "New Post",
             "body": "Content"
-        });
+        })
         
-        assert_eq(res_status(response), 201);
-        let data = res_json(response);
-        assert_eq(data["title"], "New Post");
-    });
-});
+        assert_eq(res_status(response), 201)
+        let data = res_json(response)
+        assert_eq(data["title"], "New Post")
+    end)
+end)
 ```
 
 ## Running Tests

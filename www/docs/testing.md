@@ -24,18 +24,18 @@ myapp/
 ### Basic Test Structure
 
 ```soli
-describe("UsersController", fn() {
-    test("creates a new user", fn() {
-        // Test code here
-        expect(true).to_be(true);
-    });
+describe("UsersController", fn()
+    test("creates a new user", fn()
+        # Test code here
+        expect(true).to_be(true)
+    end)
     
-    context("when valid", fn() {
-        test("returns success", fn() {
-            // Nested context
-        });
-    });
-});
+    context("when valid", fn()
+        test("returns success", fn()
+            # Nested context
+        end)
+    end)
+end)
 ```
 
 ### Available Functions
@@ -74,31 +74,31 @@ expect(json_string).to_be_valid_json();
 ### Making Requests
 
 ```soli
-describe("Users API", fn() {
-    test("GET /users returns list", fn() {
-        let response = TestHTTP.get("/users");
-        expect(response.status).to_equal(200);
-        expect(response.body).to_contain("users");
-    });
+describe("Users API", fn()
+    test("GET /users returns list", fn()
+        let response = TestHTTP.get("/users")
+        expect(response.status).to_equal(200)
+        expect(response.body).to_contain("users")
+    end)
     
-    test("POST /users creates user", fn() {
+    test("POST /users creates user", fn()
         let response = TestHTTP.post("/users", hash(
             "email": "test@example.com",
             "name": "Test User"
-        ));
-        expect(response.status).to_equal(201);
-    });
+        ))
+        expect(response.status).to_equal(201)
+    end)
     
-    test("PUT /users/:id updates user", fn() {
-        let response = TestHTTP.put("/users/1", hash("name": "Updated"));
-        expect(response.status).to_equal(200);
-    });
+    test("PUT /users/:id updates user", fn()
+        let response = TestHTTP.put("/users/1", hash("name": "Updated"))
+        expect(response.status).to_equal(200)
+    end)
     
-    test("DELETE /users/:id removes user", fn() {
-        let response = TestHTTP.delete("/users/1");
-        expect(response.status).to_equal(204);
-    });
-});
+    test("DELETE /users/:id removes user", fn()
+        let response = TestHTTP.delete("/users/1")
+        expect(response.status).to_equal(204)
+    end)
+end)
 ```
 
 ### Request Options
@@ -118,30 +118,30 @@ TestHTTP.delete("/users/1");
 ### Direct Action Calls
 
 ```soli
-describe("UsersController", fn() {
-    before_each(fn() {
-        Factory.clear();
-    });
+describe("UsersController", fn()
+    before_each(fn()
+        Factory.clear()
+    end)
     
-    test("create action", fn() {
+    test("create action", fn()
         let result = ControllerTest.helpers.users_controller.create(
             params: hash("email": "test@example.com"),
             session: Session.new(),
             headers: Headers.new()
-        );
-        expect(result.status).to_equal(201);
-    });
+        )
+        expect(result.status).to_equal(201)
+    end)
     
-    test("show action", fn() {
-        let user = Factory.create("user");
+    test("show action", fn()
+        let user = Factory.create("user")
         let result = ControllerTest.helpers.users_controller.show(
             params: hash("id": user.id),
             session: Session.new(),
             headers: Headers.new()
-        );
-        expect(result.status).to_equal(200);
-    });
-});
+        )
+        expect(result.status).to_equal(200)
+    end)
+end)
 ```
 
 ## Database Testing
@@ -151,36 +151,36 @@ describe("UsersController", fn() {
 Tests are isolated using database transactions:
 
 ```soli
-describe("User model", fn() {
-    test("creates user", fn() {
-        with_transaction(fn() {
-            let user = Factory.create("user", hash("name": "Test"));
-            expect(User.count()).to_equal(1);
-            expect(user.name).to_equal("Test");
-        });
-        // Transaction automatically rolls back
-    });
-});
+describe("User model", fn()
+    test("creates user", fn()
+        with_transaction(fn()
+            let user = Factory.create("user", hash("name": "Test"))
+            expect(User.count()).to_equal(1)
+            expect(user.name).to_equal("Test")
+        end)
+        # Transaction automatically rolls back
+    end)
+end)
 ```
 
 ### Factory Pattern
 
 ```soli
-// Define factories
+# Define factories
 Factory.define("user", hash(
     "email": "user@example.com",
     "name": "Test User"
-));
+))
 
 Factory.define("post", hash(
     "title": "Test Post",
     "content": "Content here"
-));
+))
 
-// Use factories
-let user = Factory.create("user");
-let post = Factory.create("post", hash("title": "Custom Title"));
-let users = Factory.create_list("user", 5);
+# Use factories
+let user = Factory.create("user")
+let post = Factory.create("post", hash("title": "Custom Title"))
+let users = Factory.create_list("user", 5)
 ```
 
 ## Parallel Execution
@@ -216,67 +216,67 @@ src/controllers/posts.sl     ▓▓▓▓▓▓▓▓▓░░░░░░░░
 ### Coverage Configuration
 
 ```soli
-coverage_threshold(80);           // Fail if < 80%
-coverage_exclude("**/migrations/**");
+coverage_threshold(80)           # Fail if < 80%
+coverage_exclude("**/migrations/**")
 ```
 
 ## Complete Example
 
 ```soli
-describe("UsersController", fn() {
-    before_each(fn() {
-        Factory.clear();
-        Database.clean_all();
-    });
+describe("UsersController", fn()
+    before_each(fn()
+        Factory.clear()
+        Database.clean_all()
+    end)
     
-    context("POST /users", fn() {
-        test("creates user with valid data", fn() {
+    context("POST /users", fn()
+        test("creates user with valid data", fn()
             let response = TestHTTP.post("/users", hash(
                 "email": "user@example.com",
                 "name": "Test User"
-            ));
-            expect(response.status).to_equal(201);
-            expect(response.body).to_contain("Test User");
-        });
+            ))
+            expect(response.status).to_equal(201)
+            expect(response.body).to_contain("Test User")
+        end)
         
-        test("returns 422 with invalid email", fn() {
+        test("returns 422 with invalid email", fn()
             let response = TestHTTP.post("/users", hash(
                 "email": "invalid-email"
-            ));
-            expect(response.status).to_equal(422);
-        });
+            ))
+            expect(response.status).to_equal(422)
+        end)
         
-        test("returns 422 without email", fn() {
+        test("returns 422 without email", fn()
             let response = TestHTTP.post("/users", hash(
                 "name": "Test"
-            ));
-            expect(response.status).to_equal(422);
-        });
-    });
+            ))
+            expect(response.status).to_equal(422)
+        end)
+    end)
     
-    context("GET /users/:id", fn() {
-        test("shows user profile", fn() {
-            let user = Factory.create("user");
-            let response = TestHTTP.get("/users/" + user.id);
-            expect(response.status).to_equal(200);
-            expect(response.body).to_contain(user.name);
-        });
+    context("GET /users/:id", fn()
+        test("shows user profile", fn()
+            let user = Factory.create("user")
+            let response = TestHTTP.get("/users/" + user.id)
+            expect(response.status).to_equal(200)
+            expect(response.body).to_contain(user.name)
+        end)
         
-        test("returns 404 for unknown user", fn() {
-            let response = TestHTTP.get("/users/99999");
-            expect(response.status).to_equal(404);
-        });
-    });
+        test("returns 404 for unknown user", fn()
+            let response = TestHTTP.get("/users/99999")
+            expect(response.status).to_equal(404)
+        end)
+    end)
     
-    context("DELETE /users/:id", fn() {
-        test("removes user", fn() {
-            let user = Factory.create("user");
-            let response = TestHTTP.delete("/users/" + user.id);
-            expect(response.status).to_equal(204);
-            expect(User.find(user.id)).to_be_null();
-        });
-    });
-});
+    context("DELETE /users/:id", fn()
+        test("removes user", fn()
+            let user = Factory.create("user")
+            let response = TestHTTP.delete("/users/" + user.id)
+            expect(response.status).to_equal(204)
+            expect(User.find(user.id)).to_be_null()
+        end)
+    end)
+end)
 ```
 
 ## Running Tests

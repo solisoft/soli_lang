@@ -23,27 +23,26 @@
 
 let valid_api_key = "secret-key-123";
 
-fn authenticate(req: Any) -> Any {
-    let headers = req["headers"];
+fn authenticate(req: Any)    let headers = req["headers"];
     let provided_key = "";
 
-    if (has_key(headers, "X-Api-Key")) {
+    if (has_key(headers, "X-Api-Key"))
         provided_key = headers["X-Api-Key"];
-    }
+    end
 
-    if (provided_key == "") {
-        if (has_key(headers, "x-api-key")) {
+    if (provided_key == "")
+        if (has_key(headers, "x-api-key"))
             provided_key = headers["x-api-key"];
-        }
-    }
+        end
+    end
 
-    if (provided_key == valid_api_key) {
+    if (provided_key == valid_api_key)
         print("[AUTH] User authenticated successfully");
         return {
             "continue": true,
             "request": req
         };
-    }
+    end
 
     print("[AUTH] Authentication failed - invalid or missing API key");
     return {
@@ -54,4 +53,4 @@ fn authenticate(req: Any) -> Any {
             "body": json_stringify({"error": "Unauthorized", "message": "Valid API key required in X-Api-Key header"})
         }
     };
-}
+end

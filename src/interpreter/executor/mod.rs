@@ -26,7 +26,7 @@ use crate::interpreter::builtins::server::{
     build_request_hash, extract_response, get_routes, match_path, parse_query_string,
 };
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Function, HashKey, Value};
+use crate::interpreter::value::{value_matches_type, Function, HashKey, Value};
 use crate::span::Span;
 
 pub(crate) type RuntimeResult<T> = Result<T, RuntimeError>;
@@ -477,6 +477,28 @@ impl Interpreter {
             }
         };
 
+        // Validate return type if annotated
+        let result = match result {
+            Ok(ref value) => {
+                if let Some(ref expected_type) = func.return_type {
+                    if !value_matches_type(value, expected_type) {
+                        Err(RuntimeError::General {
+                            message: format!(
+                                "function '{}' expected to return {}, got {}",
+                                func.name, expected_type, value.type_name()
+                            ),
+                            span,
+                        })
+                    } else {
+                        result
+                    }
+                } else {
+                    result
+                }
+            }
+            _ => result,
+        };
+
         // Pop stack frame
         self.pop_frame();
 
@@ -676,5 +698,280 @@ impl Interpreter {
 impl Default for Interpreter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod return_type_enforcement_tests {
+    use super::*;
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+
+    fn run(source: &str) -> Result<(), String> {
+        let tokens = Scanner::new(source).scan_tokens().map_err(|e| e.to_string())?;
+        let program = Parser::new(tokens).parse().map_err(|e| e.to_string())?;
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn test_correct_return_type_string() {
+        let src = r#"
+fn greet() -> String
+  return "hello"
+end
+greet()
+"#;
+        assert!(run(src).is_ok());
+    }
+
+    #[test]
+    fn test_correct_return_type_int() {
+        let src = r#"
+fn add() -> Int
+  return 42
+end
+add()
+"#;
+        assert!(run(src).is_ok());
+    }
+
+    #[test]
+    fn test_wrong_return_type_int_instead_of_string() {
+        let src = r#"
+fn greet() -> String
+  return 42
+end
+greet()
+"#;
+        let result = run(src);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("expected to return String"), "Error was: {}", err);
+        assert!(err.contains("got int"), "Error was: {}", err);
+    }
+
+    #[test]
+    fn test_nullable_return_type_allows_null() {
+        let src = r#"
+fn maybe_name() -> String?
+  return null
+end
+maybe_name()
+"#;
+        let result = run(src);
+        assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_nullable_return_type_allows_value() {
+        let src = r#"
+fn maybe_name() -> String?
+  return "Alice"
+end
+maybe_name()
+"#;
+        let result = run(src);
+        assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_nullable_return_type_rejects_wrong_type() {
+        let src = r#"
+fn maybe_name() -> String?
+  return 42
+end
+maybe_name()
+"#;
+        let result = run(src);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unannotated_function_allows_anything() {
+        let src = r#"
+fn flexible()
+  return 42
+end
+flexible()
+"#;
+        assert!(run(src).is_ok());
+    }
+
+    #[test]
+    fn test_lambda_with_return_type() {
+        let src = r#"
+let f = fn(x) -> Int
+  return x + 1
+end
+f(5)
+"#;
+        assert!(run(src).is_ok());
+    }
+
+    #[test]
+    fn test_lambda_with_wrong_return_type() {
+        let src = r#"
+let f = fn(x) -> Int
+  return "not an int"
+end
+f(5)
+"#;
+        let result = run(src);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bool_return_type() {
+        let src = r#"
+fn is_even(n) -> Bool
+  return n % 2 == 0
+end
+is_even(4)
+"#;
+        assert!(run(src).is_ok());
+    }
+
+    #[test]
+    fn test_array_return_type() {
+        let src = r#"
+fn get_list() -> Array
+  return [1, 2, 3]
+end
+get_list()
+"#;
+        assert!(run(src).is_ok());
+    }
+
+    #[test]
+    fn test_hash_return_type() {
+        let src = r#"
+fn get_map() -> Hash
+  return { "a" => 1 }
+end
+get_map()
+"#;
+        assert!(run(src).is_ok());
+    }
+
+    #[test]
+    fn test_implicit_null_return_fails_for_typed_function() {
+        let src = r#"
+fn greet() -> String
+  let x = 1
+end
+greet()
+"#;
+        let result = run(src);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("expected to return String"), "Error was: {}", err);
+    }
+
+    #[test]
+    fn test_void_return_type_allows_null() {
+        let src = r#"
+fn do_stuff() -> Void
+  let x = 1
+end
+do_stuff()
+"#;
+        assert!(run(src).is_ok());
+    }
+
+    #[test]
+    fn test_void_return_type_rejects_value() {
+        let src = r#"
+fn do_stuff() -> Void
+  return 42
+end
+do_stuff()
+"#;
+        let result = run(src);
+        assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod safe_navigation_tests {
+    use crate::interpreter::value::Value;
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+
+    use super::Interpreter;
+
+    fn eval(source: &str) -> Value {
+        let tokens = Scanner::new(source).scan_tokens().unwrap();
+        let program = Parser::new(tokens).parse().unwrap();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).unwrap();
+        // Read the result variable from the environment
+        let val = interpreter.environment.borrow().get("result").unwrap_or(Value::Null);
+        val
+    }
+
+    #[test]
+    fn test_safe_nav_null_returns_null() {
+        let val = eval("let x = null; let result = x&.name;");
+        assert_eq!(val, Value::Null);
+    }
+
+    #[test]
+    fn test_safe_nav_non_null_returns_field() {
+        // Use hash for field access since it's simpler and well-tested
+        let val = eval(r#"
+let u = { "name" => "Alice" }
+let result = u&.name
+"#);
+        assert_eq!(val, Value::String("Alice".to_string()));
+    }
+
+    #[test]
+    fn test_safe_nav_method_null() {
+        let val = eval(r#"
+let x = null
+let result = x&.greet()
+"#);
+        assert_eq!(val, Value::Null);
+    }
+
+    #[test]
+    fn test_safe_nav_method_non_null() {
+        // Use array with a method to test non-null safe nav method call
+        let val = eval(r#"
+let arr = [3, 1, 2]
+let result = arr&.length()
+"#);
+        assert_eq!(val, Value::Int(3));
+    }
+
+    #[test]
+    fn test_safe_nav_chained_null_at_first() {
+        let val = eval("let x = null; let result = x&.inner&.field;");
+        assert_eq!(val, Value::Null);
+    }
+
+    #[test]
+    fn test_safe_nav_chained_non_null() {
+        let val = eval(r#"
+let u = { "address" => { "city" => "Paris" } }
+let result = u&.address&.city
+"#);
+        assert_eq!(val, Value::String("Paris".to_string()));
+    }
+
+    #[test]
+    fn test_safe_nav_with_nullish_coalescing() {
+        let val = eval(r#"let x = null; let result = x&.name ?? "default";"#);
+        assert_eq!(val, Value::String("default".to_string()));
+    }
+
+    #[test]
+    fn test_safe_nav_on_non_null_with_nullish() {
+        let val = eval(r#"
+let u = { "name" => "Eve" }
+let result = u&.name ?? "default"
+"#);
+        assert_eq!(val, Value::String("Eve".to_string()));
     }
 }

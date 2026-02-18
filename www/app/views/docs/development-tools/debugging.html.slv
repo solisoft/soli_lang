@@ -1,0 +1,314 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Debugging & Breakpoints</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Learn how to use soli's powerful debugging tools including breakpoints, interactive REPL, and the development error page.
+        </p>
+    </div>
+
+    <!-- Table of Contents -->
+    <nav class="not-prose mb-16">
+        <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            Table of Contents
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <a href="#breakpoints" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-indigo-500/20 flex items-center justify-center text-indigo-400 text-sm font-mono">1</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Breakpoints</span>
+            </a>
+            <a href="#debug-page" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center text-purple-400 text-sm font-mono">2</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Debug Page</span>
+            </a>
+            <a href="#interactive-repl" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">3</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Interactive REPL</span>
+            </a>
+            <a href="#development-mode" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">4</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Development Mode</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Section 1: Breakpoints -->
+    <section id="breakpoints" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+            </span>
+            Breakpoints
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            Use the <code class="text-indigo-400">break()</code> function to pause execution and open the interactive debug page. This is useful for inspecting variable state and understanding program flow.
+        </p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Setting Breakpoints</h3>
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn process_user(user_id: Int) -> Hash
+    let user = database.find(user_id);
+
+    // Set a breakpoint to inspect the user object
+    break();
+
+    if (user == null)
+        return {"error": "User not found"};
+    end
+
+    let profile = enrich_profile(user);
+
+    // Another breakpoint to see enriched data
+    break();
+
+    profile
+end</code></pre></code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Why Use Breakpoints?</h3>
+        <div class="not-prose grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <span class="inline-block px-2 py-1 rounded bg-indigo-500/20 text-indigo-400 text-xs font-bold font-mono mb-2">Inspect State</span>
+                <p class="text-sm text-gray-400">Examine variable values and data structures at any point in your code</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <span class="inline-block px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs font-bold font-mono mb-2">Trace Execution</span>
+                <p class="text-sm text-gray-400">Follow the program flow step by step to understand logic</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <span class="inline-block px-2 py-1 rounded bg-amber-500/20 text-amber-400 text-xs font-bold font-mono mb-2">Evaluate Code</span>
+                <p class="text-sm text-gray-400">Run arbitrary soli code to test hypotheses or calculate values</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <span class="inline-block px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-bold font-mono mb-2">Debug Errors</span>
+                <p class="text-sm text-gray-400">Automatically triggered on errors to help diagnose issues</p>
+            </div>
+        </div>
+
+        <div class="rounded-xl bg-blue-500/10 border border-blue-500/20 p-4 mb-6">
+            <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-blue-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <h4 class="text-blue-400 font-semibold mb-1">Tip</h4>
+                    <p class="text-sm text-gray-300">
+                        Breakpoints only work in development mode. In production, <code class="text-indigo-400">break()</code> calls are ignored.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 2: Debug Page -->
+    <section id="debug-page" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Debug Page
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            When a breakpoint is hit or an error occurs, soli displays a comprehensive debug page with multiple panels for investigation.
+        </p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Debug Page Features</h3>
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Interactive REPL - Execute soli code in breakpoint context
+// Stack Trace - Navigate through call stack frames
+// Source Viewer - View source code with line highlighting
+// Request Inspector - Examine request params, query, headers, body
+// Environment Info - View time, method, path of the request</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Stack Trace Navigation</h3>
+        <p class="text-gray-400 mb-4">
+            Click on any stack frame to view the source code at that location. The source viewer shows the relevant code with the error line highlighted.
+        </p>
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">Stack Trace:
+  0. process_user at ./src/users.sl:15
+  1. handle_request at ./src/routes.sl:42
+  2. main at ./src/main.sl:8
+
+Click on any frame to see the source code.</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Source Code Viewer</h3>
+        <p class="text-gray-400 mb-4">
+            The source viewer displays code around the breakpoint or error location with:
+        </p>
+        <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
+            <li>Line numbers for easy reference</li>
+            <li>Highlighted error/breakpoint line</li>
+            <li>Context lines above and below</li>
+            <li>Syntax highlighting</li>
+        </ul>
+    </section>
+
+    <!-- Section 3: Interactive REPL -->
+    <section id="interactive-repl" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Interactive REPL
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            The debug page includes an interactive REPL that runs in the context of your breakpoint. You can execute any soli code to inspect and manipulate data.
+        </p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Available Variables</h3>
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Request object - access all request data
+req              // Full request object
+req["params"]    // Route parameters (e.g., {id: "123"})
+req["query"]     // Query string parameters
+req["body"]      // Request body (POST/PUT data)
+req["headers"]   // HTTP headers
+
+// Session
+session          // Session data
+
+// Breakpoint context
+breakpoint_env   // Local variables at breakpoint</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">REPL Features</h3>
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Use @ to reference the last result
+req["params"]["id"]  // Returns: "123"
+@ + 100              // Returns: 223 (uses last result)
+
+// Navigation with arrow keys
+// Up/Down: Browse command history
+
+// Execute any valid soli code
+print("Debug output");
+user["name"];        // Inspect variable
+config["database"];  // View configuration</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Quick Inspect Buttons</h3>
+        <p class="text-gray-400 mb-4">
+            Click the quick inspect buttons to instantly view common data:
+        </p>
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Available quick inspect buttons:
+req        // View full request object
+params     // View route parameters
+query      // View query string
+body       // View request body
+session    // View session data
+headers    // View HTTP headers</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 4: Development Mode -->
+    <section id="development-mode" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </span>
+            Development Mode
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            Start the development server with hot reload to enable all debugging features:
+        </p>
+
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Start development server with hot reload
+soli serve
+
+# The server will automatically reload when files change
+# Breakpoints and debug page work in this mode</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Development vs Production</h3>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="py-2 px-4 text-gray-400 font-medium">Feature</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Development</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Production</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr><td class="py-2 px-4 text-gray-400">Breakpoints</td><td class="py-2 px-4 text-emerald-400">Enabled</td><td class="py-2 px-4 text-red-400">Disabled</td></tr>
+                    <tr><td class="py-2 px-4 text-gray-400">Debug Page</td><td class="py-2 px-4 text-emerald-400">Full interactive</td><td class="py-2 px-4 text-red-400">Simple error</td></tr>
+                    <tr><td class="py-2 px-4 text-gray-400">Hot Reload</td><td class="py-2 px-4 text-emerald-400">Enabled</td><td class="py-2 px-4 text-red-400">Disabled</td></tr>
+                    <tr><td class="py-2 px-4 text-gray-400">Stack Traces</td><td class="py-2 px-4 text-emerald-400">Detailed</td><td class="py-2 px-4 text-amber-400">Minimal</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-4 mb-6">
+            <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-red-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                    <h4 class="text-red-400 font-semibold mb-1">Security Warning</h4>
+                    <p class="text-sm text-gray-300">
+                        Never run in development mode in production. The debug page exposes sensitive information including request data, environment variables, and source code.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Call to Action -->
+    <div class="rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/20 p-8 text-center">
+        <h3 class="text-2xl font-bold text-white mb-3">Next Steps</h3>
+        <p class="text-gray-400 mb-6">
+            Combine debugging with testing to build robust applications.
+        </p>
+        <div class="flex flex-wrap justify-center gap-4">
+            <a href="/docs/testing" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Testing Guide
+            </a>
+            <a href="/docs/live-reload" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-colors border border-white/10">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Live Reload
+            </a>
+        </div>
+    </div>
+</div>

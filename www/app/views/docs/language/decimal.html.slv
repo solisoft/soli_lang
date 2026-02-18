@@ -1,0 +1,314 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Decimal Type</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">Decimal Type</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Exact decimal arithmetic for financial calculations. Avoid floating-point precision issues with native Decimal support.
+        </p>
+    </div>
+
+    <!-- Why Decimal -->
+    <section id="section-why-decimal" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </span>
+            Why Decimal?
+        </h2>
+        <p class="text-gray-400 mb-4">Floating-point numbers have precision issues:</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Float - imprecise (binary floating point)
+let a = 0.1 + 0.2;
+print(a);  // 0.30000000000000004 ❌
+
+// Decimal - exact (base-10)
+let a: Decimal(2) = 0.10D + 0.20D;
+print(a);  // 0.30 ✓</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Syntax -->
+    <section id="section-syntax" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+            </span>
+            Syntax
+        </h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let price: Decimal(2) = 19.99D;      // Currency (2 decimals)
+let rate: Decimal(4) = 0.0675D;      // Rates (4 decimals)
+let percent: Decimal(2) = 50.00D;   // Percentages (2 decimals)
+let amount: Decimal(2) = 0.00D;       // Zero with precision</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Precision -->
+    <section id="section-precision" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Precision</h2>
+        <p class="text-gray-400 mb-4">The number in <code class="text-amber-400">Decimal(N)</code> specifies fixed decimal places:</p>
+        <div class="not-prose grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <section class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <span class="inline-block px-2 py-1 rounded bg-amber-500/20 text-amber-400 text-xs font-bold font-mono mb-2">Decimal(2)</span>
+                <p class="text-sm text-gray-400">Currency, dollars/cents</p>
+                <code class="text-xs text-gray-500 block mt-2">19.99D</code>
+            </section>
+            <section class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <span class="inline-block px-2 py-1 rounded bg-amber-500/20 text-amber-400 text-xs font-bold font-mono mb-2">Decimal(4)</span>
+                <p class="text-sm text-gray-400">Rates, percentages</p>
+                <code class="text-xs text-gray-500 block mt-2">0.0675D</code>
+            </section>
+            <section class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <span class="inline-block px-2 py-1 rounded bg-amber-500/20 text-amber-400 text-xs font-bold font-mono mb-2">Decimal(0)</span>
+                <p class="text-sm text-gray-400">Whole numbers only</p>
+                <code class="text-xs text-gray-500 block mt-2">100.00D</code>
+            </section>
+        </div>
+    </section>
+
+    <!-- Operations -->
+    <section id="section-operations" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                </svg>
+            </span>
+            Operations
+        </h2>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Operation</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Example</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Result</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr>
+                        <td class="py-3 px-4 text-white">Addition</td>
+                        <td class="py-3 px-4 text-indigo-300">10.00D + 5.00D</td>
+                        <td class="py-3 px-4 text-amber-300">15.00D</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white">Subtraction</td>
+                        <td class="py-3 px-4 text-indigo-300">10.00D - 5.00D</td>
+                        <td class="py-3 px-4 text-amber-300">5.00D</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white">Multiplication</td>
+                        <td class="py-3 px-4 text-indigo-300">10.00D * 2</td>
+                        <td class="py-3 px-4 text-amber-300">20.00D</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white">Division</td>
+                        <td class="py-3 px-4 text-indigo-300">10.00D / 3</td>
+                        <td class="py-3 px-4 text-amber-300">3.33D (rounded)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-white">Modulo</td>
+                        <td class="py-3 px-4 text-indigo-300">10.00D % 3</td>
+                        <td class="py-3 px-4 text-amber-300">1.00D</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Precision Methods -->
+    <section id="section-methods" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                </svg>
+            </span>
+            Precision Methods
+        </h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let rate: Decimal(4) = 0.0675D;
+let rounded: Decimal(2) = rate.prec(2);  // → 0.07D
+
+// Standard library functions
+round(19.999D, 2)           // → 20.00D
+floor(19.99D)                // → 19.00D
+ceil(19.01D)                 // → 20.00D
+abs(-19.99D)                 // → 19.99D</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Standard Library -->
+    <section id="section-stdlib" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Standard Library Functions</h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Conversions
+decimal("19.99", 2)         // → 19.99D (from string)
+float(19.99D)               // → 19.99 (to float)
+str(19.99D)                 // → "19.99"
+
+// Math
+sqrt(4.00D)                 // → 2.00D
+pow(2.00D, 3)               // → 8.00D
+
+// Formatting
+format(19.99D, "$#,##0.00")  // → "$19.99"
+
+// Comparisons
+min(19.99D, 20.00D)         // → 19.99D
+max(19.99D, 20.00D)         // → 20.00D</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Financial Example -->
+    <section id="section-example" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Financial Example
+        </h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let price: Decimal(2) = 99.99D;
+let tax_rate: Decimal(4) = 0.0800D;
+let quantity: Int = 3;
+
+let subtotal: Decimal(2) = price * quantity;
+let tax: Decimal(2) = round(subtotal * tax_rate, 2);
+let total: Decimal(2) = subtotal + tax;
+
+print("Subtotal: $" + str(subtotal));   // $299.97
+print("Tax: $" + str(tax));            // $24.00
+print("Total: $" + str(total));        // $323.97</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Model Fields -->
+    <section id="section-models" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Model Fields
+        </h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Product extends Model
+    price: Decimal(2),
+    cost: Decimal(2),
+    tax_rate: Decimal(4),
+
+    fn profit() -> Decimal(2)
+        self.price - self.cost
+    end
+end
+
+class Order extends Model
+    subtotal: Decimal(2),
+    tax: Decimal(2),
+    total: Decimal(2),
+
+    fn calculate_total() -> Decimal(2)
+        self.subtotal + self.tax
+    end
+end</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Migrations -->
+    <section id="section-migrations" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </span>
+            Migrations
+        </h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">create_collection("products", [
+    {"name": "price", "type": "decimal(2)"},
+    {"name": "cost", "type": "decimal(2)"},
+    {"name": "discount_rate", "type": "decimal(4)"}
+]);</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Best Practices -->
+    <section id="section-best-practices" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Best Practices
+        </h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <ul class="text-gray-400 space-y-3">
+                <li class="flex items-start gap-3">
+                    <span class="text-green-400 mt-1">✓</span>
+                    <span>Use <code class="text-amber-400">Decimal(2)</code> for all monetary values</span>
+                </li>
+                <li class="flex items-start gap-3">
+                    <span class="text-green-400 mt-1">✓</span>
+                    <span>Use <code class="text-amber-400">Decimal(4)</code> for rates and percentages</span>
+                </li>
+                <li class="flex items-start gap-3">
+                    <span class="text-green-400 mt-1">✓</span>
+                    <span>Round final results, not intermediate calculations</span>
+                </li>
+                <li class="flex items-start gap-3">
+                    <span1">✓ class="text-green-400 mt-</span>
+                    <span>Specify precision in literals: <code class="text-amber-400">100.00D</code>, not <code class="text-red-400">100D</code></span>
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/variables-types" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Variables & Types
+        </a>
+        <a href="/docs/language/operators" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Operators
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

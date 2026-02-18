@@ -8,16 +8,16 @@ Create a file in `app/middleware/`:
 
 ```soli
 // app/middleware/auth.sl
-fn authenticate(req) {
+fn authenticate(req)
     let token = req.headers["Authorization"];
 
-    if token == null || token == "" {
+    if token == null || token == ""
         return error(401, "Unauthorized");
-    }
+    end
 
     // Validate token...
     req
-}
+end
 ```
 
 ## Built-in Middleware
@@ -28,11 +28,11 @@ Log all incoming requests:
 
 ```soli
 // app/middleware/logging.sl
-fn log_request(req) {
+fn log_request(req)
     let timestamp = datetime::now();
     println(timestamp + " " + req.method + " " + req.path);
     req
-}
+end
 ```
 
 ### CORS
@@ -41,29 +41,29 @@ Handle Cross-Origin Resource Sharing:
 
 ```soli
 // app/middleware/cors.sl
-fn cors(req) {
+fn cors(req)
     let response = req;
     response.headers["Access-Control-Allow-Origin"] = "*";
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
     response
-}
+end
 ```
 
 ### Authentication
 
 ```soli
 // app/middleware/auth.sl
-fn auth(req) {
+fn auth(req)
     let session = req.cookies["session"];
 
-    if session == null {
+    if session == null
         return redirect("/login");
-    }
+    end
 
     // Verify session...
     req
-}
+end
 ```
 
 ## Applying Middleware
@@ -101,29 +101,29 @@ Request -> Logging -> CORS -> Auth -> Controller -> Auth -> CORS -> Response
 ### Modify Request
 
 ```soli
-fn add_locale(req) {
+fn add_locale(req)
     let lang = req.query["lang"] ?? "en";
     req.locale = lang;
     req
-}
+end
 ```
 
 ### Modify Response
 
 ```soli
-fn add_headers(req, response) {
+fn add_headers(req, response)
     response.headers["X-Frame-Options"] = "SAMEORIGIN";
     response.headers["X-Content-Type-Options"] = "nosniff";
     response
-}
+end
 ```
 
 ## Error Handling Middleware
 
 ```soli
-fn handle_errors(req, error) {
+fn handle_errors(req, error)
     error(500, "Internal Server Error")
-}
+end
 ```
 
 ## Best Practices

@@ -1,57 +1,57 @@
 // StateMachine Controller - REST API for State Machine management
 
-import "../../stdlib/state_machine.sl";
+import "../../stdlib/state_machine.sl"
 
 // In-memory store for demo (use SolidB/DB in production)
-let state_machines: Hash = {};
+let state_machines: Hash = {}
 
 // Create a new state machine
-fn create(req) {
-    let data = req["json"];
+fn create(req)
+    let data = req["json"]
 
     // Validate required fields
-    if data["initial_state"] == null {
+    if data["initial_state"] == null
         return {
             "status": 422,
             "body": json_stringify({
                 "success": false,
                 "error": "initial_state is required"
             })
-        };
-    }
+        }
+    end
 
-    if data["states"] == null {
+    if data["states"] == null
         return {
             "status": 422,
             "body": json_stringify({
                 "success": false,
                 "error": "states array is required"
             })
-        };
-    }
+        }
+    end
 
-    if data["transitions"] == null {
+    if data["transitions"] == null
         return {
             "status": 422,
             "body": json_stringify({
                 "success": false,
                 "error": "transitions array is required"
             })
-        };
-    }
+        }
+    end
 
     // Generate unique ID
-    let id = "sm_" + str(clock()) + "_" + str(clock() % 10000);
+    let id = "sm_" + str(clock()) + "_" + str(clock() % 10000)
 
     // Create state machine
     let sm = create_state_machine(
         data["initial_state"],
         data["states"],
         data["transitions"]
-    );
+    )
 
     // Store in memory
-    state_machines[id] = sm;
+    state_machines[id] = sm
 
     {
         "status": 201,
@@ -62,23 +62,23 @@ fn create(req) {
             "available_events": sm.available_events()
         })
     }
-}
+end
 
 // Get state machine by ID
-fn get(req) {
-    let id = req["params"]["id"];
+fn get(req)
+    let id = req["params"]["id"]
 
-    if !has_key(state_machines, id) {
+    if !has_key(state_machines, id)
         return {
             "status": 404,
             "body": json_stringify({
                 "success": false,
                 "error": "State machine not found"
             })
-        };
-    }
+        }
+    end
 
-    let sm = state_machines[id];
+    let sm = state_machines[id]
 
     {
         "status": 200,
@@ -93,21 +93,21 @@ fn get(req) {
             "last_transition": sm.last_transition()
         })
     }
-}
+end
 
 // List all state machines
-fn list(req) {
-    let list = [];
-    let entries = state_machines.entries();
-    for entry in entries {
-        let id = entry[0];
-        let sm = entry[1];
+fn list(req)
+    let list = []
+    let entries = state_machines.entries()
+    for entry in entries
+        let id = entry[0]
+        let sm = entry[1]
         list = [...list, {
             "id": id,
             "current_state": sm.current_state(),
             "available_events": sm.available_events()
-        }];
-    }
+        }]
+    end
 
     {
         "status": 200,
@@ -117,38 +117,38 @@ fn list(req) {
             "state_machines": list
         })
     }
-}
+end
 
 // Perform a transition
-fn transition(req) {
-    let id = req["params"]["id"];
-    let data = req["json"];
+fn transition(req)
+    let id = req["params"]["id"]
+    let data = req["json"]
 
-    if !has_key(state_machines, id) {
+    if !has_key(state_machines, id)
         return {
             "status": 404,
             "body": json_stringify({
                 "success": false,
                 "error": "State machine not found"
             })
-        };
-    }
+        }
+    end
 
-    let event = data["event"];
-    if event == null {
+    let event = data["event"]
+    if event == null
         return {
             "status": 422,
             "body": json_stringify({
                 "success": false,
                 "error": "event is required"
             })
-        };
-    }
+        }
+    end
 
-    let sm = state_machines[id];
+    let sm = state_machines[id]
 
     // Check if event is available
-    if !sm.can(event) {
+    if !sm.can(event)
         return {
             "status": 400,
             "body": json_stringify({
@@ -157,11 +157,11 @@ fn transition(req) {
                 "current_state": sm.current_state(),
                 "available_events": sm.available_events()
             })
-        };
-    }
+        }
+    end
 
     // Perform transition
-    let result = sm.transition(event);
+    let result = sm.transition(event)
 
     {
         "status": 200,
@@ -174,36 +174,36 @@ fn transition(req) {
             "available_events": sm.available_events()
         })
     }
-}
+end
 
 // Set context value
-fn set_context(req) {
-    let id = req["params"]["id"];
-    let data = req["json"];
+fn set_context(req)
+    let id = req["params"]["id"]
+    let data = req["json"]
 
-    if !has_key(state_machines, id) {
+    if !has_key(state_machines, id)
         return {
             "status": 404,
             "body": json_stringify({
                 "success": false,
                 "error": "State machine not found"
             })
-        };
-    }
+        }
+    end
 
-    let key = data["key"];
-    if key == null {
+    let key = data["key"]
+    if key == null
         return {
             "status": 422,
             "body": json_stringify({
                 "success": false,
                 "error": "key is required"
             })
-        };
-    }
+        }
+    end
 
-    let sm = state_machines[id];
-    sm.set(key, data["value"]);
+    let sm = state_machines[id]
+    sm.set(key, data["value"])
 
     {
         "status": 200,
@@ -213,25 +213,25 @@ fn set_context(req) {
             "value": data["value"]
         })
     }
-}
+end
 
 // Get context value
-fn get_context(req) {
-    let id = req["params"]["id"];
-    let key = req["params"]["key"];
+fn get_context(req)
+    let id = req["params"]["id"]
+    let key = req["params"]["key"]
 
-    if !has_key(state_machines, id) {
+    if !has_key(state_machines, id)
         return {
             "status": 404,
             "body": json_stringify({
                 "success": false,
                 "error": "State machine not found"
             })
-        };
-    }
+        }
+    end
 
-    let sm = state_machines[id];
-    let value = sm.get(key);
+    let sm = state_machines[id]
+    let value = sm.get(key)
 
     {
         "status": 200,
@@ -241,23 +241,23 @@ fn get_context(req) {
             "value": value
         })
     }
-}
+end
 
 // Delete state machine
-fn delete(req) {
-    let id = req["params"]["id"];
+fn delete(req)
+    let id = req["params"]["id"]
 
-    if !has_key(state_machines, id) {
+    if !has_key(state_machines, id)
         return {
             "status": 404,
             "body": json_stringify({
                 "success": false,
                 "error": "State machine not found"
             })
-        };
-    }
+        }
+    end
 
-    state_machines[id] = null;
+    state_machines[id] = null
 
     {
         "status": 200,
@@ -266,11 +266,11 @@ fn delete(req) {
             "message": "State machine deleted"
         })
     }
-}
+end
 
 // Demo page
-fn demo(req) {
+fn demo(req)
     render("state_machines/demo.html", {
         "title": "State Machine Demo"
     })
-}
+end

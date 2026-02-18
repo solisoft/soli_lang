@@ -1,0 +1,225 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Session</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">Session Functions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Server-side session management for user state.
+        </p>
+    </div>
+
+    <!-- Basic Operations -->
+    <section id="section-basic-ops" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+            </span>
+            Basic Operations
+        </h2>
+
+        <section id="fn-session-get" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-session-get" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_get(key)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get a value from the session.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The session key
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Any?</code> - The stored value or null if not found
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let user_id = session_get("user_id")
+let cart = session_get("shopping_cart") ?? []</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-session-set" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-session-set" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_set(key, value)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Store a value in the session.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The session key</div>
+                    <div><code class="text-amber-400">value</code> : <code class="text-purple-400">Any</code> - The value to store (must be JSON-serializable)</div>
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">session_set("user_id", 123)
+session_set("preferences", { "theme": "dark", "lang": "en" })</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-session-delete" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-session-delete" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_delete(key)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Remove a value from the session.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">session_delete("user_id")
+session_delete("temporary_data")</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-session-has" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-session-has" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_has(key)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Check if a key exists in the session.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Bool</code> - true if the key exists
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">if session_has("user_id") {
+    // User is logged in
+}</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Session Management -->
+    <section id="section-management" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Session Management</h2>
+
+        <section id="fn-session-destroy" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-session-destroy" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_destroy()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Destroy the entire session. Removes all data and invalidates the session ID.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">// Logout
+session_destroy()</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-session-regenerate" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-session-regenerate" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_regenerate()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate a new session ID while preserving data. <span class="text-yellow-400">Important:</span> Call this after login to prevent session fixation attacks.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">// After successful login
+session_set("user_id", user["id"])
+session_regenerate()  // Security: generate new session ID</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-session-id" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-session-id" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_id()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the current session ID.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - The session identifier
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Common Patterns -->
+    <section id="section-patterns" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Common Patterns</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
+            <pre data-filename="Example"><code class="language-soli text-sm">// Login
+fn login(email: String, password: String) -> Bool
+    let user = User.find_by_email(email)
+    if !user || !argon2_verify(password, user["password_hash"]) {
+        return false
+    }
+
+    session_set("user_id", user["id"])
+    session_regenerate()  // Prevent session fixation
+    true
+end
+
+// Check authentication
+fn current_user() -> Hash?
+    let user_id = session_get("user_id")
+    if !user_id {
+        return null
+    }
+    User.find(user_id)
+end
+
+// Logout
+fn logout()
+    session_destroy()
+end</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Flash Messages</h3>
+            <pre data-filename="Example"><code class="language-soli text-sm">// Set a flash message
+fn flash(type: String, message: String)
+    let flashes = session_get("_flashes") ?? []
+    push(flashes, { "type": type, "message": message })
+    session_set("_flashes", flashes)
+end
+
+// Get and clear flash messages
+fn get_flashes() -> Array
+    let flashes = session_get("_flashes") ?? []
+    session_delete("_flashes")
+    flashes
+end
+
+// Usage
+flash("success", "Account created!")
+flash("error", "Invalid email address")</code></pre>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/validation" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Validation Functions
+        </a>
+        <a href="/docs/builtins/testing" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Testing Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

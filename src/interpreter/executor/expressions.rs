@@ -74,6 +74,8 @@ impl Interpreter {
             // Access
             ExprKind::Member { object, name } => self.evaluate_member(object, name, expr.span),
 
+            ExprKind::SafeMember { object, name } => self.evaluate_safe_member(object, name, expr.span),
+
             ExprKind::QualifiedName { qualifier, name } => {
                 self.evaluate_qualified_name(qualifier, name, expr.span)
             }
@@ -112,7 +114,7 @@ impl Interpreter {
             ExprKind::Assign { target, value } => self.evaluate_assign(target, value),
 
             // Lambda
-            ExprKind::Lambda { params, body, .. } => self.evaluate_lambda(params, body, expr.span),
+            ExprKind::Lambda { params, body, return_type } => self.evaluate_lambda(params, body, return_type, expr.span),
 
             // Control flow expressions
             ExprKind::If {

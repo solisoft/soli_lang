@@ -18,12 +18,14 @@ Create model files in `app/models/`. The collection name is **automatically deri
 
 ```soli
 // app/models/user.sl
-class User extends Model { }
+class User extends Model
+end
 ```
 
 ```soli
 // app/models/blog_post.sl
-class BlogPost extends Model { }
+class BlogPost extends Model
+end
 ```
 
 That's it! No need to manually specify collection names or field definitions.
@@ -135,12 +137,12 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 Define validation rules in your model class:
 
 ```soli
-class User extends Model {
+class User extends Model
     validates("email", { "presence": true, "uniqueness": true })
     validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
     validates("age", { "numericality": true, "min": 0, "max": 150 })
     validates("website", { "format": "^https?://" })
-}
+end
 ```
 
 ### Validation Options
@@ -164,14 +166,14 @@ class User extends Model {
 ```soli
 let result = User.create({ "email": "" });
 
-if result["valid"] {
+if result["valid"]
     let user = result["record"];
     print("Created user: " + user["id"]);
-} else {
-    for error in result["errors"] {
+else
+    for error in result["errors"]
         print(error["field"] + ": " + error["message"]);
-    }
-}
+    end
+end
 ```
 
 ## Callbacks
@@ -179,20 +181,18 @@ if result["valid"] {
 Define lifecycle callbacks to run code at specific points:
 
 ```soli
-class User extends Model {
+class User extends Model
     before_save("normalize_email")
     after_create("send_welcome_email")
     before_update("log_changes")
     after_delete("cleanup_related")
 
-    fn normalize_email() -> Any {
-        this.email = this.email.downcase();
-    }
+    fn normalize_email()        this.email = this.email.downcase();
+    end
 
-    fn send_welcome_email() -> Any {
-        // Send email logic
-    }
-}
+    fn send_welcome_email()        // Send email logic
+    end
+end
 ```
 
 ### Available Callbacks
@@ -213,28 +213,16 @@ class User extends Model {
 Implement relationships using model methods:
 
 ```soli
-class Post extends Model {
-    fn author() -> Any {
-        User.find(this.author_id)
-    }
-}
+class Post extends Model
+    fn author()        User.find(this.author_id)
+    end
+end
 
-class User extends Model {
+class User extends Model
     // Returns a QueryBuilder for chaining
-    fn posts() -> Any {
-        Post.where("doc.author_id == @id", { "id": this.id })
-    }
-}
-
-// Usage
-let post = Post.find("post123");
-let author = post.author();
-
-let user = User.find("user123");
-// posts() returns QueryBuilder - chain .all() to get results
-let user_posts = user.posts().all();
-// Or chain more methods before executing
-let recent_posts = user.posts().order("created_at", "desc").limit(5).all();
+    fn posts()        Post.where("doc.author_id == @id", { "id": this.id })
+    end
+end
 ```
 
 ## Custom Methods
@@ -242,21 +230,21 @@ let recent_posts = user.posts().order("created_at", "desc").limit(5).all();
 Add custom methods to your models:
 
 ```soli
-class User extends Model {
-    fn is_admin() -> Bool {
+class User extends Model
+    fn is_admin() -> Bool
         this.role == "admin"
-    }
+    end
 
-    fn full_name() -> String {
+    fn full_name() -> String
         this.first_name + " " + this.last_name
-    }
-}
+    end
+end
 
 // Usage
 let user = User.find("user123");
-if user.is_admin() {
+if user.is_admin()
     print("Welcome, admin " + user.full_name());
-}
+end
 ```
 
 ## Query Generation (SDBQL)
@@ -281,42 +269,39 @@ SDBQL uses:
 
 ```soli
 // app/models/user.sl
-class User extends Model {
+class User extends Model
     validates("email", { "presence": true, "uniqueness": true })
     validates("name", { "presence": true, "min_length": 2 })
 
     before_save("normalize_email")
 
-    fn normalize_email() -> Any {
-        this.email = this.email.downcase();
-    }
+    fn normalize_email()        this.email = this.email.downcase();
+    end
 
-    fn posts() -> Any {
-        Post.where("doc.user_id == @id", { "id": this.id })
-    }
+    fn posts()        Post.where("doc.user_id == @id", { "id": this.id })
+    end
 
-    fn is_adult() -> Bool {
+    fn is_adult() -> Bool
         this.age >= 18
-    }
-}
+    end
+end
 
 // app/models/blog_post.sl
-class BlogPost extends Model {
+class BlogPost extends Model
     validates("title", { "presence": true, "min_length": 3 })
 
-    fn author() -> Any {
-        User.find(this.user_id)
-    }
-}
+    fn author()        User.find(this.user_id)
+    end
+end
 
 // Usage in controller
-class UsersController extends Controller {
-    fn index(req) {
+class UsersController extends Controller
+    fn index(req)
         let users = User.all();
         render("users/index", { "users": users })
-    }
+    end
 
-    fn show(req) {
+    fn show(req)
         let id = req["params"]["id"];
         let user = User.find(id);
         let posts = user.posts().order("created_at", "desc").limit(5).all();
@@ -324,22 +309,22 @@ class UsersController extends Controller {
             "user": user,
             "posts": posts
         })
-    }
+    end
 
-    fn create(req) {
+    fn create(req)
         let result = User.create({
             "name": req["params"]["name"],
             "email": req["params"]["email"],
             "age": req["params"]["age"]
         });
 
-        if result["valid"] {
+        if result["valid"]
             redirect("/users/" + result["record"]["id"])
-        } else {
+        else
             render("users/new", { "errors": result["errors"] })
-        }
-    }
-}
+        end
+    end
+end
 ```
 
 ## Testing Models
@@ -347,30 +332,30 @@ class UsersController extends Controller {
 See the [Testing Guide](/docs/testing) for comprehensive information on testing models.
 
 ```soli
-describe("User model", fn() {
-    test("creates user with valid data", fn() {
+describe("User model", fn()
+    test("creates user with valid data", fn()
         let result = User.create({
             "email": "test@example.com",
             "name": "Test User"
         });
         expect(result["valid"]).to_equal(true);
         expect(result["record"]["email"]).to_equal("test@example.com");
-    });
+    end)
 
-    test("fails validation for invalid data", fn() {
+    test("fails validation for invalid data", fn()
         let result = User.create({ "email": "" });
         expect(result["valid"]).to_equal(false);
-    });
+    end)
 
-    test("finds users with where clause", fn() {
+    test("finds users with where clause", fn()
         User.create({ "name": "Alice", "age": 25 });
         User.create({ "name": "Bob", "age": 17 });
 
         // where() returns QueryBuilder - chain .all() to get results
         let adults = User.where("doc.age >= @age", { "age": 18 }).all();
         expect(len(adults)).to_equal(1);
-    });
-});
+    end)
+end)
 ```
 
 ## Best Practices

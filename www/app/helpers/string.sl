@@ -1,31 +1,31 @@
 // String manipulation helpers
 
-fn truncate(text: String, length: Int, suffix: String) -> String {
+fn truncate(text: String, length: Int, suffix: String) -> String
     if (len(text) <= length) {
         return text;
     }
     substring(text, 0, length - len(suffix)) + suffix
-}
+end
 
-fn truncate_default(text: String, length: Int) -> String {
+fn truncate_default(text: String, length: Int) -> String
     truncate(text, length, "...")
-}
+end
 
-fn slugify(text: String) -> String {
+fn slugify(text: String) -> String
     let lower = downcase(text);
     let with_spaces = replace(lower, "_", "-");
     let with_dashes = replace(with_spaces, " ", "-");
     let cleaned = sanitize_html(with_dashes);
     cleaned
-}
+end
 
-fn titleize(text: String) -> String {
+fn titleize(text: String) -> String
     let words = split(text, " ");
-    let titleized = map(words, fn(w) {
+    let titleized = map(words, fn(w)
         if (len(w) > 0) {
             return upcase(substring(w, 0, 1)) + substring(w, 1, len(w));
         }
         w
-    });
+    end);
     join(titleized, " ")
-}
+end

@@ -337,6 +337,7 @@ impl Interpreter {
                     .as_ref()
                     .map(|p| p.to_string_lossy().to_string()),
                 defining_superclass: None,
+                return_type: None,
             })
         });
 

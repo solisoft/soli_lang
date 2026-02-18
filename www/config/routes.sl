@@ -64,6 +64,7 @@ get("/docs/language/pattern-matching", "docs#language_pattern_matching");
 get("/docs/language/pipeline-operator", "docs#language_pipeline_operator");
 get("/docs/language/decimal", "docs#language_decimal");
 get("/docs/language/modules", "docs#language_modules");
+get("/docs/language/blocks", "docs#language_blocks");
 
 // Builtins Reference
 get("/docs/builtins", "docs#builtins_index");

@@ -1,0 +1,502 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Models & ORM</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Models manage data and business logic in your MVC application.
+            SoliLang provides a simple OOP-style interface for database operations.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Defining Models</h2>
+    <p class="text-gray-400 mb-4">
+        Create model files in <code>app/models/</code>. The collection name is <strong class="text-white">automatically derived</strong> from the class name:
+    </p>
+    <ul class="text-gray-400 mb-6 space-y-1 ml-4">
+        <li><code>User</code> &rarr; <code>"users"</code></li>
+        <li><code>BlogPost</code> &rarr; <code>"blog_posts"</code></li>
+        <li><code>UserProfile</code> &rarr; <code>"user_profiles"</code></li>
+    </ul>
+
+    <div class="my-6 p-4 rounded-lg bg-green-500/10 border border-green-500/20 mb-6">
+        <p class="text-green-300 text-sm">
+            <strong>Automatic Collection Creation:</strong> When you call a Model method (like <code>create()</code>, <code>all()</code>, <code>find()</code>, etc.) on a collection that doesn't exist yet, SoliLang will automatically create the collection for you. This means you can start using your models immediately without running migrations first.
+        </p>
+    </div>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User extends Model end</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <p class="text-indigo-200/80 text-sm">
+            That's it! No need to manually specify collection names or field definitions.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">CRUD Operations</h2>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
+        <p class="text-indigo-300 text-sm">
+            <strong>Auto-creation:</strong> All Model operations automatically create the collection if it doesn't exist. This only happens on the first call that encounters a missing collection.
+        </p>
+    </div>
+
+    <div class="space-y-8 mb-12">
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">CREATE</span>
+                Creating Records
+            </h3>
+            <pre><code class="language-soli text-sm">let result = User.create({
+    "email": "alice@example.com",
+    "name": "Alice",
+    "age": 30
+});
+// Returns: { "valid": true, "record": { "id": "...", ... } }
+// Or: { "valid": false, "errors": [...] }</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">READ</span>
+                Finding Records
+            </h3>
+            <pre><code class="language-soli text-sm">// Find by ID
+let user = User.find("user123");
+
+// Find all
+let users = User.all();
+
+// Find with SDBQL filter
+// Note: where() returns a QueryBuilder - call .all() to get results
+let adults = User.where("doc.age >= @age", { "age": 18 }).all();
+
+// Complex conditions
+let results = User.where("doc.age >= @min AND doc.role == @role", {
+    "min": 21,
+    "role": "admin"
+}).all();</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs font-mono">UPDATE</span>
+                Updating Records
+            </h3>
+            <pre><code class="language-soli text-sm">User.update("user123", {
+    "name": "Alice Smith",
+    "age": 31
+});</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-red-500/20 text-red-400 text-xs font-mono">DELETE</span>
+                Deleting Records
+            </h3>
+            <pre><code class="language-soli text-sm">User.delete("user123");</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">COUNT</span>
+                Counting Records
+            </h3>
+            <pre><code class="language-soli text-sm">let total = User.count();</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Query Builder Chaining</h2>
+    <p class="text-gray-400 mb-6">Chain methods to build complex queries:</p>
+
+    <pre><code class="language-soli text-sm">let results = User
+    .where("doc.age >= @age", { "age": 18 })
+    .where("doc.active == @active", { "active": true })
+    .order("created_at", "desc")
+    .limit(10)
+    .offset(20)
+    .all();
+
+// Get first result only
+let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
+
+// Count with conditions
+let count = User.where("doc.role == @role", { "role": "admin" }).count();</code></pre>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Static Methods Reference</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.create(data)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Insert a new document</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.find(id)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Get document by ID</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(filter, bind_vars)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Query with SDBQL filter</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.all()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Get all documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.update(id, data)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Update a document</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.delete(id)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Delete a document</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.count()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Count all documents</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">QueryBuilder Methods</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.where(filter, bind_vars)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Add filter condition (ANDed)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.order(field, direction)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set sort order ("asc"/"desc")</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.limit(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Limit results to n documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.offset(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Skip first n documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.all()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return all results</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.first()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return first result</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.count()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return count</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Validations</h2>
+    <p class="text-gray-400 mb-6">Define validation rules in your model class:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User extends Model
+    fn is_admin() -> Bool
+        this.role == "admin"
+    end
+
+    fn full_name() -> String
+        this.first_name + " " + this.last_name
+    end
+end
+
+// Usage
+let user = User.find("user123");
+if user.is_admin()
+    print("Welcome, admin " + user.full_name());
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Validation Options</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Option</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">presence: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Field must be present and not empty</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">uniqueness: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Value must be unique in collection</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">min_length: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must be at least n characters</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">max_length: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must be at most n characters</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">format: "regex"</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must match regex pattern</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">numericality: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Value must be a number</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">min: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">Number must be >= n</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">max: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">Number must be <= n</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">custom: "method"</code></td>
+                    <td class="py-3 px-4 text-gray-400">Call custom validation method</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Validation Results</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let result = User.create({ "email": "" });
+
+if result["valid"]
+    let user = result["record"];
+    print("Created user: " + user["id"]);
+else
+    for error in result["errors"]
+        print(error["field"] + ": " + error["message"]);
+    end
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Callbacks</h2>
+    <p class="text-gray-400 mb-6">Define lifecycle callbacks to run code at specific points:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User extends Model
+    before_save("normalize_email")
+    after_create("send_welcome_email")
+    before_update("log_changes")
+    after_delete("cleanup_related")
+
+    fn normalize_email()        this.email = this.email.downcase();
+    end
+
+    fn send_welcome_email()        // Send email logic
+    end
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Available Callbacks</h3>
+    <div class="grid grid-cols-2 gap-4 mb-12">
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_save</code>
+            <p class="text-xs text-gray-400 mt-1">Before create or update</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_save</code>
+            <p class="text-xs text-gray-400 mt-1">After create or update</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_create</code>
+            <p class="text-xs text-gray-400 mt-1">Before inserting new record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_create</code>
+            <p class="text-xs text-gray-400 mt-1">After inserting new record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_update</code>
+            <p class="text-xs text-gray-400 mt-1">Before updating record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_update</code>
+            <p class="text-xs text-gray-400 mt-1">After updating record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_delete</code>
+            <p class="text-xs text-gray-400 mt-1">Before deleting record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_delete</code>
+            <p class="text-xs text-gray-400 mt-1">After deleting record</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Relationships</h2>
+    <p class="text-gray-400 mb-6">Implement relationships using model methods:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Post extends Model
+    fn author()        User.find(this.author_id)
+    end
+end
+
+class User extends Model
+    // Returns a QueryBuilder for chaining
+    fn posts()        Post.where("doc.author_id == @id", { "id": this.id })
+    end
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Query Generation (SDBQL)</h2>
+    <p class="text-gray-400 mb-6">Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:</p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Generated SDBQL</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.all()</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.where("doc.age >= @age", {"age": 18})</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER doc.age >= @age RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.order("name", "asc")</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... SORT doc.name ASC RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.limit(10).offset(20)</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... LIMIT 20, 10 RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.count()</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users COLLECT WITH COUNT INTO count RETURN count</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">SDBQL Syntax</h4>
+        <ul class="text-blue-200/80 text-sm space-y-2">
+            <li><code>FOR doc IN collection</code> instead of <code>SELECT * FROM</code></li>
+            <li><code>FILTER expression</code> instead of <code>WHERE</code></li>
+            <li><code>SORT doc.field ASC/DESC</code> instead of <code>ORDER BY</code></li>
+            <li><code>@variable</code> syntax for bind parameters</li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// app/models/user.sl
+class User extends Model
+    validates("email", { "presence": true, "uniqueness": true })
+    validates("name", { "presence": true, "min_length": 2 })
+
+    before_save("normalize_email")
+
+    fn normalize_email()        this.email = this.email.downcase();
+    end
+
+    fn posts()        Post.where("doc.user_id == @id", { "id": this.id })
+    end
+
+    fn is_adult() -> Bool
+        this.age >= 18
+    end
+end
+
+// Usage in controller
+class UsersController extends Controller
+    fn index(req: Any)        let users = User.all();
+        render("users/index", { "users": users })
+    end
+
+    fn show(req: Any)        let id = req["params"]["id"];
+        let user = User.find(id);
+        let posts = user.posts().order("created_at", "desc").limit(5).all();
+        render("users/show", { "user": user, "posts": posts })
+    end
+
+    fn create(req: Any)        let result = User.create({
+            "name": req["params"]["name"],
+            "email": req["params"]["email"]
+        });
+
+        if result["valid"]
+            return redirect("/users/" + result["record"]["id"]);
+        else
+            render("users/new", { "errors": result["errors"] })
+        end
+    end
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
+            </svg>
+            Best Practices
+        </h4>
+        <ul class="text-indigo-200/80 text-sm space-y-2">
+            <li><strong>Keep models simple</strong> - Just extend <code>Model</code>, no configuration needed</li>
+            <li><strong>Use meaningful class names</strong> - They become collection names automatically</li>
+            <li><strong>Add validations</strong> - Validate data before it reaches the database</li>
+            <li><strong>Use callbacks wisely</strong> - Keep them focused and avoid heavy operations</li>
+            <li><strong>Add custom methods</strong> - Encapsulate business logic in model methods</li>
+            <li><strong>Use relationships</strong> - Create methods that return related models</li>
+            <li><strong>Use migrations in production</strong> - Define indexes and schema for optimal performance</li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Migrations &rarr;</h3>
+            <p class="text-sm text-gray-400">Create collections and indexes with database migrations.</p>
+        </a>
+        <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Testing &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn how to test models with database isolation.</p>
+        </a>
+    </div>
+</div>

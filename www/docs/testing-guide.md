@@ -17,13 +17,13 @@ The test server automatically starts before your tests run and stops after compl
 Every E2E test file follows the same structure using Soli's test DSL. The framework provides functions for grouping tests, setting up test data, making HTTP requests, and asserting expected outcomes. Here's a minimal example that tests a single endpoint:
 
 ```soli
-describe("HomeController", fn() {
-    test("GET /up returns UP status", fn() {
-        let response = get("/up");
-        assert_eq(res_status(response), 200);
-        assert_eq(res_body(response), "UP");
-    });
-});
+describe("HomeController", fn()
+    test("GET /up returns UP status", fn()
+        let response = get("/up")
+        assert_eq(res_status(response), 200)
+        assert_eq(res_body(response), "UP")
+    end)
+end)
 ```
 
 The `describe()` function creates a test group that organizes related tests, while `test()` defines individual test cases. Each test runs in isolation, with the test server managing request routing and response generation.
@@ -174,10 +174,10 @@ assert_eq(status, 200);
 **res_ok(response)** checks if the status code is in the 2xx range:
 
 ```soli
-if (res_ok(response)) {
-    let data = res_json(response);
+if (res_ok(response))
+    let data = res_json(response)
     # Process successful response
-}
+end
 ```
 
 **res_client_error(response)** checks for 4xx status codes:
@@ -259,9 +259,9 @@ Session helpers manage authentication state and session data during tests. These
 **as_guest()** clears all authentication state, simulating an unauthenticated user:
 
 ```soli
-before_each(fn() {
-    as_guest();
-});
+before_each(fn()
+    as_guest()
+end)
 ```
 
 **as_user(user_id)** simulates a logged-in regular user with the specified ID:
@@ -304,17 +304,17 @@ assert_eq(res_status(response), 302); # Redirect to login
 **signed_in()** returns true if currently authenticated:
 
 ```soli
-as_guest();
-assert_not(signed_in());
+as_guest()
+assert_not(signed_in())
 
-as_user(1);
-assert(signed_in());
+as_user(1)
+assert(signed_in())
 ```
 
 **signed_out()** returns true if not authenticated:
 
 ```soli
-assert(signed_out());
+assert(signed_out())
 ```
 
 **current_user()** returns the currently authenticated user data:
@@ -396,10 +396,10 @@ assert_eq(path, "users/show.html");
 **render_template()** indicates whether a template was rendered:
 
 ```soli
-if (render_template()) {
-    let content = assigns();
+if (render_template())
+    let content = assigns()
     # Inspect rendered content
-}
+end
 ```
 
 ### Flash Messages
@@ -421,101 +421,101 @@ assert_eq(notice, "Operation successful");
 This comprehensive example demonstrates testing a typical PostsController with full CRUD operations:
 
 ```soli
-describe("PostsController", fn() {
-    before_each(fn() {
-        as_guest();
-    });
+describe("PostsController", fn()
+    before_each(fn()
+        as_guest()
+    end)
 
-    describe("GET /posts", fn() {
-        test("returns list of posts", fn() {
-            let response = get("/posts");
-            assert_eq(res_status(response), 200);
-            let data = res_json(response);
-            assert_gt(len(data["posts"]), 0);
-        });
+    describe("GET /posts", fn()
+        test("returns list of posts", fn()
+            let response = get("/posts")
+            assert_eq(res_status(response), 200)
+            let data = res_json(response)
+            assert_gt(len(data["posts"]), 0)
+        end)
 
-        test("includes pagination metadata", fn() {
-            let response = get("/posts?page=1&per_page=10");
-            let data = res_json(response);
-            assert_hash_has_key(data, "pagination");
-        });
-    });
+        test("includes pagination metadata", fn()
+            let response = get("/posts?page=1&per_page=10")
+            let data = res_json(response)
+            assert_hash_has_key(data, "pagination")
+        end)
+    end)
 
-    describe("GET /posts/:id", fn() {
-        test("shows single post", fn() {
-            let response = get("/posts/1");
-            assert_eq(res_status(response), 200);
-            let post = res_json(response);
-            assert_eq(post["title"], "First Post");
-        });
+    describe("GET /posts/:id", fn()
+        test("shows single post", fn()
+            let response = get("/posts/1")
+            assert_eq(res_status(response), 200)
+            let post = res_json(response)
+            assert_eq(post["title"], "First Post")
+        end)
 
-        test("returns 404 for missing post", fn() {
-            let response = get("/posts/99999");
-            assert_eq(res_status(response), 404);
-        });
-    });
+        test("returns 404 for missing post", fn()
+            let response = get("/posts/99999")
+            assert_eq(res_status(response), 404)
+        end)
+    end)
 
-    describe("POST /posts", fn() {
-        test("creates post with valid data", fn() {
-            login("author@example.com", "password123");
+    describe("POST /posts", fn()
+        test("creates post with valid data", fn()
+            login("author@example.com", "password123")
             
             let response = post("/posts", {
                 "title": "New Post Title",
                 "body": "Post content here"
-            });
+            })
             
-            assert_eq(res_status(response), 201);
-            let result = res_json(response);
-            assert_not_null(result["id"]);
-        });
+            assert_eq(res_status(response), 201)
+            let result = res_json(response)
+            assert_not_null(result["id"])
+        end)
 
-        test("rejects unauthenticated request", fn() {
-            let response = post("/posts", {"title": "Test"});
-            assert_eq(res_status(response), 302); # Redirect to login
-        });
+        test("rejects unauthenticated request", fn()
+            let response = post("/posts", {"title": "Test"})
+            assert_eq(res_status(response), 302) # Redirect to login
+        end)
 
-        test("validates required fields", fn() {
-            login("author@example.com", "password123");
+        test("validates required fields", fn()
+            login("author@example.com", "password123")
             
-            let response = post("/posts", {});
-            assert_eq(res_status(response), 422);
-            let errors = res_json(response)["errors"];
-            assert_hash_has_key(errors, "title");
-        });
-    });
+            let response = post("/posts", {})
+            assert_eq(res_status(response), 422)
+            let errors = res_json(response)["errors"]
+            assert_hash_has_key(errors, "title")
+        end)
+    end)
 
-    describe("PUT /posts/:id", fn() {
-        test("updates post with valid data", fn() {
-            login("author@example.com", "password123");
+    describe("PUT /posts/:id", fn()
+        test("updates post with valid data", fn()
+            login("author@example.com", "password123")
             
             let response = put("/posts/1", {
                 "title": "Updated Title"
-            });
+            })
             
-            assert_eq(res_status(response), 200);
-        });
+            assert_eq(res_status(response), 200)
+        end)
 
-        test("prevents unauthorized updates", fn() {
-            let other_user = create_user({"email": "other@example.com"});
-            as_user(other_user["id"]);
+        test("prevents unauthorized updates", fn()
+            let other_user = create_user({"email": "other@example.com"})
+            as_user(other_user["id"])
             
-            let response = put("/posts/1", {"title": "Hacked"});
-            assert_eq(res_status(response), 403);
-        });
-    });
+            let response = put("/posts/1", {"title": "Hacked"})
+            assert_eq(res_status(response), 403)
+        end)
+    end)
 
-    describe("DELETE /posts/:id", fn() {
-        test("deletes post", fn() {
-            login("author@example.com", "password123");
+    describe("DELETE /posts/:id", fn()
+        test("deletes post", fn()
+            login("author@example.com", "password123")
             
-            let response = delete("/posts/1");
-            assert_eq(res_status(response), 204);
+            let response = delete("/posts/1")
+            assert_eq(res_status(response), 204)
             
-            let check_response = get("/posts/1");
-            assert_eq(res_status(check_response), 404);
-        });
-    });
-});
+            let check_response = get("/posts/1")
+            assert_eq(res_status(check_response), 404)
+        end)
+    end)
+end)
 ```
 
 ### Testing Authentication Flow
@@ -523,69 +523,69 @@ describe("PostsController", fn() {
 This example demonstrates comprehensive authentication testing:
 
 ```soli
-describe("Authentication Flow", fn() {
-    before_each(fn() {
-        as_guest();
-    });
+describe("Authentication Flow", fn()
+    before_each(fn()
+        as_guest()
+    end)
 
-    test("login with valid credentials succeeds", fn() {
+    test("login with valid credentials succeeds", fn()
         let response = post("/login", {
             "email": "admin@example.com",
             "password": "secret123"
-        });
+        })
         
-        assert_eq(res_status(response), 200);
-        assert(signed_in());
-    });
+        assert_eq(res_status(response), 200)
+        assert(signed_in())
+    end)
 
-    test("login with invalid credentials fails", fn() {
+    test("login with invalid credentials fails", fn()
         let response = post("/login", {
             "email": "wrong@example.com",
             "password": "wrongpassword"
-        });
+        })
         
-        assert_eq(res_status(response), 401);
-        assert(signed_out());
-    });
+        assert_eq(res_status(response), 401)
+        assert(signed_out())
+    end)
 
-    test("profile requires authentication", fn() {
-        let response = get("/users/profile");
-        assert_eq(res_status(response), 302);
-        assert_eq(res_location(response), "/login");
-    });
+    test("profile requires authentication", fn()
+        let response = get("/users/profile")
+        assert_eq(res_status(response), 302)
+        assert_eq(res_location(response), "/login")
+    end)
 
-    test("profile accessible after login", fn() {
-        login("user@example.com", "password");
+    test("profile accessible after login", fn()
+        login("user@example.com", "password")
         
-        let response = get("/users/profile");
-        assert_eq(res_status(response), 200);
-    });
+        let response = get("/users/profile")
+        assert_eq(res_status(response), 200)
+    end)
 
-    test("logout destroys session", fn() {
-        login("user@example.com", "password");
+    test("logout destroys session", fn()
+        login("user@example.com", "password")
         
-        post("/logout");
+        post("/logout")
         
-        assert(signed_out());
-        let response = get("/users/profile");
-        assert_eq(res_status(response), 302);
-    });
+        assert(signed_out())
+        let response = get("/users/profile")
+        assert_eq(res_status(response), 302)
+    end)
 
-    test("JWT token authentication works", fn() {
+    test("JWT token authentication works", fn()
         # Create a token
         let token_response = post("/auth/token", {
             "user_id": "123",
             "role": "admin"
-        });
-        let token_data = res_json(token_response);
-        let token = token_data["token"];
+        })
+        let token_data = res_json(token_response)
+        let token = token_data["token"]
         
         # Use token for authentication
-        with_token(token);
-        let response = get("/api/admin");
-        assert_eq(res_status(response), 200);
-    });
-});
+        with_token(token)
+        let response = get("/api/admin")
+        assert_eq(res_status(response), 200)
+    end)
+end)
 ```
 
 ### Testing with Custom Headers
@@ -593,35 +593,35 @@ describe("Authentication Flow", fn() {
 Examples of testing various header scenarios:
 
 ```soli
-describe("Request Headers", fn() {
-    test("custom headers are received by controller", fn() {
-        set_header("X-Request-ID", "test-123-uuid");
-        set_header("X-Custom-Header", "custom-value");
+describe("Request Headers", fn()
+    test("custom headers are received by controller", fn()
+        set_header("X-Request-ID", "test-123-uuid")
+        set_header("X-Custom-Header", "custom-value")
         
-        let response = get("/api/headers");
-        let headers = res_json(response);
+        let response = get("/api/headers")
+        let headers = res_json(response)
         
-        assert_eq(headers["X-Request-ID"], "test-123-uuid");
-        assert_eq(headers["X-Custom-Header"], "custom-value");
-    });
+        assert_eq(headers["X-Request-ID"], "test-123-uuid")
+        assert_eq(headers["X-Custom-Header"], "custom-value")
+    end)
 
-    test("authorization header is processed", fn() {
-        with_token("Bearer eyJhbGciOiJIUzI1NiIs...");
+    test("authorization header is processed", fn()
+        with_token("Bearer eyJhbGciOiJIUzI1NiIs...")
         
-        let response = get("/api/protected");
-        let data = res_json(response);
-        assert_eq(data["authenticated"], true);
-    });
+        let response = get("/api/protected")
+        let data = res_json(response)
+        assert_eq(data["authenticated"], true)
+    end)
 
-    test("cookies persist across requests", fn() {
-        set_cookie("session_id", "session-abc-123");
+    test("cookies persist across requests", fn()
+        set_cookie("session_id", "session-abc-123")
         
-        let response = get("/dashboard");
-        let data = res_json(response);
+        let response = get("/dashboard")
+        let data = res_json(response)
         
-        assert_eq(data["session_id"], "session-abc-123");
-    });
-});
+        assert_eq(data["session_id"], "session-abc-123")
+    end)
+end)
 ```
 
 ### Testing View Rendering
@@ -629,35 +629,35 @@ describe("Request Headers", fn() {
 Examples of testing template rendering and assigns:
 
 ```soli
-describe("View Rendering", fn() {
-    test("index renders with correct assigns", fn() {
-        let response = get("/users");
+describe("View Rendering", fn()
+    test("index renders with correct assigns", fn()
+        let response = get("/users")
         
-        assert(render_template());
-        assert_eq(view_path(), "users/index.html");
+        assert(render_template())
+        assert_eq(view_path(), "users/index.html")
         
-        let assigns_data = assigns();
-        assert_hash_has_key(assigns_data, "users");
-        assert_hash_has_key(assigns_data, "page_title");
-    });
+        let assigns_data = assigns()
+        assert_hash_has_key(assigns_data, "users")
+        assert_hash_has_key(assigns_data, "page_title")
+    end)
 
-    test("show action passes correct user data", fn() {
-        let response = get("/users/42");
+    test("show action passes correct user data", fn()
+        let response = get("/users/42")
         
-        let user_assign = assign("user");
-        assert_eq(user_assign["id"], 42);
-        assert_eq(user_assign["name"], "John Doe");
-    });
+        let user_assign = assign("user")
+        assert_eq(user_assign["id"], 42)
+        assert_eq(user_assign["name"], "John Doe")
+    end)
 
-    test("flash messages are available", fn() {
-        post("/users/1/comments", {"body": "Test comment"});
+    test("flash messages are available", fn()
+        post("/users/1/comments", {"body": "Test comment"})
         
-        let response = get("/users/1");
-        let flash_data = flash();
-        assert_hash_has_key(flash_data, "notice");
-        assert_eq(flash("notice"), "Comment posted successfully");
-    });
-});
+        let response = get("/users/1")
+        let flash_data = flash()
+        assert_hash_has_key(flash_data, "notice")
+        assert_eq(flash("notice"), "Comment posted successfully")
+    end)
+end)
 ```
 
 ## Best Practices
@@ -667,17 +667,17 @@ describe("View Rendering", fn() {
 Structure your tests hierarchically using `describe()` blocks. Group tests by controller, then by action, then by concern. This organization makes tests easier to navigate and maintain:
 
 ```soli
-describe("PostsController", fn() {
-    describe("index action", fn() {
-        describe("authentication", fn() {
+describe("PostsController", fn()
+    describe("index action", fn()
+        describe("authentication", fn()
             # Tests for authenticated/unauthenticated access
-        });
+        end)
         
-        describe("response format", fn() {
+        describe("response format", fn()
             # Tests for JSON, HTML responses
-        });
-    });
-});
+        end)
+    end)
+end)
 ```
 
 ### Before and After Hooks
@@ -685,16 +685,16 @@ describe("PostsController", fn() {
 Use `before_each()` and `after_each()` to set up and clean up test state. Always reset authentication state between tests to prevent leakage:
 
 ```soli
-describe("UsersController", fn() {
-    before_each(fn() {
-        as_guest();
-        clear_cookies();
-    });
+describe("UsersController", fn()
+    before_each(fn()
+        as_guest()
+        clear_cookies()
+    end)
     
-    after_each(fn() {
+    after_each(fn()
         # Cleanup after each test if needed
-    });
-});
+    end)
+end)
 ```
 
 ### Test Isolation
@@ -702,16 +702,16 @@ describe("UsersController", fn() {
 Each test should be independent and not rely on the state created by other tests. Use factory functions or setup blocks to create test data within tests rather than depending on shared state:
 
 ```soli
-test("can update own post", fn() {
-    let post = create_post({"title": "Test", "author_id": 1});
-    as_user(1);
+test("can update own post", fn()
+    let post = create_post({"title": "Test", "author_id": 1})
+    as_user(1)
     
     let response = put("/posts/" + post["id"], {
         "title": "Updated"
-    });
+    })
     
-    assert_eq(res_status(response), 200);
-});
+    assert_eq(res_status(response), 200)
+end)
 ```
 
 ### Meaningful Assertions
@@ -732,12 +732,12 @@ assert(response != null);
 Always verify both status codes and response content. A 200 status doesn't guarantee the correct data was returned:
 
 ```soli
-let response = get("/posts/1");
-assert_eq(res_status(response), 200);
+let response = get("/posts/1")
+assert_eq(res_status(response), 200)
 
-let post = res_json(response);
-assert_eq(post["id"], 1);
-assert_eq(post["title"], "Expected Title");
+let post = res_json(response)
+assert_eq(post["id"], 1)
+assert_eq(post["title"], "Expected Title")
 ```
 
 ## Configuration
@@ -778,10 +778,10 @@ If `res_json()` fails, verify the response body is valid JSON. Some responses ma
 
 ```soli
 # Check content type first
-let content_type = res_header(response, "Content-Type");
-if (contains(content_type, "application/json")) {
-    let data = res_json(response);
-}
+let content_type = res_header(response, "Content-Type")
+if (contains(content_type, "application/json"))
+    let data = res_json(response)
+end
 ```
 
 ## Integration with CI/CD

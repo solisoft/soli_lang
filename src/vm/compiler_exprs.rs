@@ -67,6 +67,9 @@ impl Compiler {
                 let idx = self.add_string_constant(name);
                 self.emit(Op::GetProperty(idx), line);
             }
+            ExprKind::SafeMember { .. } => {
+                unimplemented!("SafeMember not supported in VM yet");
+            }
             ExprKind::QualifiedName { qualifier, name } => {
                 self.compile_expr(qualifier)?;
                 let idx = self.add_string_constant(name);

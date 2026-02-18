@@ -128,6 +128,9 @@ impl SimpleRepl {
 
     fn detect_multiline_needed(&self, line: &str) -> bool {
         let trimmed = line.trim();
+        if trimmed.contains("end") {
+            return false;
+        }
         trimmed.ends_with('{')
             || (trimmed.starts_with("class ") && !trimmed.ends_with('}'))
             || trimmed.starts_with("fn ")

@@ -11,6 +11,20 @@ use crate::interpreter::value::{Function, Instance, NativeFunction, Value, Value
 use crate::span::Span;
 
 impl Interpreter {
+    /// Evaluate safe navigation: object&.name (returns null if object is null)
+    pub(crate) fn evaluate_safe_member(
+        &mut self,
+        object: &Expr,
+        name: &str,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let obj_val = self.evaluate(object)?;
+        if matches!(obj_val, Value::Null) {
+            return Ok(Value::Null);
+        }
+        self.evaluate_member_on_value(obj_val, name, span)
+    }
+
     /// Evaluate member access expression: object.name
     pub(crate) fn evaluate_member(
         &mut self,
@@ -19,6 +33,16 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         let obj_val = self.evaluate(object)?;
+        self.evaluate_member_on_value(obj_val, name, span)
+    }
+
+    /// Shared member access logic on an already-evaluated value.
+    fn evaluate_member_on_value(
+        &mut self,
+        obj_val: Value,
+        name: &str,
+        span: Span,
+    ) -> RuntimeResult<Value> {
         match obj_val {
             Value::Future(future) => {
                 let value = Value::Future(future);
@@ -104,6 +128,7 @@ impl Interpreter {
                 span: method.span,
                 source_path: method.source_path.clone(),
                 defining_superclass: None,
+                return_type: method.return_type.clone(),
             };
             return Ok(Value::Function(Rc::new(bound_method)));
         }
@@ -212,6 +237,7 @@ impl Interpreter {
                 span: method.span,
                 source_path: method.source_path.clone(),
                 defining_superclass: None,
+                return_type: method.return_type.clone(),
             };
             return Ok(Value::Function(Rc::new(bound_method)));
         }

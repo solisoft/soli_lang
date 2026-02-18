@@ -1,0 +1,367 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Modules</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-lime-400 to-green-400 bg-clip-text text-transparent">Modules</span>
+        </h1>
+        <pre data-filename="my_module.sl"><code class="language-soli text-sm">module MyModule
+    fn hello
+        println("Hello from MyModule!")
+    end
+end</code></pre>
+
+        <p class="text-gray-400 mb-3">Import a module.</p>
+        <pre data-filename="main.sl"><code class="language-soli text-sm">import MyModule from "./my_module.sl"
+
+MyModule.hello()</code></pre>
+
+        <p class="text-gray-400 mb-3">Import specific members.</p>
+        <pre data-filename="main.sl"><code class="language-soli text-sm">import { hello } from "./my_module.sl"
+
+hello()</code></pre>
+        <p class="text-xl text-gray-300 leading-8">
+            Organize code with exports, imports, classes, and module structure.
+        </p>
+    </div>
+
+    <!-- Export Declarations -->
+    <section id="section-exports" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-lime-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-lime-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+            </span>
+            Export Declarations
+        </h2>
+
+        <section id="kw-export" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-export" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">export</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Makes a function, class, or constant available to other modules.</p>
+<pre data-filename="math.sl"><code class="language-soli text-sm">// math.sl
+
+// Private function (not exported)
+fn validate_number(n: Int) -> Bool
+    n >= 0
+end
+
+// Exported functions
+export fn add(a: Int, b: Int) -> Int
+    a + b
+end
+
+export fn subtract(a: Int, b: Int) -> Int
+    a - b
+end
+
+export fn multiply(a: Int, b: Int) -> Int
+    a * b
+end
+
+export fn divide(a: Int, b: Int) -> Float
+    if (b == 0)
+        panic("Division by zero")
+    end
+    float(a) / float(b)
+end
+
+export fn factorial(n: Int) -> Int
+    if (n <= 1)
+        return 1
+    end
+    n * factorial(n - 1)
+end</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="module-classes" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#module-classes" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Classes in Modules</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Modules can contain classes, enabling organized domain-driven code structures.</p>
+<pre data-filename="models.sl"><code class="language-soli text-sm">// models.sl
+
+// Private helper class (not exported)
+class ValidationResult
+    is_valid: Bool;
+    errors: String[];
+
+    new
+        this.is_valid = true;
+        this.errors = [];
+    end
+
+    fn add_error(msg: String)
+        this.is_valid = false;
+        this.errors.push(msg);
+    end
+end
+
+// Exported classes
+export class User
+    id: Int;
+    username: String;
+    email: String;
+
+    new(id: Int, username: String, email: String)
+        this.id = id;
+        this.username = username;
+        this.email = email;
+    end
+
+    fn get_display_name() -> String
+        this.username + " (" + this.email + ")"
+    end
+end
+
+export class Post
+    id: Int;
+    title: String;
+    content: String;
+    author: User;
+
+    new(id: Int, title: String, content: String, author: User)
+        this.id = id;
+        this.title = title;
+        this.content = content;
+        this.author = author;
+    end
+
+    fn get_summary() -> String
+        let preview = this.content.slice(0, 100);
+        this.title + " by " + this.author.username
+    end
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="module-nested-classes" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#module-nested-classes" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Nested Classes in Modules</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Modules can also contain nested classes using the <code>::</code> pattern for domain organization.</p>
+<pre data-filename="controllers.sl"><code class="language-soli text-sm">// controllers.sl
+
+export class Posts
+    class Action
+        fn create(title: String, content: String) -> Post
+            // Create a new post
+            new Post(0, title, content, current_user())
+        end
+
+        fn update(id: Int, updates: Any) -> Post?
+            // Update an existing post
+            find_post_by_id(id).update(updates)
+        end
+
+        fn delete(id: Int) -> Bool
+            // Delete a post
+            remove_post(id)
+        end
+    end
+
+    class View
+        fn list(page: Int, per_page: Int) -> Post[]
+            paginated_posts(page, per_page)
+        end
+
+        fn show(id: Int) -> Post?
+            find_post_by_id(id)
+        end
+    end
+end
+
+export class Users
+    class Action
+        fn register(username: String, email: String) -> User
+            new User(0, username, email)
+        end
+
+        fn login(email: String, password: String) -> User?
+            authenticate_user(email, password)
+        end
+    end
+
+    class Validator
+        fn validate_registration(data: Any) -> Bool
+            data["username"] != null && data["email"] != null
+        end
+    end
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="import-classes" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#import-classes" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Importing Classes</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Import classes from modules using named imports or module namespace.</p>
+<pre data-filename="main.sl"><code class="language-soli text-sm">// Import classes by name
+import { User, Post } from "./models.sl";
+
+let user = new User(1, "alice", "alice@example.com");
+let post = new Post(1, "Hello World", "Content here", user);
+
+// Import with namespace
+import "./controllers.sl" as controllers;
+
+let action = new controllers.Posts.Action();
+action.create("My Post", "Post content");
+
+// Import nested classes directly
+import { Posts::Action, Posts::View } from "./controllers.sl";
+
+let view = new Posts::View();
+let posts = view.list(1, 10);</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Import Statements -->
+    <section id="section-imports" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Import Statements</h2>
+
+        <section id="kw-import" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-import" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">import</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Import functions and classes from other modules.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">// Import all exports
+import "./math.sl";
+print(add(2, 3));        // 5
+print(factorial(5));     // 120
+
+// Named imports
+import { add, multiply } from "./math.sl";
+let sum = add(1, 2);          // 3
+let product = multiply(3, 4); // 12
+
+// Aliased imports
+import { add as sum, multiply as times } from "./math.sl";
+let result = sum(10, 20);  // 30
+let doubled = times(5, 6); // 30
+
+// Import everything with a namespace
+import "./utils.sl" as utils;
+let formatted = utils.format_date(DateTime.utc());</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Project Structure -->
+    <section id="section-structure" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Project Structure</h2>
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">my-project/
+├── soli.toml
+├── src/
+│   ├── main.sl
+│   ├── config.sl
+│   └── utils/
+│       ├── mod.sl
+│       ├── string.sl
+│       ├── array.sl
+│       └── datetime.sl
+└── lib/
+    └── math/
+        ├── mod.sl
+        ├── basic.sl
+        └── advanced.sl</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Package Configuration -->
+    <section id="section-package-config" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Package Configuration</h2>
+        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">soli.toml</label>
+    <div class="p-4 overflow-x-auto">
+<pre><code class="language-toml text-sm">[package]
+name = "my-app"
+version = "1.0.0"
+description = "My awesome soli application"
+main = "src/main.sl"
+
+[dependencies]
+# Local dependency
+utils = { path = "./lib/utils" }
+
+[dev-dependencies]
+test-utils = { path = "./tests/test-utils" }
+
+[scripts]
+dev = "soli serve"
+build = "soli build --release"
+test = "soli test"</code></pre>
+    </div>
+</div>
+    </section>
+
+    <!-- Use Keyword -->
+    <section id="section-use" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Use Keyword</h2>
+
+        <section id="kw-use" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-use" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">use</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Alternative syntax for importing (alias for import).</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">use "./math.sl";
+use { add, multiply } from "./math.sl";
+use "./utils.sl" as utils;</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/pipeline-operator" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Pipeline Operator
+        </a>
+        <a href="/docs/builtins" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Built-in Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

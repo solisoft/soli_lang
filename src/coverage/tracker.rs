@@ -484,7 +484,7 @@ impl CoverageTracker {
                     }
                 }
             }
-            Member { object, .. } => {
+            Member { object, .. } | SafeMember { object, .. } => {
                 self.collect_lines_from_expr(path, lines, object);
             }
             QualifiedName { qualifier, .. } => {

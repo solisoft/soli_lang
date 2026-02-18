@@ -12,15 +12,13 @@ YYYYMMDDHHMMSS_name.sl
 Each migration file contains `up()` and `down()` functions:
 
 ```soli
-fn up(db: Any) -> Any {
-    db.create_collection("users");
-    db.create_index("users", "idx_email", ["email"], { "unique": true });
-}
+fn up(db: Any)    db.create_collection("users")
+    db.create_index("users", "idx_email", ["email"], { "unique": true })
+end
 
-fn down(db: Any) -> Any {
-    db.drop_index("users", "idx_email");
-    db.drop_collection("users");
-}
+fn down(db: Any)    db.drop_index("users", "idx_email")
+    db.drop_collection("users")
+end
 ```
 
 ## CLI Commands
@@ -80,11 +78,10 @@ Output:
 Create a new collection (table):
 
 ```soli
-fn up(db: Any) -> Any {
-    db.create_collection("users");
-    db.create_collection("posts");
-    db.create_collection("comments");
-}
+fn up(db: Any)    db.create_collection("users")
+    db.create_collection("posts")
+    db.create_collection("comments")
+end
 ```
 
 ### drop_collection
@@ -92,11 +89,10 @@ fn up(db: Any) -> Any {
 Remove a collection:
 
 ```soli
-fn down(db: Any) -> Any {
-    db.drop_collection("comments");
-    db.drop_collection("posts");
-    db.drop_collection("users");
-}
+fn down(db: Any)    db.drop_collection("comments")
+    db.drop_collection("posts")
+    db.drop_collection("users")
+end
 ```
 
 ### list_collections
@@ -104,10 +100,9 @@ fn down(db: Any) -> Any {
 List all collections in the database:
 
 ```soli
-fn up(db: Any) -> Any {
-    let collections = db.list_collections();
-    print(collections);
-}
+fn up(db: Any)    let collections = db.list_collections()
+    print(collections)
+end
 ```
 
 ### collection_stats
@@ -115,10 +110,9 @@ fn up(db: Any) -> Any {
 Get statistics for a collection:
 
 ```soli
-fn up(db: Any) -> Any {
-    let stats = db.collection_stats("users");
-    print(stats);
-}
+fn up(db: Any)    let stats = db.collection_stats("users")
+    print(stats)
+end
 ```
 
 ## Index Helpers
@@ -128,22 +122,21 @@ fn up(db: Any) -> Any {
 Create an index on a collection:
 
 ```soli
-fn up(db: Any) -> Any {
-    // Simple index on one field
-    db.create_index("users", "idx_email", ["email"], {});
+fn up(db: Any)    # Simple index on one field
+    db.create_index("users", "idx_email", ["email"], {})
 
-    // Unique index
-    db.create_index("users", "idx_username", ["username"], { "unique": true });
+    # Unique index
+    db.create_index("users", "idx_username", ["username"], { "unique": true })
 
-    // Sparse index (only indexes documents that contain the field)
-    db.create_index("users", "idx_phone", ["phone"], { "sparse": true });
+    # Sparse index (only indexes documents that contain the field)
+    db.create_index("users", "idx_phone", ["phone"], { "sparse": true })
 
-    // Compound index on multiple fields
-    db.create_index("users", "idx_name", ["first_name", "last_name"], {});
+    # Compound index on multiple fields
+    db.create_index("users", "idx_name", ["first_name", "last_name"], {})
 
-    // Unique compound index
-    db.create_index("posts", "idx_user_slug", ["user_id", "slug"], { "unique": true });
-}
+    # Unique compound index
+    db.create_index("posts", "idx_user_slug", ["user_id", "slug"], { "unique": true })
+end
 ```
 
 **Parameters:**
@@ -159,11 +152,10 @@ fn up(db: Any) -> Any {
 Remove an index:
 
 ```soli
-fn down(db: Any) -> Any {
-    db.drop_index("users", "idx_email");
-    db.drop_index("users", "idx_username");
-    db.drop_index("posts", "idx_user_slug");
-}
+fn down(db: Any)    db.drop_index("users", "idx_email")
+    db.drop_index("users", "idx_username")
+    db.drop_index("posts", "idx_user_slug")
+end
 ```
 
 ### list_indexes
@@ -171,10 +163,9 @@ fn down(db: Any) -> Any {
 List all indexes for a collection:
 
 ```soli
-fn up(db: Any) -> Any {
-    let indexes = db.list_indexes("users");
-    print(indexes);
-}
+fn up(db: Any)    let indexes = db.list_indexes("users")
+    print(indexes)
+end
 ```
 
 ## Raw Queries
@@ -182,16 +173,15 @@ fn up(db: Any) -> Any {
 For operations not covered by helpers, use raw SDBQL queries:
 
 ```soli
-fn up(db: Any) -> Any {
-    // Insert seed data
-    db.query("INSERT { name: 'Admin', role: 'admin' } INTO users");
+fn up(db: Any)    # Insert seed data
+    db.query("INSERT { name: 'Admin', role: 'admin' } INTO users")
 
-    // Update existing data
-    db.query("FOR u IN users FILTER u.role == 'guest' UPDATE u WITH { role: 'user' } IN users");
+    # Update existing data
+    db.query("FOR u IN users FILTER u.role == 'guest' UPDATE u WITH { role: 'user' } IN users")
 
-    // Complex queries with bind variables
-    db.query("FOR doc IN users FILTER doc.status == @status RETURN doc");
-}
+    # Complex queries with bind variables
+    db.query("FOR doc IN users FILTER doc.status == @status RETURN doc")
+end
 ```
 
 ## Complete Example
@@ -199,51 +189,49 @@ fn up(db: Any) -> Any {
 Here's a complete migration for a blog application:
 
 ```soli
-// db/migrations/20260122143052_create_blog_schema.sl
-// Migration: create_blog_schema
-// Created: 2026-01-22 14:30:52
+# db/migrations/20260122143052_create_blog_schema.sl
+# Migration: create_blog_schema
+# Created: 2026-01-22 14:30:52
 
-fn up(db: Any) -> Any {
-    // Create collections
-    db.create_collection("users");
-    db.create_collection("posts");
-    db.create_collection("comments");
-    db.create_collection("tags");
+fn up(db: Any)    # Create collections
+    db.create_collection("users")
+    db.create_collection("posts")
+    db.create_collection("comments")
+    db.create_collection("tags")
 
-    // User indexes
-    db.create_index("users", "idx_users_email", ["email"], { "unique": true });
-    db.create_index("users", "idx_users_username", ["username"], { "unique": true });
+    # User indexes
+    db.create_index("users", "idx_users_email", ["email"], { "unique": true })
+    db.create_index("users", "idx_users_username", ["username"], { "unique": true })
 
-    // Post indexes
-    db.create_index("posts", "idx_posts_author", ["author_id"], {});
-    db.create_index("posts", "idx_posts_slug", ["slug"], { "unique": true });
-    db.create_index("posts", "idx_posts_published", ["published_at"], { "sparse": true });
+    # Post indexes
+    db.create_index("posts", "idx_posts_author", ["author_id"], {})
+    db.create_index("posts", "idx_posts_slug", ["slug"], { "unique": true })
+    db.create_index("posts", "idx_posts_published", ["published_at"], { "sparse": true })
 
-    // Comment indexes
-    db.create_index("comments", "idx_comments_post", ["post_id"], {});
-    db.create_index("comments", "idx_comments_author", ["author_id"], {});
+    # Comment indexes
+    db.create_index("comments", "idx_comments_post", ["post_id"], {})
+    db.create_index("comments", "idx_comments_author", ["author_id"], {})
 
-    // Tag indexes
-    db.create_index("tags", "idx_tags_name", ["name"], { "unique": true });
-}
+    # Tag indexes
+    db.create_index("tags", "idx_tags_name", ["name"], { "unique": true })
+end
 
-fn down(db: Any) -> Any {
-    // Drop indexes first
-    db.drop_index("tags", "idx_tags_name");
-    db.drop_index("comments", "idx_comments_author");
-    db.drop_index("comments", "idx_comments_post");
-    db.drop_index("posts", "idx_posts_published");
-    db.drop_index("posts", "idx_posts_slug");
-    db.drop_index("posts", "idx_posts_author");
-    db.drop_index("users", "idx_users_username");
-    db.drop_index("users", "idx_users_email");
+fn down(db: Any)    # Drop indexes first
+    db.drop_index("tags", "idx_tags_name")
+    db.drop_index("comments", "idx_comments_author")
+    db.drop_index("comments", "idx_comments_post")
+    db.drop_index("posts", "idx_posts_published")
+    db.drop_index("posts", "idx_posts_slug")
+    db.drop_index("posts", "idx_posts_author")
+    db.drop_index("users", "idx_users_username")
+    db.drop_index("users", "idx_users_email")
 
-    // Drop collections
-    db.drop_collection("tags");
-    db.drop_collection("comments");
-    db.drop_collection("posts");
-    db.drop_collection("users");
-}
+    # Drop collections
+    db.drop_collection("tags")
+    db.drop_collection("comments")
+    db.drop_collection("posts")
+    db.drop_collection("users")
+end
 ```
 
 ## Environment Configuration

@@ -85,9 +85,9 @@ let last = order.last_transition();
 Checks if an event is available from the current state:
 
 ```soli
-if (order.can("ship")) {
-    print("Order can be shipped");
-}
+if (order.can("ship"))
+    print("Order can be shipped")
+end
 ```
 
 ### available_events()
@@ -114,9 +114,9 @@ print(order.current_state());  // "pending"
 Check if the state machine is in a specific state:
 
 ```soli
-if (order.is("pending")) {
-    print("Order is waiting for confirmation");
-}
+if (order.is("pending"))
+    print("Order is waiting for confirmation")
+end
 ```
 
 ### is_in([states])
@@ -124,9 +124,9 @@ if (order.is("pending")) {
 Check if the state machine is in any of the given states:
 
 ```soli
-if (order.is_in(["shipped", "delivered"])) {
-    print("Order is on its way or delivered");
-}
+if (order.is_in(["shipped", "delivered"]))
+    print("Order is on its way or delivered")
+end
 ```
 
 ### set(key, value)
@@ -176,10 +176,10 @@ print(last["event"]); // "confirm"
 Checks if an event is available from the current state:
 
 ```soli
-if (order.can("ship")) {
-    print("Order can be shipped");
-}
-// Returns: true or false
+if (order.can("ship"))
+    print("Order can be shipped")
+end
+# Returns: true or false
 ```
 
 ### available_events()
@@ -214,42 +214,37 @@ order.ship();
 ## Example: Order Processing Workflow
 
 ```soli
-class OrderWorkflow {
-    fn create_order(items: Array, total: Float) {
-        let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+class OrderWorkflow
+    fn create_order(items: Array, total: Float)
+        let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
         let transitions = [
             {"event": "confirm", "from": "pending", "to": "confirmed"},
             {"event": "process", "from": "confirmed", "to": "processing"},
             {"event": "ship", "from": "processing", "to": "shipped"},
             {"event": "deliver", "from": "shipped", "to": "delivered"},
             {"event": "cancel", "from": "pending", "to": "cancelled"}
-        ];
+        ]
 
-        let order = create_state_machine("pending", states, transitions);
-        order.set("items", items);
-        order.set("total", total);
-        order.set("created_at", clock());
+        let order = create_state_machine("pending", states, transitions)
+        order.set("items", items)
+        order.set("total", total)
+        order.set("created_at", clock())
 
-        return order;
-    }
+        return order
+    end
 
-    fn process_order(order: Any) {
-        if (order.is("pending")) {
-            order.confirm();
-        }
+    fn process_order(order: Any)
+        if (order.is("pending"))
+            order.confirm()
+        end
 
-        if (order.is("confirmed")) {
-            order.process();
-        }
+        if (order.is("confirmed"))
+            order.process()
+        end
 
-        return order;
-    }
-}
-
-// Usage
-let workflow = new OrderWorkflow();
-let order = workflow.create_order(["Widget A", "Widget B"], 149.99);
-workflow.process_order(order);
+        return order
+    end
+end
 ```
 
 ## Example: Payment State Machine

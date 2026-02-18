@@ -1,0 +1,313 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Blocks</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">Block Syntax</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Soli supports two block termination styles: <code class="text-pink-400">end</code> keyword and curly braces <code class="text-pink-400">{}</code>. Both are interchangeable.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section id="section-overview" class="scroll-mt-20 mb-12">
+        <div class="rounded-xl bg-violet-500/10 border border-violet-500/20 p-6 mb-8">
+            <h3 class="text-lg font-semibold text-violet-400 mb-2">When to use each style</h3>
+            <ul class="text-gray-300 space-y-2 text-sm">
+                <li>• <code class="text-pink-400">end</code> - Recommended for empty blocks, simple guards, and cleaner syntax</li>
+                <li>• <code class="text-pink-400">{}</code> - Useful for multi-line blocks with many statements</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Functions -->
+    <section id="section-functions" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                </svg>
+            </span>
+            Functions
+        </h2>
+
+        <section id="fn-braces" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">fn greet(name: String) {
+    print("Hello, " + name + "!");
+}
+
+fn add(a: Int, b: Int) -> Int {
+    a + b
+}</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-end" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">fn greet(name: String) end
+
+fn add(a: Int, b: Int) -> Int {
+    a + b
+}</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- If Statements -->
+    <section id="section-if" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                </svg>
+            </span>
+            If Statements
+        </h2>
+
+        <section id="if-braces" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18;
+
+if (age >= 18) {
+    print("Adult");
+}
+
+if (age >= 21) {
+    print("Can drink");
+} else {
+    print("Too young");
+}</code></pre>
+            </div>
+        </section>
+
+        <section id="if-end" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18;
+
+if (age >= 18) end
+
+if (age >= 21) end
+else {
+    print("Too young");
+}
+
+if (age >= 18) {
+    print("Adult");
+} elsif (age >= 21) end
+else end</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- While Loops -->
+    <section id="section-while" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </span>
+            While Loops
+        </h2>
+
+        <section id="while-braces" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0;
+while (i < 5) {
+    print(i);
+    i = i + 1;
+}</code></pre>
+            </div>
+        </section>
+
+        <section id="while-end" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0;
+while (i < 5) end
+
+let j = 0;
+while (j < 5) {
+    print(j);
+    j = j + 1;
+}</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- For Loops -->
+    <section id="section-for" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </span>
+            For Loops
+        </h2>
+
+        <section id="for-braces" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">for item in items {
+    print(item);
+}</code></pre>
+            </div>
+        </section>
+
+        <section id="for-end" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">for item in items end
+
+for item in items {
+    print(item);
+}</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Classes -->
+    <section id="section-classes" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                </svg>
+            </span>
+            Classes
+        </h2>
+
+        <section id="class-braces" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Person {
+    name: String;
+
+    new(name: String) {
+        this.name = name;
+    }
+
+    fn greet() {
+        print("Hello, " + this.name);
+    }
+}</code></pre>
+            </div>
+        </section>
+
+        <section id="class-end" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Person end
+
+class Person
+    name: String;
+
+    new(name: String) end
+
+    fn greet() end
+end</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Mixed Usage -->
+    <section id="section-mixed" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+            </span>
+            Mixed Usage
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">You can freely mix both styles in the same codebase:</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">// Empty function - use end
+fn placeholder() end
+
+// Function with body - use braces
+fn process_data(data) {
+    validate(data);
+    transform(data);
+    save(data);
+}
+
+// Empty class - use end
+class EmptyMarker end
+
+// Class with methods - mix both
+class Service
+    fn init() end
+
+    fn process() {
+        fetch_data();
+    }
+end
+
+// Control flow - use end for simple guards
+if user.is_admin() end
+
+if user.is_valid() {
+    authorize(user);
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- Summary Table -->
+    <section id="section-summary" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Quick Reference</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="py-3 px-4 text-gray-400 font-semibold">Construct</th>
+                        <th class="py-3 px-4 text-gray-400 font-semibold">Braces Style</th>
+                        <th class="py-3 px-4 text-gray-400 font-semibold">end Style</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5">
+                        <td class="py-3 px-4">Function</td>
+                        <td class="py-3 px-4"><code class="text-pink-400">fn foo() { }</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">fn foo() end</code></td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-3 px-4">If</td>
+                        <td class="py-3 px-4"><code class="text-pink-400">if cond { }</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">if cond end</code></td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-3 px-4">While</td>
+                        <td class="py-3 px-4"><code class="text-pink-400">while cond { }</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">while cond end</code></td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-3 px-4">For</td>
+                        <td class="py-3 px-4"><code class="text-pink-400">for x in items { }</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">for x in items end</code></td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-3 px-4">Class</td>
+                        <td class="py-3 px-4"><code class="text-pink-400">class Foo { }</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">class Foo end</code></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

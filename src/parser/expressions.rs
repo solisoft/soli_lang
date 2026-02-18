@@ -604,6 +604,19 @@ impl Parser {
                 ))
             }
 
+            // Safe navigation: obj&.field
+            TokenKind::SafeNavigation => {
+                let name = self.expect_identifier()?;
+                let span = start_span.merge(&self.previous_span());
+                Ok(Expr::new(
+                    ExprKind::SafeMember {
+                        object: Box::new(left),
+                        name,
+                    },
+                    span,
+                ))
+            }
+
             // Qualified name access (e.g., Outer::Inner)
             TokenKind::DoubleColon => {
                 let name = self.expect_identifier()?;
@@ -831,16 +844,42 @@ impl Parser {
         };
 
         // Parse body
-        let body = if self.check(&TokenKind::LeftBrace) {
-            // Block body
-            self.block_statements()?
+        let body = if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
+            self.advance(); // consume {
+            // Block body with braces
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                statements.push(self.statement()?);
+            }
+            self.expect(&TokenKind::RightBrace)?;
+            statements
+        } else if self.match_token(&TokenKind::End) {
+            // Empty body with end
+            Vec::new()
         } else {
-            // Expression body -> implicit return
-            let expr = self.expression()?;
-            vec![crate::ast::stmt::Stmt::new(
-                crate::ast::stmt::StmtKind::Return(Some(expr)),
-                self.previous_span(),
-            )]
+            // Parse first statement, then decide: inline lambda or end-terminated body
+            let first = self.statement()?;
+
+            if self.check(&TokenKind::RightParen)
+                || self.check(&TokenKind::Comma)
+                || self.check(&TokenKind::RightBracket)
+                || self.check(&TokenKind::RightBrace)
+                || self.is_at_end()
+            {
+                // Closing delimiter → single-statement inline lambda
+                vec![first]
+            } else if self.match_token(&TokenKind::End) {
+                // end-terminated single-statement body
+                vec![first]
+            } else {
+                // Multi-statement end-terminated body
+                let mut statements = vec![first];
+                while !self.check(&TokenKind::End) && !self.is_at_end() {
+                    statements.push(self.statement()?);
+                }
+                self.expect(&TokenKind::End)?;
+                statements
+            }
         };
 
         let span = start_span.merge(&self.previous_span());

@@ -36,10 +36,10 @@ get("/posts/:post_id/comments/:comment_id", "comments#show");
 Access parameters in your controller:
 
 ```soli
-fn show(req) {
+fn show(req)
     let user_id = req.params["id"];
     // ...
-}
+end
 ```
 
 ## Query Strings
@@ -48,11 +48,11 @@ Query parameters are automatically parsed:
 
 ```soli
 // URL: /search?q=solilang&page=1
-fn search(req) {
+fn search(req)
     let query = req.query["q"];  // "solilang"
     let page = req.query["page"]; // "1"
     // ...
-}
+end
 ```
 
 ## Route Helpers
@@ -62,9 +62,9 @@ fn search(req) {
 Check if a path matches a route pattern:
 
 ```soli
-if route_match("/users/:id", "/users/123") {
+if route_match("/users/:id", "/users/123")
     println("Matches!");
-}
+end
 ```
 
 ### named_routes
@@ -106,10 +106,10 @@ get("/profile", "user#profile", ["auth", "verified"]);
 Group routes with common prefixes:
 
 ```soli
-group("/api", [], {
+group("/api", [], fn()
     get("/users", "api#users");
     get("/posts", "api#posts");
-});
+end);
 ```
 
 ## Best Practices
@@ -124,17 +124,17 @@ group("/api", [], {
 See the [Testing Guide](/docs/testing) for comprehensive information on testing routes with HTTP integration tests.
 
 ```soli
-describe("User routes", fn() {
-    test("GET /users returns list", fn() {
+describe("User routes", fn()
+    test("GET /users returns list", fn()
         let response = TestHTTP.get("/users");
         expect(response.status).to_equal(200);
-    });
+    end)
     
-    test("POST /users creates user", fn() {
+    test("POST /users creates user", fn()
         let response = TestHTTP.post("/users", hash(
             "email": "test@example.com"
         ));
         expect(response.status).to_equal(201);
-    });
-});
+    end)
+end)
 ```

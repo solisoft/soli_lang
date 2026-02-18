@@ -20,7 +20,7 @@ Use `req["all"]` to access all parameters unified:
 // Request: POST /users/123/profile?name=alice&age=30
 // Body: {"bio": "Developer", "age": "25"}
 
-fn update_profile(req) {
+fn update_profile(req)
     // Unified access to all params
     let all = req["all"];
 
@@ -30,7 +30,7 @@ fn update_profile(req) {
     print("Bio:", all["bio"]);          // "Developer" (from JSON body)
 
     {"status": 200, "body": "Profile updated"}
-}
+end
 ```
 
 ## Priority Order
@@ -45,7 +45,7 @@ When the same parameter exists in multiple sources, values are merged with this 
 // Request: PUT /items/42?status=active
 // Body: {"status": "urgent", "quantity": "5"}
 
-fn update_item(req) {
+fn update_item(req)
     let all = req["all"];
 
     // "status" appears in both query and body
@@ -59,7 +59,7 @@ fn update_item(req) {
     print("Quantity:", all["quantity"]);
 
     {"status": 200, "body": "OK"}
-}
+end
 ```
 
 ## Still Available: Individual Sources
@@ -67,7 +67,7 @@ fn update_item(req) {
 You can still access individual parameter sources separately:
 
 ```soli
-fn handler(req) {
+fn handler(req)
     // Route parameters only
     let id = req["params"]["id"];
 
@@ -84,13 +84,13 @@ fn handler(req) {
     let all = req["all"];
 
     {"status": 200, "body": "OK"}
-}
+end
 ```
 
 ## Complete Example: Search with Pagination
 
 ```soli
-fn search(req) {
+fn search(req)
     let all = req["all"];
 
     // Unified params allow flexible API design
@@ -122,7 +122,7 @@ fn search(req) {
             "limit": limit
         })
     }
-}
+end
 ```
 
 ## API Reference
@@ -149,17 +149,17 @@ fn search(req) {
 let id = req["all"]["id"];
 
 // Check if param exists
-if (req["all"]["page"] != null) {
+if req["all"]["page"] != null
     let page = req["all"]["page"];
-}
+end
 
 // Get with default value
 let limit = req["all"]["limit"] or "20";
 
 // Iterate over all params
-for (key, value) in req["all"] {
+for key, value in req["all"]
     print(key + ": " + value);
-}
+end
 ```
 
 ## Benefits

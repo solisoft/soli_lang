@@ -155,19 +155,19 @@ If your application already uses Tailwind CSS, you can use Tailwind classes:</``
 You can also handle errors explicitly in your controllers by returning appropriate responses:
 
 ```soli
-fn show(req) {
-    let id = req["params"]["id"];
-    let user = database.get_user(id);
+fn show(req)
+    let id = req["params"]["id"]
+    let user = database.get_user(id)
     
-    if user == null {
+    if user == null
         return {
             "status": 404,
             "body": "User not found"
-        };
-    }
+        }
+    end
     
     render("users/show.html.slv", { "user": user })
-}
+end
 ```
 
 ## Production Deployment

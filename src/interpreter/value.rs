@@ -12,7 +12,7 @@ use indexmap::IndexMap;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 
-use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt};
+use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt, TypeAnnotation};
 use crate::interpreter::builtins::model::QueryBuilder;
 use crate::interpreter::environment::Environment;
 use crate::span::Span;
@@ -456,6 +456,9 @@ pub struct Function {
     /// The superclass of the class where this method was defined.
     /// Used for super calls to resolve to the correct parent class.
     pub defining_superclass: Option<Rc<Class>>,
+    /// The declared return type annotation, if any.
+    /// Used for runtime return type enforcement.
+    pub return_type: Option<TypeAnnotation>,
 }
 
 impl Default for Function {
@@ -469,6 +472,7 @@ impl Default for Function {
             span: None,
             source_path: None,
             defining_superclass: None,
+            return_type: None,
         }
     }
 }
@@ -488,6 +492,7 @@ impl Function {
             span: Some(decl.span),
             source_path,
             defining_superclass: None,
+            return_type: decl.return_type.clone(),
         }
     }
 
@@ -505,6 +510,7 @@ impl Function {
             span: Some(decl.span),
             source_path,
             defining_superclass: None,
+            return_type: decl.return_type.clone(),
         }
     }
 
@@ -962,6 +968,44 @@ pub fn unwrap_value(value: &Value) -> Value {
     }
 }
 
+use crate::ast::TypeKind;
+
+/// Check if a runtime value matches an expected type annotation.
+/// Used for runtime return type enforcement.
+pub fn value_matches_type(value: &Value, expected: &TypeAnnotation) -> bool {
+    match &expected.kind {
+        TypeKind::Named(name) => {
+            let name_lower = name.to_lowercase();
+            match name_lower.as_str() {
+                "any" => true,
+                "int" => matches!(value, Value::Int(_)),
+                "float" => matches!(value, Value::Float(_)),
+                "decimal" => matches!(value, Value::Decimal(_)),
+                "string" => matches!(value, Value::String(_)),
+                "bool" => matches!(value, Value::Bool(_)),
+                "array" => matches!(value, Value::Array(_)),
+                "hash" => matches!(value, Value::Hash(_)),
+                "function" => matches!(value, Value::Function(_) | Value::NativeFunction(_)),
+                "void" | "null" => matches!(value, Value::Null),
+                // Class instance check
+                _ => match value {
+                    Value::Instance(inst) => inst.borrow().class.name == *name,
+                    _ => false,
+                },
+            }
+        }
+        TypeKind::Void => matches!(value, Value::Null),
+        TypeKind::Nullable(inner) => {
+            matches!(value, Value::Null) || value_matches_type(value, inner)
+        }
+        TypeKind::Array(_) => matches!(value, Value::Array(_)),
+        TypeKind::Hash { .. } => matches!(value, Value::Hash(_)),
+        TypeKind::Function { .. } => {
+            matches!(value, Value::Function(_) | Value::NativeFunction(_))
+        }
+    }
+}
+
 #[cfg(test)]
 mod decimal_tests {
     use super::*;
@@ -1335,5 +1379,111 @@ mod decimal_tests {
             }
             _ => panic!("Expected Hash value"),
         }
+    }
+}
+
+#[cfg(test)]
+mod return_type_tests {
+    use super::*;
+    use crate::ast::{TypeAnnotation, TypeKind};
+    use crate::span::Span;
+
+    fn make_type(kind: TypeKind) -> TypeAnnotation {
+        TypeAnnotation::new(kind, Span::default())
+    }
+
+    #[test]
+    fn test_int_matches_int() {
+        let value = Value::Int(42);
+        let ty = make_type(TypeKind::Named("Int".to_string()));
+        assert!(value_matches_type(&value, &ty));
+    }
+
+    #[test]
+    fn test_string_matches_string() {
+        let value = Value::String("hello".to_string());
+        let ty = make_type(TypeKind::Named("String".to_string()));
+        assert!(value_matches_type(&value, &ty));
+    }
+
+    #[test]
+    fn test_int_does_not_match_string() {
+        let value = Value::Int(42);
+        let ty = make_type(TypeKind::Named("String".to_string()));
+        assert!(!value_matches_type(&value, &ty));
+    }
+
+    #[test]
+    fn test_any_matches_everything() {
+        let ty = make_type(TypeKind::Named("Any".to_string()));
+        assert!(value_matches_type(&Value::Int(1), &ty));
+        assert!(value_matches_type(&Value::String("x".to_string()), &ty));
+        assert!(value_matches_type(&Value::Null, &ty));
+        assert!(value_matches_type(&Value::Bool(true), &ty));
+    }
+
+    #[test]
+    fn test_nullable_accepts_null() {
+        let inner = make_type(TypeKind::Named("Int".to_string()));
+        let ty = make_type(TypeKind::Nullable(Box::new(inner)));
+        assert!(value_matches_type(&Value::Null, &ty));
+        assert!(value_matches_type(&Value::Int(42), &ty));
+        assert!(!value_matches_type(&Value::String("x".to_string()), &ty));
+    }
+
+    #[test]
+    fn test_void_matches_null() {
+        let ty = make_type(TypeKind::Void);
+        assert!(value_matches_type(&Value::Null, &ty));
+        assert!(!value_matches_type(&Value::Int(1), &ty));
+    }
+
+    #[test]
+    fn test_bool_matches_bool() {
+        let ty = make_type(TypeKind::Named("Bool".to_string()));
+        assert!(value_matches_type(&Value::Bool(true), &ty));
+        assert!(value_matches_type(&Value::Bool(false), &ty));
+        assert!(!value_matches_type(&Value::Int(1), &ty));
+    }
+
+    #[test]
+    fn test_float_matches_float() {
+        let ty = make_type(TypeKind::Named("Float".to_string()));
+        assert!(value_matches_type(&Value::Float(3.14), &ty));
+        assert!(!value_matches_type(&Value::Int(3), &ty));
+    }
+
+    #[test]
+    fn test_array_type_matches_array() {
+        let inner = make_type(TypeKind::Named("Int".to_string()));
+        let ty = make_type(TypeKind::Array(Box::new(inner)));
+        let arr = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)])));
+        assert!(value_matches_type(&arr, &ty));
+        assert!(!value_matches_type(&Value::Int(1), &ty));
+    }
+
+    #[test]
+    fn test_hash_type_matches_hash() {
+        let key_ty = make_type(TypeKind::Named("String".to_string()));
+        let val_ty = make_type(TypeKind::Named("Int".to_string()));
+        let ty = make_type(TypeKind::Hash {
+            key_type: Box::new(key_ty),
+            value_type: Box::new(val_ty),
+        });
+        let hash = Value::Hash(Rc::new(RefCell::new(IndexMap::new())));
+        assert!(value_matches_type(&hash, &ty));
+        assert!(!value_matches_type(&Value::Int(1), &ty));
+    }
+
+    #[test]
+    fn test_case_insensitive_named_types() {
+        // TypeKind uses "Int" but we should match case-insensitively
+        let ty_lower = make_type(TypeKind::Named("int".to_string()));
+        let ty_upper = make_type(TypeKind::Named("INT".to_string()));
+        let ty_mixed = make_type(TypeKind::Named("Int".to_string()));
+        let value = Value::Int(42);
+        assert!(value_matches_type(&value, &ty_lower));
+        assert!(value_matches_type(&value, &ty_upper));
+        assert!(value_matches_type(&value, &ty_mixed));
     }
 }

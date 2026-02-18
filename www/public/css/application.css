@@ -1758,10 +1758,6 @@ video {
           user-select: none;
 }
 
-.resize {
-  resize: both;
-}
-
 .scroll-mt-20 {
   scroll-margin-top: 5rem;
 }
@@ -2082,6 +2078,10 @@ video {
   border-color: rgb(20 184 166 / 0.3);
 }
 
+.border-violet-500\/20 {
+  border-color: rgb(139 92 246 / 0.2);
+}
+
 .border-white\/10 {
   border-color: rgb(255 255 255 / 0.1);
 }
@@ -2383,6 +2383,10 @@ video {
 
 .bg-teal-500\/20 {
   background-color: rgb(20 184 166 / 0.2);
+}
+
+.bg-violet-500\/10 {
+  background-color: rgb(139 92 246 / 0.1);
 }
 
 .bg-violet-500\/20 {

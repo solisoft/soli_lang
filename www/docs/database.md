@@ -161,12 +161,13 @@ All migrations are up to date.
 Once configured, Models automatically connect to the database:
 
 ```soli
-class User extends Model { }
+class User extends Model
+end
 
-// These all use the configured database
-let users = User.all();
-let user = User.create({ "name": "Alice" });
-let found = User.find(user["id"]);
+# These all use the configured database
+let users = User.all()
+let user = User.create({ "name": "Alice" })
+let found = User.find(user["id"])
 ```
 
 ## Raw Queries

@@ -610,9 +610,9 @@ Performs an HTTP GET request.
 **Example:**
 ```soli
 let response = http_get("https://api.example.com/data")
-if response["status"] == 200 {
+if response["status"] == 200
     println(response["body"])
-}
+end
 ```
 
 ### http_post(url, body, options?)
@@ -694,9 +694,9 @@ Checks if response status is 200.
 
 **Example:**
 ```soli
-if http_ok(response) {
+if http_ok(response)
     println("Success!")
-}
+end
 ```
 
 #### http_success(response)
@@ -763,9 +763,9 @@ Register a GET route handler.
 
 **Example:**
 ```soli
-fn health(req) {
-    return {"status": 200, "body": "OK"};
-}
+fn health(req)
+    return {"status": 200, "body": "OK"}
+end
 
 http_server_get("/health", "health");
 http_server_get("/users/:id", "get_user");
@@ -777,10 +777,10 @@ Register a POST route handler.
 
 **Example:**
 ```soli
-fn create_user(req) {
-    let name = req["json"]["name"];
-    return {"status": 201, "body": "Created: " + name};
-}
+fn create_user(req)
+    let name = req["json"]["name"]
+    return {"status": 201, "body": "Created: " + name}
+end
 
 http_server_post("/users", "create_user");
 ```
@@ -822,15 +822,14 @@ http_server_listen(3000);
 
 **Handler Function Signature:**
 ```soli
-fn my_handler(req) -> Any {
-    let id = req["params"]["id"];           // Path parameters
-    let name = req["query"]["name"];         // Query string
-    let data = req["json"]["field"];         // JSON body
-    let token = req["headers"]["Authorization"];  // Headers
+fn my_handler(req)    let id = req["params"]["id"]           // Path parameters
+    let name = req["query"]["name"]         // Query string
+    let data = req["json"]["field"]         // JSON body
+    let token = req["headers"]["Authorization"]  // Headers
     
-    return {"status": 200, "body": "Hello"};
+    return {"status": 200, "body": "Hello"}
     // Or use helpers: render_json(), render_text(), redirect()
-}
+end
 ```
 
 ---
@@ -973,9 +972,9 @@ Verifies a password against an Argon2 hash.
 
 **Example:**
 ```soli
-if Crypto.argon2_verify(user_input, stored_hash) {
+if Crypto.argon2_verify(user_input, stored_hash)
     println("Password correct!")
-}
+end
 ```
 
 #### password_hash(password)
@@ -1080,11 +1079,11 @@ Verifies and decodes a JWT token.
 **Example:**
 ```soli
 let result = jwt_verify(token, "my-secret-key")
-if has_key(result, "error") {
+if has_key(result, "error")
     println("Invalid token: " + result["message"])
-} else {
+else
     println("User: " + result["sub"])
-}
+end
 ```
 
 ### jwt_decode(token)
@@ -1306,10 +1305,10 @@ Makes a SOAP request by performing an HTTP POST with the SOAP envelope.
 let envelope = SOAP.wrap("<GetWeather><City>London</City></GetWeather>")
 let result = await(SOAP.call("https://weather.example.com/service", "GetWeather", envelope))
 
-if result["status"] == 200 {
+if result["status"] == 200
     let temp = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]["Temperature"]
     println("Temperature: " + temp)
-}
+end
 ```
 
 ### SOAP.wrap(body)
@@ -1375,16 +1374,16 @@ let result = await(SOAP.call(
 ))
 
 // Handle the response
-if result["status"] == 200 {
+if result["status"] == 200
     let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
     let temp = response["Temperature"]
     let condition = response["Condition"]
     
     println("Temperature: " + temp)
     println("Condition: " + condition)
-} else {
+else
     println("Error: " + result["body"])
-}
+end
 ```
 
 ---
@@ -1441,9 +1440,9 @@ Checks if an environment variable exists.
 
 **Example:**
 ```soli
-if hasenv("DATABASE_URL") {
+if hasenv("DATABASE_URL")
     let url = getenv("DATABASE_URL")
-}
+end
 ```
 
 ### dotenv(path?)
@@ -1906,14 +1905,14 @@ let result = validate({
     "email": "alice@example.com"
 }, schema)
 
-if result["valid"] {
+if result["valid"]
     println("Data is valid!")
     println(result["data"])
-} else {
-    for error in result["errors"] {
+else
+    for error in result["errors"]
         println(error["field"] + ": " + error["message"])
-    }
-}
+    end
+end
 ```
 
 ---
@@ -2017,9 +2016,9 @@ Defines a test case.
 
 **Example:**
 ```soli
-test("addition works correctly", fn() {
+test("addition works correctly", fn()
     assert_eq(1 + 1, 2)
-})
+end)
 ```
 
 #### describe(description, callback)
@@ -2032,15 +2031,15 @@ Groups related tests.
 
 **Example:**
 ```soli
-describe("Calculator", fn() {
-    test("adds numbers", fn() {
+describe("Calculator", fn()
+    test("adds numbers", fn()
         assert_eq(add(1, 2), 3)
-    })
+    end)
 
-    test("subtracts numbers", fn() {
+    test("subtracts numbers", fn()
         assert_eq(subtract(5, 3), 2)
-    })
-})
+    end)
+end)
 ```
 
 #### context(description, callback)
@@ -2343,32 +2342,32 @@ Load translations from external JSON files at application startup. This is typic
 **Helper Functions:**
 
 ```soli
-let i18n_translations = {};
+let i18n_translations = {}
 
-fn flatten_dict(dict, prefix) -> Hash {
-    let result = {};
-    for (pair in entries(dict)) {
-        let key = pair[0];
-        let value = pair[1];
-        let full_key = prefix + "." + key;
-        if (type(value) == "Hash") {
-            let nested = flatten_dict(value, full_key);
-            for (np in entries(nested)) {
-                result[np[0]] = np[1];
-            }
-        } else {
-            result[full_key] = value;
-        }
-    }
-    return result;
-}
+fn flatten_dict(dict, prefix) -> Hash
+    let result = {}
+    for (pair in entries(dict))
+        let key = pair[0]
+        let value = pair[1]
+        let full_key = prefix + "." + key
+        if (type(value) == "Hash")
+            let nested = flatten_dict(value, full_key)
+            for (np in entries(nested))
+                result[np[0]] = np[1]
+            end
+        else
+            result[full_key] = value
+        end
+    end
+    return result
+end
 
-fn i18n_load_translations(locale, dict) {
-    let flat = flatten_dict(dict, locale);
-    for (pair in entries(flat)) {
-        i18n_translations[pair[0]] = pair[1];
-    }
-}
+fn i18n_load_translations(locale, dict)
+    let flat = flatten_dict(dict, locale)
+    for (pair in entries(flat))
+        i18n_translations[pair[0]] = pair[1]
+    end
+end
 ```
 
 **Loading in app.sl:**
@@ -2394,15 +2393,15 @@ http_server_listen(3000);
 **Using in Controllers:**
 
 ```soli
-fn home_index(req) {
-    let welcome = I18n.translate("app.welcome", null, i18n_translations);
-    let home_link = I18n.translate("nav.home", null, i18n_translations);
+fn home_index(req)
+    let welcome = I18n.translate("app.welcome", null, i18n_translations)
+    let home_link = I18n.translate("nav.home", null, i18n_translations)
     
     return render("home/index", {
         "welcome": welcome,
         "nav_home": home_link
-    });
-}
+    })
+end
 ```
 
 ### I18n.format_number(number, locale?)
@@ -2468,12 +2467,12 @@ Exits a loop early.
 
 **Example:**
 ```soli
-for i in range(0, 10) {
-    if i == 5 {
+for i in range(0, 10)
+    if i == 5
         break
-    }
+    end
     println(i)
-}
+end
 ```
 
 ### await
@@ -2515,9 +2514,9 @@ Retrieves a value from the cache.
 **Example:**
 ```soli
 let user = cache_get("user:123")
-if user != null {
+if user != null
     println("Cached user: " + user["name"])
-}
+end
 ```
 
 ### cache_delete(key)
@@ -2625,9 +2624,9 @@ Checks if a request is allowed under the rate limit.
 **Example:**
 ```soli
 let limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
-if !limiter.allowed() {
+if !limiter.allowed()
     return { "status": 429, "body": "Too Many Requests" }
-}
+end
 ```
 
 **limiter.throttle()**
@@ -2863,9 +2862,9 @@ Parses multipart/form-data from a request.
 **Example:**
 ```soli
 let files = parse_multipart(req)
-for file in files {
+for file in files
     println("Uploaded: " + file["filename"] + " (" + str(file["size"]) + " bytes)")
-}
+end
 ```
 
 ### upload_to_solidb(req, collection, field_name, solidb_addr)
@@ -2887,10 +2886,10 @@ Uploads a file from multipart form data to SolidB blob storage.
 **Example:**
 ```soli
 let result = upload_to_solidb(req, "uploads", "avatar", "localhost:5678")
-if has_key(result, "blob_id") {
+if has_key(result, "blob_id")
     println("Uploaded: " + result["filename"])
     println("Blob ID: " + result["blob_id"])
-}
+end
 ```
 
 ### upload_all_to_solidb(req, collection, solidb_addr)
@@ -3012,9 +3011,9 @@ let result = SOAP.call(
   {"Content-Type": "text/xml; charset=utf-8"}
 )
 
-if result["status"] == 200 {
+if result["status"] == 200
     println("Response: " + result["body"])
-}
+end
 ```
 
 #### SOAP.wrap(body, namespace?)
@@ -3190,9 +3189,9 @@ print(files.stdout)
 
 // Access exit code
 let status = `grep pattern file`
-if status.exit_code != 0 {
+if status.exit_code != 0
     println("Pattern not found")
-}
+end
 ```
 
 The command substitution uses `System.run()` internally, so it returns a Future that auto-resolves when accessed.

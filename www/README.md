@@ -305,11 +305,11 @@ No restart needed!
 1. Create `app/controllers/name_controller.sl`:
 
 ```soli
-fn index(req: Any) -> Any {
+fn index(req: Any) {
     return {"status": 200, "body": "Hello!"};
 }
 
-fn show(req: Any) -> Any {
+fn show(req: Any) {
     let id = req["params"]["id"];
     return {"status": 200, "body": "User " + id};
 }

@@ -158,6 +158,8 @@ impl<'a> Scanner<'a> {
             '&' => {
                 if self.match_char('&') {
                     Ok(self.make_token(TokenKind::And))
+                } else if self.match_char('.') {
+                    Ok(self.make_token(TokenKind::SafeNavigation))
                 } else {
                     Err(LexerError::unexpected_char(c, self.current_span()))
                 }

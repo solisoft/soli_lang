@@ -1,7 +1,7 @@
 //! Function call evaluation.
 
 use crate::ast::expr::Argument;
-use crate::ast::Expr;
+use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::is_server_listen_marker;
 use crate::interpreter::environment::Environment;
@@ -22,6 +22,11 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         let callee_val = self.evaluate(callee)?;
+
+        // Safe navigation: if &.method() and object was null, propagate null
+        if matches!(callee.kind, ExprKind::SafeMember { .. }) && matches!(callee_val, Value::Null) {
+            return Ok(Value::Null);
+        }
 
         let mut arg_values = Vec::new();
         let mut named_args = HashMap::new();

@@ -38,9 +38,9 @@ print("Hello, World!");
 
 ```soli
 // A simple program that calculates and displays results
-fn calculate_area(radius: Float) -> Float {
+fn calculate_area(radius: Float) -> Float
     3.14159 * radius * radius
-}
+end
 
 let radius = 5.0;
 let area = calculate_area(radius);
@@ -171,18 +171,18 @@ Variables in Soli are block-scoped:
 ```soli
 let x = 1;
 
-if (true) {
+if true
     let y = 2;      // y is only visible in this block
     let x = 3;      // This shadows the outer x
     print(x);       // Output: 3 (inner x)
-}
+end
 
 print(x);           // Output: 1 (outer x)
 
 // Loop scope
-for (i in range(0, 3)) {
+for i in range(0, 3)
     print(i);       // i is visible only within the loop
-}
+end
 // print(i);         // Error: i is not defined
 ```
 
@@ -193,19 +193,19 @@ Variable shadowing allows inner blocks to redefine outer variables:
 ```soli
 let message = "outer";
 
-if (true) {
+if true
     let message = "inner";
     print(message);  // "inner"
-}
+end
 
 print(message);      // "outer"
 
 // Common use case: transforming data
 let data = get_data();
-if (data != null) {
+if data != null
     let data = process(data);  // Transform while keeping same name
     print(data);
-}
+end
 ```
 
 ---
@@ -269,27 +269,27 @@ let has_license = true;
 let is_weekend = false;
 
 // AND - both conditions must be true
-if (age >= 18 && has_license) {
+if age >= 18 && has_license
     print("Can drive");
-}
+end
 
 // OR - at least one condition must be true
-if (is_weekend || is_holiday) {
+if is_weekend || is_holiday
     print("Day off!");
-}
+end
 
 // NOT - negates the condition
-if (!is_raining) {
+if !is_raining
     print("No umbrella needed");
-}
+end
 
 // Chained conditions
 let score = 85;
-if (score >= 90 && attendance >= 80) {
+if score >= 90 && attendance >= 80
     print("Grade: A");
-} elsif (score >= 80 || extra_credit > 10) {
+elsif score >= 80 || extra_credit > 10
     print("Grade: B");
-}
+end
 ```
 
 ### String Operations
@@ -359,9 +359,9 @@ let user = {"name": "Alice", "email": null};
 
 // Traditional null check
 let email = user["email"];
-if (email == null) {
+if email == null
     email = "unknown";
-}
+end
 
 // Null coalescing operator
 let display_email = user["email"] ?? "unknown";
@@ -369,6 +369,15 @@ let display_email = user["email"] ?? "unknown";
 // Chaining with null values
 let city = user["address"]["city"] ?? "Unknown City";
 // If any key in the chain is null/missing, returns "Unknown City"
+
+// Safe navigation operator (&.)
+// Access properties or call methods on values that might be null
+let user = get_user()  // might return null
+
+let name = user&.name              // null if user is null, otherwise user.name
+let city = user&.address&.city     // chain for nested access
+let greeting = user&.greet()       // null if user is null, otherwise calls greet()
+let display = user&.name ?? "Anon" // combine with ?? for defaults
 ```
 
 ---
@@ -381,32 +390,32 @@ let city = user["address"]["city"] ?? "Unknown City";
 let age = 18;
 
 // Simple if
-if (age >= 18) {
+if age >= 18
     print("Adult");
-}
+end
 
 // If-else
 let score = 75;
-if (score >= 60) {
+if score >= 60
     print("Pass");
-} else {
+else
     print("Fail");
-}
+end
 
 // Else-if chain
 let grade = 85;
 let letter;
-if (grade >= 90) {
+if grade >= 90
     letter = "A";
-} elsif (grade >= 80) {
+elsif grade >= 80
     letter = "B";
-} elsif (grade >= 70) {
+elsif grade >= 70
     letter = "C";
-} elsif (grade >= 60) {
+elsif grade >= 60
     letter = "D";
-} else {
+else
     letter = "F";
-}
+end
 print(letter);  // "B"
 
 // Nested conditions
@@ -414,15 +423,15 @@ let is_weekend = true;
 let is_holiday = false;
 let has_plans = true;
 
-if (is_weekend) {
-    if (is_holiday) {
+if is_weekend
+    if is_holiday
         print("Holiday vacation!");
-    } elsif (has_plans) {
+    elsif has_plans
         print("Busy with plans");
-    } else {
+    else
         print("Relaxing at home");
-    }
-}
+    end
+end
 ```
 
 ### While Loops
@@ -430,10 +439,10 @@ if (is_weekend) {
 ```soli
 // Basic while loop
 let i = 0;
-while (i < 5) {
+while i < 5
     print("Count: " + str(i));
     i = i + 1;
-}
+end
 // Output:
 // Count: 0
 // Count: 1
@@ -445,21 +454,21 @@ while (i < 5) {
 let data = [1, 2, 3, 4, 5];
 let sum = 0;
 let idx = 0;
-while (idx < len(data) && data[idx] < 4) {
+while idx < len(data) && data[idx] < 4
     sum = sum + data[idx];
     idx = idx + 1;
-}
+end
 print("Sum: " + str(sum));  // 6 (1+2+3)
 
 // Do-while equivalent (using break)
 let count = 0;
-loop {
+loop
     count = count + 1;
     print("Iteration: " + str(count));
-    if (count >= 3) {
+    if count >= 3
         break;
-    }
-}
+    end
+end
 ```
 
 ### For Loops
@@ -467,56 +476,56 @@ loop {
 ```soli
 // Iterate over array
 let fruits = ["apple", "banana", "cherry"];
-for (fruit in fruits) {
+for fruit in fruits
     print(fruit);
-}
+end
 // Output: apple, banana, cherry
 
 // Iterate with index
-for (i, fruit in fruits) {
+for i, fruit in fruits
     print(str(i) + ": " + fruit);
-}
+end
 // Output:
 // 0: apple
 // 1: banana
 // 2: cherry
 
 // Iterate with range
-for (i in range(0, 5)) {
+for i in range(0, 5)
     print(i);  // 0, 1, 2, 3, 4
-}
+end
 
 // Range with step
-for (i in range(0, 10, 2)) {
+for i in range(0, 10, 2)
     print(i);  // 0, 2, 4, 6, 8
-}
+end
 
 // Nested loops
-for (i in range(1, 4)) {
-    for (j in range(1, 4)) {
+for i in range(1, 4)
+    for j in range(1, 4)
         print(str(i) + " x " + str(j) + " = " + str(i * j));
-    }
-}
+    end
+end
 // Output: Multiplication table 1x1 through 3x3
 
 // Iterate backwards
 let arr = [1, 2, 3, 4, 5];
-for (i in range(len(arr) - 1, -1, -1)) {
+for i in range(len(arr) - 1, -1, -1)
     print(arr[i]);  // 5, 4, 3, 2, 1
-}
+end
 
 // Break and continue
 let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 let sum = 0;
-for (n in numbers) {
-    if (n % 2 == 0) {
+for n in numbers
+    if n % 2 == 0
         continue;  // Skip even numbers
-    }
-    if (n > 7) {
+    end
+    if n > 7
         break;  // Stop at first number > 7
-    }
+    end
     sum = sum + n;
-}
+end
 print("Sum of odd numbers < 7: " + str(sum));  // 1+3+5 = 9
 ```
 
@@ -593,28 +602,28 @@ Soli follows common truthiness rules:
 let falsy_values = [false, null, 0, 0.0, "", []];
 
 // Truthy values (everything else)
-if ("hello") {
+if "hello"
     print("Non-empty string is truthy");
-}
+end
 
-if ([1, 2, 3]) {
+if [1, 2, 3]
     print("Non-empty array is truthy");
-}
+end
 
-if (42) {
+if 42
     print("Non-zero number is truthy");
-}
+end
 
 // Practical examples
 let config = get_config();
-if (config) {
+if config
     print("Config loaded: " + str(config));
-}
+end
 
 let items = get_items() ?? [];
-if (len(items) > 0) {
+if len(items) > 0
     print("Found " + str(len(items)) + " items");
-}
+end
 ```
 
 ---
@@ -625,112 +634,112 @@ if (len(items) > 0) {
 
 ```soli
 // No parameters — parentheses are optional
-fn say_hello {
+fn say_hello
     print("Hello!");
-}
+end
 
 // Equivalent with explicit empty parentheses
-fn say_hello() {
+fn say_hello()
     print("Hello!");
-}
+end
 
 // With parameters
-fn greet(name: String) {
+fn greet(name: String)
     print("Hello, " + name + "!");
-}
+end
 
 // With return value
-fn add(a: Int, b: Int) -> Int {
+fn add(a: Int, b: Int) -> Int
     a + b
-}
+end
 
 // Void function (explicit)
-fn log_message(msg: String) {
+fn log_message(msg: String)
     print("[LOG] " + msg);
-}
+end
 
 // With type annotations on return
-fn multiply(a: Float, b: Float) -> Float {
+fn multiply(a: Float, b: Float) -> Float
     a * b
-}
+end
 ```
 
 ### Function Examples
 
 ```soli
 // Calculate factorial
-fn factorial(n: Int) -> Int {
-    if (n <= 1) {
+fn factorial(n: Int) -> Int
+    if n <= 1
         return 1;
-    }
+    end
     n * factorial(n - 1)
-}
+end
 
 print(factorial(5));  // 120
 
 // Calculate Fibonacci
-fn fibonacci(n: Int) -> Int {
-    if (n <= 1) {
+fn fibonacci(n: Int) -> Int
+    if n <= 1
         return n;
-    }
+    end
     fibonacci(n - 1) + fibonacci(n - 2)
-}
+end
 
 print(fibonacci(10));  // 55
 
 // Check if a number is prime
-fn is_prime(n: Int) -> Bool {
-    if (n < 2) {
+fn is_prime(n: Int) -> Bool
+    if n < 2
         return false;
-    }
-    if (n == 2) {
+    end
+    if n == 2
         return true;
-    }
-    if (n % 2 == 0) {
+    end
+    if n % 2 == 0
         return false;
-    }
+    end
     let i = 3;
-    while (i * i <= n) {
-        if (n % i == 0) {
+    while i * i <= n
+        if n % i == 0
             return false;
-        }
+        end
         i = i + 2;
-    }
+    end
     true
-}
+end
 
 // Find maximum in array
-fn find_max(arr: Int[]) -> Int {
-    if (len(arr) == 0) {
+fn find_max(arr: Int[]) -> Int
+    if len(arr) == 0
         return 0;  // or panic for empty array
-    }
+    end
     let max = arr[0];
-    for (i in range(1, len(arr))) {
-        if (arr[i] > max) {
+    for i in range(1, len(arr))
+        if arr[i] > max
             max = arr[i];
-        }
-    }
+        end
+    end
     max
-}
+end
 ```
 
 ### Early Returns
 
 ```soli
-fn process_user(user: Hash) -> Hash {
+fn process_user(user: Hash) -> Hash
     // Validate required fields
-    if (!has_key(user, "name")) {
+    if !has_key(user, "name")
         return {"error": "Name is required"};
-    }
-    if (!has_key(user, "email")) {
+    end
+    if !has_key(user, "email")
         return {"error": "Email is required"};
-    }
+    end
 
     // Validate email format
     let email = user["email"];
-    if (!email.contains("@")) {
+    if !email.contains("@")
         return {"error": "Invalid email format"};
-    }
+    end
 
     // Process user data
     let processed = user;
@@ -738,7 +747,7 @@ fn process_user(user: Hash) -> Hash {
     processed["created_at"] = DateTime.utc().to_iso();
 
     processed
-}
+end
 ```
 
 ### Higher-Order Functions
@@ -747,40 +756,40 @@ Functions can accept other functions as parameters and return functions:
 
 ```soli
 // Function as parameter
-fn apply(x: Int, f: (Int) -> Int) -> Int {
+fn apply(x: Int, f: (Int) -> Int) -> Int
     f(x)
-}
+end
 
-fn double(x: Int) -> Int {
+fn double(x: Int) -> Int
     x * 2
-}
+end
 
-fn square(x: Int) -> Int {
+fn square(x: Int) -> Int
     x * x
-}
+end
 
 let result = apply(5, double);   // 10
 let squared = apply(5, square);  // 25
 
 // Passing anonymous functions
-fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[] {
+fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
     let result = [];
-    for (item in arr) {
+    for item in arr
         push(result, transformer(item));
-    }
+    end
     result
-}
+end
 
 let numbers = [1, 2, 3, 4, 5];
 let doubled = transform_array(numbers, fn(x) x * 2);  // [2, 4, 6, 8, 10]
 
 // Function that returns a function
-fn multiplier(factor: Int) -> (Int) -> Int {
-    fn closure(x: Int) -> Int {
+fn multiplier(factor: Int) -> (Int) -> Int
+    fn closure(x: Int) -> Int
         x * factor
-    }
+    end
     closure
-}
+end
 
 let times_two = multiplier(2);
 print(times_two(5));   // 10
@@ -794,14 +803,14 @@ print(times_three(5));  // 15
 
 ```soli
 // Counter using closure
-fn make_counter() -> () -> Int {
+fn make_counter() -> () -> Int
     let count = 0;
-    fn counter() -> Int {
+    fn counter() -> Int
         count = count + 1;
         count
-    }
+    end
     counter
-}
+end
 
 let counter1 = make_counter();
 let counter2 = make_counter();
@@ -814,12 +823,12 @@ print(counter2());  // 1
 print(counter2());  // 2
 
 // Closure capturing variables
-fn make_greeter(greeting: String) -> (String) -> String {
-    fn greet(name: String) -> String {
+fn make_greeter(greeting: String) -> (String) -> String
+    fn greet(name: String) -> String
         greeting + ", " + name + "!"
-    }
+    end
     greet
-}
+end
 
 let say_hello = make_greeter("Hello");
 let say_hola = make_greeter("Hola");
@@ -831,22 +840,22 @@ print(say_hola("Bob"));     // "Hola, Bob!"
 ### Default Parameters
 
 ```soli
-fn greet(name: String, greeting: String = "Hello") -> String {
+fn greet(name: String, greeting: String = "Hello") -> String
     greeting + ", " + name + "!"
-}
+end
 
 print(greet("Alice"));              // "Hello, Alice!"
 print(greet("Bob", "Hi"));          // "Hi, Bob!"
 print(greet("Charlie", "Welcome")); // "Welcome, Charlie!"
 
 // Optional parameters
-fn create_user(name: String, email: String = null, role: String = "user") -> Hash {
+fn create_user(name: String, email: String = null, role: String = "user") -> Hash
     let user = {"name": name, "role": role};
-    if (email != null) {
+    if email != null
         user["email"] = email;
-    }
+    end
     user
-}
+end
 
 let user1 = create_user("Alice");
 let user2 = create_user("Bob", "bob@example.com");
@@ -858,9 +867,9 @@ let user3 = create_user("Charlie", "charlie@example.com", "admin");
 You can call functions using named parameters with the colon syntax:
 
 ```soli
-fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Void {
+fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Void
     print("Connecting to \(host):\(port) with debug=\(debug)");
-}
+end
 
 configure();                              // Using all defaults
 configure(host: "example.com");           // Only specify host
@@ -904,7 +913,7 @@ fn http_request(
     headers: Hash = {},
     body: Any = null,
     timeout: Int = 30
-) -> Any { ... }
+) { ... }
 
 // Clear and readable - specify only what changes
 http_request(
@@ -917,13 +926,13 @@ http_request(
 ### Variadic Functions
 
 ```soli
-fn sum(numbers: Int[]) -> Int {
+fn sum(numbers: Int[]) -> Int
     let total = 0;
-    for (n in numbers) {
+    for n in numbers
         total = total + n;
-    }
+    end
     total
-}
+end
 
 print(sum([1, 2, 3, 4, 5]));  // 15
 
@@ -933,23 +942,23 @@ print(sum(nums));             // 6
 print(sum([...nums, 4, 5]));  // 15
 
 // Variadic-like with array
-fn format_list(items: String[], separator: String = ", ", final_separator: String = "and") -> String {
+fn format_list(items: String[], separator: String = ", ", final_separator: String = "and") -> String
     let len = len(items);
-    if (len == 0) {
+    if len == 0
         return "";
-    }
-    if (len == 1) {
+    end
+    if len == 1
         return items[0];
-    }
-    if (len == 2) {
+    end
+    if len == 2
         return items[0] + " " + final_separator + " " + items[1];
-    }
+    end
     let result = "";
-    for (i in range(0, len - 1)) {
+    for i in range(0, len - 1)
         result = result + items[i] + separator;
-    }
+    end
     result + final_separator + " " + items[len - 1]
-}
+end
 
 print(format_list(["apple", "banana", "cherry"]));  // "apple, banana and cherry"
 print(format_list(["one", "two"]));                 // "one and two"
@@ -979,9 +988,9 @@ let step_arr = range(0, 10, 2);  // [0, 2, 4, 6, 8]
 
 // Initialize with default value
 let zeros = [];
-for (_ in range(0, 5)) {
+for _ in range(0, 5)
     push(zeros, 0);
-}  // [0, 0, 0, 0, 0]
+end  // [0, 0, 0, 0, 0]
 ```
 
 #### Array Access and Modification
@@ -1051,21 +1060,21 @@ let all_positive = numbers.every(fn(x) x > 0);  // true
 let has_large = numbers.some(fn(x) x > 8);  // true
 
 // chunk - split into chunks
-fn chunk(arr: Array, size: Int) -> Array[] {
+fn chunk(arr: Array, size: Int) -> Array[]
     let result = [];
     let current = [];
-    for (item in arr) {
+    for item in arr
         push(current, item);
-        if (len(current) >= size) {
+        if len(current) >= size
             push(result, current);
             current = [];
-        }
-    }
-    if (len(current) > 0) {
+        end
+    end
+    if len(current) > 0
         push(result, current);
-    }
+    end
     result
-}
+end
 
 print(chunk(numbers, 3));  // [[1,2,3], [4,5,6], [7,8,9], [10]]
 
@@ -1104,19 +1113,19 @@ let first = shift(arr);
 print(first);  // 0
 
 // Insert at index
-fn insert(arr: Array, index: Int, value: Any) -> Array {
+fn insert(arr: Array, index: Int, value: Any) -> Array
     let result = [];
-    for (i in range(0, len(arr))) {
-        if (i == index) {
+    for i in range(0, len(arr))
+        if i == index
             push(result, value);
-        }
+        end
         push(result, arr[i]);
-    }
-    if (index >= len(arr)) {
+    end
+    if index >= len(arr)
         push(result, value);
-    }
+    end
     result
-}
+end
 
 // Reverse
 let reversed = reverse(arr);
@@ -1306,22 +1315,22 @@ print(person);  // {}
 let prices = {"apple": 1.50, "banana": 0.75, "orange": 2.00, "grape": 3.00};
 
 // Iterate entries
-for (pair in entries(prices)) {
+for pair in entries(prices)
     let item = pair[0];
     let price = pair[1];
     print(item + " costs $" + str(price));
-}
+end
 
 // Iterate keys
-for (item in keys(prices)) {
+for item in keys(prices)
     print(item + ": " + str(prices[item]));
-}
+end
 
 // Iterate values and calculate total
 let total = 0;
-for (price in values(prices)) {
+for price in values(prices)
     total = total + price;
-}
+end
 print("Total: $" + str(total));  // Total: $7.25
 
 // Filter and transform
@@ -1335,58 +1344,20 @@ print(expensive);  // {apple: 1.65, orange: 2.2, grape: 3.3}
 ### Common Collection Patterns
 
 ```soli
-// Grouping
-fn group_by(arr: Array[], key_fn: (Any) -> Any) -> Hash {
-    let result = {};
-    for (item in arr) {
-        let key = key_fn(item);
-        if (!has_key(result, key)) {
-            result[key] = [];
-        }
-        push(result[key], item);
-    }
-    result
-}
-
-let users = [
-    {"name": "Alice", "role": "admin"},
-    {"name": "Bob", "role": "user"},
-    {"name": "Charlie", "role": "admin"},
-    {"name": "Diana", "role": "user"}
-];
-
-let by_role = group_by(users, fn(u) u["role"]);
-print(by_role);  // {admin: [{name: Alice...}, {name: Charlie...}], user: [...]}
-
-// Flattening
-fn flatten(arr: Array[]) -> Array {
+// Slicing
+fn slice(arr: Array, start: Int, end: Int) -> Array
     let result = [];
-    for (item in arr) {
-        if (type(item) == "Array") {
-            let flat = flatten(item);
-            for (f in flat) {
-                push(result, f);
-            }
-        } else {
-            push(result, item);
-        }
-    }
+    let actual_end = end;
+    if end > len(arr)
+        actual_end = len(arr);
+    end
+    for i in range(start, actual_end)
+        push(result, arr[i]);
+    end
     result
-}
+end
 
-print(flatten([1, [2, 3], [4, [5, 6]], 7]));  // [1, 2, 3, 4, 5, 6, 7]
-
-// Zipping two arrays
-fn zip(arr1: Array, arr2: Array) -> Array[] {
-    let result = [];
-    let len = min(len(arr1), len(arr2));
-    for (i in range(0, len)) {
-        push(result, [arr1[i], arr2[i]]);
-    }
-    result
-}
-
-print(zip(["a", "b", "c"], [1, 2, 3]));  // [[a, 1], [b, 2], [c, 3]]
+print(slice(fruits, 1, 3));  // ["banana", "cherry"]
 ```
 
 ---
@@ -1396,36 +1367,36 @@ print(zip(["a", "b", "c"], [1, 2, 3]));  // [[a, 1], [b, 2], [c, 3]]
 ### Basic Class Definition
 
 ```soli
-class Person {
+class Person
     // Instance fields
     name: String;
     age: Int;
     email: String;
 
     // Constructor
-    new(name: String, age: Int, email: String = null) {
+    new(name: String, age: Int, email: String = null)
         this.name = name;
         this.age = age;
         this.email = email ?? "";
-    }
+    end
 
     // Instance methods
-    fn greet() -> String {
+    fn greet() -> String
         "Hello, I'm " + this.name
-    }
+    end
 
-    fn introduce() -> String {
+    fn introduce() -> String
         let intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old";
-        if (this.email != "") {
+        if this.email != ""
             intro = intro + ". You can reach me at " + this.email;
-        }
+        end
         intro
-    }
+    end
 
-    fn have_birthday() {
+    fn have_birthday()
         this.age = this.age + 1;
-    }
-}
+    end
+end
 
 // Creating instances
 let alice = new Person("Alice", 30);
@@ -1442,35 +1413,35 @@ print(alice.age);          // 31
 ### Constructors and Factory Methods
 
 ```soli
-class Rectangle {
+class Rectangle
     width: Float;
     height: Float;
 
-    new(width: Float, height: Float) {
+    new(width: Float, height: Float)
         this.width = width;
         this.height = height;
-    }
+    end
 
-    fn area() -> Float {
+    fn area() -> Float
         this.width * this.height
-    }
+    end
 
-    fn perimeter() -> Float {
+    fn perimeter() -> Float
         2 * (this.width + this.height)
-    }
+    end
 
     // Static factory method
-    static fn square(side: Float) -> Rectangle {
+    static fn square(side: Float) -> Rectangle
         new Rectangle(side, side)
-    }
+    end
 
     // Another factory method
-    static fn from_area(area: Float, aspect_ratio: Float = 1.0) -> Rectangle {
+    static fn from_area(area: Float, aspect_ratio: Float = 1.0) -> Rectangle
         let width = sqrt(area / aspect_ratio);
         let height = width * aspect_ratio;
         new Rectangle(width, height)
-    }
-}
+    end
+end
 
 let rect = new Rectangle(10.0, 5.0);
 print(rect.area());  // 50.0
@@ -1487,59 +1458,59 @@ print(from_area.height);  // ~6.928
 
 ```soli
 // Base class
-class Animal {
+class Animal
     name: String;
     age: Int;
 
-    new(name: String, age: Int) {
+    new(name: String, age: Int)
         this.name = name;
         this.age = age;
-    }
+    end
 
-    fn speak() -> String {
+    fn speak() -> String
         this.name + " makes a sound"
-    }
+    end
 
-    fn get_info() -> String {
+    fn get_info() -> String
         this.name + " is " + str(this.age) + " years old"
-    }
-}
+    end
+end
 
 // Subclass
-class Dog extends Animal {
+class Dog extends Animal
     breed: String;
 
-    new(name: String, age: Int, breed: String) {
+    new(name: String, age: Int, breed: String)
         // Call parent constructor
         super(name, age);
         this.breed = breed;
-    }
+    end
 
     // Override method
-    fn speak() -> String {
+    fn speak() -> String
         this.name + " barks!"
-    }
+    end
 
     // Subclass-specific method
-    fn fetch() -> String {
+    fn fetch() -> String
         this.name + " fetches the ball!"
-    }
-}
+    end
+end
 
 // Another subclass
-class Cat extends Animal {
-    new(name: String, age: Int) {
+class Cat extends Animal
+    new(name: String, age: Int)
         super(name, age);
-    }
+    end
 
-    fn speak() -> String {
+    fn speak() -> String
         this.name + " meows!"
-    }
+    end
 
-    fn purr() -> String {
+    fn purr() -> String
         this.name + " purrs contentedly"
-    }
-}
+    end
+end
 
 // Using inheritance
 let dog = new Dog("Buddy", 3, "Golden Retriever");
@@ -1559,82 +1530,82 @@ let animals = [
     new Dog("Spot", 1, "Beagle")
 ];
 
-for (animal in animals) {
+for animal in animals
     print(animal.speak());  // Each calls the appropriate speak() method
-}
+end
 ```
 
 ### Interfaces
 
 ```soli
 // Define an interface
-interface Drawable {
+interface Drawable
     fn draw() -> String;
     fn get_color() -> String;
-}
+end
 
 // Another interface
-interface Resizable {
+interface Resizable
     fn resize(width: Float, height: Float);
     fn get_dimensions() -> {width: Float, height: Float};
-}
+end
 
 // Class implementing multiple interfaces
-class Circle implements Drawable, Resizable {
+class Circle implements Drawable, Resizable
     radius: Float;
     color: String;
 
-    new(radius: Float, color: String) {
+    new(radius: Float, color: String)
         this.radius = radius;
         this.color = color;
-    }
+    end
 
-    fn draw() -> String {
+    fn draw() -> String
         "Circle with radius " + str(this.radius) + " and color " + this.color
-    }
+    end
 
-    fn get_color() -> String {
+    fn get_color() -> String
         this.color
-    }
+    end
 
-    fn resize(width: Float, height: Float) {
+    fn resize(width: Float, height: Float)
         // For a circle, we use the average or just one dimension
         this.radius = width / 2;
-    }
+    end
 
-    fn get_dimensions() -> {width: Float, height: Float} {
+    fn get_dimensions() -> {width: Float, height: Float}
         {"width": this.radius * 2, "height": this.radius * 2}
-    }
-}
+    end
+end
 
-class Rectangle implements Drawable, Resizable {
+class Rectangle implements Drawable, Resizable
     width: Float;
     height: Float;
     color: String;
 
-    new(width: Float, height: Float, color: String) {
+    new(width: Float, height: Float, color: String)
         this.width = width;
         this.height = height;
         this.color = color;
-    }
+    end
 
-    fn draw() -> String {
+    fn draw() -> String
         "Rectangle " + str(this.width) + "x" + str(this.height) + " in " + this.color
-    }
+    end
 
-    fn get_color() -> String {
+    fn get_color() -> String
         this.color
-    }
+    end
 
-    fn resize(width: Float, height: Float) {
+    fn resize(width: Float, height: Float)
         this.width = width;
         this.height = height;
-    }
+    end
 
-    fn get_dimensions() -> {width: Float, height: Float} {
+    fn get_dimensions() -> {width: Float, height: Float}
         {"width": this.width, "height": this.height}
-    }
-}
+    end
+end
 
 // Using interfaces
 let shapes: Drawable[] = [
@@ -1642,73 +1613,73 @@ let shapes: Drawable[] = [
     new Rectangle(10.0, 6.0, "blue")
 ];
 
-for (shape in shapes) {
+for shape in shapes
     print(shape.draw());  // Polymorphic call
-}
+end
 ```
 
 ### Visibility Modifiers
 
 ```soli
-class BankAccount {
+class BankAccount
     // Fields with visibility
     public account_number: String;
     private balance: Float;
     protected account_holder: String;
     public status: String;
 
-    new(account_number: String, initial_deposit: Float) {
+    new(account_number: String, initial_deposit: Float)
         this.account_number = account_number;
         this.balance = initial_deposit;
         this.account_holder = "";
         this.status = "active";
-    }
+    end
 
     // Public method
-    public fn deposit(amount: Float) -> Bool {
-        if (this.validate_amount(amount)) {
+    public fn deposit(amount: Float) -> Bool
+        if this.validate_amount(amount)
             this.balance = this.balance + amount;
             this.log_transaction("Deposit", amount);
             return true;
-        }
+        end
         false
-    }
+    end
 
     // Public method
-    public fn withdraw(amount: Float) -> Bool {
-        if (this.validate_amount(amount) && this.has_sufficient_funds(amount)) {
+    public fn withdraw(amount: Float) -> Bool
+        if this.validate_amount(amount) && this.has_sufficient_funds(amount)
             this.balance = this.balance - amount;
             this.log_transaction("Withdrawal", -amount);
             return true;
-        }
+        end
         false
-    }
+    end
 
     // Public getter
-    public fn get_balance() -> Float {
+    public fn get_balance() -> Float
         this.balance
-    }
+    end
 
     // Private method - internal helper
-    private fn validate_amount(amount: Float) -> Bool {
+    private fn validate_amount(amount: Float) -> Bool
         amount > 0
-    }
+    end
 
     // Private method
-    private fn has_sufficient_funds(amount: Float) -> Bool {
+    private fn has_sufficient_funds(amount: Float) -> Bool
         this.balance >= amount
-    }
+    end
 
     // Private method
-    private fn log_transaction(type: String, amount: Float) {
+    private fn log_transaction(type: String, amount: Float)
         // Internal logging logic
-    }
+    end
 
     // Protected method - for subclasses
-    protected fn update_status(new_status: String) {
+    protected fn update_status(new_status: String)
         this.status = new_status;
-    }
-}
+    end
+end
 
 // Using the class
 let account = new BankAccount("123456789", 1000.0);
@@ -1724,7 +1695,7 @@ print(account.account_number);    // "123456789" - public field
 ### Static Members
 
 ```soli
-class MathUtils {
+class MathUtils
     // Static constants
     static PI: Float = 3.14159265359;
     static E: Float = 2.71828182846;
@@ -1734,34 +1705,34 @@ class MathUtils {
     static calculation_count: Int = 0;
 
     // Static methods
-    static fn square(x: Float) -> Float {
+    static fn square(x: Float) -> Float
         MathUtils.calculation_count = MathUtils.calculation_count + 1;
         x * x
-    }
+    end
 
-    static fn cube(x: Float) -> Float {
+    static fn cube(x: Float) -> Float
         MathUtils.calculation_count = MathUtils.calculation_count + 1;
         x * x * x
-    }
+    end
 
-    static fn max(a: Float, b: Float) -> Float {
+    static fn max(a: Float, b: Float) -> Float
         a > b ? a : b
-    }
+    end
 
-    static fn min(a: Float, b: Float) -> Float {
+    static fn min(a: Float, b: Float) -> Float
         a < b ? a : b
-    }
+    end
 
-    static fn clamp(value: Float, min_val: Float, max_val: Float) -> Float {
-        if (value < min_val) {
+    static fn clamp(value: Float, min_val: Float, max_val: Float) -> Float
+        if value < min_val
             return min_val;
-        }
-        if (value > max_val) {
+        end
+        if value > max_val
             return max_val;
-        }
+        end
         value
-    }
-}
+    end
+end
 
 // Using static members
 print(MathUtils.PI);           // 3.14159265359
@@ -1778,32 +1749,32 @@ print(MathUtils.calculation_count);  // 3
 
 ```soli
 // Base product class
-class Product {
+class Product
     id: String;
     name: String;
     price: Float;
     quantity: Int;
 
-    new(id: String, name: String, price: Float, quantity: Int) {
+    new(id: String, name: String, price: Float, quantity: Int)
         this.id = id;
         this.name = name;
         this.price = price;
         this.quantity = quantity;
-    }
+    end
 
-    fn get_total_value() -> Float {
+    fn get_total_value() -> Float
         this.price * this.quantity
-    }
+    end
 
-    fn is_in_stock() -> Bool {
+    fn is_in_stock() -> Bool
         this.quantity > 0
-    }
+    end
 
-    fn reduce_quantity(amount: Int) -> Bool {
-        if (this.quantity >= amount) {
+    fn reduce_quantity(amount: Int) -> Bool
+        if this.quantity >= amount
             this.quantity = this.quantity - amount;
             return true;
-        }
+        end
         false
     }
 
@@ -1813,73 +1784,73 @@ class Product {
 }
 
 // Electronics subclass with additional warranty info
-class Electronics extends Product {
+class Electronics extends Product
     warranty_months: Int;
     brand: String;
 
-    new(id: String, name: String, price: Float, quantity: Int, brand: String, warranty_months: Int) {
+    new(id: String, name: String, price: Float, quantity: Int, brand: String, warranty_months: Int)
         super(id, name, price, quantity);
         this.brand = brand;
         this.warranty_months = warranty_months;
-    }
+    end
 
-    fn is_under_warranty() -> Bool {
+    fn is_under_warranty() -> Bool
         this.warranty_months > 12
-    }
+    end
 
-    fn to_string() -> String {
+    fn to_string() -> String
         this.brand + " " + this.name + " - $" + str(this.price) + " (" + str(this.warranty_months) + " month warranty)"
-    }
-}
+    end
+end
 
 // Inventory class to manage products
-class Inventory {
+class Inventory
     products: Product[];
 
-    new() {
+    new()
         this.products = [];
-    }
+    end
 
-    fn add_product(product: Product) {
+    fn add_product(product: Product)
         push(this.products, product);
-    }
+    end
 
-    fn remove_product(product_id: String) -> Product? {
-        for (i, product in this.products) {
-            if (product.id == product_id) {
+    fn remove_product(product_id: String) -> Product?
+        for i, product in this.products
+            if product.id == product_id
                 return splice(this.products, i, 1)[0];
-            }
-        }
+            end
+        end
         null
-    }
+    end
 
-    fn find_product(id: String) -> Product? {
-        for (product in this.products) {
-            if (product.id == id) {
+    fn find_product(id: String) -> Product?
+        for product in this.products
+            if product.id == id
                 return product;
-            }
-        }
+            end
+        end
         null
-    }
+    end
 
-    fn get_total_inventory_value() -> Float {
+    fn get_total_inventory_value() -> Float
         let total = 0.0;
-        for (product in this.products) {
+        for product in this.products
             total = total + product.get_total_value();
-        }
+        end
         total
-    }
+    end
 
-    fn get_out_of_stock_products() -> Product[] {
+    fn get_out_of_stock_products() -> Product[]
         this.products.filter(fn(p) !p.is_in_stock())
-    }
+    end
 
-    fn list_all() {
-        for (product in this.products) {
+    fn list_all()
+        for product in this.products
             print(product.to_string());
-        }
-    }
-}
+        end
+    end
+end
 
 // Using the inventory system
 let inventory = new Inventory();
@@ -1893,9 +1864,9 @@ inventory.add_product(new Product("P002", "Mouse", 29.99, 100));
 print("Total inventory value: $" + str(inventory.get_total_inventory_value()));
 
 let laptop = inventory.find_product("P001");
-if (laptop != null) {
+if laptop != null
     print("Found: " + laptop.to_string());
-}
+end
 
 inventory.list_all();
 ```
@@ -1905,23 +1876,23 @@ inventory.list_all();
 Soli supports nested classes - classes defined within other classes. This feature is useful for organizing related classes, implementing design patterns, and creating clean namespaces.
 
 ```soli
-class Organization {
-    class Department {
-        fn get_name() {
+class Organization
+    class Department
+        fn get_name()
             "Engineering"
-        }
+        end
 
-        fn get_budget() {
+        fn get_budget()
             1000000
-        }
-    }
+        end
+    end
 
-    class Team {
-        fn get_name() {
+    class Team
+        fn get_name()
             "Backend Team"
-        }
-    }
-}
+        end
+    end
+end
 ```
 
 #### Accessing Nested Classes
@@ -1945,37 +1916,37 @@ Nested classes are perfect for implementing design patterns:
 
 ```soli
 // State Pattern
-class TrafficLight {
-    class RedState {
-        fn next() {
+class TrafficLight
+    class RedState
+        fn next()
             "green"
-        }
+        end
 
-        fn get_duration() {
+        fn get_duration()
             30
-        }
-    }
+        end
+    end
 
-    class GreenState {
-        fn next() {
+    class GreenState
+        fn next()
             "yellow"
-        }
+        end
 
-        fn get_duration() {
+        fn get_duration()
             20
-        }
-    }
+        end
+    end
 
-    class YellowState {
-        fn next() {
+    class YellowState
+        fn next()
             "red"
-        }
+        end
 
-        fn get_duration() {
+        fn get_duration()
             5
-        }
-    }
-}
+        end
+    end
+end
 
 let red = new TrafficLight::RedState();
 print("Red light duration: " + str(red.get_duration()) + "s");  // "Red light duration: 30s"
@@ -1987,25 +1958,25 @@ print("Next state: " + red.next());  // "Next state: green"
 Group related classes together:
 
 ```soli
-class Database {
-    class Connection {
-        fn connect() {
+class Database
+    class Connection
+        fn connect()
             "Connected to database"
-        }
-    }
+        end
+    end
 
-    class QueryBuilder {
-        fn select(table: String) {
+    class QueryBuilder
+        fn select(table: String)
             "SELECT * FROM " + table
-        }
-    }
+        end
+    end
 
-    class Transaction {
-        fn begin() {
+    class Transaction
+        fn begin()
             "Transaction started"
-        }
-    }
-}
+        end
+    end
+end
 
 let conn = new Database::Connection();
 let query = new Database::QueryBuilder();
@@ -2021,27 +1992,27 @@ print(tx.begin());  // "Transaction started"
 Create hierarchical configuration structures:
 
 ```soli
-class Server {
-    class SSLConfig {
-        fn is_enabled() {
+class Server
+    class SSLConfig
+        fn is_enabled()
             true
-        }
+        end
 
-        fn get_protocol() {
+        fn get_protocol()
             "TLS 1.3"
-        }
-    }
+        end
+    end
 
-    class LoggingConfig {
-        fn get_level() {
+    class LoggingConfig
+        fn get_level()
             "INFO"
-        }
-    }
+        end
+    end
 
-    fn start() {
+    fn start()
         "Server starting with SSL: " + str(new Server::SSLConfig().is_enabled())
-    }
-}
+    end
+end
 
 let ssl = new Server::SSLConfig();
 print("Protocol: " + ssl.get_protocol());  // "Protocol: TLS 1.3"
@@ -2052,25 +2023,25 @@ print("Protocol: " + ssl.get_protocol());  // "Protocol: TLS 1.3"
 You can define multiple nested classes at the same level:
 
 ```soli
-class Service {
-    class Database {
-        fn connect() {
+class Service
+    class Database
+        fn connect()
             "DB connected"
-        }
-    }
+        end
+    end
 
-    class Cache {
-        fn get(key: String) {
+    class Cache
+        fn get(key: String)
             "cached:" + key
-        }
-    }
+        end
+    end
 
-    class Logger {
-        fn log(msg: String) {
+    class Logger
+        fn log(msg: String)
             "[LOG] " + msg
-        }
-    }
-}
+        end
+    end
+end
 
 let db = new Service::Database();
 let cache = new Service::Cache();
@@ -2263,7 +2234,7 @@ fn execute_command(command: Hash) -> String {
 }
 
 // Tree traversal with pattern matching
-fn process_tree(node: Any) -> Any {
+fn process_tree(node: Any) {
     match node {
         {"type": "leaf", "value": value} => {
             {"value": value * 2};

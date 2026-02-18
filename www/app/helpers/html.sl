@@ -1,22 +1,22 @@
 // HTML formatting helpers
 
-fn truncate_html(html: String, length: Int) -> String {
+fn truncate_html(html: String, length: Int) -> String
     if (len(html) <= length) {
         return html;
     }
     substring(html, 0, length) + "..."
-}
+end
 
-fn strip_tags(html: String) -> String {
+fn strip_tags(html: String) -> String
     strip_html(html)
-}
+end
 
-fn format_html_content(content: String) -> String {
+fn format_html_content(content: String) -> String
     let escaped = html_escape(content);
     escaped
-}
+end
 
-fn get_section_color(id: String) -> String {
+fn get_section_color(id: String) -> String
     if (id == "getting_started") return "text-indigo-400";
     elsif (id == "core_concepts") return "text-purple-400";
     elsif (id == "database") return "text-cyan-400";
@@ -26,9 +26,9 @@ fn get_section_color(id: String) -> String {
     elsif (id == "builtins") return "text-pink-400";
     elsif (id == "e2e_testing") return "text-teal-400";
     else return "text-gray-400";
-}
+end
 
-fn get_icon_path(icon: String) -> String {
+fn get_icon_path(icon: String) -> String
     // Heroicons v2 (outline)
 
     if (icon == "rocket") {
@@ -58,4 +58,4 @@ fn get_icon_path(icon: String) -> String {
 
     // Fallback icon (question mark)
     "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z' />"
-}
+end

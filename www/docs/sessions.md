@@ -11,11 +11,11 @@ Sessions are automatically available in your controllers. The session cookie is 
 ### Reading Session Data
 
 ```soli
-fn profile(req) {
+fn profile(req)
     // Check if user is logged in
-    if session_get("authenticated") != true {
+    if session_get("authenticated") != true
         return {"status": 401, "body": "Please log in"};
-    }
+    end
 
     {
         "status": 200,
@@ -24,13 +24,13 @@ fn profile(req) {
             "email": session_get("email")
         })
     }
-}
+end
 ```
 
 ### Writing Session Data
 
 ```soli
-fn login(req) {
+fn login(req)
     let data = req["json"];
     let username = data["username"];
 
@@ -43,25 +43,25 @@ fn login(req) {
         "status": 200,
         "body": json_stringify({"success": true})
     }
-}
+end
 ```
 
 ### Checking Session State
 
 ```soli
-fn is_logged_in() -> Bool {
+fn is_logged_in() -> Bool
     session_has("authenticated") && session_get("authenticated") == true
-}
+end
 ```
 
 ### Deleting Session Data
 
 ```soli
-fn remove_item(req) {
+fn remove_item(req)
     let removed = session_delete("temporary_data");
     print("Removed:", removed);
     {"status": 200}
-}
+end
 ```
 
 ## Session Security
@@ -71,10 +71,10 @@ fn remove_item(req) {
 Always regenerate the session ID after successful authentication to prevent session fixation:
 
 ```soli
-fn login(req) {
+fn login(req)
     let data = req["json"];
 
-    if verify_credentials(data["username"], data["password"]) {
+    if verify_credentials(data["username"], data["password"])
         // Regenerate session for security
         session_regenerate();
 
@@ -83,23 +83,23 @@ fn login(req) {
         session_set("authenticated", true);
 
         return {"status": 200, "body": "Logged in"};
-    }
+    end
 
     {"status": 401, "body": "Invalid credentials"}
-}
+end
 ```
 
 ### Destroy Session on Logout
 
 ```soli
-fn logout(req) {
+fn logout(req)
     session_destroy();
 
     {
         "status": 200,
         "body": json_stringify({"success": true})
     }
-}
+end
 ```
 
 ## Session Middleware Example
@@ -108,32 +108,32 @@ Create a reusable authentication middleware:
 
 ```soli
 // app/middleware/auth.sl
-fn require_auth(req) {
-    if !session_has("authenticated") || session_get("authenticated") != true {
+fn require_auth(req)
+    if !session_has("authenticated") || session_get("authenticated") != true
         return {
             "status": 401,
             "body": json_stringify({"error": "Authentication required"})
         };
-    }
+    end
     null  // Allow request to continue
-}
+end
 
-fn require_role(req, required_role: String) {
+fn require_role(req, required_role: String)
     let result = require_auth(req);
-    if result != null {
+    if result != null
         return result;  // Return auth error
-    }
+    end
 
     let user_role = session_get("role");
-    if user_role != required_role {
+    if user_role != required_role
         return {
             "status": 403,
             "body": json_stringify({"error": "Insufficient permissions"})
         };
-    }
+    end
 
     null
-}
+end
 ```
 
 Use in routes:

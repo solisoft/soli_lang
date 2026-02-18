@@ -1,0 +1,258 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Middleware</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Filter HTTP requests and responses. Middleware enables cross-cutting concerns like authentication, logging, and CORS handling.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Request Logging</h2>
+    <p class="text-gray-400 mb-6">Soli includes built-in request logging at the server level with timing information:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Server Output</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">[LOG] GET /users - 200 (1.234ms)
+[LOG] POST /login - 302 (12.876ms)
+[LOG] GET /missing - 404 (0.102ms)</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">To disable request logging, set the environment variable:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm"># Disable request logging
+SOLI_REQUEST_LOG=false soli serve myapp
+
+# Or
+SOLI_REQUEST_LOG=0 soli serve myapp</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Middleware Attributes</h2>
+    <p class="text-gray-400 mb-6">Middleware files in <code class="text-indigo-400">app/middleware/</code> are loaded automatically. Control behavior using special comment attributes:</p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Attribute</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Description</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-300">
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">// order: N</td>
+                    <td class="py-3 px-4">Execution order (lower runs first, default: 100)</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">// global_only: true</td>
+                    <td class="py-3 px-4">Runs for ALL requests, cannot be scoped to specific routes</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">// scope_only: true</td>
+                    <td class="py-3 px-4">Only runs when explicitly scoped, never globally</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Creating Middleware</h2>
+    <p class="text-gray-400 mb-6">Middleware functions receive a request hash and return a result hash:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/cors.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// order: 5
+// global_only: true
+
+fn add_cors_headers(req: Any)    // Continue to next middleware/handler
+    {
+        "continue": true,
+        "request": req
+    }
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/auth.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// order: 20
+// scope_only: true
+
+fn authenticate(req: Any)    let headers = req["headers"];
+    let api_key = "";
+
+    if has_key(headers, "X-Api-Key")
+        api_key = headers["X-Api-Key"];
+    end
+
+    if api_key == ""
+        // Short-circuit with error response
+        return {
+            "continue": false,
+            "response": {
+                "status": 401,
+                "headers": {"Content-Type": "application/json"},
+                "body": json_stringify({
+                    "error": "Unauthorized",
+                    "message": "API key required"
+                })
+            }
+        };
+    end
+
+    // Continue to handler
+    {
+        "continue": true,
+        "request": req
+    }
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Return Format</h2>
+    <p class="text-gray-400 mb-6">Middleware must return a hash with one of these formats:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <label class="block px-4 py-2 bg-green-500/10 text-xs text-green-400 font-mono border-b border-white/5">Continue Processing</label>
+            <div class="p-4 overflow-x-auto">
+            </div>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">{
+    "continue": true,
+    "request": req
+}</code></pre>
+            </div>
+        </div>
+        <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <label class="block px-4 py-2 bg-red-500/10 text-xs text-red-400 font-mono border-b border-white/5">Short-circuit Response</label>
+            <div class="p-4 overflow-x-auto">
+            </div>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">{
+    "continue": false,
+    "response": {
+        "status": 401,
+        "body": "Unauthorized"
+    }
+}</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Execution Order</h2>
+    <p class="text-gray-400 mb-8">Requests flow through middleware layers before reaching your controller.</p>
+
+    <div class="relative py-8 mb-16">
+        <div class="absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-indigo-500/50 to-transparent -translate-x-1/2"></div>
+
+        <div class="space-y-4">
+            <!-- Step 1 -->
+            <div class="relative flex items-center justify-center">
+                <div class="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-gray-950"></div>
+                <div class="bg-gray-900 border border-white/10 rounded-lg px-6 py-3 shadow-lg">
+                    <span class="text-indigo-400 font-mono text-xs block mb-1">Step 1</span>
+                    <span class="text-white font-medium">Global Middleware</span>
+                    <span class="text-gray-500 text-sm ml-2">(Sorted by order)</span>
+                </div>
+            </div>
+
+            <div class="h-8"></div>
+
+            <!-- Step 2 -->
+            <div class="relative flex items-center justify-center">
+                <div class="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-purple-500 ring-4 ring-gray-950"></div>
+                <div class="bg-gray-900 border border-white/10 rounded-lg px-6 py-3 shadow-lg">
+                    <span class="text-purple-400 font-mono text-xs block mb-1">Step 2</span>
+                    <span class="text-white font-medium">Scoped Middleware</span>
+                    <span class="text-gray-500 text-sm ml-2">(Specific to route)</span>
+                </div>
+            </div>
+
+            <div class="h-8"></div>
+
+            <!-- Step 3 -->
+            <div class="relative flex items-center justify-center">
+                <div class="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-green-500 ring-4 ring-gray-950"></div>
+                <div class="bg-green-500/10 border border-green-500/20 rounded-lg px-6 py-3 shadow-lg">
+                    <span class="text-green-400 font-mono text-xs block mb-1">Target</span>
+                    <span class="text-white font-bold">Controller Action</span>
+                </div>
+            </div>
+
+            <div class="h-8"></div>
+
+            <!-- Step 4 -->
+            <div class="relative flex items-center justify-center">
+                <div class="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-gray-500 ring-4 ring-gray-950"></div>
+                <div class="bg-gray-900 border border-white/10 rounded-lg px-6 py-3 shadow-lg">
+                    <span class="text-gray-400 font-mono text-xs block mb-1">Return</span>
+                    <span class="text-white font-medium">Response sent to client</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Scoping Middleware to Routes</h2>
+    <p class="text-gray-400 mb-6">Use the <code class="text-indigo-400">middleware()</code> function in routes to apply scope-only middleware:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">// Public routes (no auth required)
+get("/", "home#index");
+get("/login", "auth#login");
+
+// Protected routes (auth middleware applied)
+middleware("authenticate", ->
+    get("/dashboard", "dashboard#index");
+    get("/profile", "users#profile");
+    post("/settings", "users#update_settings");
+end);
+
+// Multiple middleware
+middleware(["authenticate", "admin_only"], ->
+    get("/admin", "admin#index");
+    get("/admin/users", "admin#users");
+end);</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
+            </svg>
+            Best Practices
+        </h4>
+        <ul class="text-indigo-200/80 space-y-2 mt-2 text-sm">
+            <li>&#8226; Middleware files in <code>app/middleware/</code> are loaded automatically &mdash; no imports needed</li>
+            <li>&#8226; Use <code>order</code> to control execution sequence (lower runs first)</li>
+            <li>&#8226; Use <code>global_only: true</code> for middleware that must run on every request (CORS, security headers)</li>
+            <li>&#8226; Use <code>scope_only: true</code> for authentication to prevent accidental global application</li>
+            <li>&#8226; Keep global middleware lightweight; expensive operations belong in scoped middleware</li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/docs/core-concepts/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
+            <p class="text-sm text-gray-400">Handle the requests processed by middleware.</p>
+        </a>
+        <a href="/docs/core-concepts/views" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Views &rarr;</h3>
+            <p class="text-sm text-gray-400">Render HTML responses for your users.</p>
+        </a>
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models &rarr;</h3>
+            <p class="text-sm text-gray-400">Interact with your database securely.</p>
+        </a>
+    </div>
+</div>
