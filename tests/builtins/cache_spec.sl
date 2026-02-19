@@ -153,3 +153,33 @@ describe("cache_* standalone functions", fn() {
         assert(len(keys) >= 2);
     });
 });
+
+describe("Cache TTL and Touch", fn() {
+    test("Cache.ttl() returns remaining seconds for existing key", fn() {
+        Cache.clear();
+        Cache.set("ttl_key", "value");
+        let remaining = Cache.ttl("ttl_key");
+        assert(remaining > 0);
+    });
+
+    test("Cache.ttl() returns null for missing key", fn() {
+        Cache.clear();
+        let result = Cache.ttl("nonexistent");
+        assert_null(result);
+    });
+
+    test("Cache.touch() updates TTL for key", fn() {
+        Cache.clear();
+        Cache.set("touch_key", "value");
+        Cache.touch("touch_key", 7200);
+        let remaining = Cache.ttl("touch_key");
+        assert(remaining > 3600);
+    });
+
+    test("Cache.clear_expired() keeps valid entries", fn() {
+        Cache.clear();
+        Cache.set("alive", "value");
+        Cache.clear_expired();
+        assert(Cache.has("alive"));
+    });
+});

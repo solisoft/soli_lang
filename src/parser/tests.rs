@@ -648,6 +648,17 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_class_less_than_extends() {
+        match parse_stmt("class Child < Parent { }") {
+            StmtKind::Class(c) => {
+                assert_eq!(c.name, "Child");
+                assert_eq!(c.superclass, Some("Parent".to_string()));
+            }
+            other => panic!("Expected class, got {:?}", other),
+        }
+    }
+
     // ================================================================
     // Inline lambda tests: fn(params) expr
     // ================================================================

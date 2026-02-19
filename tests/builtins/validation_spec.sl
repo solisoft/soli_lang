@@ -114,4 +114,44 @@ describe("Validation Functions", fn() {
         let result = validate(valid_data, schema);
         assert(result["valid"]);
     });
+
+    test("V.float() validates floats", fn() {
+        let schema = hash();
+        schema["price"] = V.float().required();
+
+        let valid_data = hash();
+        valid_data["price"] = 9.99;
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+    });
+
+    test("V.bool() validates booleans", fn() {
+        let schema = hash();
+        schema["active"] = V.bool().required();
+
+        let valid_data = hash();
+        valid_data["active"] = true;
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+    });
+
+    test("V.array() validates arrays", fn() {
+        let schema = hash();
+        schema["tags"] = V.array().required();
+
+        let valid_data = hash();
+        valid_data["tags"] = ["a", "b", "c"];
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+    });
+
+    test("V.hash() validates hashes", fn() {
+        let schema = hash();
+        schema["meta"] = V.hash().required();
+
+        let valid_data = hash();
+        valid_data["meta"] = {"key": "value"};
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+    });
 });

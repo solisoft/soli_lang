@@ -120,3 +120,80 @@ describe("File Existence", fn() {
         assert_not(result);
     });
 });
+
+describe("File Class Methods", fn() {
+    test("File.read() reads file contents", fn() {
+        let path = "/tmp/soli_test_file_read.txt";
+        barf(path, "file read test");
+        let content = File.read(path);
+        assert_eq(content, "file read test");
+    });
+
+    test("File.write() writes file contents", fn() {
+        let path = "/tmp/soli_test_file_write.txt";
+        File.write(path, "file write test");
+        let content = slurp(path);
+        assert_eq(content, "file write test");
+    });
+
+    test("File.delete() removes a file", fn() {
+        let path = "/tmp/soli_test_file_delete.txt";
+        barf(path, "delete me");
+        assert(File.exists(path));
+        File.delete(path);
+        assert_not(File.exists(path));
+    });
+
+    test("File.size() returns file size in bytes", fn() {
+        let path = "/tmp/soli_test_file_size.txt";
+        barf(path, "hello");
+        let size = File.size(path);
+        assert_eq(size, 5);
+    });
+
+    test("File.append() appends content to file", fn() {
+        let path = "/tmp/soli_test_file_append.txt";
+        barf(path, "hello");
+        File.append(path, " world");
+        let content = slurp(path);
+        assert_eq(content, "hello world");
+    });
+
+    test("File.lines() reads file as array of lines", fn() {
+        let path = "/tmp/soli_test_file_lines.txt";
+        barf(path, "line1\nline2\nline3");
+        let lines = File.lines(path);
+        assert_eq(len(lines), 3);
+        assert_eq(lines[0], "line1");
+        assert_eq(lines[2], "line3");
+    });
+
+    test("File.copy() copies a file", fn() {
+        let src = "/tmp/soli_test_file_copy_src.txt";
+        let dest = "/tmp/soli_test_file_copy_dest.txt";
+        barf(src, "copy me");
+        File.copy(src, dest);
+        assert(File.exists(dest));
+        assert_eq(slurp(dest), "copy me");
+    });
+
+    test("File.rename() renames a file", fn() {
+        let old_path = "/tmp/soli_test_file_rename_old.txt";
+        let new_path = "/tmp/soli_test_file_rename_new.txt";
+        barf(old_path, "rename me");
+        File.rename(old_path, new_path);
+        assert_not(File.exists(old_path));
+        assert(File.exists(new_path));
+        assert_eq(slurp(new_path), "rename me");
+    });
+});
+
+describe("slurp_json", fn() {
+    test("slurp_json() reads and parses JSON file", fn() {
+        let path = "/tmp/soli_test_slurp_json.json";
+        barf(path, "{\"name\": \"test\", \"value\": 42}");
+        let data = slurp_json(path);
+        assert_eq(data["name"], "test");
+        assert_eq(data["value"], 42);
+    });
+});

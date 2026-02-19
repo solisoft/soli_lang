@@ -40,6 +40,9 @@ jobs:
       - name: Run tests
         run: cargo test
 
+      - name: Run Soli tests
+        run: cargo run -- test
+
   clippy:
     runs-on: ubuntu-latest
     steps:

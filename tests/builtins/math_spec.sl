@@ -79,4 +79,29 @@ describe("Math Functions", fn() {
     test("e constant", fn() {
         assert(Math.e > 2.71828 && Math.e < 2.71829);
     });
+
+    test("Math.sin() returns sine", fn() {
+        let result = Math.sin(0.0);
+        assert(result > -0.001 && result < 0.001);
+    });
+
+    test("Math.cos() returns cosine", fn() {
+        let result = Math.cos(0.0);
+        assert(result > 0.999 && result < 1.001);
+    });
+
+    test("Math.tan() returns tangent", fn() {
+        let result = Math.tan(0.0);
+        assert(result > -0.001 && result < 0.001);
+    });
+
+    test("Math.exp() returns e^n", fn() {
+        let result = Math.exp(1.0);
+        assert(result > 2.718 && result < 2.719);
+    });
+
+    test("Math.exp(0) returns 1", fn() {
+        let result = Math.exp(0.0);
+        assert(result > 0.999 && result < 1.001);
+    });
 });

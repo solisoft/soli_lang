@@ -177,7 +177,7 @@ impl Parser {
 
         let name = self.expect_identifier()?;
 
-        let superclass = if self.match_token(&TokenKind::Extends) {
+        let superclass = if self.match_token(&TokenKind::Extends) || self.match_token(&TokenKind::Less) {
             Some(self.expect_identifier()?)
         } else {
             None

@@ -44,4 +44,17 @@ describe("Regex Class", fn() {
         let escaped = Regex.escape("hello.world");
         assert_eq(escaped, "hello\\.world");
     });
+
+    test("Regex.capture() returns match with captures", fn() {
+        let result = Regex.capture("(\\d+)-(\\d+)", "date: 2024-01");
+        assert_not_null(result);
+        assert_eq(result["match"], "2024-01");
+        assert(result["start"] >= 0);
+        assert(result["end"] > result["start"]);
+    });
+
+    test("Regex.capture() returns null on no match", fn() {
+        let result = Regex.capture("\\d+", "no numbers here");
+        assert_null(result);
+    });
 });

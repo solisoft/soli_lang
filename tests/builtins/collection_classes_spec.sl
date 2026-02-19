@@ -215,6 +215,83 @@ describe("Collection Classes", fn() {
             let zipped = a.zip(b);
             assert_eq(zipped.length(), 3);
         });
+
+        test("Array.find() returns first matching element", fn() {
+            let arr = [1, 2, 3, 4, 5];
+            let found = arr.find(fn(x) { return x > 3; });
+            assert_eq(found, 4);
+        });
+
+        test("Array.find() returns null when no match", fn() {
+            let arr = [1, 2, 3];
+            let found = arr.find(fn(x) { return x > 10; });
+            assert_null(found);
+        });
+
+        test("Array.any?() checks if any element matches", fn() {
+            let arr = [1, 2, 3, 4];
+            assert(arr.any?(fn(x) { return x > 3; }));
+            assert_not(arr.any?(fn(x) { return x > 10; }));
+        });
+
+        test("Array.all?() checks if all elements match", fn() {
+            let arr = [2, 4, 6];
+            assert(arr.all?(fn(x) { return x % 2 == 0; }));
+            assert_not([1, 2, 3].all?(fn(x) { return x > 2; }));
+        });
+
+        test("Array.sort() sorts elements", fn() {
+            let arr = [3, 1, 4, 1, 5];
+            let sorted = arr.sort();
+            assert_eq(sorted.get(0), 1);
+            assert_eq(sorted.get(1), 1);
+            assert_eq(sorted.get(4), 5);
+        });
+
+        test("Array.sort() sorts strings", fn() {
+            let arr = ["banana", "apple", "cherry"];
+            let sorted = arr.sort();
+            assert_eq(sorted.get(0), "apple");
+            assert_eq(sorted.get(2), "cherry");
+        });
+
+        test("Array.sort_by() sorts by key function", fn() {
+            let arr = [{"name": "Charlie"}, {"name": "Alice"}, {"name": "Bob"}];
+            let sorted = arr.sort_by("name");
+            assert_eq(sorted.get(0).get("name"), "Alice");
+            assert_eq(sorted.get(2).get("name"), "Charlie");
+        });
+
+        test("Array.compact() removes null values", fn() {
+            let arr = [1, null, 2, null, 3];
+            let compacted = arr.compact();
+            assert_eq(compacted.length(), 3);
+            assert_eq(compacted.get(0), 1);
+            assert_eq(compacted.get(1), 2);
+            assert_eq(compacted.get(2), 3);
+        });
+
+        test("Array.flatten() flattens nested arrays", fn() {
+            let arr = [1, [2, 3], [4, [5, 6]]];
+            let flat = arr.flatten();
+            assert_eq(flat.length(), 6);
+            assert_eq(flat.get(0), 1);
+            assert_eq(flat.get(5), 6);
+        });
+
+        test("Array.sample() returns an element from the array", fn() {
+            let arr = [1, 2, 3, 4, 5];
+            let s = arr.sample();
+            assert(arr.include?(s));
+        });
+
+        test("Array.shuffle() returns shuffled array with same elements", fn() {
+            let arr = [1, 2, 3, 4, 5];
+            let shuffled = arr.shuffle();
+            assert_eq(shuffled.length(), 5);
+            assert(shuffled.include?(1));
+            assert(shuffled.include?(5));
+        });
     });
 
     describe("Hash Class", fn() {
@@ -298,6 +375,107 @@ describe("Collection Classes", fn() {
             let h = {"a": 1, "b": 2};
             h.clear();
             assert_eq(h.length(), 0);
+        });
+
+        test("Hash.empty?() checks if hash is empty", fn() {
+            assert({}.empty?());
+            assert_not({"a": 1}.empty?());
+        });
+
+        test("Hash.each() iterates over entries", fn() {
+            let h = {"a": 1, "b": 2};
+            let keys = [];
+            h.each(fn(k, v) { keys.push(k); });
+            assert_eq(keys.length(), 2);
+        });
+
+        test("Hash.map() transforms entries", fn() {
+            let h = {"a": 1, "b": 2};
+            let result = h.map(fn(k, v) { return [k, v * 10]; });
+            assert_eq(result.get("a"), 10);
+            assert_eq(result.get("b"), 20);
+        });
+
+        test("Hash.filter() filters entries", fn() {
+            let h = {"a": 1, "b": 2, "c": 3};
+            let result = h.filter(fn(k, v) { return v > 1; });
+            assert_eq(result.length(), 2);
+            assert_not(result.has_key("a"));
+        });
+
+        test("Hash.fetch() retrieves value or raises error", fn() {
+            let h = {"a": 1};
+            assert_eq(h.fetch("a"), 1);
+            assert_eq(h.fetch("missing", "default"), "default");
+        });
+
+        test("Hash.fetch() throws on missing key without default", fn() {
+            let threw = false;
+            try {
+                let h = {"a": 1};
+                h.fetch("missing");
+            } catch (e) {
+                threw = true;
+            }
+            assert(threw);
+        });
+
+        test("Hash.invert() swaps keys and values", fn() {
+            let h = {"a": 1, "b": 2};
+            let inverted = h.invert();
+            assert_eq(inverted.get(1), "a");
+            assert_eq(inverted.get(2), "b");
+        });
+
+        test("Hash.transform_values() transforms all values", fn() {
+            let h = {"a": 1, "b": 2};
+            let result = h.transform_values(fn(v) { return v * 10; });
+            assert_eq(result.get("a"), 10);
+            assert_eq(result.get("b"), 20);
+        });
+
+        test("Hash.transform_keys() transforms all keys", fn() {
+            let h = {"hello": 1, "world": 2};
+            let result = h.transform_keys(fn(k) { return k.upcase(); });
+            assert_eq(result.get("HELLO"), 1);
+            assert_eq(result.get("WORLD"), 2);
+        });
+
+        test("Hash.select() selects matching entries", fn() {
+            let h = {"a": 1, "b": 2, "c": 3};
+            let result = h.select(fn(k, v) { return v >= 2; });
+            assert_eq(result.length(), 2);
+            assert(result.has_key("b"));
+            assert(result.has_key("c"));
+        });
+
+        test("Hash.reject() rejects matching entries", fn() {
+            let h = {"a": 1, "b": 2, "c": 3};
+            let result = h.reject(fn(k, v) { return v >= 2; });
+            assert_eq(result.length(), 1);
+            assert(result.has_key("a"));
+        });
+
+        test("Hash.slice() returns subset by keys", fn() {
+            let h = {"a": 1, "b": 2, "c": 3};
+            let result = h.slice(["a", "c"]);
+            assert_eq(result.length(), 2);
+            assert_eq(result.get("a"), 1);
+            assert_eq(result.get("c"), 3);
+        });
+
+        test("Hash.except() returns hash without specified keys", fn() {
+            let h = {"a": 1, "b": 2, "c": 3};
+            let result = h.except(["b"]);
+            assert_eq(result.length(), 2);
+            assert_not(result.has_key("b"));
+        });
+
+        test("Hash.compact() removes null values", fn() {
+            let h = {"a": 1, "b": null, "c": 3};
+            let result = h.compact();
+            assert_eq(result.length(), 2);
+            assert_not(result.has_key("b"));
         });
     });
 

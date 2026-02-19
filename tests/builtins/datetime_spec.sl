@@ -115,4 +115,10 @@ describe("DateTime Instance Methods", fn() {
         let formatted = dt.format("%Y-%m-%d");
         assert_contains(formatted, "2024");
     });
+
+    test("DateTime.utc() returns current UTC time", fn() {
+        let utc = DateTime.utc();
+        assert_not_null(utc);
+        assert(utc.year() >= 2024);
+    });
 });

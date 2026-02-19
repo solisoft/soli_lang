@@ -76,6 +76,21 @@ describe("Class Inheritance Basics", fn() {
         assert_eq(c.method_c(), "C");
     });
 
+    test("< as alias for extends", fn() {
+        class Awesome
+            fn greet() -> String
+                return "awesome"
+            end
+        end
+
+        class Demo < Awesome
+        end
+
+        let d = new Demo();
+        assert_eq(d.greet(), "awesome");
+        assert_eq(type(d), "Demo");
+    });
+
     test("instance type shows most derived class", fn() {
         class Base {
         }
