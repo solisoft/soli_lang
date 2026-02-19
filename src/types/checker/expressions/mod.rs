@@ -54,7 +54,9 @@ impl TypeChecker {
             ExprKind::Pipeline { left, right } => self.check_pipeline_expr(left, right),
 
             // Access
-            ExprKind::Member { object, name } | ExprKind::SafeMember { object, name } => self.check_member_expr(expr.span, object, name),
+            ExprKind::Member { object, name } | ExprKind::SafeMember { object, name } => {
+                self.check_member_expr(expr.span, object, name)
+            }
             ExprKind::Index { object, index } => self.check_index_expr(expr.span, object, index),
 
             // Objects and collections

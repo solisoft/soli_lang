@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::*;
     use crate::ast::expr::Argument;
+    use crate::ast::*;
     use crate::lexer::Scanner;
     use crate::parser::Parser;
 
@@ -321,11 +321,7 @@ mod tests {
         let tokens = Scanner::new(source).scan_tokens().unwrap();
         let mut parser = Parser::new(tokens);
         let program = parser.parse().unwrap();
-        program
-            .statements
-            .into_iter()
-            .map(|s| s.kind)
-            .collect()
+        program.statements.into_iter().map(|s| s.kind).collect()
     }
 
     /// Extract the lambda from a let initializer
@@ -384,9 +380,7 @@ mod tests {
     #[test]
     fn test_fn_end_return_hash_with_body() {
         // Multiple stmts + hash return
-        let body = parse_fn_body(
-            "fn foo(req)\n  let x = 1\n  {\"status\": 200, \"body\": x}\nend",
-        );
+        let body = parse_fn_body("fn foo(req)\n  let x = 1\n  {\"status\": 200, \"body\": x}\nend");
         assert_eq!(body.len(), 2);
     }
 
@@ -444,9 +438,7 @@ mod tests {
     #[test]
     fn test_for_end_with_hash_body() {
         // Hash literal in for loop body shouldn't confuse block detection
-        let body = parse_fn_body(
-            "fn foo()\n  for x in items\n    {\"key\": x}\n  end\nend",
-        );
+        let body = parse_fn_body("fn foo()\n  for x in items\n    {\"key\": x}\n  end\nend");
         assert_eq!(body.len(), 1);
     }
 
@@ -494,9 +486,7 @@ mod tests {
     #[test]
     fn test_if_else_multiline_end() {
         // Multi-line else consumes its own end
-        let body = parse_fn_body(
-            "fn foo()\n  if true\n    1\n  else\n    2\n  end\n  42\nend",
-        );
+        let body = parse_fn_body("fn foo()\n  if true\n    1\n  else\n    2\n  end\n  42\nend");
         assert_eq!(body.len(), 2, "if/else + trailing expression");
         match &body[0].kind {
             StmtKind::If { else_branch, .. } => assert!(else_branch.is_some()),
@@ -710,7 +700,9 @@ mod tests {
         let expr = parse_expr("items.map(fn(x) x * 2).filter(fn(y) y > 5)");
         // Should parse as chained method calls
         match &expr.kind {
-            ExprKind::Call { callee, arguments, .. } => {
+            ExprKind::Call {
+                callee, arguments, ..
+            } => {
                 // Outer call is .filter(fn(y) y > 5)
                 assert_eq!(arguments.len(), 1);
                 match &arguments[0] {
@@ -753,20 +745,21 @@ mod tests {
             ExprKind::Call { arguments, .. } => {
                 assert_eq!(arguments.len(), 1);
                 match &arguments[0] {
-                    Argument::Positional(inner_call) => {
-                        match &inner_call.kind {
-                            ExprKind::Call { arguments: inner_args, .. } => {
-                                assert_eq!(inner_args.len(), 1);
-                                match &inner_args[0] {
-                                    Argument::Positional(arg) => {
-                                        assert!(matches!(&arg.kind, ExprKind::Lambda { .. }));
-                                    }
-                                    other => panic!("Expected positional, got {:?}", other),
+                    Argument::Positional(inner_call) => match &inner_call.kind {
+                        ExprKind::Call {
+                            arguments: inner_args,
+                            ..
+                        } => {
+                            assert_eq!(inner_args.len(), 1);
+                            match &inner_args[0] {
+                                Argument::Positional(arg) => {
+                                    assert!(matches!(&arg.kind, ExprKind::Lambda { .. }));
                                 }
+                                other => panic!("Expected positional, got {:?}", other),
                             }
-                            other => panic!("Expected inner call, got {:?}", other),
                         }
-                    }
+                        other => panic!("Expected inner call, got {:?}", other),
+                    },
                     other => panic!("Expected positional, got {:?}", other),
                 }
             }
@@ -785,7 +778,13 @@ mod tests {
                         assert_eq!(body.len(), 1);
                         match &body[0].kind {
                             StmtKind::Expression(e) => {
-                                assert!(matches!(&e.kind, ExprKind::Binary { operator: BinaryOp::Equal, .. }));
+                                assert!(matches!(
+                                    &e.kind,
+                                    ExprKind::Binary {
+                                        operator: BinaryOp::Equal,
+                                        ..
+                                    }
+                                ));
                             }
                             other => panic!("Expected expression, got {:?}", other),
                         }
@@ -1121,7 +1120,9 @@ mod tests {
         // Chained method calls with end-body lambdas
         let expr = parse_expr("items.filter(|x|\n  x > 0\nend).map(|x|\n  x * 2\nend)");
         match &expr.kind {
-            ExprKind::Call { callee, arguments, .. } => {
+            ExprKind::Call {
+                callee, arguments, ..
+            } => {
                 // Outer call is .map(...)
                 assert_eq!(arguments.len(), 1);
                 match &arguments[0] {
@@ -1218,7 +1219,10 @@ mod tests {
             ExprKind::SafeMember { object, name } => {
                 assert_eq!(name, "city");
                 match object.kind {
-                    ExprKind::SafeMember { object: inner, name: inner_name } => {
+                    ExprKind::SafeMember {
+                        object: inner,
+                        name: inner_name,
+                    } => {
                         assert_eq!(inner_name, "address");
                         assert!(matches!(inner.kind, ExprKind::Variable(ref v) if v == "user"));
                     }

@@ -509,7 +509,8 @@ impl TuiRepl {
             }
             Plus | Minus | Star | Slash | Percent | Equal | EqualEqual | BangEqual | Less
             | LessEqual | Greater | GreaterEqual | Bang | And | Or | Pipeline | Pipe
-            | NullishCoalescing | SafeNavigation | DoubleColon | Arrow | FatArrow | Spread | Range => {
+            | NullishCoalescing | SafeNavigation | DoubleColon | Arrow | FatArrow | Spread
+            | Range => {
                 format!("\x1b[91m{}\x1b[0m", text) // Bright red
             }
             LeftParen | RightParen | LeftBrace | RightBrace | LeftBracket | RightBracket

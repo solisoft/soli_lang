@@ -846,7 +846,7 @@ impl Parser {
         // Parse body
         let body = if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
             self.advance(); // consume {
-            // Block body with braces
+                            // Block body with braces
             let mut statements = Vec::new();
             while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
                 statements.push(self.statement()?);

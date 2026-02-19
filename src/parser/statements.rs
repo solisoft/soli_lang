@@ -278,10 +278,7 @@ impl Parser {
         let branch = self.parse_branch_body()?;
 
         // For multi-line else bodies (indentation-style), consume the closing 'end'
-        if is_multiline
-            && !self.check(&TokenKind::Else)
-            && !self.check(&TokenKind::Elsif)
-        {
+        if is_multiline && !self.check(&TokenKind::Else) && !self.check(&TokenKind::Elsif) {
             self.match_token(&TokenKind::End);
         }
 

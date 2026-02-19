@@ -485,7 +485,9 @@ impl Interpreter {
                         Err(RuntimeError::General {
                             message: format!(
                                 "function '{}' expected to return {}, got {}",
-                                func.name, expected_type, value.type_name()
+                                func.name,
+                                expected_type,
+                                value.type_name()
                             ),
                             span,
                         })
@@ -708,7 +710,9 @@ mod return_type_enforcement_tests {
     use crate::parser::Parser;
 
     fn run(source: &str) -> Result<(), String> {
-        let tokens = Scanner::new(source).scan_tokens().map_err(|e| e.to_string())?;
+        let tokens = Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
         let program = Parser::new(tokens).parse().map_err(|e| e.to_string())?;
         let mut interpreter = Interpreter::new();
         interpreter.interpret(&program).map_err(|e| e.to_string())
@@ -747,7 +751,11 @@ greet()
         let result = run(src);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("expected to return String"), "Error was: {}", err);
+        assert!(
+            err.contains("expected to return String"),
+            "Error was: {}",
+            err
+        );
         assert!(err.contains("got int"), "Error was: {}", err);
     }
 
@@ -865,7 +873,11 @@ greet()
         let result = run(src);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("expected to return String"), "Error was: {}", err);
+        assert!(
+            err.contains("expected to return String"),
+            "Error was: {}",
+            err
+        );
     }
 
     #[test]
@@ -906,7 +918,11 @@ mod safe_navigation_tests {
         let mut interpreter = Interpreter::new();
         interpreter.interpret(&program).unwrap();
         // Read the result variable from the environment
-        let val = interpreter.environment.borrow().get("result").unwrap_or(Value::Null);
+        let val = interpreter
+            .environment
+            .borrow()
+            .get("result")
+            .unwrap_or(Value::Null);
         val
     }
 
@@ -919,29 +935,35 @@ mod safe_navigation_tests {
     #[test]
     fn test_safe_nav_non_null_returns_field() {
         // Use hash for field access since it's simpler and well-tested
-        let val = eval(r#"
+        let val = eval(
+            r#"
 let u = { "name" => "Alice" }
 let result = u&.name
-"#);
+"#,
+        );
         assert_eq!(val, Value::String("Alice".to_string()));
     }
 
     #[test]
     fn test_safe_nav_method_null() {
-        let val = eval(r#"
+        let val = eval(
+            r#"
 let x = null
 let result = x&.greet()
-"#);
+"#,
+        );
         assert_eq!(val, Value::Null);
     }
 
     #[test]
     fn test_safe_nav_method_non_null() {
         // Use array with a method to test non-null safe nav method call
-        let val = eval(r#"
+        let val = eval(
+            r#"
 let arr = [3, 1, 2]
 let result = arr&.length()
-"#);
+"#,
+        );
         assert_eq!(val, Value::Int(3));
     }
 
@@ -953,10 +975,12 @@ let result = arr&.length()
 
     #[test]
     fn test_safe_nav_chained_non_null() {
-        let val = eval(r#"
+        let val = eval(
+            r#"
 let u = { "address" => { "city" => "Paris" } }
 let result = u&.address&.city
-"#);
+"#,
+        );
         assert_eq!(val, Value::String("Paris".to_string()));
     }
 
@@ -968,10 +992,12 @@ let result = u&.address&.city
 
     #[test]
     fn test_safe_nav_on_non_null_with_nullish() {
-        let val = eval(r#"
+        let val = eval(
+            r#"
 let u = { "name" => "Eve" }
 let result = u&.name ?? "default"
-"#);
+"#,
+        );
         assert_eq!(val, Value::String("Eve".to_string()));
     }
 }

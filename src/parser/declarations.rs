@@ -177,11 +177,12 @@ impl Parser {
 
         let name = self.expect_identifier()?;
 
-        let superclass = if self.match_token(&TokenKind::Extends) || self.match_token(&TokenKind::Less) {
-            Some(self.expect_identifier()?)
-        } else {
-            None
-        };
+        let superclass =
+            if self.match_token(&TokenKind::Extends) || self.match_token(&TokenKind::Less) {
+                Some(self.expect_identifier()?)
+            } else {
+                None
+            };
 
         let interfaces = if self.match_token(&TokenKind::Implements) {
             let mut interfaces = vec![self.expect_identifier()?];

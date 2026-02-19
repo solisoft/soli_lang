@@ -57,9 +57,11 @@ pub fn get_precedence(kind: &TokenKind) -> Precedence {
         TokenKind::Pipeline => Precedence::Pipeline,
         TokenKind::Plus | TokenKind::Minus => Precedence::Term,
         TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Precedence::Factor,
-        TokenKind::LeftParen | TokenKind::Dot | TokenKind::SafeNavigation | TokenKind::DoubleColon | TokenKind::LeftBracket => {
-            Precedence::Call
-        }
+        TokenKind::LeftParen
+        | TokenKind::Dot
+        | TokenKind::SafeNavigation
+        | TokenKind::DoubleColon
+        | TokenKind::LeftBracket => Precedence::Call,
         _ => Precedence::None,
     }
 }
