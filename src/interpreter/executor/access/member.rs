@@ -97,13 +97,12 @@ impl Interpreter {
         // Then check for native method
         if let Some(native_method) = inst_ref.class.find_native_method(name) {
             let class_name = inst_ref.class.name.clone();
-            let user_arity = native_method.arity.map(|a| a.saturating_sub(1));
             let native_method_clone = native_method.clone();
             drop(inst_ref);
             let instance_clone = inst.clone();
             return Ok(Value::NativeFunction(NativeFunction::new(
                 format!("{}.{}", class_name, name),
-                user_arity,
+                native_method.arity,
                 move |args| {
                     let mut new_args = vec![Value::Instance(instance_clone.clone())];
                     new_args.extend(args.iter().cloned());
@@ -160,11 +159,9 @@ impl Interpreter {
                 let original_func = native_method.func.clone();
                 let original_arity = native_method.arity;
 
-                let user_arity = original_arity.map(|a| a.saturating_sub(1));
-
                 let bound_func = NativeFunction::new(
                     Box::leak(format!("bound_{}", method_name).into_boxed_str()),
-                    user_arity,
+                    original_arity,
                     move |args| {
                         let mut full_args = vec![class_val.clone()];
                         full_args.extend(args);
@@ -246,11 +243,10 @@ impl Interpreter {
         // Also check for native methods in superclass
         if let Some(native_method) = superclass.find_native_method(name) {
             let instance_clone = instance.clone();
-            let user_arity = native_method.arity.map(|a| a.saturating_sub(1));
             let native_method_clone = native_method.clone();
             return Ok(Value::NativeFunction(NativeFunction::new(
                 format!("{}.{}", superclass.name, name),
-                user_arity,
+                native_method.arity,
                 move |args| {
                     let mut new_args = vec![Value::Instance(instance_clone.clone())];
                     new_args.extend(args.iter().cloned());
