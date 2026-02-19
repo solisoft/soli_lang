@@ -104,7 +104,7 @@
                     <div class="px-6 py-6 overflow-x-auto min-h-[300px]">
                         <!-- Model Content -->
                         <div id="content-model">
-<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Post</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Model</span>
+<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Post</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span>
     <span class="text-gray-500"># Validations</span>
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"title"</span>, {
         <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
@@ -146,7 +146,7 @@
 
                         <!-- Controller Content -->
                         <div id="content-controller" class="hidden">
-<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">PostsController</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Controller</span>
+<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">PostsController</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Controller</span>
     <span class="text-purple-400">def</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>)
         <span class="text-purple-400">let</span> posts = <span class="text-yellow-200">Post</span>
             .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.status == @s"</span>, { <span class="text-green-400">"s"</span>: <span class="text-green-400">"published"</span> })
@@ -463,7 +463,7 @@
                         <span class="text-xs text-gray-400 font-mono">app/models/user.sl</span>
                     </div>
                     <div class="p-4 overflow-x-auto">
-<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">User</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Model</span>
+<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">User</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span>
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, {
         <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
         <span class="text-green-400">"uniqueness"</span>: <span class="text-purple-400">true</span>
