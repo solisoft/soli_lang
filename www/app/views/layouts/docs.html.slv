@@ -452,7 +452,7 @@
             name: 'SoliLang',
             aliases: ['soli'],
             keywords: {
-                keyword: 'fn if else elsif end return let for in while do break continue class extends static this super new import use as try catch throw export const match',
+                keyword: 'fn if else elsif end return let for in while do break continue class extends < static this super new import use as try catch throw export const match',
                 literal: 'null true false',
                 built_in: 'print println datetime now hash_password validate_token redirect error json_encode json_decode render get post put patch delete resources scope middleware'
             },

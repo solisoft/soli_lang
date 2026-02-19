@@ -55,6 +55,8 @@ enum Command {
         action: DbMigrateAction,
         folder: String,
     },
+    /// Lint source files
+    Lint { path: Option<String> },
 }
 
 /// Database migration action
@@ -79,6 +81,7 @@ fn print_usage() {
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
+    eprintln!("       soli lint [path]");
     eprintln!("       soli db:migrate <up|down|status> [folder]");
     eprintln!("       soli db:migrate generate <name> [folder]");
     eprintln!();
@@ -89,6 +92,7 @@ fn print_usage() {
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("  test [path]          Run tests (default: tests/ directory)");
+    eprintln!("  lint [path]          Lint .sl files for style issues and code smells");
     eprintln!("  db:migrate           Database migration commands");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -347,6 +351,22 @@ fn parse_args() -> Options {
                 return options;
             }
             "--no-type-check" => options.no_type_check = true,
+            "lint" => {
+                i += 1;
+                let mut path: Option<String> = None;
+                while i < args.len() {
+                    if !args[i].starts_with('-') && path.is_none() {
+                        path = Some(args[i].clone());
+                    } else {
+                        eprintln!("Unknown option for lint: {}", args[i]);
+                        print_usage();
+                        process::exit(64);
+                    }
+                    i += 1;
+                }
+                options.command = Command::Lint { path };
+                return options;
+            }
             "test" => {
                 // Parse test command
                 i += 1;
@@ -471,6 +491,7 @@ fn main() {
             workers,
             daemonize,
         } => run_serve(folder, *port, *dev_mode, *workers, *daemonize),
+        Command::Lint { path } => run_lint(path.as_deref()),
         Command::Test {
             path,
             jobs,
@@ -673,6 +694,74 @@ fn run_eval(code: &str, options: &Options) {
 
 fn run_repl() {
     solilang::repl_tui::run_tui_repl().unwrap();
+}
+
+fn run_lint(path: Option<&str>) {
+    let lint_path = match path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+    };
+
+    if !lint_path.exists() {
+        eprintln!("Error: Path '{}' does not exist", lint_path.display());
+        process::exit(1);
+    }
+
+    let files: Vec<std::path::PathBuf> = if lint_path.is_file() {
+        vec![lint_path.clone()]
+    } else {
+        collect_test_files(&lint_path)
+    };
+
+    if files.is_empty() {
+        println!("No .sl files found.");
+        return;
+    }
+
+    let mut total_issues = 0;
+    let mut files_with_issues = 0;
+
+    for file in &files {
+        let source = match fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("{}: error reading file: {}", file.display(), e);
+                continue;
+            }
+        };
+
+        let diagnostics = match solilang::lint(&source) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("{}: parse error: {}", file.display(), e);
+                continue;
+            }
+        };
+
+        if !diagnostics.is_empty() {
+            files_with_issues += 1;
+            for d in &diagnostics {
+                println!(
+                    "{}:{}:{} - [{}] {}",
+                    file.display(),
+                    d.span.line,
+                    d.span.column,
+                    d.rule,
+                    d.message
+                );
+            }
+            total_issues += diagnostics.len();
+        }
+    }
+
+    if total_issues > 0 {
+        println!();
+        println!(
+            "{} issue(s) found in {} file(s)",
+            total_issues, files_with_issues
+        );
+        process::exit(1);
+    }
 }
 
 fn format_duration(duration: std::time::Duration) -> String {

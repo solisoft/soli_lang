@@ -186,40 +186,121 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::Try)?;
 
-        let try_block = Box::new(self.block_statement()?);
+        // After `try`, a `{` always starts a block body, never a hash literal.
+        let uses_braces = self.check(&TokenKind::LeftBrace);
 
-        let catch_var = if self.match_token(&TokenKind::Catch) {
-            self.expect(&TokenKind::LeftParen)?;
+        if uses_braces {
+            // Brace syntax: try { ... } catch (e) { ... } finally { ... }
+            let try_block = Box::new(self.block_statement()?);
+
+            let (catch_var, catch_block) = if self.match_token(&TokenKind::Catch) {
+                let var = self.parse_catch_var()?;
+                let block = Some(Box::new(self.block_statement()?));
+                (var, block)
+            } else {
+                (None, None)
+            };
+
+            let finally_block = if self.match_token(&TokenKind::Finally) {
+                Some(Box::new(self.block_statement()?))
+            } else {
+                None
+            };
+
+            let span = start_span.merge(&self.previous_span());
+            Ok(Stmt::new(
+                StmtKind::Try {
+                    try_block,
+                    catch_var,
+                    catch_block,
+                    finally_block,
+                },
+                span,
+            ))
+        } else {
+            // End syntax: try ... catch e ... finally ... end
+            let body_start = self.current_span();
+            let mut try_stmts = Vec::new();
+            while !self.check(&TokenKind::Catch)
+                && !self.check(&TokenKind::Finally)
+                && !self.check(&TokenKind::End)
+                && !self.is_at_end()
+            {
+                try_stmts.push(self.statement()?);
+            }
+            let try_block = Box::new(Stmt::new(
+                StmtKind::Block(try_stmts),
+                body_start.merge(&self.previous_span()),
+            ));
+
+            let (catch_var, catch_block) = if self.match_token(&TokenKind::Catch) {
+                let var = self.parse_catch_var()?;
+                let catch_start = self.current_span();
+                let mut catch_stmts = Vec::new();
+                while !self.check(&TokenKind::Finally)
+                    && !self.check(&TokenKind::End)
+                    && !self.is_at_end()
+                {
+                    catch_stmts.push(self.statement()?);
+                }
+                let block = Box::new(Stmt::new(
+                    StmtKind::Block(catch_stmts),
+                    catch_start.merge(&self.previous_span()),
+                ));
+                (var, Some(block))
+            } else {
+                (None, None)
+            };
+
+            let finally_block = if self.match_token(&TokenKind::Finally) {
+                let finally_start = self.current_span();
+                let mut finally_stmts = Vec::new();
+                while !self.check(&TokenKind::End) && !self.is_at_end() {
+                    finally_stmts.push(self.statement()?);
+                }
+                Some(Box::new(Stmt::new(
+                    StmtKind::Block(finally_stmts),
+                    finally_start.merge(&self.previous_span()),
+                )))
+            } else {
+                None
+            };
+
+            self.expect(&TokenKind::End)?;
+            let span = start_span.merge(&self.previous_span());
+            Ok(Stmt::new(
+                StmtKind::Try {
+                    try_block,
+                    catch_var,
+                    catch_block,
+                    finally_block,
+                },
+                span,
+            ))
+        }
+    }
+
+    /// Parse a catch variable: `(e)` with parens or bare `e` on the same line.
+    fn parse_catch_var(&mut self) -> ParseResult<Option<String>> {
+        if self.match_token(&TokenKind::LeftParen) {
             let var = self.expect_identifier()?;
             self.expect(&TokenKind::RightParen)?;
-            Some(var)
+            Ok(Some(var))
         } else {
-            None
-        };
-
-        let catch_block = if self.check(&TokenKind::LeftBrace) || catch_var.is_some() {
-            Some(Box::new(self.block_statement()?))
-        } else {
-            None
-        };
-
-        let finally_block = if self.match_token(&TokenKind::Finally) {
-            Some(Box::new(self.block_statement()?))
-        } else {
-            None
-        };
-
-        let span = start_span.merge(&self.previous_span());
-
-        Ok(Stmt::new(
-            StmtKind::Try {
-                try_block,
-                catch_var,
-                catch_block,
-                finally_block,
-            },
-            span,
-        ))
+            // Bare variable: catch e — identifier must be on the same line as catch
+            let catch_line = self.previous_span().line;
+            let next_line = self.current_span().line;
+            if catch_line == next_line
+                && !self.check(&TokenKind::LeftBrace)
+                && !self.check(&TokenKind::End)
+                && !self.check(&TokenKind::Finally)
+                && !self.is_at_end()
+            {
+                Ok(Some(self.expect_identifier()?))
+            } else {
+                Ok(None)
+            }
+        }
     }
 
     /// Check if a `{` at statement position starts a hash literal rather than a block.

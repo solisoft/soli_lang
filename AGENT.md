@@ -2,9 +2,32 @@
 
 **Soli** is a web-oriented programming language designed with strict minimum features. It focuses on the essential capabilities needed for server-side web development while maintaining simplicity and readability.
 
+## Development Requirements
+
+All code changes must pass linting and formatting checks before submission:
+
+```bash
+# Run clippy with deny warnings
+cargo clippy -- -D warnings
+
+# Format code
+cargo fmt
+```
+
+**Always run these commands before committing changes.**
+
+### Testing
+
+Each new language feature must be tested in a `.sl` test file. Test files should be placed in `src/` or a dedicated `tests/` directory and can be run with:
+
+```bash
+soli test
+```
+
 ## Table of Contents
 
-1. [Core Philosophy](#core-philosophy)
+1. [Development Requirements](#development-requirements)
+2. [Core Philosophy](#core-philosophy)
 2. [Language Features](#language-features-minimal-set)
 3. [Built-in Functions](#built-in-functions-web-focused)
 4. [Web MVC Architecture](#web-mvc-architecture)

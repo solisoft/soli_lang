@@ -11,6 +11,7 @@ pub mod coverage;
 pub mod error;
 pub mod interpreter;
 pub mod lexer;
+pub mod lint;
 pub mod live;
 pub mod migration;
 pub mod module;
@@ -491,6 +492,13 @@ pub fn parse(source: &str) -> Result<ast::Program, SolilangError> {
     let tokens = lexer::Scanner::new(source).scan_tokens()?;
     let program = parser::Parser::new(tokens).parse()?;
     Ok(program)
+}
+
+/// Lint source code and return diagnostics.
+pub fn lint(source: &str) -> Result<Vec<lint::LintDiagnostic>, SolilangError> {
+    let tokens = lexer::Scanner::new(source).scan_tokens()?;
+    let program = parser::Parser::new(tokens).parse()?;
+    Ok(lint::Linter::new(source).lint(&program))
 }
 
 /// Type check a program without executing.

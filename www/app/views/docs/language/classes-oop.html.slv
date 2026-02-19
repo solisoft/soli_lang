@@ -14,6 +14,8 @@
         <p class="text-xl text-gray-300 leading-8">
             Object-oriented programming in Soli: classes, inheritance, interfaces, and static members.
         </p>
+        <p class="text-gray-400 mt-2"><strong class="text-yellow-400">Tip:</strong> Use <code class="text-pink-400">&lt;</code> as an alias for <code class="text-pink-400">extends</code> (e.g., <code class="text-pink-400">class Dog &lt; Animal</code>).
+        </p>
     </div>
 
     <!-- Basic Class Definition -->
@@ -101,7 +103,7 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Private Method Convention</h3>
                 <p class="text-gray-400 mb-3">In addition to the <code>private</code> keyword, Soli follows a naming convention where methods starting with an underscore (<code>_</code>) are considered internal/private helpers:</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">class PostsController extends Controller
+                <pre data-filename="Example"><code class="language-soli text-sm">class PostsController < Controller
     // Underscore prefix marks internal helper methods
     fn _permit_params(params: Any)        {
             "title": params["title"],
@@ -209,7 +211,7 @@ print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
 end</code></pre>
 
         <p class="text-gray-400 mb-3">Inheritance.</p>
-        <pre data-filename="my_class.sl"><code class="language-soli text-sm">class Admin extends User
+        <pre data-filename="my_class.sl"><code class="language-soli text-sm">class Admin < User
     fn say_hello()
         super.say_hello();
         println("I am an admin.");

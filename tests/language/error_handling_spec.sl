@@ -122,6 +122,67 @@ describe("Try/Catch/Finally", fn() {
         assert(ran);
     });
 
+    // ---- end syntax ----
+
+    test("try/catch with end syntax", fn() {
+        let result = ""
+        try
+            throw "boom"
+        catch e
+            result = "caught: " + e
+        end
+        assert_eq(result, "caught: boom")
+    });
+
+    test("try/catch/finally with end syntax", fn() {
+        let order = []
+        try
+            throw "error"
+        catch e
+            order.push("catch")
+        finally
+            order.push("finally")
+        end
+        assert_eq(len(order), 2)
+        assert_eq(order[0], "catch")
+        assert_eq(order[1], "finally")
+    });
+
+    test("try/finally without catch using end syntax", fn() {
+        let ran = false
+        try
+            let x = 1
+        finally
+            ran = true
+        end
+        assert(ran)
+    });
+
+    test("try without error using end syntax", fn() {
+        let result = 0
+        try
+            result = 42
+        catch e
+            result = -1
+        end
+        assert_eq(result, 42)
+    });
+
+    test("nested try/catch with end syntax", fn() {
+        let result = ""
+        try
+            try
+                throw "inner"
+            catch e
+                result = "inner caught"
+                throw "outer"
+            end
+        catch e
+            result = result + " outer caught"
+        end
+        assert_eq(result, "inner caught outer caught")
+    });
+
     test("finally with nested try", fn() {
         let order = [];
         try {

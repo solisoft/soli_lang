@@ -1456,6 +1456,8 @@ print(from_area.height);  // ~6.928
 
 ### Inheritance
 
+> **Note:** You can use `<` as an alias for `extends` (e.g., `class Dog < Animal`).
+
 ```soli
 // Base class
 class Animal
@@ -1477,7 +1479,7 @@ class Animal
 end
 
 // Subclass
-class Dog extends Animal
+class Dog < Animal
     breed: String;
 
     new(name: String, age: Int, breed: String)
@@ -1498,7 +1500,7 @@ class Dog extends Animal
 end
 
 // Another subclass
-class Cat extends Animal
+class Cat < Animal
     new(name: String, age: Int)
         super(name, age);
     end
@@ -1784,7 +1786,7 @@ class Product
 }
 
 // Electronics subclass with additional warranty info
-class Electronics extends Product
+class Electronics < Product
     warranty_months: Int;
     brand: String;
 
