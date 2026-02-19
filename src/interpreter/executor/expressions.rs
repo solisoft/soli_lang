@@ -72,10 +72,14 @@ impl Interpreter {
             ExprKind::Pipeline { left, right } => self.evaluate_pipeline(left, right, expr.span),
 
             // Access
-            ExprKind::Member { object, name } => self.evaluate_member(object, name, expr.span),
+            ExprKind::Member { object, name } => {
+                let val = self.evaluate_member(object, name, expr.span)?;
+                self.try_auto_invoke(val, expr.span)
+            }
 
             ExprKind::SafeMember { object, name } => {
-                self.evaluate_safe_member(object, name, expr.span)
+                let val = self.evaluate_safe_member(object, name, expr.span)?;
+                self.try_auto_invoke(val, expr.span)
             }
 
             ExprKind::QualifiedName { qualifier, name } => {
@@ -392,6 +396,33 @@ impl Interpreter {
         Ok(Value::Hash(Rc::new(RefCell::new(result))))
     }
 
+    /// Auto-invoke zero-argument methods when accessed without parentheses.
+    /// This enables Ruby-style `arr.length`, `str.upcase`, `obj.name` syntax.
+    fn try_auto_invoke(&mut self, val: Value, span: Span) -> RuntimeResult<Value> {
+        // Check built-in type methods (Value::Method)
+        if let Value::Method(ref method) = val {
+            if is_zero_arg_builtin_method(&method.method_name, &method.receiver) {
+                return self.call_method(
+                    crate::interpreter::value::ValueMethod {
+                        receiver: method.receiver.clone(),
+                        method_name: method.method_name.clone(),
+                    },
+                    vec![],
+                    span,
+                );
+            }
+            return Ok(val);
+        }
+        // Check user-defined instance/class methods (is_method && 0 required params).
+        // Use call_value to properly handle default parameter values.
+        let should_auto_invoke =
+            matches!(&val, Value::Function(func) if func.is_method && func.arity() == 0);
+        if should_auto_invoke {
+            return self.call_value(val, vec![], span);
+        }
+        Ok(val)
+    }
+
     #[allow(clippy::arc_with_non_send_sync)]
     pub(crate) fn evaluate_system_run(&mut self, cmd: &str, _span: Span) -> RuntimeResult<Value> {
         use crate::interpreter::value::HttpFutureKind;
@@ -417,5 +448,71 @@ impl Interpreter {
             kind: HttpFutureKind::SystemResult,
         };
         Ok(Value::Future(Arc::new(Mutex::new(future_state))))
+    }
+}
+
+/// Check if a built-in method can be called with zero arguments.
+fn is_zero_arg_builtin_method(method_name: &str, receiver: &Value) -> bool {
+    match receiver {
+        Value::Array(_) => matches!(
+            method_name,
+            "length"
+                | "first"
+                | "last"
+                | "empty?"
+                | "reverse"
+                | "uniq"
+                | "compact"
+                | "flatten"
+                | "sort"
+                | "shuffle"
+                | "sample"
+                | "sum"
+                | "min"
+                | "max"
+                | "pop"
+                | "clear"
+                | "to_string"
+        ),
+        Value::String(_) => matches!(
+            method_name,
+            "length"
+                | "to_string"
+                | "upcase"
+                | "uppercase"
+                | "downcase"
+                | "lowercase"
+                | "trim"
+                | "empty?"
+                | "chomp"
+                | "lstrip"
+                | "rstrip"
+                | "squeeze"
+                | "capitalize"
+                | "swapcase"
+                | "reverse"
+                | "hex"
+                | "oct"
+                | "ord"
+                | "chr"
+                | "bytes"
+                | "chars"
+                | "lines"
+                | "bytesize"
+        ),
+        Value::Hash(_) => matches!(
+            method_name,
+            "length"
+                | "keys"
+                | "values"
+                | "entries"
+                | "empty?"
+                | "clear"
+                | "invert"
+                | "compact"
+                | "to_string"
+        ),
+        Value::QueryBuilder(_) => matches!(method_name, "all" | "first" | "count"),
+        _ => false,
     }
 }

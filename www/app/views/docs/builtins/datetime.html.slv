@@ -35,9 +35,9 @@
             Static Methods
         </h2>
 
-        <section id="fn-datetime-now" class="scroll-mt-20 mb-6">
+        <section id="def-datetime-now" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-now" class="group flex items-center gap-2 mb-3">
+                <a href="#def-datetime-now" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">DateTime.now()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -53,9 +53,9 @@ println(now.to_iso())  // "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
 
-        <section id="fn-datetime-utc" class="scroll-mt-20 mb-6">
+        <section id="def-datetime-utc" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-utc" class="group flex items-center gap-2 mb-3">
+                <a href="#def-datetime-utc" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">DateTime.utc()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -71,9 +71,9 @@ println(utc.to_iso())  // "2024-01-15T15:30:00Z"</code></pre>
             </div>
         </section>
 
-        <section id="fn-datetime-parse" class="scroll-mt-20 mb-6">
+        <section id="def-datetime-parse" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-datetime-parse" class="group flex items-center gap-2 mb-3">
+                <a href="#def-datetime-parse" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">DateTime.parse(string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -98,9 +98,9 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
     <section id="section-components" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Date Components</h2>
 
-        <section id="fn-year" class="scroll-mt-20 mb-6">
+        <section id="def-year" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-year" class="group flex items-center gap-2 mb-3">
+                <a href="#def-year" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.year()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -114,9 +114,9 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
             </div>
         </section>
 
-        <section id="fn-month" class="scroll-mt-20 mb-6">
+        <section id="def-month" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-month" class="group flex items-center gap-2 mb-3">
+                <a href="#def-month" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.month()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -130,9 +130,9 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
             </div>
         </section>
 
-        <section id="fn-day" class="scroll-mt-20 mb-6">
+        <section id="def-day" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-day" class="group flex items-center gap-2 mb-3">
+                <a href="#def-day" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.day()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -146,9 +146,9 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
             </div>
         </section>
 
-        <section id="fn-hour" class="scroll-mt-20 mb-6">
+        <section id="def-hour" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-hour" class="group flex items-center gap-2 mb-3">
+                <a href="#def-hour" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.hour()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -162,9 +162,9 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
             </div>
         </section>
 
-        <section id="fn-minute" class="scroll-mt-20 mb-6">
+        <section id="def-minute" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-minute" class="group flex items-center gap-2 mb-3">
+                <a href="#def-minute" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.minute()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -178,9 +178,9 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
             </div>
         </section>
 
-        <section id="fn-second" class="scroll-mt-20 mb-6">
+        <section id="def-second" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-second" class="group flex items-center gap-2 mb-3">
+                <a href="#def-second" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.second()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -194,9 +194,9 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
             </div>
         </section>
 
-        <section id="fn-weekday" class="scroll-mt-20 mb-6">
+        <section id="def-weekday" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-weekday" class="group flex items-center gap-2 mb-3">
+                <a href="#def-weekday" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.weekday()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -217,9 +217,9 @@ println(dt.weekday())  // "monday"</code></pre>
     <section id="section-formatting" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Formatting</h2>
 
-        <section id="fn-to-unix" class="scroll-mt-20 mb-6">
+        <section id="def-to-unix" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-to-unix" class="group flex items-center gap-2 mb-3">
+                <a href="#def-to-unix" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.to_unix()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -235,9 +235,9 @@ println(dt.to_unix())  // 1705315800</code></pre>
             </div>
         </section>
 
-        <section id="fn-to-iso" class="scroll-mt-20 mb-6">
+        <section id="def-to-iso" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-to-iso" class="group flex items-center gap-2 mb-3">
+                <a href="#def-to-iso" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.to_iso()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -253,9 +253,9 @@ println(dt.to_iso())  // "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
 
-        <section id="fn-format" class="scroll-mt-20 mb-6">
+        <section id="def-format" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-format" class="group flex items-center gap-2 mb-3">
+                <a href="#def-format" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.format(pattern)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -289,9 +289,9 @@ dt.format("%A")                  // "Monday"</code></pre>
     <section id="section-arithmetic" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Arithmetic</h2>
 
-        <section id="fn-add-days" class="scroll-mt-20 mb-6">
+        <section id="def-add-days" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-add-days" class="group flex items-center gap-2 mb-3">
+                <a href="#def-add-days" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.add_days(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -312,9 +312,9 @@ let yesterday = today.add_days(-1)</code></pre>
             </div>
         </section>
 
-        <section id="fn-add-hours" class="scroll-mt-20 mb-6">
+        <section id="def-add-hours" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-add-hours" class="group flex items-center gap-2 mb-3">
+                <a href="#def-add-hours" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.add_hours(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -334,9 +334,9 @@ let in_two_hours = now.add_hours(2)</code></pre>
             </div>
         </section>
 
-        <section id="fn-add-weeks" class="scroll-mt-20 mb-6">
+        <section id="def-add-weeks" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-add-weeks" class="group flex items-center gap-2 mb-3">
+                <a href="#def-add-weeks" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.add_weeks(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -356,9 +356,9 @@ let next_week = today.add_weeks(1)</code></pre>
             </div>
         </section>
 
-        <section id="fn-add-months" class="scroll-mt-20 mb-6">
+        <section id="def-add-months" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-add-months" class="group flex items-center gap-2 mb-3">
+                <a href="#def-add-months" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.add_months(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -379,9 +379,9 @@ let last_quarter = today.add_months(-3)</code></pre>
             </div>
         </section>
 
-        <section id="fn-add-years" class="scroll-mt-20 mb-6">
+        <section id="def-add-years" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-add-years" class="group flex items-center gap-2 mb-3">
+                <a href="#def-add-years" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.add_years(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />

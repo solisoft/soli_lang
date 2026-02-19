@@ -130,7 +130,7 @@ impl TokenKind {
         match ident {
             "let" => Some(TokenKind::Let),
             "const" => Some(TokenKind::Const),
-            "fn" => Some(TokenKind::Fn),
+            "fn" | "def" => Some(TokenKind::Fn),
             "return" => Some(TokenKind::Return),
             "if" => Some(TokenKind::If),
             "else" => Some(TokenKind::Else),

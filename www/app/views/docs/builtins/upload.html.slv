@@ -186,7 +186,7 @@ let blob_id = db.store_blob("avatars", image_data_base64, "photo.jpg", "image/jp
 set_solidb_address("http://localhost:8529")
 
 // Upload controller
-fn upload_avatar(req)
+def upload_avatar(req)
     let collection = "avatars"
 
     let result = upload_to_solidb(req, collection, "avatar")
@@ -214,7 +214,7 @@ fn upload_avatar(req)
 end
 
 // Get file controller
-fn get_file(req)
+def get_file(req)
     let blob_id = req["params"]["id"]
     let db = Solidb("localhost:8529", "myapp")
 

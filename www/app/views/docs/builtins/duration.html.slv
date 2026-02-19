@@ -35,9 +35,9 @@
             Creating Durations
         </h2>
 
-        <section id="fn-duration-seconds" class="scroll-mt-20 mb-6">
+        <section id="def-duration-seconds" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-duration-seconds" class="group flex items-center gap-2 mb-3">
+                <a href="#def-duration-seconds" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Duration.seconds(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -57,9 +57,9 @@ let one_minute = Duration.seconds(60)</code></pre>
             </div>
         </section>
 
-        <section id="fn-duration-minutes" class="scroll-mt-20 mb-6">
+        <section id="def-duration-minutes" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-duration-minutes" class="group flex items-center gap-2 mb-3">
+                <a href="#def-duration-minutes" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Duration.minutes(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -79,9 +79,9 @@ let hour = Duration.minutes(60)</code></pre>
             </div>
         </section>
 
-        <section id="fn-duration-hours" class="scroll-mt-20 mb-6">
+        <section id="def-duration-hours" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-duration-hours" class="group flex items-center gap-2 mb-3">
+                <a href="#def-duration-hours" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Duration.hours(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -101,9 +101,9 @@ let session_timeout = Duration.hours(1)</code></pre>
             </div>
         </section>
 
-        <section id="fn-duration-days" class="scroll-mt-20 mb-6">
+        <section id="def-duration-days" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-duration-days" class="group flex items-center gap-2 mb-3">
+                <a href="#def-duration-days" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Duration.days(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -128,9 +128,9 @@ let trial_period = Duration.days(30)</code></pre>
     <section id="section-conversion" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Converting Durations</h2>
 
-        <section id="fn-to-seconds" class="scroll-mt-20 mb-6">
+        <section id="def-to-seconds" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-to-seconds" class="group flex items-center gap-2 mb-3">
+                <a href="#def-to-seconds" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.to_seconds()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -146,9 +146,9 @@ println(duration.to_seconds())  // 7200</code></pre>
             </div>
         </section>
 
-        <section id="fn-to-minutes" class="scroll-mt-20 mb-6">
+        <section id="def-to-minutes" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-to-minutes" class="group flex items-center gap-2 mb-3">
+                <a href="#def-to-minutes" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.to_minutes()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -164,9 +164,9 @@ println(duration.to_minutes())  // 120</code></pre>
             </div>
         </section>
 
-        <section id="fn-to-hours" class="scroll-mt-20 mb-6">
+        <section id="def-to-hours" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-to-hours" class="group flex items-center gap-2 mb-3">
+                <a href="#def-to-hours" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">.to_hours()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />

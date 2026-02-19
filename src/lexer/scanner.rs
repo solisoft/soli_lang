@@ -228,6 +228,12 @@ impl<'a> Scanner<'a> {
                     self.line += 1;
                     self.column = 1;
                 }
+                Some('#') => {
+                    // # line comment (Ruby-style alias for //)
+                    while self.peek().is_some() && self.peek() != Some('\n') {
+                        self.advance();
+                    }
+                }
                 Some('/') => {
                     if self.peek_next() == Some('/') {
                         // Line comment
@@ -1029,6 +1035,15 @@ mod tests {
     fn test_comments() {
         assert_eq!(
             scan("1 // comment\n2"),
+            vec![
+                TokenKind::IntLiteral(1),
+                TokenKind::IntLiteral(2),
+                TokenKind::Eof
+            ]
+        );
+        // # as line comment alias
+        assert_eq!(
+            scan("1 # comment\n2"),
             vec![
                 TokenKind::IntLiteral(1),
                 TokenKind::IntLiteral(2),

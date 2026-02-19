@@ -69,7 +69,16 @@ impl Interpreter {
                     }
                 }
 
-                let callee_val = self.evaluate(callee)?;
+                // Bypass auto-invoke for Member/SafeMember callees in pipelines
+                let callee_val = match &callee.kind {
+                    ExprKind::Member { object, name } => {
+                        self.evaluate_member(object, name, callee.span)?
+                    }
+                    ExprKind::SafeMember { object, name } => {
+                        self.evaluate_safe_member(object, name, callee.span)?
+                    }
+                    _ => self.evaluate(callee)?,
+                };
                 self.call_value(callee_val, new_args, span)
             }
             _ => {

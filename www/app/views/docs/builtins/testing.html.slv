@@ -27,10 +27,10 @@
             Test DSL
         </h2>
 
-        <section id="fn-describe" class="scroll-mt-20 mb-6">
+        <section id="def-describe" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-describe" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">describe(description, fn)</code>
+                <a href="#def-describe" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">describe(description, def)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -39,10 +39,10 @@
             </div>
         </section>
 
-        <section id="fn-test" class="scroll-mt-20 mb-6">
+        <section id="def-test" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-test" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">test(description, fn)</code>
+                <a href="#def-test" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">test(description, def)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -51,10 +51,10 @@
             </div>
         </section>
 
-        <section id="fn-it" class="scroll-mt-20 mb-6">
+        <section id="def-it" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-it" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">it(description, fn)</code>
+                <a href="#def-it" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">it(description, def)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -65,21 +65,21 @@
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
-            <pre data-filename="test_example.sl"><code class="language-soli text-sm">describe("Calculator", fn() {
-    test("adds numbers", fn() {
+            <pre data-filename="test_example.sl"><code class="language-soli text-sm">describe("Calculator", def() {
+    test("adds numbers", def() {
         assert_eq(add(1, 2), 3)
     })
 
-    it("subtracts numbers", fn() {
+    it("subtracts numbers", def() {
         assert_eq(subtract(5, 3), 2)
     })
 
-    describe("division", fn() {
-        it("divides numbers", fn() {
+    describe("division", def() {
+        it("divides numbers", def() {
             assert_eq(divide(10, 2), 5)
         })
 
-        it("handles division by zero", fn() {
+        it("handles division by zero", def() {
             // Test error handling
         })
     })
@@ -93,9 +93,9 @@
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-before-each" class="scroll-mt-20">
-                    <a href="#fn-before-each" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">before_each(fn)</code>
+                <section id="def-before-each" class="scroll-mt-20">
+                    <a href="#def-before-each" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">before_each(def)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -103,9 +103,9 @@
                     <p class="text-gray-400 text-sm mt-1">Run before each test</p>
                 </section>
 
-                <section id="fn-after-each" class="scroll-mt-20">
-                    <a href="#fn-after-each" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">after_each(fn)</code>
+                <section id="def-after-each" class="scroll-mt-20">
+                    <a href="#def-after-each" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">after_each(def)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -113,9 +113,9 @@
                     <p class="text-gray-400 text-sm mt-1">Run after each test</p>
                 </section>
 
-                <section id="fn-before-all" class="scroll-mt-20">
-                    <a href="#fn-before-all" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">before_all(fn)</code>
+                <section id="def-before-all" class="scroll-mt-20">
+                    <a href="#def-before-all" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">before_all(def)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -123,9 +123,9 @@
                     <p class="text-gray-400 text-sm mt-1">Run once before all tests</p>
                 </section>
 
-                <section id="fn-after-all" class="scroll-mt-20">
-                    <a href="#fn-after-all" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">after_all(fn)</code>
+                <section id="def-after-all" class="scroll-mt-20">
+                    <a href="#def-after-all" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">after_all(def)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -137,15 +137,15 @@
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-pending" class="scroll-mt-20">
-                    <a href="#fn-pending" class="group flex items-center gap-2">
+                <section id="def-pending" class="scroll-mt-20">
+                    <a href="#def-pending" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">pending()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Mark test as pending (not yet implemented)</p>
                 </section>
 
-                <section id="fn-skip" class="scroll-mt-20">
-                    <a href="#fn-skip" class="group flex items-center gap-2">
+                <section id="def-skip" class="scroll-mt-20">
+                    <a href="#def-skip" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">skip()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Skip the current test</p>
@@ -158,9 +158,9 @@
     <section id="section-assertions" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Assertions</h2>
 
-        <section id="fn-assert-equal" class="scroll-mt-20 mb-6">
+        <section id="def-assert-equal" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-equal" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-equal" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">assert_equal(expected, actual, message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -175,9 +175,9 @@ assert_equal(true, is_valid, "should be valid");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-true" class="scroll-mt-20 mb-6">
+        <section id="def-assert-true" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-true" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-true" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">assert_true(value, message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -191,9 +191,9 @@ assert_true(contains(items, "test"), "should contain test item");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-false" class="scroll-mt-20 mb-6">
+        <section id="def-assert-false" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-false" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-false" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">assert_false(value, message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -207,9 +207,9 @@ assert_false(is_empty(items), "items should not be empty");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-contains" class="scroll-mt-20 mb-6">
+        <section id="def-assert-contains" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-contains" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-contains" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">assert_contains(haystack, needle, message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -223,9 +223,9 @@ assert_contains([1, 2, 3], 2, "should contain 2");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-nil" class="scroll-mt-20 mb-6">
+        <section id="def-assert-nil" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-nil" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-nil" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">assert_nil(value, message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -239,9 +239,9 @@ assert_nil(user.deleted_at, "should not be deleted");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-not-nil" class="scroll-mt-20 mb-6">
+        <section id="def-assert-not-nil" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-not-nil" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-not-nil" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">assert_not_nil(value, message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -267,22 +267,22 @@ assert_not_nil(response.body, "response should have body");</code></pre>
         </div>
     </section>
 
-                <section id="fn-assert-not" class="scroll-mt-20">
-                    <a href="#fn-assert-not" class="group flex items-center gap-2">
+                <section id="def-assert-not" class="scroll-mt-20">
+                    <a href="#def-assert-not" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_not(condition)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert condition is false</p>
                 </section>
 
-                <section id="fn-assert-eq" class="scroll-mt-20">
-                    <a href="#fn-assert-eq" class="group flex items-center gap-2">
+                <section id="def-assert-eq" class="scroll-mt-20">
+                    <a href="#def-assert-eq" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_eq(a, b)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert a equals b</p>
                 </section>
 
-                <section id="fn-assert-ne" class="scroll-mt-20">
-                    <a href="#fn-assert-ne" class="group flex items-center gap-2">
+                <section id="def-assert-ne" class="scroll-mt-20">
+                    <a href="#def-assert-ne" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_ne(a, b)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert a does not equal b</p>
@@ -293,29 +293,29 @@ assert_not_nil(response.body, "response should have body");</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Null & Comparison</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-assert-null" class="scroll-mt-20">
-                    <a href="#fn-assert-null" class="group flex items-center gap-2">
+                <section id="def-assert-null" class="scroll-mt-20">
+                    <a href="#def-assert-null" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_null(value)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert value is null</p>
                 </section>
 
-                <section id="fn-assert-not-null" class="scroll-mt-20">
-                    <a href="#fn-assert-not-null" class="group flex items-center gap-2">
+                <section id="def-assert-not-null" class="scroll-mt-20">
+                    <a href="#def-assert-not-null" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_not_null(value)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert value is not null</p>
                 </section>
 
-                <section id="fn-assert-gt" class="scroll-mt-20">
-                    <a href="#fn-assert-gt" class="group flex items-center gap-2">
+                <section id="def-assert-gt" class="scroll-mt-20">
+                    <a href="#def-assert-gt" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_gt(a, b)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert a > b</p>
                 </section>
 
-                <section id="fn-assert-lt" class="scroll-mt-20">
-                    <a href="#fn-assert-lt" class="group flex items-center gap-2">
+                <section id="def-assert-lt" class="scroll-mt-20">
+                    <a href="#def-assert-lt" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_lt(a, b)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert a < b</p>
@@ -326,29 +326,29 @@ assert_not_nil(response.body, "response should have body");</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Advanced Assertions</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-assert-match" class="scroll-mt-20">
-                    <a href="#fn-assert-match" class="group flex items-center gap-2">
+                <section id="def-assert-match" class="scroll-mt-20">
+                    <a href="#def-assert-match" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_match(str, pattern)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert string matches regex</p>
                 </section>
 
-                <section id="fn-assert-contains" class="scroll-mt-20">
-                    <a href="#fn-assert-contains" class="group flex items-center gap-2">
+                <section id="def-assert-contains" class="scroll-mt-20">
+                    <a href="#def-assert-contains" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_contains(coll, val)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert collection contains value</p>
                 </section>
 
-                <section id="fn-assert-hash-has-key" class="scroll-mt-20">
-                    <a href="#fn-assert-hash-has-key" class="group flex items-center gap-2">
+                <section id="def-assert-hash-has-key" class="scroll-mt-20">
+                    <a href="#def-assert-hash-has-key" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_hash_has_key(h, k)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert hash has key</p>
                 </section>
 
-                <section id="fn-assert-json" class="scroll-mt-20">
-                    <a href="#fn-assert-json" class="group flex items-center gap-2">
+                <section id="def-assert-json" class="scroll-mt-20">
+                    <a href="#def-assert-json" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">assert_json(string)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Assert string is valid JSON</p>
@@ -361,9 +361,9 @@ assert_not_nil(response.body, "response should have body");</code></pre>
     <section id="section-factories" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Factory Functions</h2>
 
-        <section id="fn-factory-define" class="scroll-mt-20 mb-6">
+        <section id="def-factory-define" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-factory-define" class="group flex items-center gap-2 mb-3">
+                <a href="#def-factory-define" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Factory.define(name, data)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -380,9 +380,9 @@ assert_not_nil(response.body, "response should have body");</code></pre>
             </div>
         </section>
 
-        <section id="fn-factory-create" class="scroll-mt-20 mb-6">
+        <section id="def-factory-create" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-factory-create" class="group flex items-center gap-2 mb-3">
+                <a href="#def-factory-create" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Factory.create(name)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -396,9 +396,9 @@ println(user["name"])  // "Test User"</code></pre>
             </div>
         </section>
 
-        <section id="fn-factory-create-with" class="scroll-mt-20 mb-6">
+        <section id="def-factory-create-with" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-factory-create-with" class="group flex items-center gap-2 mb-3">
+                <a href="#def-factory-create-with" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Factory.create_with(name, overrides)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -415,22 +415,22 @@ println(admin["name"])  // "Test User" (from factory)</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-factory-create-list" class="scroll-mt-20">
-                    <a href="#fn-factory-create-list" class="group flex items-center gap-2">
+                <section id="def-factory-create-list" class="scroll-mt-20">
+                    <a href="#def-factory-create-list" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">Factory.create_list(name, count)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Create multiple instances</p>
                 </section>
 
-                <section id="fn-factory-sequence" class="scroll-mt-20">
-                    <a href="#fn-factory-sequence" class="group flex items-center gap-2">
+                <section id="def-factory-sequence" class="scroll-mt-20">
+                    <a href="#def-factory-sequence" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">Factory.sequence(name)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Get auto-incrementing number</p>
                 </section>
 
-                <section id="fn-factory-clear" class="scroll-mt-20">
-                    <a href="#fn-factory-clear" class="group flex items-center gap-2">
+                <section id="def-factory-clear" class="scroll-mt-20">
+                    <a href="#def-factory-clear" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">Factory.clear()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Clear all factories</p>

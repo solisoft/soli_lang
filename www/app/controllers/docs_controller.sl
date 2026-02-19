@@ -138,6 +138,10 @@ fn language_control_flow(req)
     render_docs("docs/language/control-flow", "Control Flow", "language", "control_flow")
 end
 
+fn language_error_handling(req)
+    render_docs("docs/language/error-handling", "Error Handling", "language", "error_handling")
+end
+
 fn language_functions(req)
     render_docs("docs/language/functions", "Functions", "language", "functions")
 end
@@ -180,6 +184,10 @@ end
 
 fn language_blocks(req)
     render_docs("docs/language/blocks", "Block Syntax", "language", "blocks")
+end
+
+fn language_linting(req)
+    render_docs("docs/language/linting", "Linting", "language", "linting")
 end
 
 // ============================================================================

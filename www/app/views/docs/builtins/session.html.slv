@@ -27,9 +27,9 @@
             Basic Operations
         </h2>
 
-        <section id="fn-session-get" class="scroll-mt-20 mb-6">
+        <section id="def-session-get" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-session-get" class="group flex items-center gap-2 mb-3">
+                <a href="#def-session-get" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">session_get(key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -49,9 +49,9 @@ let cart = session_get("shopping_cart") ?? []</code></pre>
             </div>
         </section>
 
-        <section id="fn-session-set" class="scroll-mt-20 mb-6">
+        <section id="def-session-set" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-session-set" class="group flex items-center gap-2 mb-3">
+                <a href="#def-session-set" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">session_set(key, value)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -68,9 +68,9 @@ session_set("preferences", { "theme": "dark", "lang": "en" })</code></pre>
             </div>
         </section>
 
-        <section id="fn-session-delete" class="scroll-mt-20 mb-6">
+        <section id="def-session-delete" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-session-delete" class="group flex items-center gap-2 mb-3">
+                <a href="#def-session-delete" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">session_delete(key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -82,9 +82,9 @@ session_delete("temporary_data")</code></pre>
             </div>
         </section>
 
-        <section id="fn-session-has" class="scroll-mt-20 mb-6">
+        <section id="def-session-has" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-session-has" class="group flex items-center gap-2 mb-3">
+                <a href="#def-session-has" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">session_has(key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -106,9 +106,9 @@ session_delete("temporary_data")</code></pre>
     <section id="section-management" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Session Management</h2>
 
-        <section id="fn-session-destroy" class="scroll-mt-20 mb-6">
+        <section id="def-session-destroy" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-session-destroy" class="group flex items-center gap-2 mb-3">
+                <a href="#def-session-destroy" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">session_destroy()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -120,9 +120,9 @@ session_destroy()</code></pre>
             </div>
         </section>
 
-        <section id="fn-session-regenerate" class="scroll-mt-20 mb-6">
+        <section id="def-session-regenerate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-session-regenerate" class="group flex items-center gap-2 mb-3">
+                <a href="#def-session-regenerate" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">session_regenerate()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -135,9 +135,9 @@ session_regenerate()  // Security: generate new session ID</code></pre>
             </div>
         </section>
 
-        <section id="fn-session-id" class="scroll-mt-20 mb-6">
+        <section id="def-session-id" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-session-id" class="group flex items-center gap-2 mb-3">
+                <a href="#def-session-id" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">session_id()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -159,7 +159,7 @@ session_regenerate()  // Security: generate new session ID</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
             <pre data-filename="Example"><code class="language-soli text-sm">// Login
-fn login(email: String, password: String) -> Bool
+def login(email: String, password: String) -> Bool
     let user = User.find_by_email(email)
     if !user || !argon2_verify(password, user["password_hash"]) {
         return false
@@ -171,7 +171,7 @@ fn login(email: String, password: String) -> Bool
 end
 
 // Check authentication
-fn current_user() -> Hash?
+def current_user() -> Hash?
     let user_id = session_get("user_id")
     if !user_id {
         return null
@@ -180,7 +180,7 @@ fn current_user() -> Hash?
 end
 
 // Logout
-fn logout()
+def logout()
     session_destroy()
 end</code></pre>
         </div>
@@ -188,14 +188,14 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Flash Messages</h3>
             <pre data-filename="Example"><code class="language-soli text-sm">// Set a flash message
-fn flash(type: String, message: String)
+def flash(type: String, message: String)
     let flashes = session_get("_flashes") ?? []
     push(flashes, { "type": type, "message": message })
     session_set("_flashes", flashes)
 end
 
 // Get and clear flash messages
-fn get_flashes() -> Array
+def get_flashes() -> Array
     let flashes = session_get("_flashes") ?? []
     session_delete("_flashes")
     flashes

@@ -27,9 +27,9 @@
             Pattern Matching
         </h2>
 
-        <section id="fn-regex-match" class="scroll-mt-20 mb-6">
+        <section id="def-regex-match" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-regex-match" class="group flex items-center gap-2 mb-3">
+                <a href="#def-regex-match" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">regex_match(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -82,9 +82,9 @@ println(escaped) // "hello\\.world"</code></pre>
     <section id="section-finding" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Finding Matches</h2>
 
-        <section id="fn-regex-find" class="scroll-mt-20 mb-6">
+        <section id="def-regex-find" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-regex-find" class="group flex items-center gap-2 mb-3">
+                <a href="#def-regex-find" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">regex_find(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -102,9 +102,9 @@ println(result["end"])    // 6</code></pre>
             </div>
         </section>
 
-        <section id="fn-regex-find-all" class="scroll-mt-20 mb-6">
+        <section id="def-regex-find-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-regex-find-all" class="group flex items-center gap-2 mb-3">
+                <a href="#def-regex-find-all" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">regex_find_all(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -127,9 +127,9 @@ println(result["end"])    // 6</code></pre>
     <section id="section-replacing" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Replacing</h2>
 
-        <section id="fn-regex-replace" class="scroll-mt-20 mb-6">
+        <section id="def-regex-replace" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-regex-replace" class="group flex items-center gap-2 mb-3">
+                <a href="#def-regex-replace" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">regex_replace(pattern, string, replacement)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -140,9 +140,9 @@ println(result["end"])    // 6</code></pre>
             </div>
         </section>
 
-        <section id="fn-regex-replace-all" class="scroll-mt-20 mb-6">
+        <section id="def-regex-replace-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-regex-replace-all" class="group flex items-center gap-2 mb-3">
+                <a href="#def-regex-replace-all" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">regex_replace_all(pattern, string, replacement)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -158,9 +158,9 @@ println(result["end"])    // 6</code></pre>
     <section id="section-split-capture" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Splitting & Capturing</h2>
 
-        <section id="fn-regex-split" class="scroll-mt-20 mb-6">
+        <section id="def-regex-split" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-regex-split" class="group flex items-center gap-2 mb-3">
+                <a href="#def-regex-split" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">regex_split(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -172,9 +172,9 @@ regex_split("\\s+", "hello   world")  // ["hello", "world"]</code></pre>
             </div>
         </section>
 
-        <section id="fn-regex-capture" class="scroll-mt-20 mb-6">
+        <section id="def-regex-capture" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-regex-capture" class="group flex items-center gap-2 mb-3">
+                <a href="#def-regex-capture" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">regex_capture(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -191,9 +191,9 @@ println(result["day"])    // "15"</code></pre>
             </div>
         </section>
 
-        <section id="fn-regex-escape" class="scroll-mt-20 mb-6">
+        <section id="def-regex-escape" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-regex-escape" class="group flex items-center gap-2 mb-3">
+                <a href="#def-regex-escape" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">regex_escape(string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />

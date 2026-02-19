@@ -25,11 +25,11 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260122143052_create_users.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn up(db: Any)    db.create_collection("users");
+<pre><code class="language-soli text-sm">def up(db: Any)    db.create_collection("users");
     db.create_index("users", "idx_email", ["email"], { "unique": true });
 end
 
-fn down(db: Any)    db.drop_index("users", "idx_email");
+def down(db: Any)    db.drop_index("users", "idx_email");
     db.drop_collection("users");
 end</code></pre></code></pre>
         </div>
@@ -119,12 +119,12 @@ soli db:migrate down</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Collection Examples</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn up(db: Any)    db.create_collection("users");
+<pre><code class="language-soli text-sm">def up(db: Any)    db.create_collection("users");
     db.create_collection("posts");
     db.create_collection("comments");
 end
 
-fn down(db: Any)    db.drop_collection("comments");
+def down(db: Any)    db.drop_collection("comments");
     db.drop_collection("posts");
     db.drop_collection("users");
 end</code></pre></code></pre>
@@ -154,7 +154,7 @@ end</code></pre></code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Index Examples</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn up(db: Any)    // Simple index
+<pre><code class="language-soli text-sm">def up(db: Any)    // Simple index
     db.create_index("users", "idx_email", ["email"], {});
 
     // Unique index
@@ -170,7 +170,7 @@ end</code></pre></code></pre>
     db.create_index("posts", "idx_user_slug", ["user_id", "slug"], { "unique": true });
 end
 
-fn down(db: Any)    db.drop_index("posts", "idx_user_slug");
+def down(db: Any)    db.drop_index("posts", "idx_user_slug");
     db.drop_index("users", "idx_name");
     db.drop_index("users", "idx_phone");
     db.drop_index("users", "idx_username");
@@ -184,7 +184,7 @@ end</code></pre></code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn up(db: Any)    // Insert seed data
+<pre><code class="language-soli text-sm">def up(db: Any)    // Insert seed data
     db.query("INSERT { name: 'Admin', role: 'admin' } INTO users");
 
     // Update existing data
@@ -199,7 +199,7 @@ end</code></pre></code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260122143052_create_blog_schema.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn up(db: Any)    // Create collections
+<pre><code class="language-soli text-sm">def up(db: Any)    // Create collections
     db.create_collection("users");
     db.create_collection("posts");
     db.create_collection("comments");
@@ -222,7 +222,7 @@ end</code></pre></code></pre>
     db.create_index("tags", "idx_tags_name", ["name"], { "unique": true });
 end
 
-fn down(db: Any)    // Drop indexes first
+def down(db: Any)    // Drop indexes first
     db.drop_index("tags", "idx_tags_name");
     db.drop_index("comments", "idx_comments_author");
     db.drop_index("comments", "idx_comments_post");

@@ -27,9 +27,9 @@
             Locale Management
         </h2>
 
-        <section id="fn-i18n-locale" class="scroll-mt-20 mb-6">
+        <section id="def-i18n-locale" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-i18n-locale" class="group flex items-center gap-2 mb-3">
+                <a href="#def-i18n-locale" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">I18n.locale()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -44,9 +44,9 @@
             </div>
         </section>
 
-        <section id="fn-i18n-set-locale" class="scroll-mt-20 mb-6">
+        <section id="def-i18n-set-locale" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-i18n-set-locale" class="group flex items-center gap-2 mb-3">
+                <a href="#def-i18n-set-locale" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">I18n.set_locale(locale)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -67,9 +67,9 @@ I18n.set_locale("de")</code></pre>
     <section id="section-translations" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Translations</h2>
 
-        <section id="fn-i18n-translate" class="scroll-mt-20 mb-6">
+        <section id="def-i18n-translate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-i18n-translate" class="group flex items-center gap-2 mb-3">
+                <a href="#def-i18n-translate" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">I18n.translate(key, locale?, translations?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -94,9 +94,9 @@ I18n.translate("greeting", "en", translations)  // "Hello"</code></pre>
             </div>
         </section>
 
-        <section id="fn-i18n-plural" class="scroll-mt-20 mb-6">
+        <section id="def-i18n-plural" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-i18n-plural" class="group flex items-center gap-2 mb-3">
+                <a href="#def-i18n-plural" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">I18n.plural(key, count, locale?, translations?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -153,7 +153,7 @@ I18n.plural("items", 5, "en", translations)   // "5 items"</code></pre>
             </p>
             <pre data-filename="Example"><code class="language-soli text-sm">let i18n_translations = {};
 
-fn flatten_dict(dict, prefix) -> Hash
+def flatten_dict(dict, prefix) -> Hash
     let result = {};
     for (pair in entries(dict)) {
         let key = pair[0];
@@ -171,7 +171,7 @@ fn flatten_dict(dict, prefix) -> Hash
     return result;
 end
 
-fn i18n_load_translations(locale, dict)
+def i18n_load_translations(locale, dict)
     let flat = flatten_dict(dict, locale);
     for (pair in entries(flat)) {
         i18n_translations[pair[0]] = pair[1];
@@ -206,7 +206,7 @@ http_server_listen(3000);</code></pre>
             <p class="text-gray-400 text-sm mb-4">
                 Once loaded in app.sl, use translations anywhere in your controllers.
             </p>
-            <pre data-filename="Example"><code class="language-soli text-sm">fn home_index(req)
+            <pre data-filename="Example"><code class="language-soli text-sm">def home_index(req)
     let welcome = I18n.translate("app.welcome", null, i18n_translations);
     let home_link = I18n.translate("nav.home", null, i18n_translations);
     
@@ -222,9 +222,9 @@ end</code></pre>
     <section id="section-formatting" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Locale-Aware Formatting</h2>
 
-        <section id="fn-i18n-format-number" class="scroll-mt-20 mb-6">
+        <section id="def-i18n-format-number" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-i18n-format-number" class="group flex items-center gap-2 mb-3">
+                <a href="#def-i18n-format-number" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">I18n.format_number(number, locale?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -237,9 +237,9 @@ I18n.format_number(1234.56, "de")  // "1.234,56"</code></pre>
             </div>
         </section>
 
-        <section id="fn-i18n-format-currency" class="scroll-mt-20 mb-6">
+        <section id="def-i18n-format-currency" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-i18n-format-currency" class="group flex items-center gap-2 mb-3">
+                <a href="#def-i18n-format-currency" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">I18n.format_currency(amount, currency, locale?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -258,9 +258,9 @@ I18n.format_currency(1234.56, "GBP", "en")  // "£1,234.56"</code></pre>
             </div>
         </section>
 
-        <section id="fn-i18n-format-date" class="scroll-mt-20 mb-6">
+        <section id="def-i18n-format-date" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-i18n-format-date" class="group flex items-center gap-2 mb-3">
+                <a href="#def-i18n-format-date" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">I18n.format_date(timestamp, locale?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />

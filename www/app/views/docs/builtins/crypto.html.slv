@@ -40,9 +40,9 @@
             Hash Functions
         </h2>
 
-        <section id="fn-sha256" class="scroll-mt-20 mb-6">
+        <section id="def-sha256" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-sha256" class="group flex items-center gap-2 mb-3">
+                <a href="#def-sha256" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.sha256(data)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -62,9 +62,9 @@
             </div>
         </section>
 
-        <section id="fn-sha512" class="scroll-mt-20 mb-6">
+        <section id="def-sha512" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-sha512" class="group flex items-center gap-2 mb-3">
+                <a href="#def-sha512" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.sha512(data)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -84,9 +84,9 @@
             </div>
         </section>
 
-        <section id="fn-md5" class="scroll-mt-20 mb-6">
+        <section id="def-md5" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-md5" class="group flex items-center gap-2 mb-3">
+                <a href="#def-md5" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.md5(data)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -106,9 +106,9 @@
             </div>
         </section>
 
-        <section id="fn-hmac" class="scroll-mt-20 mb-6">
+        <section id="def-hmac" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-hmac" class="group flex items-center gap-2 mb-3">
+                <a href="#def-hmac" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.hmac(message, key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -141,9 +141,9 @@
             Password Hashing
         </h2>
 
-        <section id="fn-argon2-hash" class="scroll-mt-20 mb-6">
+        <section id="def-argon2-hash" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-argon2-hash" class="group flex items-center gap-2 mb-3">
+                <a href="#def-argon2-hash" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.argon2_hash(password)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -163,9 +163,9 @@
             </div>
         </section>
 
-        <section id="fn-argon2-verify" class="scroll-mt-20 mb-6">
+        <section id="def-argon2-verify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-argon2-verify" class="group flex items-center gap-2 mb-3">
+                <a href="#def-argon2-verify" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.argon2_verify(password, hash)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -194,9 +194,9 @@
     <section id="section-x25519" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">X25519 Key Exchange</h2>
 
-        <section id="fn-x25519-keypair" class="scroll-mt-20 mb-6">
+        <section id="def-x25519-keypair" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-x25519-keypair" class="group flex items-center gap-2 mb-3">
+                <a href="#def-x25519-keypair" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.x25519_keypair()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -213,9 +213,9 @@ println(keypair["private"])  // Hex-encoded private key</code></pre>
             </div>
         </section>
 
-        <section id="fn-x25519-shared-secret" class="scroll-mt-20 mb-6">
+        <section id="def-x25519-shared-secret" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-x25519-shared-secret" class="group flex items-center gap-2 mb-3">
+                <a href="#def-x25519-shared-secret" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.x25519_shared_secret(private_key, public_key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -241,9 +241,9 @@ let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
             </div>
         </section>
 
-        <section id="fn-x25519-public-key" class="scroll-mt-20 mb-6">
+        <section id="def-x25519-public-key" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-x25519-public-key" class="group flex items-center gap-2 mb-3">
+                <a href="#def-x25519-public-key" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.x25519_public_key(private_key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -269,9 +269,9 @@ let derived_public = Crypto.x25519_public_key(keypair["private"])
     <section id="section-ed25519" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Ed25519 Signatures</h2>
 
-        <section id="fn-ed25519-keypair" class="scroll-mt-20 mb-6">
+        <section id="def-ed25519-keypair" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-ed25519-keypair" class="group flex items-center gap-2 mb-3">
+                <a href="#def-ed25519-keypair" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">Crypto.ed25519_keypair()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />

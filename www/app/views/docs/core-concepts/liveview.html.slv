@@ -92,7 +92,7 @@ router_live("metrics", "live#metrics");</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Counter component handler
-fn counter(event_data: Any)    let event = event_data["event"];   // Event name (e.g., "increment")
+def counter(event_data: Any)    let event = event_data["event"];   // Event name (e.g., "increment")
     let params = event_data["params"]; // Event parameters
     let state = event_data["state"];   // Current component state
     let count = state["count"];
@@ -221,7 +221,7 @@ router_live("/live/counter", "live#counter");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn metrics_dashboard(event: Any)    let type = event["type"];
+<pre><code class="language-soli text-sm">def metrics_dashboard(event: Any)    let type = event["type"];
 
     if (type == "connect")
         // Set tick interval in milliseconds (50ms = 20 updates/sec)

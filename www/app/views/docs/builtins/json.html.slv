@@ -27,9 +27,9 @@
             JSON.parse(string)
         </h2>
 
-        <section id="fn-json-parse" class="scroll-mt-20 mb-6">
+        <section id="def-json-parse" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-json-parse" class="group flex items-center gap-2 mb-3">
+                <a href="#def-json-parse" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">JSON.parse(string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -61,9 +61,9 @@ println(numbers[0])  // 1</code></pre>
             JSON.stringify(value)
         </h2>
 
-        <section id="fn-json-stringify" class="scroll-mt-20 mb-6">
+        <section id="def-json-stringify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-json-stringify" class="group flex items-center gap-2 mb-3">
+                <a href="#def-json-stringify" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">JSON.stringify(value)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />

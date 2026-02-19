@@ -187,7 +187,7 @@
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">UsersController</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Controller</span> {
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">index</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">def</span> <span class="text-blue-400">index</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         <span class="text-purple-400">let</span> users = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">all</span>();
         <span class="text-blue-400">render</span>(<span class="text-green-400">"users/index"</span>, {
             <span class="text-green-400">"users"</span>: users,
@@ -195,7 +195,7 @@
         })
     }
 
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">show</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">def</span> <span class="text-blue-400">show</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         <span class="text-purple-400">let</span> id = req[<span class="text-green-400">"params"</span>][<span class="text-green-400">"id"</span>];
         <span class="text-purple-400">let</span> user = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">find</span>(id);
         <span class="text-blue-400">render</span>(<span class="text-green-400">"users/show"</span>, {
@@ -204,7 +204,7 @@
         })
     }
 
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">create</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">def</span> <span class="text-blue-400">create</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         <span class="text-purple-400">let</span> permitted = <span class="text-purple-400">this</span>._permit_params(req[<span class="text-green-400">"params"</span>]);
         <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(permitted);
         <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>] == <span class="text-purple-400">true</span> {
@@ -216,21 +216,21 @@
         })
     }
 
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">update</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">def</span> <span class="text-blue-400">update</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         <span class="text-purple-400">let</span> id = req[<span class="text-green-400">"params"</span>][<span class="text-green-400">"id"</span>];
         <span class="text-purple-400">let</span> permitted = <span class="text-purple-400">this</span>._permit_params(req[<span class="text-green-400">"params"</span>]);
         <span class="text-yellow-200">Users</span>.<span class="text-blue-400">update</span>(id, permitted);
         <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>)
     }
 
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">delete</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">def</span> <span class="text-blue-400">delete</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         <span class="text-purple-400">let</span> id = req[<span class="text-green-400">"params"</span>][<span class="text-green-400">"id"</span>];
         <span class="text-yellow-200">Users</span>.<span class="text-blue-400">delete</span>(id);
         <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>)
     }
 
     <span class="text-gray-500">// Mass assignment protection: whitelist allowed parameters</span>
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">_permit_params</span>(params: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">def</span> <span class="text-blue-400">_permit_params</span>(params: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         {
             <span class="text-green-400">"name"</span>: params[<span class="text-green-400">"name"</span>],
             <span class="text-green-400">"email"</span>: params[<span class="text-green-400">"email"</span>]
@@ -352,11 +352,11 @@
             <span class="text-sm font-mono text-gray-400">db/migrations/*create_users_*.sl</span>
         </div>
         <div>
-            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">fn</span> <span class="text-blue-400">up</span>(db: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">def</span> <span class="text-blue-400">up</span>(db: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
     db.<span class="text-blue-400">create_collection</span>(<span class="text-green-400">"users"</span>);
 }
 
-<span class="text-purple-400">fn</span> <span class="text-blue-400">down</span>(db: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+<span class="text-purple-400">def</span> <span class="text-blue-400">down</span>(db: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
     db.<span class="text-blue-400">drop_collection</span>(<span class="text-green-400">"users"</span>);
 }</code></pre>
         </div>
@@ -368,8 +368,8 @@
             <span class="text-sm font-mono text-gray-400">tests/models/users_test.sl</span>
         </div>
         <div>
-            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">describe</span>(<span class="text-green-400">"UsersModel"</span>, <span class="text-purple-400">fn</span>() {
-    <span class="text-blue-400">test</span>(<span class="text-green-400">"should create valid record"</span>, <span class="text-purple-400">fn</span>() {
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">describe</span>(<span class="text-green-400">"UsersModel"</span>, <span class="text-purple-400">def</span>() {
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"should create valid record"</span>, <span class="text-purple-400">def</span>() {
         <span class="text-purple-400">let</span> data = { <span class="text-green-400">"name"</span>: <span class="text-green-400">"Test User"</span> };
         <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(data);
         <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"valid"</span>], <span class="text-green-400">"Create should return valid"</span>);
@@ -384,26 +384,26 @@
             <span class="text-sm font-mono text-gray-400">tests/controllers/users_controller_test.sl</span>
         </div>
         <div>
-            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">describe</span>(<span class="text-green-400">"UsersController"</span>, <span class="text-purple-400">fn</span>() {
-    <span class="text-blue-400">test</span>(<span class="text-green-400">"index action should render users list"</span>, <span class="text-purple-400">fn</span>() {
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">describe</span>(<span class="text-green-400">"UsersController"</span>, <span class="text-purple-400">def</span>() {
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"index action should render users list"</span>, <span class="text-purple-400">def</span>() {
         <span class="text-purple-400">let</span> req = { <span class="text-green-400">"params"</span>: {}, <span class="text-green-400">"session"</span>: {} };
         <span class="text-purple-400">let</span> result = <span class="text-yellow-200">UsersController</span>.<span class="text-blue-400">index</span>(req);
         <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"status"</span>] == <span class="text-orange-300">200</span>, <span class="text-green-400">"Index should return 200"</span>);
     })
 
-    <span class="text-blue-400">test</span>(<span class="text-green-400">"show action should return single user"</span>, <span class="text-purple-400">fn</span>() {
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"show action should return single user"</span>, <span class="text-purple-400">def</span>() {
         <span class="text-purple-400">let</span> req = { <span class="text-green-400">"params"</span>: { <span class="text-green-400">"id"</span>: <span class="text-green-400">"test-id"</span> }, <span class="text-green-400">"session"</span>: {} };
         <span class="text-purple-400">let</span> result = <span class="text-yellow-200">UsersController</span>.<span class="text-blue-400">show</span>(req);
         <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"status"</span>] == <span class="text-orange-300">200</span>, <span class="text-green-400">"Show should return 200"</span>);
     })
 
-    <span class="text-blue-400">test</span>(<span class="text-green-400">"create action should redirect on success"</span>, <span class="text-purple-400">fn</span>() {
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"create action should redirect on success"</span>, <span class="text-purple-400">def</span>() {
         <span class="text-purple-400">let</span> req = { <span class="text-green-400">"params"</span>: { <span class="text-green-400">"name"</span>: <span class="text-green-400">"Test"</span> }, <span class="text-green-400">"session"</span>: {} };
         <span class="text-purple-400">let</span> result = <span class="text-yellow-200">UsersController</span>.<span class="text-blue-400">create</span>(req);
         <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"redirect"</span>] != <span class="text-purple-400">null</span>, <span class="text-green-400">"Create should redirect"</span>);
     })
 
-    <span class="text-blue-400">test</span>(<span class="text-green-400">"delete action should redirect"</span>, <span class="text-purple-400">fn</span>() {
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"delete action should redirect"</span>, <span class="text-purple-400">def</span>() {
         <span class="text-purple-400">let</span> req = { <span class="text-green-400">"params"</span>: { <span class="text-green-400">"id"</span>: <span class="text-green-400">"test-id"</span> }, <span class="text-green-400">"session"</span>: {} };
         <span class="text-purple-400">let</span> result = <span class="text-yellow-200">UsersController</span>.<span class="text-blue-400">delete</span>(req);
         <span class="text-blue-400">assert_true</span>(result[<span class="text-green-400">"redirect"</span>] != <span class="text-purple-400">null</span>, <span class="text-green-400">"Delete should redirect"</span>);
@@ -445,7 +445,7 @@
         <div>
             <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">UsersController</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Controller</span> {
     <span class="text-gray-500">// POST /users</span>
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">create</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">def</span> <span class="text-blue-400">create</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         <span class="text-gray-500">// Only permit whitelisted fields</span>
         <span class="text-purple-400">let</span> permitted = <span class="text-purple-400">this</span>._permit_params(req[<span class="text-green-400">"params"</span>]);
         <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(permitted);
@@ -453,7 +453,7 @@
     }
 
     <span class="text-gray-500">// Mass assignment protection</span>
-    <span class="text-purple-400">fn</span> <span class="text-blue-400">_permit_params</span>(params: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
+    <span class="text-purple-400">def</span> <span class="text-blue-400">_permit_params</span>(params: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         {
             <span class="text-green-400">"name"</span>: params[<span class="text-green-400">"name"</span>],
             <span class="text-green-400">"email"</span>: params[<span class="text-green-400">"email"</span>]

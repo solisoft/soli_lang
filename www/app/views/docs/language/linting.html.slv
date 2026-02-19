@@ -1,0 +1,193 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Linting</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-yellow-400 to-amber-400 bg-clip-text text-transparent">Linting</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Built-in static analysis to catch style issues and code smells without executing your code.
+        </p>
+    </div>
+
+    <!-- Usage -->
+    <section id="section-usage" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Usage
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm"># Lint all .sl files in current directory (recursive)
+soli lint
+
+# Lint a specific directory
+soli lint src/
+
+# Lint a single file
+soli lint app/main.sl</code></pre>
+        </div>
+
+        <div class="my-6 p-5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+            <h4 class="text-base font-semibold text-indigo-400 mb-2">Exit codes</h4>
+            <p class="text-indigo-200/80 text-sm">
+                <code>0</code> &mdash; no issues found. <code>1</code> &mdash; one or more issues found.
+            </p>
+        </div>
+    </section>
+
+    <!-- Output Format -->
+    <section id="section-output" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Output Format</h2>
+        <p class="text-gray-400 mb-4">Each issue is reported on a single line with the file path, line, column, rule, and message:</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">app/main.sl:12:5 - [naming/snake-case] variable 'myVar' should use snake_case
+app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statement
+
+2 issue(s) found in 1 file(s)</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Rules -->
+    <section id="section-rules" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+            </span>
+            Rules
+        </h2>
+
+        <!-- Naming Rules -->
+        <h3 class="text-lg font-semibold text-white mb-3">Naming</h3>
+        <div class="space-y-4 mb-8">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">naming/snake-case</code>
+                <p class="text-gray-400 mt-2">Variables, functions, methods, and parameters should use <code class="text-indigo-400">snake_case</code>.</p>
+                <pre class="mt-3"><code class="language-soli text-sm">// Bad
+let myVar = 10;
+def processData() end
+
+// Good
+let my_var = 10;
+def process_data() end</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">naming/pascal-case</code>
+                <p class="text-gray-400 mt-2">Classes and interfaces should use <code class="text-indigo-400">PascalCase</code>.</p>
+                <pre class="mt-3"><code class="language-soli text-sm">// Bad
+class my_class end
+interface data_store end
+
+// Good
+class MyClass end
+interface DataStore end</code></pre>
+            </div>
+        </div>
+
+        <!-- Style Rules -->
+        <h3 class="text-lg font-semibold text-white mb-3">Style</h3>
+        <div class="space-y-4 mb-8">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">style/empty-block</code>
+                <p class="text-gray-400 mt-2">Blocks should not be empty. Add a comment or remove the block.</p>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">style/line-length</code>
+                <p class="text-gray-400 mt-2">Lines should not exceed 120 characters.</p>
+            </div>
+        </div>
+
+        <!-- Smell Rules -->
+        <h3 class="text-lg font-semibold text-white mb-3">Code Smells</h3>
+        <div class="space-y-4 mb-8">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">smell/unreachable-code</code>
+                <p class="text-gray-400 mt-2">Code after a <code class="text-indigo-400">return</code> statement is unreachable and will never execute.</p>
+                <pre class="mt-3"><code class="language-soli text-sm">def example()
+    return 42;
+    print("never reached");  // Warning: unreachable code
+end</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">smell/empty-catch</code>
+                <p class="text-gray-400 mt-2">Catch blocks should not be empty. Silently swallowing errors hides bugs.</p>
+                <pre class="mt-3"><code class="language-soli text-sm">// Bad - error silently ignored
+try
+    risky();
+catch e
+end
+
+// Good - at least log the error
+try
+    risky();
+catch e
+    print("Error: " + str(e));
+end</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">smell/deep-nesting</code>
+                <p class="text-gray-400 mt-2">Nesting depth should not exceed 4 levels. Consider extracting logic into separate functions.</p>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">smell/duplicate-methods</code>
+                <p class="text-gray-400 mt-2">A class should not have two methods with the same name.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Editor Integration -->
+    <section id="section-editor" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+            </span>
+            Editor Integration
+        </h2>
+        <p class="text-gray-400 mb-4">The VS Code / Cursor extension runs <code class="text-indigo-400">soli lint</code> automatically on save and displays warnings inline in the Problems panel.</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <h3 class="text-base font-semibold text-white mb-3">Settings</h3>
+            <ul class="list-disc list-inside text-gray-400 space-y-2">
+                <li><code class="text-indigo-400">soli.lint.enable</code> &mdash; Enable/disable linting (default: <code>true</code>)</li>
+                <li><code class="text-indigo-400">soli.lint.onSave</code> &mdash; Run linter on file save (default: <code>true</code>)</li>
+                <li><code class="text-indigo-400">soli.lint.executablePath</code> &mdash; Path to the <code>soli</code> binary (default: <code>"soli"</code>)</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/blocks" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Block Syntax
+        </a>
+        <a href="/docs/language" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Language Overview
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

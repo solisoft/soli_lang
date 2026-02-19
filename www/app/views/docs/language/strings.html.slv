@@ -188,7 +188,7 @@ let message: String = "";
 let names: String[] = ["Alice", "Bob", "Charlie"];
 
 // Function parameters
-fn greet(name: String) -> String
+def greet(name: String) -> String
     "Hello, " + name + "!"
 end</code></pre>
                 </div>
@@ -269,9 +269,9 @@ print(text);  // "HELLO"</code></pre>
         </h2>
 
         <div class="space-y-6">
-            <section id="fn-len" class="scroll-mt-20 mb-6">
+            <section id="def-len" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-len" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-len" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">len(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -284,9 +284,9 @@ print(len("Hello, World!"));  // 13</code></pre>
                 </div>
             </section>
 
-            <section id="fn-str" class="scroll-mt-20 mb-6">
+            <section id="def-str" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-str" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-str" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">str(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -302,9 +302,9 @@ str({"a": 1})     // "{\"a\": 1}"</code></pre>
                 </div>
             </section>
 
-            <section id="fn-split" class="scroll-mt-20 mb-6">
+            <section id="def-split" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-split" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-split" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">split(string, separator)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -320,9 +320,9 @@ split("hello", "")          // ["h", "e", "l", "l", "o"]</code></pre>
                 </div>
             </section>
 
-            <section id="fn-join" class="scroll-mt-20 mb-6">
+            <section id="def-join" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-join" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-join" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">join(array, separator)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -336,9 +336,9 @@ join(["one"], ", ")             // "one"</code></pre>
                 </div>
             </section>
 
-            <section id="fn-substring" class="scroll-mt-20 mb-6">
+            <section id="def-substring" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-substring" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-substring" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">substring(string, start, end?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -352,9 +352,9 @@ substring("hello", -3)      // "llo" (negative start)</code></pre>
                 </div>
             </section>
 
-            <section id="fn-contains" class="scroll-mt-20 mb-6">
+            <section id="def-contains" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-contains" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-contains" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">contains(string, substring)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -368,9 +368,9 @@ contains("", "hello")             // false</code></pre>
                 </div>
             </section>
 
-            <section id="fn-index-of" class="scroll-mt-20 mb-6">
+            <section id="def-index-of" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-index-of" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-index-of" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">index_of(string, substring)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -384,9 +384,9 @@ index_of("hello", "")             // 0</code></pre>
                 </div>
             </section>
 
-            <section id="fn-upcase-downcase" class="scroll-mt-20 mb-6">
+            <section id="def-upcase-downcase" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-upcase-downcase" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-upcase-downcase" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">upcase(string)</code> / <code class="text-lg font-mono text-indigo-400">downcase(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -401,9 +401,9 @@ downcase("Hello World") // "hello world"</code></pre>
                 </div>
             </section>
 
-            <section id="fn-trim" class="scroll-mt-20 mb-6">
+            <section id="def-trim" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-trim" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-trim" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">trim(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -416,9 +416,9 @@ trim("hello")         // "hello" (no change)</code></pre>
                 </div>
             </section>
 
-            <section id="fn-replace" class="scroll-mt-20 mb-6">
+            <section id="def-replace" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-replace" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-replace" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">replace(string, search, replacement)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -505,7 +505,7 @@ end
 "12345".reverse()   // "54321"
 
 // Check palindrome
-fn is_palindrome(s: String) -> Bool
+def is_palindrome(s: String) -> Bool
     let cleaned = downcase(s);
     cleaned == cleaned.reverse()
 end
@@ -587,9 +587,9 @@ print(price.pad_start(10));  // "      9.99"</code></pre>
         </h2>
 
         <div class="space-y-6">
-            <section id="fn-html-escape" class="scroll-mt-20 mb-6">
+            <section id="def-html-escape" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-html-escape" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-html-escape" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">html_escape(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -607,9 +607,9 @@ html_escape("5 &gt; 3 &amp;&amp; 3 &lt; 5")
                 </div>
             </section>
 
-            <section id="fn-html-unescape" class="scroll-mt-20 mb-6">
+            <section id="def-html-unescape" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-html-unescape" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-html-unescape" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">html_unescape(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -624,9 +624,9 @@ html_unescape("Tom &amp;amp; Jerry")
                 </div>
             </section>
 
-            <section id="fn-sanitize-html" class="scroll-mt-20 mb-6">
+            <section id="def-sanitize-html" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-sanitize-html" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-sanitize-html" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">sanitize_html(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -671,13 +671,13 @@ let age = int(fields[1]); // 30
 let job = fields[2];     // "Engineer"
 
 // Format currency
-fn format_currency(amount: Float) -> String
+def format_currency(amount: Float) -> String
     let formatted = str(amount);
     "$" + formatted
 end
 
 // Parse URL query string
-fn parse_query(query: String) -> Hash
+def parse_query(query: String) -> Hash
     let result = {};
     let pairs = split(query, "&");
     for (pair in pairs)
@@ -702,17 +702,17 @@ let params = parse_query("name=Alice&age=30");
                         </svg>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm">// Basic email validation
-fn is_valid_email(email: String) -> Bool
+def is_valid_email(email: String) -> Bool
     contains(email, "@") && contains(email, ".")
 end
 
 // Check minimum length
-fn has_min_length(str: String, min: Int) -> Bool
+def has_min_length(str: String, min: Int) -> Bool
     len(str) >= min
 end
 
 // Check if string is numeric
-fn is_numeric(str: String) -> Bool
+def is_numeric(str: String) -> Bool
     if (str.empty?())
         return false;
     end
@@ -725,7 +725,7 @@ fn is_numeric(str: String) -> Bool
 end
 
 // Validate username
-fn is_valid_username(username: String) -> Bool
+def is_valid_username(username: String) -> Bool
     let trimmed = trim(username);
     len(trimmed) >= 3 && len(trimmed) <= 20
 end</code></pre>
@@ -741,7 +741,7 @@ end</code></pre>
                         </svg>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm">// Simple template replacement
-fn template(str: String, vars: Hash) -> String
+def template(str: String, vars: Hash) -> String
     let result = str;
     for (pair in entries(vars))
         let key = pair[0];
@@ -756,7 +756,7 @@ let output = template(tmpl, {"name": "Alice", "count": 5});
 // "Hello, Alice! You have 5 messages."
 
 // Build HTML safely
-fn build_link(url: String, text: String) -> String
+def build_link(url: String, text: String) -> String
     "<a href=\"" + html_escape(url) + "\">" + html_escape(text) + "</a>"
 end</code></pre>
                 </div>

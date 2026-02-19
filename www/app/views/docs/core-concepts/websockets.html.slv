@@ -44,7 +44,7 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/websocket_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn chat_handler(event: Any)    let type = event["type"];
+<pre><code class="language-soli text-sm">def chat_handler(event: Any)    let type = event["type"];
     let id = event["connection_id"];
 
     if (type == "connect")
@@ -112,7 +112,7 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Room-based Chat Handler</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn room_handler(event: Any)    let room = "room:" + event["params"]["room_id"];
+<pre><code class="language-soli text-sm">def room_handler(event: Any)    let room = "room:" + event["params"]["room_id"];
 
     if (event["type"] == "connect")
         // Join the room channel on connect
@@ -173,7 +173,7 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Presence-Enabled Chat Handler</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn chat_handler(event: Any)    let room = "room:general";
+<pre><code class="language-soli text-sm">def chat_handler(event: Any)    let room = "room:general";
     // Get user from session/auth (example)
     let user = get_current_user();
 

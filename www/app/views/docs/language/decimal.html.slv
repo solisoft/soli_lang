@@ -225,7 +225,7 @@ print("Total: $" + str(total));        // $323.97</code></pre>
     cost: Decimal(2),
     tax_rate: Decimal(4),
 
-    fn profit() -> Decimal(2)
+    def profit() -> Decimal(2)
         self.price - self.cost
     end
 end
@@ -235,7 +235,7 @@ class Order extends Model
     tax: Decimal(2),
     total: Decimal(2),
 
-    fn calculate_total() -> Decimal(2)
+    def calculate_total() -> Decimal(2)
         self.subtotal + self.tax
     end
 end</code></pre>

@@ -1,15 +1,20 @@
 {
   "name": "soli-language",
   "displayName": "Soli Language",
-  "description": "Syntax highlighting for the Soli programming language",
-  "version": "0.1.0",
+  "description": "Syntax highlighting and linting for the Soli programming language",
+  "version": "0.2.0",
   "publisher": "solilang",
   "engines": {
     "vscode": "^1.60.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Linters"
   ],
+  "activationEvents": [
+    "onLanguage:soli"
+  ],
+  "main": "./out/extension.js",
   "contributes": {
     "languages": [
       {
@@ -24,6 +29,32 @@
         "language": "soli",
         "scopeName": "source.soli",
         "path": "./syntaxes/soli.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Soli",
+      "properties": {
+        "soli.lint.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable linting of .sl files on save."
+        },
+        "soli.lint.executablePath": {
+          "type": "string",
+          "default": "soli",
+          "description": "Path to the soli executable."
+        },
+        "soli.lint.onSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run linter automatically when a file is saved."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "soli.lint",
+        "title": "Soli: Lint Current File"
       }
     ]
   }

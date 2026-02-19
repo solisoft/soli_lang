@@ -29,8 +29,8 @@
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-v-string" class="scroll-mt-20">
-                    <a href="#fn-v-string" class="group flex items-center gap-2">
+                <section id="def-v-string" class="scroll-mt-20">
+                    <a href="#def-v-string" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">V.string()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -39,8 +39,8 @@
                     <p class="text-gray-400 text-sm mt-1">Validate string values</p>
                 </section>
 
-                <section id="fn-v-int" class="scroll-mt-20">
-                    <a href="#fn-v-int" class="group flex items-center gap-2">
+                <section id="def-v-int" class="scroll-mt-20">
+                    <a href="#def-v-int" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">V.int()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -49,8 +49,8 @@
                     <p class="text-gray-400 text-sm mt-1">Validate integer values</p>
                 </section>
 
-                <section id="fn-v-float" class="scroll-mt-20">
-                    <a href="#fn-v-float" class="group flex items-center gap-2">
+                <section id="def-v-float" class="scroll-mt-20">
+                    <a href="#def-v-float" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">V.float()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -59,8 +59,8 @@
                     <p class="text-gray-400 text-sm mt-1">Validate float values</p>
                 </section>
 
-                <section id="fn-v-bool" class="scroll-mt-20">
-                    <a href="#fn-v-bool" class="group flex items-center gap-2">
+                <section id="def-v-bool" class="scroll-mt-20">
+                    <a href="#def-v-bool" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">V.bool()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -69,8 +69,8 @@
                     <p class="text-gray-400 text-sm mt-1">Validate boolean values</p>
                 </section>
 
-                <section id="fn-v-array" class="scroll-mt-20">
-                    <a href="#fn-v-array" class="group flex items-center gap-2">
+                <section id="def-v-array" class="scroll-mt-20">
+                    <a href="#def-v-array" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">V.array(schema?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -79,8 +79,8 @@
                     <p class="text-gray-400 text-sm mt-1">Validate arrays with optional item schema</p>
                 </section>
 
-                <section id="fn-v-hash" class="scroll-mt-20">
-                    <a href="#fn-v-hash" class="group flex items-center gap-2">
+                <section id="def-v-hash" class="scroll-mt-20">
+                    <a href="#def-v-hash" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">V.hash(schema?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -174,9 +174,9 @@
     <section id="section-validate" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Validate Function</h2>
 
-        <section id="fn-validate" class="scroll-mt-20 mb-6">
+        <section id="def-validate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-validate" class="group flex items-center gap-2 mb-3">
+                <a href="#def-validate" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">validate(data, schema)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -232,7 +232,7 @@ if result["valid"] {
     "newsletter": V.bool().default(false)
 }
 
-fn register(params: Hash) -> Hash
+def register(params: Hash) -> Hash
     let result = validate(params, user_schema)
     if !result["valid"] {
         return { "error": result["errors"] }

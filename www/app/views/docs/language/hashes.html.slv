@@ -168,9 +168,9 @@ print(person);  // {"name": "Alice", "email": "alice@example.com"}</code></pre>
         </h2>
 
         <div class="space-y-6">
-            <section id="fn-len" class="scroll-mt-20 mb-6">
+            <section id="def-len" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-len" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-len" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">len(hash)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -185,9 +185,9 @@ print(len(empty));   // 0</code></pre>
                 </div>
             </section>
 
-            <section id="fn-keys" class="scroll-mt-20 mb-6">
+            <section id="def-keys" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-keys" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-keys" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">keys(hash)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -200,9 +200,9 @@ print(k);  // ["name", "age"]</code></pre>
                 </div>
             </section>
 
-            <section id="fn-values" class="scroll-mt-20 mb-6">
+            <section id="def-values" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-values" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-values" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">values(hash)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -215,9 +215,9 @@ print(v);  // ["Alice", 30]</code></pre>
                 </div>
             </section>
 
-            <section id="fn-entries" class="scroll-mt-20 mb-6">
+            <section id="def-entries" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-entries" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-entries" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">entries(hash)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -230,9 +230,9 @@ print(e);  // [["name", "Alice"], ["age", 30]]</code></pre>
                 </div>
             </section>
 
-            <section id="fn-has-key" class="scroll-mt-20 mb-6">
+            <section id="def-has-key" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-has-key" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-has-key" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">has_key(hash, key)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -246,9 +246,9 @@ print(has_key(person, "email"));  // false</code></pre>
                 </div>
             </section>
 
-            <section id="fn-delete" class="scroll-mt-20 mb-6">
+            <section id="def-delete" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-delete" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-delete" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">delete(hash, key)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -261,9 +261,9 @@ print(person);  // {"name": "Alice", "city": "NYC"}</code></pre>
                 </div>
             </section>
 
-            <section id="fn-merge" class="scroll-mt-20 mb-6">
+            <section id="def-merge" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-merge" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-merge" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">merge(h1, h2)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -278,9 +278,9 @@ print(merged);  // {"theme": "dark", "lang": "en"}</code></pre>
                 </div>
             </section>
 
-            <section id="fn-clear" class="scroll-mt-20 mb-6">
+            <section id="def-clear" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#fn-clear" class="group flex items-center gap-2 mb-3">
+                    <a href="#def-clear" class="group flex items-center gap-2 mb-3">
                         <code class="text-lg font-mono text-indigo-400">clear(hash)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -354,7 +354,7 @@ print(nested.dig("items", 5));  // null (index out of bounds)</code></pre>
             <section id="method-map-filter-each" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-map-filter-each" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.map(fn)</code> / <code class="text-lg font-mono text-indigo-400">.filter(fn)</code> / <code class="text-lg font-mono text-indigo-400">.each(fn)</code>
+                        <code class="text-lg font-mono text-indigo-400">.map(def)</code> / <code class="text-lg font-mono text-indigo-400">.filter(def)</code> / <code class="text-lg font-mono text-indigo-400">.each(def)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -363,15 +363,15 @@ print(nested.dig("items", 5));  // null (index out of bounds)</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85, "Charlie": 95};
 
 // map - transform entries, return new hash
-let curved = scores.map(fn(k, v) [k, v + 5]);
+let curved = scores.map(def(k, v) [k, v + 5]);
 // {"Alice": 95, "Bob": 90, "Charlie": 100}
 
 // filter - keep matching entries
-let high = scores.filter(fn(k, v) v >= 90);
+let high = scores.filter(def(k, v) v >= 90);
 // {"Alice": 90, "Charlie": 95}
 
 // each - iterate for side effects
-scores.each(fn(k, v) print(k + ": " + str(v)));
+scores.each(def(k, v) print(k + ": " + str(v)));
 // Output: Alice: 90
 //         Bob: 85
 //         Charlie: 95</code></pre>
@@ -381,7 +381,7 @@ scores.each(fn(k, v) print(k + ": " + str(v)));
             <section id="method-transform" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-transform" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.transform_values(fn)</code> / <code class="text-lg font-mono text-indigo-400">.transform_keys(fn)</code>
+                        <code class="text-lg font-mono text-indigo-400">.transform_values(def)</code> / <code class="text-lg font-mono text-indigo-400">.transform_keys(def)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -390,11 +390,11 @@ scores.each(fn(k, v) print(k + ": " + str(v)));
 <pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85};
 
 // Transform values
-let doubled = scores.transform_values(fn(v) v * 2);
+let doubled = scores.transform_values(def(v) v * 2);
 // {"Alice": 180, "Bob": 170}
 
 // Transform keys
-let upper_keys = scores.transform_keys(fn(k) upcase(k));
+let upper_keys = scores.transform_keys(def(k) upcase(k));
 // {"ALICE": 90, "BOB": 85}</code></pre>
                 </div>
             </section>
@@ -402,7 +402,7 @@ let upper_keys = scores.transform_keys(fn(k) upcase(k));
             <section id="method-select-reject" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-select-reject" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.select(fn)</code> / <code class="text-lg font-mono text-indigo-400">.reject(fn)</code>
+                        <code class="text-lg font-mono text-indigo-400">.select(def)</code> / <code class="text-lg font-mono text-indigo-400">.reject(def)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -411,11 +411,11 @@ let upper_keys = scores.transform_keys(fn(k) upcase(k));
 <pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85, "Charlie": 95};
 
 // select - keep where function returns true
-let high = scores.select(fn(k, v) v >= 90);
+let high = scores.select(def(k, v) v >= 90);
 // {"Alice": 90, "Charlie": 95}
 
 // reject - remove where function returns true
-let not_high = scores.reject(fn(k, v) v >= 90);
+let not_high = scores.reject(def(k, v) v >= 90);
 // {"Bob": 85}</code></pre>
                 </div>
             </section>
@@ -540,7 +540,7 @@ print(data.dig("user", "nonexistent", "key"));        // null (safe, no error)
 
 // Count occurrences
 let counts = {};
-words.each(fn(word)
+words.each(def(word)
     let current = counts.get(word, 0);
     counts[word] = current + 1;
 end);
@@ -565,7 +565,7 @@ print(counts);  // {"apple": 3, "banana": 2, "cherry": 1}</code></pre>
 
 // Group by department
 let by_dept = {};
-people.each(fn(person)
+people.each(def(person)
     let dept = person["department"];
     if (!has_key(by_dept, dept))
         by_dept[dept] = [];

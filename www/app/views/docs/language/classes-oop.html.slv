@@ -49,11 +49,11 @@
         this.email = email ?? "";
     end
 
-    fn greet() -> String
+    def greet() -> String
         "Hello, I'm " + this.name
     end
 
-    fn introduce() -> String
+    def introduce() -> String
         let intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old";
         if (this.email != "")
             intro = intro + ". You can reach me at " + this.email;
@@ -61,7 +61,7 @@
         intro
     end
 
-    fn have_birthday()
+    def have_birthday()
         this.age = this.age + 1;
     end
 end</code></pre>
@@ -105,18 +105,18 @@ end</code></pre>
                 <p class="text-gray-400 mb-3">In addition to the <code>private</code> keyword, Soli follows a naming convention where methods starting with an underscore (<code>_</code>) are considered internal/private helpers:</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class PostsController < Controller
     // Underscore prefix marks internal helper methods
-    fn _permit_params(params: Any)        {
+    def _permit_params(params: Any)        {
             "title": params["title"],
             "content": params["content"]
         }
     
 
-    fn create(req: Any)        // Using the private helper
+    def create(req: Any)        // Using the private helper
         let permitted = this._permit_params(req["params"]);
         Posts.create(permitted)
     end
 end</code></pre>
-                <p class="text-gray-400 mt-3 text-sm"><strong class="text-yellow-400">Recommendation:</strong> Use either <code>private fn</code> keyword OR underscore prefix (<code>_</code>) for internal helper methods. The underscore convention is used throughout the codebase (e.g., <code>_authenticate</code>, <code>_build_post_params</code> in examples).</p>
+                <p class="text-gray-400 mt-3 text-sm"><strong class="text-yellow-400">Recommendation:</strong> Use either <code>private def</code> keyword OR underscore prefix (<code>_</code>) for internal helper methods. The underscore convention is used throughout the codebase (e.g., <code>_authenticate</code>, <code>_build_post_params</code> in examples).</p>
             </div>
         </section>
 
@@ -131,7 +131,7 @@ end</code></pre>
         this.balance = initial_deposit;
     
 
-    public fn deposit(amount: Float) -> Bool
+    public def deposit(amount: Float) -> Bool
         if (this.validate_amount(amount))
             this.balance = this.balance + amount;
             return true;
@@ -163,20 +163,20 @@ print(account.get_balance());     // 1500.0</code></pre>
     static PI: Float = 3.14159265359;
     static E: Float = 2.71828182846;
 
-    static fn square(x: Float) -> Float
+    static def square(x: Float) -> Float
         x * x
     
 
-    static fn cube(x: Float) -> Float
+    static def cube(x: Float) -> Float
         x * x * x
     
 
-    static fn max(a: Float, b: Float) -> Float
+    static def max(a: Float, b: Float) -> Float
         if (a > b) a else b
     end
 
 
-    static fn clamp(value: Float, min_val: Float, max_val: Float) -> Float
+    static def clamp(value: Float, min_val: Float, max_val: Float) -> Float
         if (value < min_val)
             return min_val;
         end
@@ -201,18 +201,18 @@ print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
 
         <p class="text-gray-400 mb-3">Reference to the current instance.</p>
         <pre data-filename="my_class.sl"><code class="language-soli text-sm">class User
-    fn new(name)
+    def new(name)
         this.name = name;
     
 
-    fn say_hello()
+    def say_hello()
         println("Hello, " + this.name);
     
 end</code></pre>
 
         <p class="text-gray-400 mb-3">Inheritance.</p>
         <pre data-filename="my_class.sl"><code class="language-soli text-sm">class Admin < User
-    fn say_hello()
+    def say_hello()
         super.say_hello();
         println("I am an admin.");
     
@@ -220,7 +220,7 @@ end</code></pre>
 
         <p class="text-gray-400 mb-3">Static methods.</p>
         <pre data-filename="my_class.sl"><code class="language-soli text-sm">class Math
-    static fn add(a, b)
+    static def add(a, b)
         a + b
     
 end</code></pre>
@@ -240,7 +240,7 @@ end</code></pre>
         this.outer_value = value;
     
 
-    fn create_inner(x: Int) -> Inner
+    def create_inner(x: Int) -> Inner
         new Inner(this, x)
     
 
@@ -253,11 +253,11 @@ end</code></pre>
             this.inner_value = value;
         
 
-        fn get_combined() -> Int
+        def get_combined() -> Int
             this.outer.outer_value + this.inner_value
         
 
-        fn get_outer_value() -> Int
+        def get_outer_value() -> Int
             this.outer.outer_value
         
     
@@ -292,7 +292,7 @@ print(inner2.get_combined());   // 30</code></pre>
             this.right = null;
         
 
-        fn insert(new_value: Int)
+        def insert(new_value: Int)
             if (new_value < this.value) {
                 if (this.left == null) {
                     this.left = new Tree.Node(new_value);
@@ -315,7 +315,7 @@ print(inner2.get_combined());   // 30</code></pre>
         this.root = null;
     
 
-    fn insert(value: Int)
+    def insert(value: Int)
         if (this.root == null) {
             this.root = new Tree.Node(value);
         } else {
@@ -364,17 +364,17 @@ let settings = new User::Settings();
 // Controller action organization
 class Posts
     class Action
-        fn create(title: String, content: String)
+        def create(title: String, content: String)
             "Creating post: " + title
         
 
-        fn delete(id: Int)
+        def delete(id: Int)
             "Deleting post: " + str(id)
         
     
 
     class Validator
-        fn validate_post(post: Any) -> Bool
+        def validate_post(post: Any) -> Bool
             post["title"] != null && post["content"] != null
         
     
@@ -391,13 +391,13 @@ action.create("Hello", "World");</code></pre>
                 <p class="text-gray-400 mb-3">Nested classes can be accessed using fully qualified names from anywhere in the code.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Service
     class Database
-        fn query(sql: String)
+        def query(sql: String)
             "Executing: " + sql
         
     
 
     class Cache
-        fn get(key: String) -> String?
+        def get(key: String) -> String?
             return null;
         
     

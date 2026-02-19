@@ -174,7 +174,7 @@ let value = cache_get("global_key")</code></pre>
     <section class="mb-16">
         <h2 class="text-2xl font-bold text-white mb-6">Practical Example: Database Query Caching</h2>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>fn get_user_cached(user_id)
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>def get_user_cached(user_id)
     let cache_key = "user:" + str(user_id)
     let cached = Cache.get(cache_key)
 

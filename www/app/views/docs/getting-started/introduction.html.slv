@@ -115,7 +115,7 @@ get("/users/:id", "users#show");</code></pre>
                 <span class="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/20 text-purple-400 text-xs font-bold">2</span>
                 Create a Controller
             </h3>
-            <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">fn index(req: Any) {
+            <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">def index(req: Any) {
     let message = "Welcome to Soli!";
 
     render("home/index", {

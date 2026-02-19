@@ -41,7 +41,7 @@ let result = match x
     42 => "the answer",
     0 => "zero",
     _ => "something else",
-end;
+end
 print(result);  // "the answer"</code></pre>
             </div>
         </section>
@@ -60,11 +60,11 @@ let category = match n
     n if n > 0 && n < 10 => "single digit positive",
     n if n >= 10 && n < 100 => "two digit positive",
     _ => "large number",
-end;
+end
 print(category);  // "single digit positive"
 
 // Practical example: HTTP status handling
-fn handle_status(code: Int) -> String
+def handle_status(code: Int) -> String
     match code
         code if code >= 200 && code < 300 => "Success: " + str(code),
         code if code >= 300 && code < 400 => "Redirect: " + str(code),
@@ -95,7 +95,7 @@ let description = match numbers
     [_, _] => "two element array",
     [_, _, _] => "three element array",
     _ => "array with more than 3 elements",
-end;
+end
 
 // Destructuring arrays
 let result = match numbers
@@ -103,7 +103,7 @@ let result = match numbers
     [first, second] => "First: " + str(first) + ", Second: " + str(second),
     [first, second, third] => "Three elements",
     [first, ...rest] => "First: " + str(first) + ", Rest has " + str(len(rest)) + " elements",
-end;
+end
 
 // Rest pattern
 let arr = [1, 2, 3, 4, 5];
@@ -112,7 +112,7 @@ match arr
         print("First two: " + str(first) + ", " + str(second));
         print("Remaining: " + str(rest));  // [3, 4, 5]
     end
-end;</code></pre>
+end</code></pre>
             </div>
         </div>
     </section>
@@ -131,7 +131,7 @@ match user
     {name: n, age: a} => n + " is " + str(a) + " years old",
     {name: n, age: a, city: c} => n + " is " + str(a) + " years old and lives in " + c,
     _ => "unknown structure",
-end;
+end
 
 // Nested hash matching
 let data = {
@@ -144,7 +144,7 @@ match data
         print(n + " wrote " + str(len(posts)) + " posts");
     end
     _ => "no match",
-end;</code></pre>
+end</code></pre>
             </div>
         </div>
     </section>
@@ -154,7 +154,7 @@ end;</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Type-Based Dispatch</h2>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn describe_value(val: Any) -> String
+<pre><code class="language-soli text-sm">def describe_value(val: Any) -> String
     match val
         s: String => "String with " + str(len(s)) + " characters",
         n: Int => "Integer: " + str(n),
@@ -193,7 +193,7 @@ let message = match status
     "active" => "User is active",
     "inactive" => "User is inactive",
     _ => "Status: " + status,  // Default case
-end;</code></pre>
+end</code></pre>
             </div>
         </section>
     </section>

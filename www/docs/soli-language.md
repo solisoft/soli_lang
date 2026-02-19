@@ -10,14 +10,16 @@ A comprehensive guide to the Soli programming language, covering syntax, types, 
 2. [Variables & Types](#variables--types)
 3. [Operators](#operators)
 4. [Control Flow](#control-flow)
-5. [Functions](#functions)
-6. [Collections](#collections)
-7. [Classes & OOP](#classes--oop)
-8. [Pattern Matching](#pattern-matching)
-9. [Pipeline Operator](#pipeline-operator)
-10. [Modules](#modules)
-11. [Built-in Functions](#built-in-functions)
-12. [DateTime & Duration](#datetime--duration)
+5. [Error Handling](#error-handling)
+6. [Functions](#functions)
+7. [Collections](#collections)
+8. [Classes & OOP](#classes--oop)
+9. [Pattern Matching](#pattern-matching)
+10. [Pipeline Operator](#pipeline-operator)
+11. [Modules](#modules)
+12. [Built-in Functions](#built-in-functions)
+13. [DateTime & Duration](#datetime--duration)
+14. [Linting](#linting)
 
 ---
 
@@ -59,6 +61,11 @@ soli serve
 
 # Run tests
 soli test
+
+# Lint code for style issues
+soli lint              # all .sl files in current dir (recursive)
+soli lint src/         # lint a directory
+soli lint app/main.sl  # lint a single file
 ```
 
 ---
@@ -628,9 +635,93 @@ end
 
 ---
 
+## Error Handling
+
+### Try / Catch / Finally
+
+Soli provides `try`/`catch`/`finally` for exception handling, using `end`-delimited blocks (just like `if`, `while`, and `for`).
+
+```soli
+// Basic try/catch
+try
+    let result = 10 / 0;
+catch e
+    print("Error: " + str(e));
+end
+
+// With finally (always runs)
+try
+    let data = read_file("config.sl");
+    print(data);
+catch e
+    print("Failed to read file: " + str(e));
+finally
+    print("Cleanup done");
+end
+
+// Try/finally without catch
+try
+    process_data();
+finally
+    close_connection();
+end
+```
+
+### Catch Variable Syntax
+
+The catch variable can be written with or without parentheses:
+
+```soli
+// Both are equivalent
+catch e
+    print(e);
+end
+
+catch (e)
+    print(e);
+end
+```
+
+### Throwing Exceptions
+
+Use `throw` to raise an exception:
+
+```soli
+fn divide(a: Int, b: Int) -> Int
+    if b == 0
+        throw "Division by zero";
+    end
+    a / b
+end
+
+try
+    let result = divide(10, 0);
+catch e
+    print("Caught: " + str(e));  // "Caught: Division by zero"
+end
+```
+
+### Brace Syntax
+
+Try/catch also supports brace-delimited blocks:
+
+```soli
+try {
+    let result = risky_operation();
+} catch (e) {
+    print("Error: " + str(e));
+} finally {
+    cleanup();
+}
+```
+
+---
+
 ## Functions
 
 ### Function Declaration
+
+Functions are declared with the `fn` keyword. You can also use `def` as an alias (Ruby-style).
 
 ```soli
 // No parameters — parentheses are optional
@@ -643,8 +734,8 @@ fn say_hello()
     print("Hello!");
 end
 
-// With parameters
-fn greet(name: String)
+// `def` works exactly like `fn`
+def greet(name: String)
     print("Hello, " + name + "!");
 end
 
@@ -654,7 +745,7 @@ fn add(a: Int, b: Int) -> Int
 end
 
 // Void function (explicit)
-fn log_message(msg: String)
+def log_message(msg: String)
     print("[LOG] " + msg);
 end
 
@@ -2981,6 +3072,48 @@ fn business_days(start: DateTime, end: DateTime) -> Int {
 
 ---
 
+## Linting
+
+Soli includes a built-in linter (`soli lint`) that catches style issues and code smells without executing your code.
+
+### Usage
+
+```bash
+soli lint              # all .sl files in current directory (recursive)
+soli lint src/         # lint a directory
+soli lint app/main.sl  # lint a single file
+```
+
+Exit code: `0` = clean, `1` = issues found.
+
+### Output Format
+
+```
+app/main.sl:12:5 - [naming/snake-case] variable 'myVar' should use snake_case
+app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statement
+
+2 issue(s) found in 1 file(s)
+```
+
+### Rules
+
+| Rule | Description |
+|---|---|
+| `naming/snake-case` | Variables, functions, methods, and parameters should use `snake_case` |
+| `naming/pascal-case` | Classes and interfaces should use `PascalCase` |
+| `style/empty-block` | Blocks should not be empty |
+| `style/line-length` | Lines should not exceed 120 characters |
+| `smell/unreachable-code` | Code after a `return` statement is unreachable |
+| `smell/empty-catch` | Catch blocks should not be empty (silently swallowing errors) |
+| `smell/deep-nesting` | Nesting depth should not exceed 4 levels |
+| `smell/duplicate-methods` | A class should not have two methods with the same name |
+
+### Editor Integration
+
+The VS Code / Cursor extension (`editors/vscode/`) runs `soli lint` automatically on save and displays warnings inline in the editor.
+
+---
+
 ## Best Practices
 
 ### Variables & Types
@@ -3130,6 +3263,11 @@ const PI = 3.14159;
 fn add(a: Int, b: Int) -> Int {
     a + b
 }
+
+// `def` is an alias for `fn`
+def greet(name: String)
+    print("Hello, " + name + "!");
+end
 ```
 
 ### Classes
@@ -3167,6 +3305,17 @@ match value {
     pattern => result,
     _ => default,
 }
+```
+
+### Error Handling
+```soli
+try
+    risky_operation();
+catch e
+    print("Error: " + str(e));
+finally
+    cleanup();
+end
 ```
 
 ### Collections

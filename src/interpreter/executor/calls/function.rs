@@ -21,7 +21,17 @@ impl Interpreter {
         arguments: &[Argument],
         span: Span,
     ) -> RuntimeResult<Value> {
-        let callee_val = self.evaluate(callee)?;
+        // Bypass auto-invoke for Member/SafeMember callees so that
+        // obj.method() gets the raw method reference, not the auto-invoked result.
+        let callee_val = match &callee.kind {
+            ExprKind::Member { object, name } => {
+                self.evaluate_member(object, name, callee.span)?
+            }
+            ExprKind::SafeMember { object, name } => {
+                self.evaluate_safe_member(object, name, callee.span)?
+            }
+            _ => self.evaluate(callee)?,
+        };
 
         // Safe navigation: if &.method() and object was null, propagate null
         if matches!(callee.kind, ExprKind::SafeMember { .. }) && matches!(callee_val, Value::Null) {

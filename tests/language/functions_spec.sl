@@ -229,3 +229,109 @@ describe("Closures", fn() {
         assert_eq(counter2(), 1);
     });
 });
+
+describe("def keyword (fn alias)", fn() {
+    test("def declares a function", fn() {
+        def add(a, b) {
+            return a + b;
+        }
+        assert_eq(add(2, 3), 5);
+    });
+
+    test("def with brace syntax", fn() {
+        def greet(name) {
+            "Hello, " + name + "!"
+        }
+        assert_eq(greet("World"), "Hello, World!");
+    });
+
+    test("def with typed parameters and return type", fn() {
+        def square(x: Int) -> Int {
+            x * x
+        }
+        assert_eq(square(7), 49);
+    });
+
+    test("def with default parameters", fn() {
+        def greet(name: String = "World") {
+            "Hi " + name
+        }
+        assert_eq(greet(), "Hi World");
+        assert_eq(greet("Alice"), "Hi Alice");
+    });
+
+    test("def recursive function", fn() {
+        def fib(n) {
+            if (n <= 1) {
+                return n;
+            }
+            fib(n - 1) + fib(n - 2)
+        }
+        assert_eq(fib(10), 55);
+    });
+
+    test("def as closure", fn() {
+        def make_adder(n) {
+            return |x| x + n;
+        }
+        let add5 = make_adder(5);
+        assert_eq(add5(3), 8);
+    });
+
+    test("def in class", fn() {
+        class Calculator {
+            def add(a, b) {
+                return a + b;
+            }
+            def multiply(a, b) {
+                a * b
+            }
+        }
+        let calc = new Calculator();
+        assert_eq(calc.add(2, 3), 5);
+        assert_eq(calc.multiply(4, 5), 20);
+    });
+
+    test("def and fn are interchangeable", fn() {
+        fn with_fn(x) { x + 1 }
+        def with_def(x) { x + 1 }
+        assert_eq(with_fn(10), with_def(10));
+    });
+});
+
+describe("Hash comments (#)", fn() {
+    test("hash comment on its own line", fn() {
+        # This is a comment
+        let x = 42;
+        assert_eq(x, 42);
+    });
+
+    test("hash comment at end of line", fn() {
+        let x = 10; # inline comment
+        assert_eq(x, 10);
+    });
+
+    test("hash comment does not affect next line", fn() {
+        let a = 1; # comment
+        let b = 2;
+        assert_eq(a + b, 3);
+    });
+
+    test("hash comment with string interpolation still works", fn() {
+        let name = "Soli";
+        let msg = "Hello #{name}!"; # interpolation inside string
+        assert_eq(msg, "Hello Soli!");
+    });
+
+    test("hash inside string is not a comment", fn() {
+        let s = "use # for comments";
+        assert_eq(s, "use # for comments");
+    });
+
+    test("mixed // and # comments", fn() {
+        // double-slash comment
+        # hash comment
+        let x = 99;
+        assert_eq(x, 99);
+    });
+});

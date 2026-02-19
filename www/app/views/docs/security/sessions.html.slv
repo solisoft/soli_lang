@@ -98,7 +98,7 @@ session_destroy();</code></pre>
                 <span class="ml-2 text-xs text-gray-500 font-mono">controllers/auth_controller.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn login(req: Any)    let credentials = req["body"];
+<pre><code class="language-soli text-sm">def login(req: Any)    let credentials = req["body"];
     
     if verify_user(credentials)
         // CRITICAL: Regenerate session ID before setting sensitive data

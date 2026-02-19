@@ -19,7 +19,7 @@
         this.layout = "layouts/posts";
     end
 
-    fn index(req)
+    def index(req)
         let posts = Post.all();
         render("posts/index", {
             "title": "All Posts",
@@ -27,7 +27,7 @@
         })
     end
 
-    fn show(req)
+    def show(req)
         let id = req.params["id"];
         let post = Post.find(id);
 
@@ -68,25 +68,25 @@ end</code></pre>
         this.layout = "layouts/posts";
 
         // Run before ALL actions
-        this.before_action = fn(req)
+        this.before_action = def(req)
             print("Processing: " + req.path);
             req
-        end;
+        end
 
         // Run before SPECIFIC actions only
-        this.before_action(:show, :edit) = fn(req)
+        this.before_action(:show, :edit) = def(req)
             let post = Post.find(req.params["id"]);
             if post == null return error(404, "Not Found"); end
             req["post"] = post; // Pass to action
             req
-        end;
+        end
 
         // Run after SPECIFIC actions
-        this.after_action(:create, :update) = fn(req, response)
+        this.after_action(:create, :update) = def(req, response)
             // Log activity after create/update
             print("Action completed");
             response
-        end;
+        end
     end
     
     // ... actions ...
@@ -98,7 +98,7 @@ end</code></pre>
     </p>
 
     <pre data-filename="app/controllers/simple_controller.sl"><code class="language-soli text-sm">// GET /health
-fn health(req)
+def health(req)
     {
         "status": 200,
         "headers": {"Content-Type": "application/json"},

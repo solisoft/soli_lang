@@ -129,7 +129,7 @@ let json_response = json_stringify({
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Create Basic Auth credentials for HTTP requests.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">fn basic_auth_header(username: String, password: String) -> String
+<pre data-filename="Example"><code class="language-soli text-sm">def basic_auth_header(username: String, password: String) -> String
     let credentials = username + ":" + password;
     let encoded = Base64.encode(credentials);
     "Basic " + encoded
@@ -185,7 +185,7 @@ try {
 }
 
 // Valid Base64 with proper error handling
-fn safe_decode(input: String) -> String
+def safe_decode(input: String) -> String
     try {
         return Base64.decode(input);
     } catch e {

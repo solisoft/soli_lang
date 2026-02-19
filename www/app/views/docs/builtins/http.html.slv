@@ -43,8 +43,8 @@ let response = HTTP.request("DELETE", "https://api.example.com/users/1")</code><
             Basic HTTP Requests
         </h2>
 
-        <section id="fn-http-get" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-get" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-get" class="scroll-mt-20 mb-6">
+            <a href="#def-http-get" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.get(url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -57,8 +57,8 @@ if resp["status"] == 200 {
 }</code></pre>
         </section>
 
-        <section id="fn-http-post" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-post" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-post" class="scroll-mt-20 mb-6">
+            <a href="#def-http-post" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.post(url, body, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -72,8 +72,8 @@ if resp["status"] == 200 {
 )</code></pre>
         </section>
 
-        <section id="fn-http-put" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-put" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-put" class="scroll-mt-20 mb-6">
+            <a href="#def-http-put" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.put(url, body, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -86,8 +86,8 @@ if resp["status"] == 200 {
 )</code></pre>
         </section>
 
-        <section id="fn-http-delete" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-delete" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-delete" class="scroll-mt-20 mb-6">
+            <a href="#def-http-delete" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.delete(url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -97,8 +97,8 @@ if resp["status"] == 200 {
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.delete("https://api.example.com/users/1")</code></pre>
         </section>
 
-        <section id="fn-http-patch" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-patch" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-patch" class="scroll-mt-20 mb-6">
+            <a href="#def-http-patch" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.patch(url, body, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -111,8 +111,8 @@ if resp["status"] == 200 {
 )</code></pre>
         </section>
 
-        <section id="fn-http-head" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-head" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-head" class="scroll-mt-20 mb-6">
+            <a href="#def-http-head" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.head(url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -128,8 +128,8 @@ println(resp["headers"])</code></pre>
     <section id="section-json-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">JSON HTTP Methods</h2>
 
-        <section id="fn-http-get-json" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-get-json" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-get-json" class="scroll-mt-20 mb-6">
+            <a href="#def-http-get-json" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.get_json(url)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -140,8 +140,8 @@ println(resp["headers"])</code></pre>
 println(data["body"]["name"])</code></pre>
         </section>
 
-        <section id="fn-http-post-json" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-post-json" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-post-json" class="scroll-mt-20 mb-6">
+            <a href="#def-http-post-json" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.post_json(url, data)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -154,8 +154,8 @@ println(data["body"]["name"])</code></pre>
 )</code></pre>
         </section>
 
-        <section id="fn-http-put-json" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-put-json" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-put-json" class="scroll-mt-20 mb-6">
+            <a href="#def-http-put-json" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.put_json(url, data)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -168,8 +168,8 @@ println(data["body"]["name"])</code></pre>
 )</code></pre>
         </section>
 
-        <section id="fn-http-patch-json" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-patch-json" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-patch-json" class="scroll-mt-20 mb-6">
+            <a href="#def-http-patch-json" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.patch_json(url, data)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -187,8 +187,8 @@ println(data["body"]["name"])</code></pre>
     <section id="section-generic-request" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Generic HTTP Request</h2>
 
-        <section id="fn-http-request" class="scroll-mt-20 mb-6">
-            <a href="#fn-http-request" class="group flex items-center gap-2 mb-3">
+        <section id="def-http-request" class="scroll-mt-20 mb-6">
+            <a href="#def-http-request" class="group flex items-center gap-2 mb-3">
                 <code class="text-lg font-mono text-indigo-400">HTTP.request(method, url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -206,8 +206,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-http-ok" class="scroll-mt-20">
-                    <a href="#fn-http-ok" class="group flex items-center gap-2">
+                <section id="def-http-ok" class="scroll-mt-20">
+                    <a href="#def-http-ok" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">http_ok(resp)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -216,8 +216,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                     <p class="text-gray-400 text-sm mt-1">Check if status is exactly 200</p>
                 </section>
 
-                <section id="fn-http-success" class="scroll-mt-20">
-                    <a href="#fn-http-success" class="group flex items-center gap-2">
+                <section id="def-http-success" class="scroll-mt-20">
+                    <a href="#def-http-success" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">http_success(resp)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -226,8 +226,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                     <p class="text-gray-400 text-sm mt-1">Check if status is 2xx</p>
                 </section>
 
-                <section id="fn-http-redirect" class="scroll-mt-20">
-                    <a href="#fn-http-redirect" class="group flex items-center gap-2">
+                <section id="def-http-redirect" class="scroll-mt-20">
+                    <a href="#def-http-redirect" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">http_redirect(resp)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -236,8 +236,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                     <p class="text-gray-400 text-sm mt-1">Check if status is 3xx</p>
                 </section>
 
-                <section id="fn-http-client-error" class="scroll-mt-20">
-                    <a href="#fn-http-client-error" class="group flex items-center gap-2">
+                <section id="def-http-client-error" class="scroll-mt-20">
+                    <a href="#def-http-client-error" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">http_client_error(resp)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -246,8 +246,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                     <p class="text-gray-400 text-sm mt-1">Check if status is 4xx</p>
                 </section>
 
-                <section id="fn-http-server-error" class="scroll-mt-20">
-                    <a href="#fn-http-server-error" class="group flex items-center gap-2">
+                <section id="def-http-server-error" class="scroll-mt-20">
+                    <a href="#def-http-server-error" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">http_server_error(resp)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -265,8 +265,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="fn-http-json-parse" class="scroll-mt-20">
-                    <a href="#fn-http-json-parse" class="group flex items-center gap-2">
+                <section id="def-http-json-parse" class="scroll-mt-20">
+                    <a href="#def-http-json-parse" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">HTTP.json_parse(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -275,8 +275,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                     <p class="text-gray-400 text-sm mt-1">Parse a JSON string into a Soli value</p>
                 </section>
 
-                <section id="fn-http-json-stringify" class="scroll-mt-20">
-                    <a href="#fn-http-json-stringify" class="group flex items-center gap-2">
+                <section id="def-http-json-stringify" class="scroll-mt-20">
+                    <a href="#def-http-json-stringify" class="group flex items-center gap-2">
                         <code class="font-mono text-indigo-400">HTTP.json_stringify(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -292,9 +292,9 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
     <section id="section-parallel-requests" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Parallel Requests</h2>
 
-        <section id="fn-http-get-all" class="scroll-mt-20 mb-6">
+        <section id="def-http-get-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl border border-white/10 p-5">
-                <a bg-white/5 href="#fn-http-get-all" class="group flex items-center gap-2 mb-3">
+                <a bg-white/5 href="#def-http-get-all" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">HTTP.get_all(urls)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -308,9 +308,9 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
             </div>
         </section>
 
-        <section id="fn-http-parallel" class="scroll-mt-20 mb-6">
+        <section id="def-http-parallel" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-http-parallel" class="group flex items-center gap-2 mb-3">
+                <a href="#def-http-parallel" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">HTTP.parallel(requests)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -339,9 +339,9 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
             Create a lightweight HTTP server without the full MVC framework. For MVC apps, use <code class="text-indigo-400">get/post</code> in <code class="text-indigo-400">config/routes.sl</code> instead.
         </p>
 
-        <section id="fn-http-server-get" class="scroll-mt-20 mb-6">
+        <section id="def-http-server-get" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-http-server-get" class="group flex items-center gap-2 mb-3">
+                <a href="#def-http-server-get" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">http_server_get(path, handler_name)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -353,7 +353,7 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                     <div><code class="text-amber-400">path</code> : <code class="text-purple-400">String</code> - Route path (e.g., "/users", "/users/:id")</div>
                     <div><code class="text-amber-400">handler_name</code> : <code class="text-purple-400">String</code> - Handler function name</div>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">fn health(req)
+                <pre data-filename="Example"><code class="language-soli text-sm">def health(req)
     return {"status": 200, "body": "OK"}
 end
 
@@ -362,16 +362,16 @@ http_server_get("/users/:id", "get_user");</code></pre>
             </div>
         </section>
 
-        <section id="fn-http-server-post" class="scroll-mt-20 mb-6">
+        <section id="def-http-server-post" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-http-server-post" class="group flex items-center gap-2 mb-3">
+                <a href="#def-http-server-post" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">http_server_post(path, handler_name)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Register a POST route handler.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">fn create_user(req)
+                <pre data-filename="Example"><code class="language-soli text-sm">def create_user(req)
     let name = req["json"]["name"];
     return {"status": 201, "body": "Created: " + name};
 end
@@ -380,9 +380,9 @@ http_server_post("/users", "create_user");</code></pre>
             </div>
         </section>
 
-        <section id="fn-http-server-put" class="scroll-mt-20 mb-6">
+        <section id="def-http-server-put" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-http-server-put" class="group flex items-center gap-2 mb-3">
+                <a href="#def-http-server-put" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">http_server_put(path, handler_name)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Register a PUT route handler.</p>
@@ -390,9 +390,9 @@ http_server_post("/users", "create_user");</code></pre>
             </div>
         </section>
 
-        <section id="fn-http-server-delete" class="scroll-mt-20 mb-6">
+        <section id="def-http-server-delete" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-http-server-delete" class="group flex items-center gap-2 mb-3">
+                <a href="#def-http-server-delete" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">http_server_delete(path, handler_name)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Register a DELETE route handler.</p>
@@ -400,9 +400,9 @@ http_server_post("/users", "create_user");</code></pre>
             </div>
         </section>
 
-        <section id="fn-http-server-route" class="scroll-mt-20 mb-6">
+        <section id="def-http-server-route" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-http-server-route" class="group flex items-center gap-2 mb-3">
+                <a href="#def-http-server-route" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">http_server_route(method, path, handler_name)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Register a route for any HTTP method.</p>
@@ -410,9 +410,9 @@ http_server_post("/users", "create_user");</code></pre>
             </div>
         </section>
 
-        <section id="fn-http-server-listen" class="scroll-mt-20 mb-6">
+        <section id="def-http-server-listen" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-http-server-listen" class="group flex items-center gap-2 mb-3">
+                <a href="#def-http-server-listen" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">http_server_listen(port)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Start the HTTP server (blocking call).</p>
@@ -435,7 +435,7 @@ http_server_listen(3000);</code></pre>
             <p class="text-gray-400 text-sm mb-4">
                 Handler functions receive a request object and should return a response.
             </p>
-            <pre data-filename="Example"><code class="language-soli text-sm">fn my_handler(req)    let id = req["params"]["id"];           // Path parameters
+            <pre data-filename="Example"><code class="language-soli text-sm">def my_handler(req)    let id = req["params"]["id"];           // Path parameters
     let name = req["query"]["name"];         // Query string
     let data = req["json"]["field"];         // JSON body
     let token = req["headers"]["Authorization"];  // Headers

@@ -334,7 +334,7 @@ order.ship();
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">class OrderWorkflow
-    fn create_order(items: Array, total: Float)
+    def create_order(items: Array, total: Float)
         let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
         let transitions = [
             {"event": "confirm", "from": "pending", "to": "confirmed"},
@@ -352,7 +352,7 @@ order.ship();
         order
     end
 
-    fn process_order(order: Any)
+    def process_order(order: Any)
         if (order.is("pending"))
             order.confirm();
         end

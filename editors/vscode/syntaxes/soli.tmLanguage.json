@@ -33,6 +33,11 @@
           "end": "$"
         },
         {
+          "name": "comment.line.hash.soli",
+          "begin": "#",
+          "end": "$"
+        },
+        {
           "name": "comment.block.soli",
           "begin": "/\\*",
           "end": "\\*/"
@@ -106,7 +111,7 @@
         },
         {
           "name": "keyword.other.soli",
-          "match": "\\b(new|this|super|class|extends|implements|interface|async|await|import|export|from|as|static|public|private|protected|let|fn)\\b"
+          "match": "\\b(new|this|super|class|extends|implements|interface|async|await|import|export|from|as|static|public|private|protected|let|fn|def|const)\\b"
         },
         {
           "name": "constant.language.soli",

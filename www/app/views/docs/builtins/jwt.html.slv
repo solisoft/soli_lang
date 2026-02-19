@@ -27,9 +27,9 @@
             Token Operations
         </h2>
 
-        <section id="fn-jwt-sign" class="scroll-mt-20 mb-6">
+        <section id="def-jwt-sign" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-jwt-sign" class="group flex items-center gap-2 mb-3">
+                <a href="#def-jwt-sign" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">jwt_sign(payload, secret, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -56,9 +56,9 @@
             </div>
         </section>
 
-        <section id="fn-jwt-verify" class="scroll-mt-20 mb-6">
+        <section id="def-jwt-verify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-jwt-verify" class="group flex items-center gap-2 mb-3">
+                <a href="#def-jwt-verify" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">jwt_verify(token, secret)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -84,9 +84,9 @@ if has_key(result, "error") {
             </div>
         </section>
 
-        <section id="fn-jwt-decode" class="scroll-mt-20 mb-6">
+        <section id="def-jwt-decode" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-jwt-decode" class="group flex items-center gap-2 mb-3">
+                <a href="#def-jwt-decode" class="group flex items-center gap-2 mb-3">
                     <code class="text-lg font-mono text-indigo-400">jwt_decode(token)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -115,7 +115,7 @@ println(payload["sub"])  // User ID without verification</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
             <pre data-filename="Example"><code class="language-soli text-sm">// Login endpoint
-fn login(email: String, password: String) -> Hash
+def login(email: String, password: String) -> Hash
     let user = User.find_by_email(email)
     if !user || !argon2_verify(password, user["password_hash"]) {
         return { "error": "Invalid credentials" }
@@ -131,7 +131,7 @@ fn login(email: String, password: String) -> Hash
 end
 
 // Protected endpoint middleware
-fn authenticate(req: Hash) -> Hash?
+def authenticate(req: Hash) -> Hash?
     let auth_header = req["headers"]["Authorization"] ?? ""
     if !contains(auth_header, "Bearer ") {
         return null

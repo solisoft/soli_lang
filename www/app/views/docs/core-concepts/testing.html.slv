@@ -55,8 +55,8 @@
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/controller_example.sl</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">describe("HomeController", fn() {
-    test("GET /up returns UP status", fn() {
+<pre><code class="language-soli text-sm">describe("HomeController", def() {
+    test("GET /up returns UP status", def() {
         let response = get("/up");
         assert_eq(res_status(response), 200);
         assert_eq(res_body(response), "UP");
@@ -303,12 +303,12 @@ assert_eq(location, "/expected/path");</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/posts_controller_spec.sl</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">describe("PostsController", fn() {
-    before_each(fn() {
+<pre><code class="language-soli text-sm">describe("PostsController", def() {
+    before_each(def() {
         as_guest();
     });
 
-    test("creates post with valid data", fn() {
+    test("creates post with valid data", def() {
         login("author@example.com", "password123");
         
         let response = post("/posts", {
@@ -321,12 +321,12 @@ assert_eq(location, "/expected/path");</code></pre>
         assert_not_null(result["id"]);
     });
 
-    test("rejects unauthenticated request", fn() {
+    test("rejects unauthenticated request", def() {
         let response = post("/posts", {"title": "Test"});
         assert_eq(res_status(response), 302);
     });
 
-    test("shows single post", fn() {
+    test("shows single post", def() {
         let response = get("/posts/1");
         assert_eq(res_status(response), 200);
         let post = res_json(response);
@@ -354,23 +354,23 @@ assert_eq(location, "/expected/path");</code></pre>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">describe(name, fn)</code>
+                <code class="text-emerald-300 font-bold">describe(name, def)</code>
                 <p class="text-sm text-gray-400 mt-1">Group related tests</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">context(name, fn)</code>
+                <code class="text-emerald-300 font-bold">context(name, def)</code>
                 <p class="text-sm text-gray-400 mt-1">Group tests with conditions</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">test(name, fn)</code>
+                <code class="text-emerald-300 font-bold">test(name, def)</code>
                 <p class="text-sm text-gray-400 mt-1">Define a test case</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">before_each(fn)</code>
+                <code class="text-emerald-300 font-bold">before_each(def)</code>
                 <p class="text-sm text-gray-400 mt-1">Setup before each test</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">after_each(fn)</code>
+                <code class="text-emerald-300 font-bold">after_each(def)</code>
                 <p class="text-sm text-gray-400 mt-1">Teardown after each test</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
@@ -382,9 +382,9 @@ assert_eq(location, "/expected/path");</code></pre>
         <h3 class="text-xl font-semibold text-white mb-4">Assertions</h3>
         <p class="text-gray-400 mb-4">Soli provides assertion functions for writing tests with expressive syntax:</p>
 
-        <section id="fn-assert-equal" class="scroll-mt-20 mb-6">
+        <section id="def-assert-equal" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-equal" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-equal" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">assert_equal(expected, actual, message)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that two values are equal.</p>
@@ -393,9 +393,9 @@ assert_equal("hello", str, "string should match");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-true" class="scroll-mt-20 mb-6">
+        <section id="def-assert-true" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-true" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-true" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">assert_true(value, message)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that a value is true.</p>
@@ -403,9 +403,9 @@ assert_equal("hello", str, "string should match");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-false" class="scroll-mt-20 mb-6">
+        <section id="def-assert-false" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-false" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-false" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">assert_false(value, message)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that a value is false.</p>
@@ -413,9 +413,9 @@ assert_equal("hello", str, "string should match");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-contains" class="scroll-mt-20 mb-6">
+        <section id="def-assert-contains" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-contains" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-contains" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">assert_contains(haystack, needle, message)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that a collection contains a specific value.</p>
@@ -423,9 +423,9 @@ assert_equal("hello", str, "string should match");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-nil" class="scroll-mt-20 mb-6">
+        <section id="def-assert-nil" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-nil" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-nil" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">assert_nil(value, message)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that a value is nil (null).</p>
@@ -433,9 +433,9 @@ assert_equal("hello", str, "string should match");</code></pre>
             </div>
         </section>
 
-        <section id="fn-assert-not-nil" class="scroll-mt-20 mb-6">
+        <section id="def-assert-not-nil" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-assert-not-nil" class="group flex items-center gap-2 mb-3">
+                <a href="#def-assert-not-nil" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">assert_not_nil(value, message)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that a value is not nil.</p>
@@ -464,9 +464,9 @@ expect(value).to_contain("substring");</code></pre>
 
         <h2 class="text-2xl font-bold text-white mb-6" id="section-factories">Factory Functions</h2>
 
-        <section id="fn-factory-define" class="scroll-mt-20 mb-6">
+        <section id="def-factory-define" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-factory-define" class="group flex items-center gap-2 mb-3">
+                <a href="#def-factory-define" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">Factory.define(name, data)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Define a factory with default data.</p>
@@ -477,9 +477,9 @@ expect(value).to_contain("substring");</code></pre>
             </div>
         </section>
 
-        <section id="fn-factory-create" class="scroll-mt-20 mb-6">
+        <section id="def-factory-create" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-factory-create" class="group flex items-center gap-2 mb-3">
+                <a href="#def-factory-create" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">Factory.create(name)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Create an instance from a factory.</p>
@@ -487,9 +487,9 @@ expect(value).to_contain("substring");</code></pre>
             </div>
         </section>
 
-        <section id="fn-factory-create-with" class="scroll-mt-20 mb-6">
+        <section id="def-factory-create-with" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-factory-create-with" class="group flex items-center gap-2 mb-3">
+                <a href="#def-factory-create-with" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">Factory.create_with(name, overrides)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Create an instance with custom overrides.</p>
@@ -517,9 +517,9 @@ expect(value).to_contain("substring");</code></pre>
         <h3 class="text-xl font-semibold text-white mb-4">Transaction Rollback</h3>
         <p class="text-gray-400 mb-4">Tests are isolated using database transactions:</p>
 
-        <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", fn() {
-    test("creates user", fn() {
-        with_transaction(fn() {
+        <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", def() {
+    test("creates user", def() {
+        with_transaction(def() {
             let user = Factory.create("user", hash("name": "Test"));
             expect(User.count()).to_equal(1);
             expect(user.name).to_equal("Test");

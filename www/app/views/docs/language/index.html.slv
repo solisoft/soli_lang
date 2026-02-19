@@ -30,37 +30,45 @@
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">3</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Control Flow</span>
             </a>
+            <a href="/docs/language/error-handling" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-red-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center text-red-400 text-sm font-mono">4</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Error Handling</span>
+            </a>
             <a href="/docs/language/functions" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">4</span>
+                <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">5</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Functions</span>
             </a>
             <a href="/docs/language/collections" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-sm font-mono">5</span>
+                <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-sm font-mono">6</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Collections</span>
             </a>
             <a href="/docs/language/classes-oop" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center text-red-400 text-sm font-mono">6</span>
+                <span class="w-8 h-8 rounded bg-rose-500/20 flex items-center justify-center text-rose-400 text-sm font-mono">7</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Classes & OOP</span>
             </a>
             <a href="/docs/language/pattern-matching" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">7</span>
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">8</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Pattern Matching</span>
             </a>
             <a href="/docs/language/pipeline-operator" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-teal-500/20 flex items-center justify-center text-teal-400 text-sm font-mono">8</span>
+                <span class="w-8 h-8 rounded bg-teal-500/20 flex items-center justify-center text-teal-400 text-sm font-mono">9</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Pipeline Operator</span>
             </a>
             <a href="/docs/language/modules" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-lime-500/20 flex items-center justify-center text-lime-400 text-sm font-mono">9</span>
+                <span class="w-8 h-8 rounded bg-lime-500/20 flex items-center justify-center text-lime-400 text-sm font-mono">10</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Modules</span>
             </a>
             <a href="/docs/language/decimal" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">10</span>
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">11</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Decimal Type</span>
             </a>
             <a href="/docs/language/blocks" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-violet-500/20 flex items-center justify-center text-violet-400 text-sm font-mono">11</span>
+                <span class="w-8 h-8 rounded bg-violet-500/20 flex items-center justify-center text-violet-400 text-sm font-mono">12</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Block Syntax</span>
+            </a>
+            <a href="/docs/language/linting" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-yellow-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-yellow-500/20 flex items-center justify-center text-yellow-400 text-sm font-mono">13</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Linting</span>
             </a>
         </div>
     </nav>
@@ -92,7 +100,7 @@ print("Hello, World!");</code></pre>
         <section id="section-first-program" class="scroll-mt-20 mb-8">
             <h3 class="text-xl font-semibold text-white mb-4">Your First Soli Program</h3>
             <pre data-filename="area.sl"><code class="language-soli text-sm">// A simple program that calculates the area of a circle
-fn calculate_area(radius: Float) -> Float
+def calculate_area(radius: Float) -> Float
     3.14159 * radius * radius
 end
 
@@ -112,6 +120,11 @@ soli serve
 
 # Run tests
 soli test
+
+# Lint code for style issues
+soli lint              # all .sl files in current dir
+soli lint src/         # lint a directory
+soli lint app/main.sl  # lint a single file
 
 # Build for production
 soli build --release</code></pre>
@@ -136,7 +149,7 @@ let age: Int = 30;
 const PI = 3.14159;
 
 // Function
-fn add(a: Int, b: Int) -> Int
+def add(a: Int, b: Int) -> Int
     a + b
 end</code></pre>
 
@@ -145,7 +158,7 @@ end</code></pre>
     new(name: String)
         this.name = name;
     end
-    fn greet() -> String
+    def greet() -> String
         "Hello, " + this.name
     end
 end</code></pre>
@@ -162,6 +175,13 @@ for (item in collection)
     // code
 end
 
+// Try/Catch
+try
+    risky_operation();
+catch e
+    print(e);
+end
+
 // Match
 match value
     pattern => result,
@@ -169,11 +189,11 @@ match value
 end</code></pre>
 
             <pre data-filename="Pipeline & Collections"><code class="language-soli text-sm">// Pipeline
-value |> fn1() |> fn2();
+value |> transform() |> format();
 
 // Collections
-arr.map(fn(x) x * 2);
-hash.filter(fn(p) p[1] > 0);</code></pre>
+arr.map(def(x) x * 2);
+hash.filter(def(p) p[1] > 0);</code></pre>
         </div>
     </section>
 

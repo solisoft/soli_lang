@@ -38,25 +38,25 @@
             Functions
         </h2>
 
-        <section id="fn-braces" class="scroll-mt-20 mb-6">
+        <section id="def-braces" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">fn greet(name: String) {
+                <pre data-filename="Example"><code class="language-soli text-sm">def greet(name: String) {
     print("Hello, " + name + "!");
 }
 
-fn add(a: Int, b: Int) -> Int {
+def add(a: Int, b: Int) -> Int {
     a + b
 }</code></pre>
             </div>
         </section>
 
-        <section id="fn-end" class="scroll-mt-20 mb-6">
+        <section id="def-end" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">fn greet(name: String) end
+                <pre data-filename="Example"><code class="language-soli text-sm">def greet(name: String) end
 
-fn add(a: Int, b: Int) -> Int {
+def add(a: Int, b: Int) -> Int {
     a + b
 }</code></pre>
             </div>
@@ -201,7 +201,7 @@ for item in items {
         this.name = name;
     }
 
-    fn greet() {
+    def greet() {
         print("Hello, " + this.name);
     }
 }</code></pre>
@@ -218,7 +218,7 @@ class Person
 
     new(name: String) end
 
-    fn greet() end
+    def greet() end
 end</code></pre>
             </div>
         </section>
@@ -238,10 +238,10 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">You can freely mix both styles in the same codebase:</p>
             <pre data-filename="Example"><code class="language-soli text-sm">// Empty function - use end
-fn placeholder() end
+def placeholder() end
 
 // Function with body - use braces
-fn process_data(data) {
+def process_data(data) {
     validate(data);
     transform(data);
     save(data);
@@ -252,9 +252,9 @@ class EmptyMarker end
 
 // Class with methods - mix both
 class Service
-    fn init() end
+    def init() end
 
-    fn process() {
+    def process() {
         fetch_data();
     }
 end
@@ -283,8 +283,8 @@ if user.is_valid() {
                 <tbody class="text-gray-300">
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">Function</td>
-                        <td class="py-3 px-4"><code class="text-pink-400">fn foo() { }</code></td>
-                        <td class="py-3 px-4"><code class="text-pink-400">fn foo() end</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">def foo() { }</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">def foo() end</code></td>
                     </tr>
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">If</td>

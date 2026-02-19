@@ -131,7 +131,7 @@ println("Remaining: " + str(status["remaining"]) + "/" + str(status["limit"]))</
         <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
             <pre class="text-sm text-gray-300 overflow-x-auto"><code>// API middleware with rate limiting
-fn rate_limit_middleware(req)
+def rate_limit_middleware(req)
     let ip = req["headers"]["X-Forwarded-For"] || req["headers"]["Remote-Addr"]
     let limiter = RateLimiter("api:" + ip, 100, 60)
     

@@ -12,7 +12,7 @@
             <span class="bg-gradient-to-r from-lime-400 to-green-400 bg-clip-text text-transparent">Modules</span>
         </h1>
         <pre data-filename="my_module.sl"><code class="language-soli text-sm">module MyModule
-    fn hello
+    def hello
         println("Hello from MyModule!")
     end
 end</code></pre>
@@ -54,31 +54,31 @@ hello()</code></pre>
 <pre data-filename="math.sl"><code class="language-soli text-sm">// math.sl
 
 // Private function (not exported)
-fn validate_number(n: Int) -> Bool
+def validate_number(n: Int) -> Bool
     n >= 0
 end
 
 // Exported functions
-export fn add(a: Int, b: Int) -> Int
+export def add(a: Int, b: Int) -> Int
     a + b
 end
 
-export fn subtract(a: Int, b: Int) -> Int
+export def subtract(a: Int, b: Int) -> Int
     a - b
 end
 
-export fn multiply(a: Int, b: Int) -> Int
+export def multiply(a: Int, b: Int) -> Int
     a * b
 end
 
-export fn divide(a: Int, b: Int) -> Float
+export def divide(a: Int, b: Int) -> Float
     if (b == 0)
         panic("Division by zero")
     end
     float(a) / float(b)
 end
 
-export fn factorial(n: Int) -> Int
+export def factorial(n: Int) -> Int
     if (n <= 1)
         return 1
     end
@@ -109,7 +109,7 @@ class ValidationResult
         this.errors = [];
     end
 
-    fn add_error(msg: String)
+    def add_error(msg: String)
         this.is_valid = false;
         this.errors.push(msg);
     end
@@ -127,7 +127,7 @@ export class User
         this.email = email;
     end
 
-    fn get_display_name() -> String
+    def get_display_name() -> String
         this.username + " (" + this.email + ")"
     end
 end
@@ -145,7 +145,7 @@ export class Post
         this.author = author;
     end
 
-    fn get_summary() -> String
+    def get_summary() -> String
         let preview = this.content.slice(0, 100);
         this.title + " by " + this.author.username
     end
@@ -166,28 +166,28 @@ end</code></pre>
 
 export class Posts
     class Action
-        fn create(title: String, content: String) -> Post
+        def create(title: String, content: String) -> Post
             // Create a new post
             new Post(0, title, content, current_user())
         end
 
-        fn update(id: Int, updates: Any) -> Post?
+        def update(id: Int, updates: Any) -> Post?
             // Update an existing post
             find_post_by_id(id).update(updates)
         end
 
-        fn delete(id: Int) -> Bool
+        def delete(id: Int) -> Bool
             // Delete a post
             remove_post(id)
         end
     end
 
     class View
-        fn list(page: Int, per_page: Int) -> Post[]
+        def list(page: Int, per_page: Int) -> Post[]
             paginated_posts(page, per_page)
         end
 
-        fn show(id: Int) -> Post?
+        def show(id: Int) -> Post?
             find_post_by_id(id)
         end
     end
@@ -195,17 +195,17 @@ end
 
 export class Users
     class Action
-        fn register(username: String, email: String) -> User
+        def register(username: String, email: String) -> User
             new User(0, username, email)
         end
 
-        fn login(email: String, password: String) -> User?
+        def login(email: String, password: String) -> User?
             authenticate_user(email, password)
         end
     end
 
     class Validator
-        fn validate_registration(data: Any) -> Bool
+        def validate_registration(data: Any) -> Bool
             data["username"] != null && data["email"] != null
         end
     end

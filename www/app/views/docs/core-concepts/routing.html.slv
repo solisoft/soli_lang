@@ -89,7 +89,7 @@ get("/users/:id?", "users#show");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn show(req: Any)    let user_id = req["params"]["id"];
+<pre><code class="language-soli text-sm">def show(req: Any)    let user_id = req["params"]["id"];
     let post_id = req["params"]["post_id"];
 
     {
@@ -124,7 +124,7 @@ get("/*path", "catchall#handle");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/files_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">fn serve(req: Any)    let filepath = req["params"]["filepath"];
+<pre><code class="language-soli text-sm">def serve(req: Any)    let filepath = req["params"]["filepath"];
 
     // /files/docs/report.pdf -> filepath = "/docs/report.pdf"
     // /files/images/photo.jpg -> filepath = "/images/photo.jpg"
@@ -203,11 +203,11 @@ get("/files/*filepath", "files#serve");</code></pre>
         this.layout = "docs";
     end
 
-    fn routing(req: Any)        let path = req["params"]["path"];  // "/routing"
+    def routing(req: Any)        let path = req["params"]["path"];  // "/routing"
         render("docs/routing", {"active_page": "routing"})
     end
 
-    fn installation(req: Any)        render("docs/installation", {"active_page": "installation"})
+    def installation(req: Any)        render("docs/installation", {"active_page": "installation"})
     end
 end</code></pre>
         </div>
@@ -255,7 +255,7 @@ end</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// URL: /search?q=solilang&page=1
 
-fn search(req: Any)    let query = req["query"]["q"];      // "solilang"
+def search(req: Any)    let query = req["query"]["q"];      // "solilang"
     let page = req["query"]["page"];    // "1"
 
     {

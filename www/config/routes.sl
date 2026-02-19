@@ -54,6 +54,7 @@ get("/docs/language", "docs#language_index");
 get("/docs/language/variables-types", "docs#language_variables_types");
 get("/docs/language/operators", "docs#language_operators");
 get("/docs/language/control-flow", "docs#language_control_flow");
+get("/docs/language/error-handling", "docs#language_error_handling");
 get("/docs/language/functions", "docs#language_functions");
 get("/docs/language/strings", "docs#language_strings");
 get("/docs/language/arrays", "docs#language_arrays");
@@ -65,6 +66,7 @@ get("/docs/language/pipeline-operator", "docs#language_pipeline_operator");
 get("/docs/language/decimal", "docs#language_decimal");
 get("/docs/language/modules", "docs#language_modules");
 get("/docs/language/blocks", "docs#language_blocks");
+get("/docs/language/linting", "docs#language_linting");
 
 // Builtins Reference
 get("/docs/builtins", "docs#builtins_index");

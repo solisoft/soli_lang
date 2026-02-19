@@ -218,11 +218,11 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User extends Model
-    fn is_admin() -> Bool
+    def is_admin() -> Bool
         this.role == "admin"
     end
 
-    fn full_name() -> String
+    def full_name() -> String
         this.first_name + " " + this.last_name
     end
 end
@@ -312,10 +312,10 @@ end</code></pre>
     before_update("log_changes")
     after_delete("cleanup_related")
 
-    fn normalize_email()        this.email = this.email.downcase();
+    def normalize_email()        this.email = this.email.downcase();
     end
 
-    fn send_welcome_email()        // Send email logic
+    def send_welcome_email()        // Send email logic
     end
 end</code></pre>
         </div>
@@ -363,13 +363,13 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class Post extends Model
-    fn author()        User.find(this.author_id)
+    def author()        User.find(this.author_id)
     end
 end
 
 class User extends Model
     // Returns a QueryBuilder for chaining
-    fn posts()        Post.where("doc.author_id == @id", { "id": this.id })
+    def posts()        Post.where("doc.author_id == @id", { "id": this.id })
     end
 end</code></pre>
         </div>
@@ -432,30 +432,30 @@ class User extends Model
 
     before_save("normalize_email")
 
-    fn normalize_email()        this.email = this.email.downcase();
+    def normalize_email()        this.email = this.email.downcase();
     end
 
-    fn posts()        Post.where("doc.user_id == @id", { "id": this.id })
+    def posts()        Post.where("doc.user_id == @id", { "id": this.id })
     end
 
-    fn is_adult() -> Bool
+    def is_adult() -> Bool
         this.age >= 18
     end
 end
 
 // Usage in controller
 class UsersController extends Controller
-    fn index(req: Any)        let users = User.all();
+    def index(req: Any)        let users = User.all();
         render("users/index", { "users": users })
     end
 
-    fn show(req: Any)        let id = req["params"]["id"];
+    def show(req: Any)        let id = req["params"]["id"];
         let user = User.find(id);
         let posts = user.posts().order("created_at", "desc").limit(5).all();
         render("users/show", { "user": user, "posts": posts })
     end
 
-    fn create(req: Any)        let result = User.create({
+    def create(req: Any)        let result = User.create({
             "name": req["params"]["name"],
             "email": req["params"]["email"]
         });
