@@ -98,7 +98,7 @@
                     </button>
                 </div>
                 <div id="repl-output" class="repl-output bg-gray-800 rounded-lg p-4 text-sm code-editor min-h-[120px]">
-                    <div class="text-gray-500 italic">// Try: req["params"]["id"] or session["user_id"] or headers["Content-Type"]</div>
+                    <div class="text-gray-500 italic"># Try: req["params"]["id"] or session["user_id"] or headers["Content-Type"]</div>
                 </div>
             </div>
         </div>
@@ -141,7 +141,7 @@
                             <span id="source-file" class="text-sm text-gray-400 font-mono">Select a stack frame to view source</span>
                             <span id="source-line" class="text-sm text-gray-500"></span>
                         </div>
-                        <pre id="source-code" class="p-4 overflow-x-auto code-editor text-sm"><code class="language-soli text-gray-400">// Click on a stack frame above to see the source code</code></pre>
+                        <pre id="source-code" class="p-4 overflow-x-auto code-editor text-sm"><code class="language-soli text-gray-400"># Click on a stack frame above to see the source code</code></pre>
                     </div>
                 </div>
 
@@ -321,10 +321,10 @@
                     sourceCache[cacheKey] = data;
                     displaySource(data, line);
                 } else {
-                    document.getElementById('source-code').innerHTML = '<code class="text-gray-500">// Source not available</code>';
+                    document.getElementById('source-code').innerHTML = '<code class="text-gray-500"># Source not available</code>';
                 }
             } catch (e) {
-                document.getElementById('source-code').innerHTML = '<code class="text-gray-500">// Error loading source: ' + e.message + '</code>';
+                document.getElementById('source-code').innerHTML = '<code class="text-gray-500"># Error loading source: ' + e.message + '</code>';
             }
         }
 
@@ -373,7 +373,7 @@
                 if (result.error) {
                     output.innerHTML += '<div class="text-red-400 mt-2">❌ ' + escapeHtml(result.error) + '</div>';
                 } else {
-                    output.innerHTML += '<div class="text-gray-300 mt-2"><span class="text-indigo-400">❯</span> <span class="text-gray-500">// ' + code + '</span></div>';
+                    output.innerHTML += '<div class="text-gray-300 mt-2"><span class="text-indigo-400">❯</span> <span class="text-gray-500"># ' + code + '</span></div>';
                     output.innerHTML += '<div class="text-green-400 mt-1">' + escapeHtml(result.result) + '</div>';
                 }
             } catch (e) {
@@ -397,7 +397,7 @@
         }
 
         function clearRepl() {
-            document.getElementById('repl-output').innerHTML = '<div class="text-gray-500 italic">// REPL cleared. Type code above to inspect request state.</div>';
+            document.getElementById('repl-output').innerHTML = '<div class="text-gray-500 italic"># REPL cleared. Type code above to inspect request state.</div>';
         }
 
         function escapeHtml(text) {

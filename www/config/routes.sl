@@ -1,29 +1,29 @@
-// ============================================================================
-// Solilang MVC Routes Configuration
-// ============================================================================
+# ============================================================================
+# Solilang MVC Routes Configuration
+# ============================================================================
 
-// Note: Middleware in app/middleware/ is loaded automatically.
-// - global_only middleware runs for ALL requests
-// - scope_only middleware must be explicitly scoped using: middleware("name", -> { ... })
+# Note: Middleware in app/middleware/ is loaded automatically.
+# - global_only middleware runs for ALL requests
+# - scope_only middleware must be explicitly scoped using: middleware("name", -> { ... })
 
-// Root path
+# Root path
 get("/", "home#index");
 
-// Public routes
+# Public routes
 get("/health", "home#health");
 get("/up", "home#up");
 
-// ============================================================================
-// Documentation
-// ============================================================================
+# ============================================================================
+# Documentation
+# ============================================================================
 
 get("/docs", "docs#index");
 
-// Getting Started
+# Getting Started
 get("/docs/getting-started/introduction", "docs#getting_started_introduction");
 get("/docs/getting-started/installation", "docs#getting_started_installation");
 
-// Core Concepts
+# Core Concepts
 get("/docs/core-concepts/routing", "docs#core_concepts_routing");
 get("/docs/core-concepts/controllers", "docs#core_concepts_controllers");
 get("/docs/core-concepts/middleware", "docs#core_concepts_middleware");
@@ -34,22 +34,22 @@ get("/docs/core-concepts/i18n", "docs#core_concepts_i18n");
 get("/docs/core-concepts/request-params", "docs#core_concepts_request_params");
 get("/docs/core-concepts/error-pages", "docs#core_concepts_error_pages");
 
-// Database
+# Database
 get("/docs/database/configuration", "docs#database_configuration");
 get("/docs/database/models", "docs#database_models");
 get("/docs/database/migrations", "docs#database_migrations");
 
-// Security
+# Security
 get("/docs/security/authentication", "docs#security_authentication");
 get("/docs/security/sessions", "docs#security_sessions");
 get("/docs/security/validation", "docs#security_validation");
 
-// Development Tools
+# Development Tools
 get("/docs/development-tools/live-reload", "docs#development_tools_live_reload");
 get("/docs/development-tools/debugging", "docs#development_tools_debugging");
 get("/docs/development-tools/scaffold", "docs#development_tools_scaffold");
 
-// Language Reference
+# Language Reference
 get("/docs/language", "docs#language_index");
 get("/docs/language/variables-types", "docs#language_variables_types");
 get("/docs/language/operators", "docs#language_operators");
@@ -68,7 +68,7 @@ get("/docs/language/modules", "docs#language_modules");
 get("/docs/language/blocks", "docs#language_blocks");
 get("/docs/language/linting", "docs#language_linting");
 
-// Builtins Reference
+# Builtins Reference
 get("/docs/builtins", "docs#builtins_index");
 get("/docs/builtins/core", "docs#builtins_core");
 get("/docs/builtins/system", "docs#builtins_system");
@@ -90,16 +90,16 @@ get("/docs/builtins/security-headers", "docs#builtins_security_headers");
 get("/docs/builtins/upload", "docs#builtins_upload");
 get("/docs/builtins/soap", "docs#builtins_soap");
 
-// Utility
+# Utility
 get("/docs/utility/base64", "docs#utility_base64");
 
-// Testing
+# Testing
 get("/docs/testing", "docs#testing");
 get("/docs/testing-quick-reference", "docs#testing_quick_reference");
 
-// ============================================================================
-// Backward Compatibility Redirects (old flat URLs -> new hierarchical URLs)
-// ============================================================================
+# ============================================================================
+# Backward Compatibility Redirects (old flat URLs -> new hierarchical URLs)
+# ============================================================================
 
 get("/docs/introduction", "docs#redirect_introduction");
 get("/docs/installation", "docs#redirect_installation");
@@ -123,26 +123,26 @@ get("/docs/debugging", "docs#redirect_debugging");
 get("/docs/scaffold", "docs#redirect_scaffold");
 get("/docs/soli-language", "docs#redirect_soli_language");
 
-// ============================================================================
-// WebSocket Demo
-// ============================================================================
+# ============================================================================
+# WebSocket Demo
+# ============================================================================
 
 get("/websocket", "websocket#demo");
 router_websocket("/ws/chat", "websocket#chat_handler");
 
-// ============================================================================
-// LiveView Routes
-// ============================================================================
+# ============================================================================
+# LiveView Routes
+# ============================================================================
 
-// Register LiveView components with their controller handlers
+# Register LiveView components with their controller handlers
 router_live("counter", "live#counter");
 router_live("metrics", "live#metrics");
 
-// ============================================================================
-// Users Controller - Authentication, Sessions, and Validation Demo
-// ============================================================================
+# ============================================================================
+# Users Controller - Authentication, Sessions, and Validation Demo
+# ============================================================================
 
-// Authentication routes
+# Authentication routes
 get("/users/login", "users#login");
 post("/users/login", "users#login_post");
 get("/users/register", "users#register");
@@ -150,23 +150,23 @@ post("/users/register", "users#register_post");
 get("/users/logout", "users#logout");
 get("/users/profile", "users#profile");
 
-// Session management
+# Session management
 get("/users/regenerate-session", "users#regenerate_session");
 
-// Validation demo
+# Validation demo
 get("/users/validation-demo", "users#validation_demo");
 post("/users/validate-registration", "users#validate_registration");
 
-// JWT demo endpoints
+# JWT demo endpoints
 post("/users/create-token", "users#create_token");
 post("/users/verify-token", "users#verify_token");
 post("/users/decode-token", "users#decode_token");
 
-// ============================================================================
-// State Machine Controller - REST API for State Machine management
-// ============================================================================
+# ============================================================================
+# State Machine Controller - REST API for State Machine management
+# ============================================================================
 
-// API endpoints
+# API endpoints
 get("/api/state-machines", "state_machines#list");
 post("/api/state-machines", "state_machines#create");
 get("/api/state-machines/:id", "state_machines#get");
@@ -175,32 +175,32 @@ post("/api/state-machines/:id/transition", "state_machines#transition");
 put("/api/state-machines/:id/context", "state_machines#set_context");
 get("/api/state-machines/:id/context/:key", "state_machines#get_context");
 
-// Demo page
+# Demo page
 get("/state-machines", "state_machines#demo");
 
-// ============================================================================
-// Documentation
-// ============================================================================
+# ============================================================================
+# Documentation
+# ============================================================================
 
 get("/docs/core-concepts/state-machines", "docs#core_concepts_state_machines");
 
-// ============================================================================
-// Wildcard Route Examples
-// ============================================================================
+# ============================================================================
+# Wildcard Route Examples
+# ============================================================================
 //
-// These demonstrate the dynamic action resolution feature:
-// Path /wildcard/* maps to wildcard_controller.sl functions
+# These demonstrate the dynamic action resolution feature:
+# Path /wildcard/* maps to wildcard_controller.sl functions
 //
-// Example: /wildcard/demo → wildcard#demo
+# Example: /wildcard/demo → wildcard#demo
 
 get("/wildcard/*", "wildcard#*");
 
-// ============================================================================
-// Splat Route Examples
-// ============================================================================
+# ============================================================================
+# Splat Route Examples
+# ============================================================================
 //
-// Splat routes use *param_name to capture remaining path segments
-// The captured value includes a leading slash
+# Splat routes use *param_name to capture remaining path segments
+# The captured value includes a leading slash
 
 get("/files/*filepath", "home#files_demo");
 get("/api/*version/users/*id", "home#api_demo");

@@ -1,9 +1,9 @@
-// ============================================================================
-// JWT Tests
-// ============================================================================
+# ============================================================================
+# JWT Tests
+# ============================================================================
 //
-// Tests for JWT (JSON Web Token) operations in the MVC framework
-// ============================================================================
+# Tests for JWT (JSON Web Token) operations in the MVC framework
+# ============================================================================
 
 describe("JWT Operations", fn()
     describe("JWT Payload", fn()
@@ -268,12 +268,12 @@ describe("JWT Operations", fn()
 
         test("real apps should use environment variables", fn()
             let uses_env_var = false;
-            assert_not(uses_env_var); // Should be true in production
+            assert_not(uses_env_var); # Should be true in production
         end);
 
         test("JWT tokens should have reasonable expiration", fn()
-            let max_expires = 86400; // 24 hours
-            let token_expires = 3600; // 1 hour
+            let max_expires = 86400; # 24 hours
+            let token_expires = 3600; # 1 hour
             assert_lt(token_expires, max_expires);
         end);
     end);
@@ -288,8 +288,8 @@ describe("JWT Claims", fn()
 
         test("iat (issued at) is a Unix timestamp", fn()
             let iat = 1234567890;
-            assert_gt(iat, 1000000000); // Reasonable timestamp
-            assert_lt(iat, 2000000000); // Not in the future too far
+            assert_gt(iat, 1000000000); # Reasonable timestamp
+            assert_lt(iat, 2000000000); # Not in the future too far
         end);
 
         test("exp (expiration time) is a Unix timestamp", fn()

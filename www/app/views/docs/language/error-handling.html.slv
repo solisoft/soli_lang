@@ -36,14 +36,14 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Handles exceptions with try/catch blocks, using <code class="text-indigo-400">end</code>-delimited syntax just like <code class="text-indigo-400">if</code>, <code class="text-indigo-400">while</code>, and <code class="text-indigo-400">for</code>.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// Basic try/catch
+                <pre data-filename="Example"><code class="language-soli text-sm"># Basic try/catch
 try
     let result = 10 / 0;
 catch e
     print("Error: " + str(e));
 end
 
-// With finally (always runs)
+# With finally (always runs)
 try
     let data = read_file("config.sl");
     print(data);
@@ -53,7 +53,7 @@ finally
     print("Cleanup done");
 end
 
-// Try/finally without catch
+# Try/finally without catch
 try
     process_data();
 finally
@@ -69,14 +69,14 @@ end</code></pre>
         <p class="text-gray-400 mb-4">The catch variable can be written with or without parentheses:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Without parentheses
+<pre><code class="language-soli text-sm"># Without parentheses
 try
     risky();
 catch e
     print(e);
 end
 
-// With parentheses
+# With parentheses
 try
     risky();
 catch (e)
@@ -116,7 +116,7 @@ end
 try
     let result = divide(10, 0);
 catch e
-    print("Caught: " + str(e));  // "Caught: Division by zero"
+    print("Caught: " + str(e));  # "Caught: Division by zero"
 end</code></pre>
             </div>
         </section>

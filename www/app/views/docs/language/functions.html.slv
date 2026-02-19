@@ -36,25 +36,25 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Declares a function with optional parameters and return type. <code class="text-indigo-400">def</code> is an alias for <code class="text-indigo-400">fn</code> (Ruby-style).</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// No parameters, no return
-def say_hello() end
+                <pre data-filename="Example"><code class="language-soli text-sm"># No parameters, no return
+def say_hello end
 
-// With parameters
+# With parameters
 def greet(name: String)
     print("Hello, " + name + "!");
 end
 
-// With return value (implicit return)
+# With return value (implicit return)
 def add(a: Int, b: Int) -> Int
     a + b
 end
 
-// Void function
+# Void function
 def log_message(msg: String)
     print("[LOG] " + msg);
 end
 
-// Early return
+# Early return
 def absolute(x: Int) -> Int
     if (x < 0)
         return -x;
@@ -70,7 +70,7 @@ end</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Recursive Functions</h2>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Calculate factorial
+<pre><code class="language-soli text-sm"># Calculate factorial
 def factorial(n: Int) -> Int
     if (n <= 1)
         return 1;
@@ -78,9 +78,9 @@ def factorial(n: Int) -> Int
     n * factorial(n - 1)
 end
 
-print(factorial(5));  // 120
+print(factorial(5));  # 120
 
-// Calculate Fibonacci
+# Calculate Fibonacci
 def fibonacci(n: Int) -> Int
     if (n <= 1)
         return n;
@@ -88,9 +88,9 @@ def fibonacci(n: Int) -> Int
     fibonacci(n - 1) + fibonacci(n - 2)
 end
 
-print(fibonacci(10));  // 55
+print(fibonacci(10));  # 55
 
-// Check if a number is prime
+# Check if a number is prime
 def is_prime(n: Int) -> Bool
     if (n < 2)
         return false;
@@ -120,7 +120,7 @@ end</code></pre>
         <p class="text-gray-400 mb-4">Functions can accept other functions as parameters:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Function as parameter
+<pre><code class="language-soli text-sm"># Function as parameter
 def apply(x: Int, f: (Int) -> Int) -> Int
     f(x)
 end
@@ -133,10 +133,10 @@ def square(x: Int) -> Int
     x * x
 end
 
-let result = apply(5, double);   // 10
-let squared = apply(5, square);  // 25
+let result = apply(5, double);   # 10
+let squared = apply(5, square);  # 25
 
-// Passing anonymous functions
+# Passing anonymous functions
 def transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
     let result = [];
     for (item in arr) {
@@ -146,7 +146,7 @@ def transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
 end
 
 let numbers = [1, 2, 3, 4, 5];
-let doubled = transform_array(numbers, def(x) x * 2);  // [2, 4, 6, 8, 10]</code></pre>
+let doubled = transform_array(numbers, def(x) x * 2);  # [2, 4, 6, 8, 10]</code></pre>
             </div>
         </div>
     </section>
@@ -167,17 +167,17 @@ let doubled = transform_array(numbers, def(x) x * 2);  // [2, 4, 6, 8, 10]</code
         <p class="text-gray-400 mb-4">The most explicit form. Supports inline expressions and multi-line bodies:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Inline expression body
+<pre><code class="language-soli text-sm"># Inline expression body
 let doubled = [1, 2, 3].map(def(x) x * 2);
-print(doubled);  // [2, 4, 6]
+print(doubled);  # [2, 4, 6]
 
-// Multi-line body with end
+# Multi-line body with end
 let process = def(x)
     let result = x * 2;
     result + 1
 end
 
-print(process(5));  // 11</code></pre>
+print(process(5));  # 11</code></pre>
             </div>
         </div>
 
@@ -185,18 +185,18 @@ print(process(5));  // 11</code></pre>
         <p class="text-gray-400 mb-4">A concise alternative, commonly used with collection methods:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Single parameter
+<pre><code class="language-soli text-sm"># Single parameter
 let doubled = [1, 2, 3].map(|x| x * 2);
-print(doubled);  // [2, 4, 6]
+print(doubled);  # [2, 4, 6]
 
-// Multiple parameters
+# Multiple parameters
 let sum = [1, 2, 3].reduce(0, |acc, x| acc + x);
-print(sum);  // 6
+print(sum);  # 6
 
-// With collection methods
+# With collection methods
 let names = ["alice", "bob", "charlie"];
 let upper = names.map(|name| name.upcase());
-print(upper);  // ["ALICE", "BOB", "CHARLIE"]</code></pre>
+print(upper);  # ["ALICE", "BOB", "CHARLIE"]</code></pre>
             </div>
         </div>
 
@@ -204,13 +204,13 @@ print(upper);  // ["ALICE", "BOB", "CHARLIE"]</code></pre>
         <p class="text-gray-400 mb-4">For zero-parameter lambdas:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Zero-parameter lambda
+<pre><code class="language-soli text-sm"># Zero-parameter lambda
 let greet = || "Hello, world!";
-print(greet());  // "Hello, world!"
+print(greet());  # "Hello, world!"
 
-// Useful for deferred execution
+# Useful for deferred execution
 let lazy_value = || expensive_computation();
-// ... later ...
+# ... later ...
 let result = lazy_value();</code></pre>
             </div>
         </div>
@@ -219,15 +219,15 @@ let result = lazy_value();</code></pre>
         <p class="text-gray-400 mb-4">Another zero-parameter shorthand:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Arrow lambda (no parameters)
+<pre><code class="language-soli text-sm"># Arrow lambda (no parameters)
 let greet = -> "Hello, world!";
-print(greet());  // "Hello, world!"
+print(greet());  # "Hello, world!"
 
-// Equivalent to || syntax
+# Equivalent to || syntax
 let a = || 42;
 let b = -> 42;
-print(a());  // 42
-print(b());  // 42</code></pre>
+print(a());  # 42
+print(b());  # 42</code></pre>
             </div>
         </div>
 
@@ -235,15 +235,15 @@ print(b());  // 42</code></pre>
         <p class="text-gray-400 mb-4">All lambda syntaxes support three body formats:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// 1. Inline expression (single expression)
+<pre><code class="language-soli text-sm"># 1. Inline expression (single expression)
 let add = def(a, b) a + b;
 let mul = |a, b| a * b;
 
-// 2. Brace-delimited block
+# 2. Brace-delimited block
 let add = def(a, b) { a + b };
 let mul = |a, b| { a * b };
 
-// 3. Multi-line with end
+# 3. Multi-line with end
 let add = def(a, b)
     a + b
 end
@@ -252,7 +252,7 @@ let mul = |a, b|
     a * b
 end
 
-// Multi-line lambdas as method arguments
+# Multi-line lambdas as method arguments
 let doubled = [1, 2, 3].map(|x|
     let result = x * 2;
     result
@@ -275,22 +275,22 @@ end);</code></pre>
     {"name": "Charlie", "age": 25}
 ];
 
-// Filter adults
+# Filter adults
 let adults = users.filter(|u| u["age"] >= 18);
 
-// Extract names
+# Extract names
 let names = adults.map(|u| u["name"]);
-print(names);  // ["Alice", "Charlie"]
+print(names);  # ["Alice", "Charlie"]
 
-// Find first match
+# Find first match
 let bob = users.find(|u| u["name"] == "Bob");
-print(bob);  // {"name": "Bob", "age": 17}
+print(bob);  # {"name": "Bob", "age": 17}
 
-// Chaining
+# Chaining
 let result = [1, 2, 3, 4, 5, 6]
     .filter(|x| x % 2 == 0)
     .map(|x| x * 10);
-print(result);  // [20, 40, 60]</code></pre>
+print(result);  # [20, 40, 60]</code></pre>
             </div>
         </div>
     </section>
@@ -301,10 +301,10 @@ print(result);  // [20, 40, 60]</code></pre>
         <p class="text-gray-400 mb-4">Functions that capture variables from their enclosing scope:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Counter using closure
-def make_counter() -> () -> Int
+<pre><code class="language-soli text-sm"># Counter using closure
+def make_counter -> () -> Int
     let count = 0;
-    def counter() -> Int
+    def counter -> Int
         count = count + 1;
         count
     end
@@ -314,14 +314,14 @@ end
 let counter1 = make_counter();
 let counter2 = make_counter();
 
-print(counter1());  // 1
-print(counter1());  // 2
-print(counter1());  // 3
+print(counter1());  # 1
+print(counter1());  # 2
+print(counter1());  # 3
 
-print(counter2());  // 1
-print(counter2());  // 2
+print(counter2());  # 1
+print(counter2());  # 2
 
-// Closure capturing variables
+# Closure capturing variables
 def make_greeter(greeting: String) -> (String) -> String
     def greet(name: String) -> String
         greeting + ", " + name + "!"
@@ -332,8 +332,8 @@ end
 let say_hello = make_greeter("Hello");
 let say_hola = make_greeter("Hola");
 
-print(say_hello("Alice"));  // "Hello, Alice!"
-print(say_hola("Bob"));     // "Hola, Bob!"</code></pre>
+print(say_hello("Alice"));  # "Hello, Alice!"
+print(say_hola("Bob"));     # "Hola, Bob!"</code></pre>
             </div>
         </div>
     </section>
@@ -347,11 +347,11 @@ print(say_hola("Bob"));     // "Hola, Bob!"</code></pre>
     greeting + ", " + name + "!"
 end
 
-print(greet("Alice"));              // "Hello, Alice!"
-print(greet("Bob", "Hi"));          // "Hi, Bob!"
-print(greet("Charlie", "Welcome")); // "Welcome, Charlie!"
+print(greet("Alice"));              # "Hello, Alice!"
+print(greet("Bob", "Hi"));          # "Hi, Bob!"
+print(greet("Charlie", "Welcome")); # "Welcome, Charlie!"
 
-// Optional parameters
+# Optional parameters
 def create_user(name: String, email: String = null, role: String = "user") -> Hash
     let user = {"name": name, "role": role};
     if (email != null)
@@ -377,17 +377,17 @@ let user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
     {"host": host, "port": port, "debug": debug}
 end
 
-// All named parameters
+# All named parameters
 let config1 = configure(host: "example.com", port: 3000, debug: true);
-// {"host": "example.com", "port": 3000, "debug": true}
+# {"host": "example.com", "port": 3000, "debug": true}
 
-// Mixed positional and named
+# Mixed positional and named
 let config2 = configure("api.example.com", debug: true);
-// {"host": "api.example.com", "port": 8080, "debug": true}
+# {"host": "api.example.com", "port": 8080, "debug": true}
 
-// Only some named (defaults fill rest)
+# Only some named (defaults fill rest)
 let config3 = configure(port: 443);
-// {"host": "localhost", "port": 443, "debug": false}</code></pre>
+# {"host": "localhost", "port": 443, "debug": false}</code></pre>
             </div>
         </div>
 
@@ -435,34 +435,34 @@ let user3 = new User(name: "Charlie", role: "moderator");</code></pre>
         <p class="text-gray-400 mb-4">The last expression in a function body is automatically returned, without needing the <code class="text-indigo-400">return</code> keyword. This applies to all functions, methods, and lambdas.</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Simple implicit return
+<pre><code class="language-soli text-sm"># Simple implicit return
 def add(a: Int, b: Int) -> Int
     a + b
 end
-print(add(2, 3));  // 5
+print(add(2, 3));  # 5
 
-// Works with if/else expressions
+# Works with if/else expressions
 def abs(x: Int) -> Int
     if (x < 0) { -x } else { x }
 end
-print(abs(-5));  // 5
+print(abs(-5));  # 5
 
-// Works with lambdas
+# Works with lambdas
 let doubled = [1, 2, 3].map(def(x) { x * 2 });
-print(doubled);  // [2, 4, 6]
+print(doubled);  # [2, 4, 6]
 
-// Works with closures
+# Works with closures
 def make_adder(n: Int) -> (Int) -> Int
     def(x) { x + n }
 end
 let add5 = make_adder(5);
-print(add5(3));  // 8
+print(add5(3));  # 8
 
-// Note: `let` as last statement returns null
-def nothing()
+# Note: `let` as last statement returns null
+def nothing
     let x = 1;
 end
-print(nothing());  // null</code></pre>
+print(nothing());  # null</code></pre>
             </div>
         </div>
 
@@ -491,13 +491,13 @@ print(nothing());  // null</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">def find_first_even(numbers: Int[]) -> Int
     for (n in numbers)
         if (n % 2 == 0)
-            return n;  // Early return
+            return n;  # Early return
         end
     end
-    -1  // Implicit return: not found
+    -1  # Implicit return: not found
 end
 
-let result = find_first_even([1, 3, 5, 4, 7]);  // 4</code></pre>
+let result = find_first_even([1, 3, 5, 4, 7]);  # 4</code></pre>
                 </div>
             </div>
         </section>

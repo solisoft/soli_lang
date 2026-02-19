@@ -1,11 +1,11 @@
-// Documentation Controller
-// Handles displaying documentation pages
+# Documentation Controller
+# Handles displaying documentation pages
 
 fn index(req)
     redirect("/docs/getting-started/introduction")
 end
 
-// Helper to render docs pages with consistent context and caching
+# Helper to render docs pages with consistent context and caching
 fn render_docs(view, title, section, subsection)
     let response = render(view, {
         "title": title,
@@ -13,14 +13,14 @@ fn render_docs(view, title, section, subsection)
         "subsection": subsection,
         "layout": "layouts/docs"
     })
-    // Add cache headers - browsers will cache for 1 hour, revalidate after
+    # Add cache headers - browsers will cache for 1 hour, revalidate after
     response["headers"]["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
     response
 end
 
-// ============================================================================
-// Getting Started
-// ============================================================================
+# ============================================================================
+# Getting Started
+# ============================================================================
 
 fn getting_started_introduction(req)
     render_docs("docs/getting-started/introduction", "Introduction", "getting_started", "introduction")
@@ -30,9 +30,9 @@ fn getting_started_installation(req)
     render_docs("docs/getting-started/installation", "Installation", "getting_started", "installation")
 end
 
-// ============================================================================
-// Core Concepts
-// ============================================================================
+# ============================================================================
+# Core Concepts
+# ============================================================================
 
 fn core_concepts_routing(req)
     render_docs("docs/core-concepts/routing", "Routing", "core_concepts", "routing")
@@ -70,9 +70,9 @@ fn core_concepts_error_pages(req)
     render_docs("docs/core-concepts/error-pages", "Error Pages", "core_concepts", "error_pages")
 end
 
-// ============================================================================
-// Database
-// ============================================================================
+# ============================================================================
+# Database
+# ============================================================================
 
 fn database_configuration(req)
     render_docs("docs/database/configuration", "Database Configuration", "database", "configuration")
@@ -86,9 +86,9 @@ fn database_migrations(req)
     render_docs("docs/database/migrations", "Migrations", "database", "migrations")
 end
 
-// ============================================================================
-// Security
-// ============================================================================
+# ============================================================================
+# Security
+# ============================================================================
 
 fn security_authentication(req)
     render_docs("docs/security/authentication", "Authentication with JWT", "security", "authentication")
@@ -102,9 +102,9 @@ fn security_validation(req)
     render_docs("docs/security/validation", "Input Validation", "security", "validation")
 end
 
-// ============================================================================
-// Development Tools
-// ============================================================================
+# ============================================================================
+# Development Tools
+# ============================================================================
 
 fn development_tools_live_reload(req)
     render_docs("docs/development-tools/live-reload", "Live Reload", "development_tools", "live_reload")
@@ -118,9 +118,9 @@ fn development_tools_scaffold(req)
     render_docs("docs/development-tools/scaffold", "Scaffold Generator", "development_tools", "scaffold")
 end
 
-// ============================================================================
-// Language Reference
-// ============================================================================
+# ============================================================================
+# Language Reference
+# ============================================================================
 
 fn language_index(req)
     render_docs("docs/language/index", "Soli Language Reference", "language", "index")
@@ -190,9 +190,9 @@ fn language_linting(req)
     render_docs("docs/language/linting", "Linting", "language", "linting")
 end
 
-// ============================================================================
-// Builtins Reference
-// ============================================================================
+# ============================================================================
+# Builtins Reference
+# ============================================================================
 
 fn builtins_index(req)
     render_docs("docs/builtins/index", "Built-in Functions", "builtins", "index")
@@ -274,16 +274,16 @@ fn builtins_soap(req)
     render_docs("docs/builtins/soap", "SOAP Class", "builtins", "soap")
 end
 
-// ============================================================================
-// Utility
-// ============================================================================
+# ============================================================================
+# Utility
+# ============================================================================
 
 fn utility_base64(req)
     render_docs("docs/utility/base64", "Base64 Encoding", "utility", "base64")
 end
 
-// ============================================================================// Testing
-// ============================================================================
+# ============================================================================ Testing
+# ============================================================================
 
 fn testing(req)
     render_docs("docs/core-concepts/testing", "Testing", "testing", "testing")
@@ -293,9 +293,9 @@ fn testing_quick_reference(req)
     render_docs("docs/core-concepts/testing-quick-reference", "Testing Quick Reference", "testing", "testing_quick_reference")
 end
 
-// ============================================================================
-// Backward Compatibility Redirects
-// ============================================================================
+# ============================================================================
+# Backward Compatibility Redirects
+# ============================================================================
 
 fn redirect_introduction(req)
     redirect("/docs/getting-started/introduction")
@@ -381,9 +381,9 @@ fn redirect_soli_language(req)
     redirect("/docs/language")
 end
 
-// ============================================================================
-// Core Concepts - State Machines
-// ============================================================================
+# ============================================================================
+# Core Concepts - State Machines
+# ============================================================================
 
 fn core_concepts_state_machines(req)
     render_docs("docs/core-concepts/state-machines", "State Machines", "core_concepts", "state_machines")

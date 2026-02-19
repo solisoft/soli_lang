@@ -79,7 +79,7 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Register LiveView components
+<pre><code class="language-soli text-sm"># Register LiveView components
 router_live("counter", "live#counter");
 router_live("metrics", "live#metrics");</code></pre>
         </div>
@@ -91,10 +91,10 @@ router_live("metrics", "live#metrics");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Counter component handler
-def counter(event_data: Any)    let event = event_data["event"];   // Event name (e.g., "increment")
-    let params = event_data["params"]; // Event parameters
-    let state = event_data["state"];   // Current component state
+<pre><code class="language-soli text-sm"># Counter component handler
+def counter(event_data: Any)    let event = event_data["event"];   # Event name (e.g., "increment")
+    let params = event_data["params"]; # Event parameters
+    let state = event_data["state"];   # Current component state
     let count = state["count"];
 
     if (count == null)
@@ -109,7 +109,7 @@ def counter(event_data: Any)    let event = event_data["event"];   // Event name
         return { "count": count - 1 };
     end
 
-    // Return unchanged state for unknown events
+    # Return unchanged state for unknown events
     state
 end</code></pre></code></pre>
         </div>
@@ -195,7 +195,7 @@ end</code></pre></code></pre>
 &lt;div id="counter" data-live-view="counter"&gt;&lt;/div&gt;
 
 &lt;script&gt;
-    // Initialize Live View
+    # Initialize Live View
     SoliLive.connect();
 &lt;/script&gt;</code></pre>
         </div>
@@ -207,7 +207,7 @@ end</code></pre></code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Live View WebSocket endpoint
+<pre><code class="language-soli text-sm"># Live View WebSocket endpoint
 router_live("/live/counter", "live#counter");</code></pre>
         </div>
     </div>
@@ -224,7 +224,7 @@ router_live("/live/counter", "live#counter");</code></pre>
 <pre><code class="language-soli text-sm">def metrics_dashboard(event: Any)    let type = event["type"];
 
     if (type == "connect")
-        // Set tick interval in milliseconds (50ms = 20 updates/sec)
+        # Set tick interval in milliseconds (50ms = 20 updates/sec)
         return {
             "state": { "cpu": 0, "memory": 0, "requests": 0 },
             "tick_interval": 50
@@ -232,7 +232,7 @@ router_live("/live/counter", "live#counter");</code></pre>
     end
 
     if (type == "tick")
-        // Server pushes fresh data on each tick
+        # Server pushes fresh data on each tick
         return {
             "state": {
                 "time": datetime_now(),

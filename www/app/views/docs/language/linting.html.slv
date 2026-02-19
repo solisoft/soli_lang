@@ -77,23 +77,23 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-indigo-400 font-mono text-sm">naming/snake-case</code>
                 <p class="text-gray-400 mt-2">Variables, functions, methods, and parameters should use <code class="text-indigo-400">snake_case</code>.</p>
-                <pre class="mt-3"><code class="language-soli text-sm">// Bad
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad
 let myVar = 10;
-def processData() end
+def processData end
 
-// Good
+# Good
 let my_var = 10;
-def process_data() end</code></pre>
+def process_data end</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-indigo-400 font-mono text-sm">naming/pascal-case</code>
                 <p class="text-gray-400 mt-2">Classes and interfaces should use <code class="text-indigo-400">PascalCase</code>.</p>
-                <pre class="mt-3"><code class="language-soli text-sm">// Bad
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad
 class my_class end
 interface data_store end
 
-// Good
+# Good
 class MyClass end
 interface DataStore end</code></pre>
             </div>
@@ -119,22 +119,22 @@ interface DataStore end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-indigo-400 font-mono text-sm">smell/unreachable-code</code>
                 <p class="text-gray-400 mt-2">Code after a <code class="text-indigo-400">return</code> statement is unreachable and will never execute.</p>
-                <pre class="mt-3"><code class="language-soli text-sm">def example()
+                <pre class="mt-3"><code class="language-soli text-sm">def example
     return 42;
-    print("never reached");  // Warning: unreachable code
+    print("never reached");  # Warning: unreachable code
 end</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-indigo-400 font-mono text-sm">smell/empty-catch</code>
                 <p class="text-gray-400 mt-2">Catch blocks should not be empty. Silently swallowing errors hides bugs.</p>
-                <pre class="mt-3"><code class="language-soli text-sm">// Bad - error silently ignored
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad - error silently ignored
 try
     risky();
 catch e
 end
 
-// Good - at least log the error
+# Good - at least log the error
 try
     risky();
 catch e

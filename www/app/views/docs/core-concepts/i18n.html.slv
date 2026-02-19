@@ -26,15 +26,15 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Locale Management</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Get the current locale (defaults to "en")
+<pre><code class="language-soli text-sm"># Get the current locale (defaults to "en")
 let current = I18n.locale();
-print(current);  // "en"
+print(current);  # "en"
 
-// Set locale to French
+# Set locale to French
 I18n.set_locale("fr");
-print(I18n.locale());  // "fr"
+print(I18n.locale());  # "fr"
 
-// Set locale to German
+# Set locale to German
 I18n.set_locale("de");</code></pre>
         </div>
     </div>
@@ -45,7 +45,7 @@ I18n.set_locale("de");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">String Translation</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Define translations
+<pre><code class="language-soli text-sm"># Define translations
 let translations = {
     "en.greeting" => "Hello",
     "fr.greeting" => "Bonjour",
@@ -55,18 +55,18 @@ let translations = {
     "fr.welcome" => "Bienvenue dans notre application!"
 };
 
-// Translate using current locale
+# Translate using current locale
 I18n.set_locale("fr");
 let msg = I18n.translate("greeting", null, translations);
-print(msg);  // "Bonjour"
+print(msg);  # "Bonjour"
 
-// Translate with explicit locale
+# Translate with explicit locale
 let hello = I18n.translate("greeting", "de", translations);
-print(hello);  // "Hallo"
+print(hello);  # "Hallo"
 
-// Falls back to key if not found
+# Falls back to key if not found
 let missing = I18n.translate("unknown_key", null, translations);
-print(missing);  // "unknown_key"</code></pre>
+print(missing);  # "unknown_key"</code></pre>
         </div>
     </div>
 
@@ -87,21 +87,21 @@ print(missing);  // "unknown_key"</code></pre>
 
 I18n.set_locale("en");
 
-// Zero form
+# Zero form
 let none = I18n.plural("item", 0, null, translations);
-print(none);  // "No items"
+print(none);  # "No items"
 
-// Singular form
+# Singular form
 let single = I18n.plural("item", 1, null, translations);
-print(single);  // "1 item"
+print(single);  # "1 item"
 
-// Plural form
+# Plural form
 let multiple = I18n.plural("item", 5, null, translations);
-print(multiple);  // "{count} items"
+print(multiple);  # "{count} items"
 
-// French plural
+# French plural
 let fr_plural = I18n.plural("item", 3, "fr", translations);
-print(fr_plural);  // "{count} articles"</code></pre>
+print(fr_plural);  # "{count} articles"</code></pre>
         </div>
     </div>
 
@@ -113,17 +113,17 @@ print(fr_plural);  // "{count} articles"</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let value = 1234.56;
 
-// English format (dot as decimal separator)
+# English format (dot as decimal separator)
 let en_num = I18n.format_number(value, "en");
-print(en_num);  // "1234.56"
+print(en_num);  # "1234.56"
 
-// French format (comma as decimal separator)
+# French format (comma as decimal separator)
 let fr_num = I18n.format_number(value, "fr");
-print(fr_num);  // "1234,56"
+print(fr_num);  # "1234,56"
 
-// German format
+# German format
 let de_num = I18n.format_number(value, "de");
-print(de_num);  // "1234,56"</code></pre>
+print(de_num);  # "1234,56"</code></pre>
         </div>
     </div>
 
@@ -135,21 +135,21 @@ print(de_num);  // "1234,56"</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let price = 1999.99;
 
-// US Dollars
+# US Dollars
 let usd = I18n.format_currency(price, "USD", "en");
-print(usd);  // "$1,999.99"
+print(usd);  # "$1,999.99"
 
-// Euros with French locale
+# Euros with French locale
 let eur = I18n.format_currency(price, "EUR", "fr");
-print(eur);  // "€1.999,99"
+print(eur);  # "€1.999,99"
 
-// British Pounds
+# British Pounds
 let gbp = I18n.format_currency(price, "GBP", "en");
-print(gbp);  // "£1,999.99"
+print(gbp);  # "£1,999.99"
 
-// Japanese Yen
+# Japanese Yen
 let jpy = I18n.format_currency(2500, "JPY", "en");
-print(jpy);  // "¥2,500"</code></pre>
+print(jpy);  # "¥2,500"</code></pre>
         </div>
     </div>
 
@@ -159,24 +159,24 @@ print(jpy);  // "¥2,500"</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Date Formatting</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Unix timestamp for January 15, 2026
+<pre><code class="language-soli text-sm"># Unix timestamp for January 15, 2026
 let timestamp = 1768521600;
 
-// US format: MM/DD/YYYY
+# US format: MM/DD/YYYY
 let us_date = I18n.format_date(timestamp, "en");
-print(us_date);  // "01/15/2026"
+print(us_date);  # "01/15/2026"
 
-// French format: DD/MM/YYYY
+# French format: DD/MM/YYYY
 let fr_date = I18n.format_date(timestamp, "fr");
-print(fr_date);  // "15/01/2026"
+print(fr_date);  # "15/01/2026"
 
-// German format: DD.MM.YYYY
+# German format: DD.MM.YYYY
 let de_date = I18n.format_date(timestamp, "de");
-print(de_date);  // "15.01.2026"
+print(de_date);  # "15.01.2026"
 
-// ISO format (default for other locales)
+# ISO format (default for other locales)
 let iso_date = I18n.format_date(timestamp, "ja");
-print(iso_date);  // "2026-01-15"</code></pre>
+print(iso_date);  # "2026-01-15"</code></pre>
         </div>
     </div>
 
@@ -203,19 +203,19 @@ print(iso_date);  // "2026-01-15"</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Loading Translations</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Load translations from JSON file
+<pre><code class="language-soli text-sm"># Load translations from JSON file
 let en_json = file_read("config/locales/en.json");
 let en_translations = json_decode(en_json);
 
 let fr_json = file_read("config/locales/fr.json");
 let fr_translations = json_decode(fr_json);
 
-// Merge translations
+# Merge translations
 let all_translations = hash_merge(en_translations, fr_translations);
 
-// Use in your application
+# Use in your application
 let greeting = I18n.translate("nav.home", "en", all_translations);
-print(greeting);  // "Home"</code></pre>
+print(greeting);  # "Home"</code></pre>
         </div>
     </div>
 

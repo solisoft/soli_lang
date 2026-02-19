@@ -320,10 +320,15 @@
             if (this.eventsBound) return;
             this.eventsBound = true;
 
+            const root = this.getRoot();
+
+            // Helper: check if element belongs to this LiveView instance
+            const owns = (el) => root.contains(el);
+
             // Click handlers - support both soli-click and data-soli-click
             document.addEventListener('click', (e) => {
                 const btn = e.target.closest('[soli-click], [data-soli-click]');
-                if (btn) {
+                if (btn && owns(btn)) {
                     e.preventDefault();
                     const handler = btn.getAttribute('soli-click') || btn.getAttribute('data-soli-click');
                     this.sendEvent('click', handler, btn);
@@ -333,7 +338,7 @@
             // Form submission handlers - support both soli-submit and data-soli-submit
             document.addEventListener('submit', (e) => {
                 const form = e.target.closest('[soli-submit], [data-soli-submit]');
-                if (form) {
+                if (form && owns(form)) {
                     e.preventDefault();
                     const handler = form.getAttribute('soli-submit') || form.getAttribute('data-soli-submit');
                     this.sendEvent('submit', handler, form);
@@ -343,7 +348,7 @@
             // Input change handlers - support both soli-change and data-soli-change
             document.addEventListener('input', (e) => {
                 const input = e.target.closest('[soli-change], [data-soli-change]');
-                if (input) {
+                if (input && owns(input)) {
                     const handler = input.getAttribute('soli-change') || input.getAttribute('data-soli-change');
                     this.sendEvent('change', handler, input);
                 }
@@ -352,7 +357,7 @@
             // Focus/blur handlers
             document.addEventListener('blur', (e) => {
                 const el = e.target.closest('[soli-blur], [data-soli-blur]');
-                if (el) {
+                if (el && owns(el)) {
                     const handler = el.getAttribute('soli-blur') || el.getAttribute('data-soli-blur');
                     this.sendEvent('blur', handler, el);
                 }
@@ -360,7 +365,7 @@
 
             document.addEventListener('focus', (e) => {
                 const el = e.target.closest('[soli-focus], [data-soli-focus]');
-                if (el) {
+                if (el && owns(el)) {
                     const handler = el.getAttribute('soli-focus') || el.getAttribute('data-soli-focus');
                     this.sendEvent('focus', handler, el);
                 }
@@ -369,7 +374,7 @@
             // Keyboard handlers
             document.addEventListener('keydown', (e) => {
                 const el = e.target.closest('[soli-keydown], [data-soli-keydown]');
-                if (el) {
+                if (el && owns(el)) {
                     const handler = el.getAttribute('soli-keydown') || el.getAttribute('data-soli-keydown');
                     this.sendEvent('keydown', handler, el, {
                         key: e.key,
@@ -383,7 +388,7 @@
 
             document.addEventListener('keyup', (e) => {
                 const el = e.target.closest('[soli-keyup], [data-soli-keyup]');
-                if (el) {
+                if (el && owns(el)) {
                     const handler = el.getAttribute('soli-keyup') || el.getAttribute('data-soli-keyup');
                     this.sendEvent('keyup', handler, el, {
                         key: e.key,

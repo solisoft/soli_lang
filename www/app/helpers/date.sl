@@ -1,4 +1,4 @@
-// Date/time formatting helpers
+# Date/time formatting helpers
 
 fn format_date(timestamp: Int, format: String) -> String
     datetime_format(timestamp, format)

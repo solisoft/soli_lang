@@ -49,7 +49,7 @@
                     <code class="text-purple-400">DateTime</code> - A DateTime instance representing the current local time
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now()
-println(now.to_iso())  // "2024-01-15T10:30:00"</code></pre>
+println(now.to_iso())  # "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
 
@@ -67,7 +67,7 @@ println(now.to_iso())  // "2024-01-15T10:30:00"</code></pre>
                     <code class="text-purple-400">DateTime</code> - A DateTime instance representing the current UTC time
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let utc = DateTime.utc()
-println(utc.to_iso())  // "2024-01-15T15:30:00Z"</code></pre>
+println(utc.to_iso())  # "2024-01-15T15:30:00Z"</code></pre>
             </div>
         </section>
 
@@ -208,7 +208,7 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
                     <code class="text-purple-400">String</code> - The weekday name (e.g., "monday", "tuesday")
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15")
-println(dt.weekday())  // "monday"</code></pre>
+println(dt.weekday())  # "monday"</code></pre>
             </div>
         </section>
     </section>
@@ -231,7 +231,7 @@ println(dt.weekday())  // "monday"</code></pre>
                     <code class="text-purple-400">Int</code> - Unix timestamp in seconds
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now()
-println(dt.to_unix())  // 1705315800</code></pre>
+println(dt.to_unix())  # 1705315800</code></pre>
             </div>
         </section>
 
@@ -249,7 +249,7 @@ println(dt.to_unix())  // 1705315800</code></pre>
                     <code class="text-purple-400">String</code> - ISO 8601 formatted string
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now()
-println(dt.to_iso())  // "2024-01-15T10:30:00"</code></pre>
+println(dt.to_iso())  # "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
 
@@ -278,9 +278,9 @@ println(dt.to_iso())  // "2024-01-15T10:30:00"</code></pre>
                     <div><code class="text-amber-400">%A</code> - Weekday name</div>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15T10:30:00")
-dt.format("%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
-dt.format("%B %d, %Y")           // "January 15, 2024"
-dt.format("%A")                  // "Monday"</code></pre>
+dt.format("%Y-%m-%d %H:%M:%S")  # "2024-01-15 10:30:00"
+dt.format("%B %d, %Y")           # "January 15, 2024"
+dt.format("%A")                  # "Monday"</code></pre>
             </div>
         </section>
     </section>
@@ -407,24 +407,24 @@ let next_year = today.add_years(1)</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <pre data-filename="DateTime Example"><code class="language-soli text-sm">// Get current date/time
+            <pre data-filename="DateTime Example"><code class="language-soli text-sm"># Get current date/time
 let now = DateTime.now()
 println("Current time: " + now.to_iso())
 
-// Extract components
+# Extract components
 println("Year: " + now.year())
 println("Month: " + now.month())
 println("Day: " + now.day())
 println("Weekday: " + now.weekday())
 
-// Format output
+# Format output
 println(now.format("%B %d, %Y at %H:%M"))
 
-// Date arithmetic
+# Date arithmetic
 let next_week = now.add_weeks(1)
 let last_month = now.add_months(-1)
 
-// Parse a date string
+# Parse a date string
 let birthday = DateTime.parse("1990-06-15")
 println("Birthday was on a " + birthday.weekday())</code></pre>
         </div>

@@ -166,15 +166,15 @@
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Users</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span> {
-    <span class="text-gray-500">// Fields</span>
-    <span class="text-gray-500">// name (string)</span>
-    <span class="text-gray-500">// email (text)</span>
+    <span class="text-gray-500"># Fields</span>
+    <span class="text-gray-500"># name (string)</span>
+    <span class="text-gray-500"># email (text)</span>
 
-    <span class="text-gray-500">// Validations (auto-generated)</span>
+    <span class="text-gray-500"># Validations (auto-generated)</span>
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"name"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
 
-    <span class="text-gray-500">// Callbacks</span>
+    <span class="text-gray-500"># Callbacks</span>
     <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)
 }</code></pre>
         </div>
@@ -229,7 +229,7 @@
         <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>)
     }
 
-    <span class="text-gray-500">// Mass assignment protection: whitelist allowed parameters</span>
+    <span class="text-gray-500"># Mass assignment protection: whitelist allowed parameters</span>
     <span class="text-purple-400">def</span> <span class="text-blue-400">_permit_params</span>(params: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         {
             <span class="text-green-400">"name"</span>: params[<span class="text-green-400">"name"</span>],
@@ -421,15 +421,15 @@
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Users</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span> {
-    <span class="text-gray-500">// Fields</span>
-    <span class="text-gray-500">// name (string)</span>
-    <span class="text-gray-500">// email (email)</span>
+    <span class="text-gray-500"># Fields</span>
+    <span class="text-gray-500"># name (string)</span>
+    <span class="text-gray-500"># email (email)</span>
 
-    <span class="text-gray-500">// Validations (auto-generated)</span>
+    <span class="text-gray-500"># Validations (auto-generated)</span>
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"name"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
 
-    <span class="text-gray-500">// Callbacks</span>
+    <span class="text-gray-500"># Callbacks</span>
     <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)
 }</code></pre>
         </div>
@@ -444,15 +444,15 @@
         </div>
         <div>
             <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">UsersController</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Controller</span> {
-    <span class="text-gray-500">// POST /users</span>
+    <span class="text-gray-500"># POST /users</span>
     <span class="text-purple-400">def</span> <span class="text-blue-400">create</span>(req: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
-        <span class="text-gray-500">// Only permit whitelisted fields</span>
+        <span class="text-gray-500"># Only permit whitelisted fields</span>
         <span class="text-purple-400">let</span> permitted = <span class="text-purple-400">this</span>._permit_params(req[<span class="text-green-400">"params"</span>]);
         <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(permitted);
-        <span class="text-gray-500">// ...</span>
+        <span class="text-gray-500"># ...</span>
     }
 
-    <span class="text-gray-500">// Mass assignment protection</span>
+    <span class="text-gray-500"># Mass assignment protection</span>
     <span class="text-purple-400">def</span> <span class="text-blue-400">_permit_params</span>(params: <span class="text-yellow-200">Any</span>) -> <span class="text-yellow-200">Any</span> {
         {
             <span class="text-green-400">"name"</span>: params[<span class="text-green-400">"name"</span>],

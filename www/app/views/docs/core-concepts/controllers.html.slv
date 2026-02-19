@@ -64,32 +64,32 @@ end</code></pre>
 
     <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
     static
-        // Set layout for all actions
+        # Set layout for all actions
         this.layout = "layouts/posts";
 
-        // Run before ALL actions
+        # Run before ALL actions
         this.before_action = def(req)
             print("Processing: " + req.path);
             req
         end
 
-        // Run before SPECIFIC actions only
+        # Run before SPECIFIC actions only
         this.before_action(:show, :edit) = def(req)
             let post = Post.find(req.params["id"]);
             if post == null return error(404, "Not Found"); end
-            req["post"] = post; // Pass to action
+            req["post"] = post; # Pass to action
             req
         end
 
-        // Run after SPECIFIC actions
+        # Run after SPECIFIC actions
         this.after_action(:create, :update) = def(req, response)
-            // Log activity after create/update
+            # Log activity after create/update
             print("Action completed");
             response
         end
     end
     
-    // ... actions ...
+    # ... actions ...
 end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Function-Based Controllers</h2>
@@ -97,7 +97,7 @@ end</code></pre>
         Great for simple APIs or microservices where you don't need the full power of classes.
     </p>
 
-    <pre data-filename="app/controllers/simple_controller.sl"><code class="language-soli text-sm">// GET /health
+    <pre data-filename="app/controllers/simple_controller.sl"><code class="language-soli text-sm"># GET /health
 def health(req)
     {
         "status": 200,

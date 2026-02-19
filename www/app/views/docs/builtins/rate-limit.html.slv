@@ -24,7 +24,7 @@
             <div class="flex items-center gap-3 mb-4">
                 <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Example</span>
             </div>
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// Create a rate limiter for API access
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># Create a rate limiter for API access
 let limiter = RateLimiter("api:user123", 100, 60)</code></pre>
         </div>
     </section>
@@ -41,7 +41,7 @@ let limiter = RateLimiter("api:user123", 100, 60)</code></pre>
             <div class="flex items-center gap-3 mb-4">
                 <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Example</span>
             </div>
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// Limit API calls to 100 per minute per IP
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># Limit API calls to 100 per minute per IP
 let limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
 if !limiter.allowed() {
     return { "status": 429, "body": "Too Many Requests" }
@@ -130,12 +130,12 @@ println("Remaining: " + str(status["remaining"]) + "/" + str(status["limit"]))</
     <section class="mb-16">
         <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>// API middleware with rate limiting
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># API middleware with rate limiting
 def rate_limit_middleware(req)
     let ip = req["headers"]["X-Forwarded-For"] || req["headers"]["Remote-Addr"]
     let limiter = RateLimiter("api:" + ip, 100, 60)
     
-    // Check rate limit (100 requests per minute)
+    # Check rate limit (100 requests per minute)
     if !limiter.allowed() {
         let status = limiter.status()
         let headers = limiter.headers()

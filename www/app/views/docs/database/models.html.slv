@@ -57,8 +57,8 @@
     "name": "Alice",
     "age": 30
 });
-// Returns: { "valid": true, "record": { "id": "...", ... } }
-// Or: { "valid": false, "errors": [...] }</code></pre>
+# Returns: { "valid": true, "record": { "id": "...", ... } }
+# Or: { "valid": false, "errors": [...] }</code></pre>
         </div>
 
         <div>
@@ -66,17 +66,17 @@
                 <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">READ</span>
                 Finding Records
             </h3>
-            <pre><code class="language-soli text-sm">// Find by ID
+            <pre><code class="language-soli text-sm"># Find by ID
 let user = User.find("user123");
 
-// Find all
+# Find all
 let users = User.all();
 
-// Find with SDBQL filter
-// Note: where() returns a QueryBuilder - call .all() to get results
+# Find with SDBQL filter
+# Note: where() returns a QueryBuilder - call .all() to get results
 let adults = User.where("doc.age >= @age", { "age": 18 }).all();
 
-// Complex conditions
+# Complex conditions
 let results = User.where("doc.age >= @min AND doc.role == @role", {
     "min": 21,
     "role": "admin"
@@ -122,10 +122,10 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
     .offset(20)
     .all();
 
-// Get first result only
+# Get first result only
 let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
 
-// Count with conditions
+# Count with conditions
 let count = User.where("doc.role == @role", { "role": "admin" }).count();</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Static Methods Reference</h2>
@@ -218,16 +218,16 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User extends Model
-    def is_admin() -> Bool
+    def is_admin -> Bool
         this.role == "admin"
     end
 
-    def full_name() -> String
+    def full_name -> String
         this.first_name + " " + this.last_name
     end
 end
 
-// Usage
+# Usage
 let user = User.find("user123");
 if user.is_admin()
     print("Welcome, admin " + user.full_name());
@@ -312,10 +312,12 @@ end</code></pre>
     before_update("log_changes")
     after_delete("cleanup_related")
 
-    def normalize_email()        this.email = this.email.downcase();
+    def normalize_email
+        this.email = this.email.downcase();
     end
 
-    def send_welcome_email()        // Send email logic
+    def send_welcome_email
+        # Send email logic
     end
 end</code></pre>
         </div>
@@ -363,13 +365,15 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class Post extends Model
-    def author()        User.find(this.author_id)
+    def author
+        User.find(this.author_id)
     end
 end
 
 class User extends Model
-    // Returns a QueryBuilder for chaining
-    def posts()        Post.where("doc.author_id == @id", { "id": this.id })
+    # Returns a QueryBuilder for chaining
+    def posts
+        Post.where("doc.author_id == @id", { "id": this.id })
     end
 end</code></pre>
         </div>
@@ -425,25 +429,27 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// app/models/user.sl
+<pre><code class="language-soli text-sm"># app/models/user.sl
 class User extends Model
     validates("email", { "presence": true, "uniqueness": true })
     validates("name", { "presence": true, "min_length": 2 })
 
     before_save("normalize_email")
 
-    def normalize_email()        this.email = this.email.downcase();
+    def normalize_email
+        this.email = this.email.downcase();
     end
 
-    def posts()        Post.where("doc.user_id == @id", { "id": this.id })
+    def posts
+        Post.where("doc.user_id == @id", { "id": this.id })
     end
 
-    def is_adult() -> Bool
+    def is_adult -> Bool
         this.age >= 18
     end
 end
 
-// Usage in controller
+# Usage in controller
 class UsersController extends Controller
     def index(req: Any)        let users = User.all();
         render("users/index", { "users": users })

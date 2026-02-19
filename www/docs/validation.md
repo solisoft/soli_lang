@@ -7,12 +7,12 @@ SoliLang provides a schema-based input validation system with type coercion and 
 Use the `V` class to create validators:
 
 ```soli
-V.string()   // String validator
-V.int()      // Integer validator
-V.float()    // Float validator
-V.bool()     // Boolean validator
-V.array()    // Array validator
-V.hash()     // Hash/object validator
+V.string()   # String validator
+V.int()      # Integer validator
+V.float()    # Float validator
+V.bool()     # Boolean validator
+V.array()    # Array validator
+V.hash()     # Hash/object validator
 ```
 
 ## Basic Validation
@@ -28,11 +28,11 @@ let result = validate(req["json"], schema);
 
 if result["valid"]
     let data = result["data"];
-    // Use validated and coerced data
+    # Use validated and coerced data
     print("Email:", data["email"]);
-    print("Age:", data["age"]);  // Already converted to int
+    print("Age:", data["age"]);  # Already converted to int
 else
-    // Handle validation errors
+    # Handle validation errors
     for error in result["errors"]
         print(error["field"], ":", error["message"]);
     end
@@ -44,41 +44,41 @@ end
 ### Required Fields
 
 ```soli
-V.string().required()   // Field must be present
-V.string().optional()   // Field can be missing (default)
+V.string().required()   # Field must be present
+V.string().optional()   # Field can be missing (default)
 ```
 
 ### Nullable Values
 
 ```soli
-V.string().nullable()   // Null is an acceptable value
+V.string().nullable()   # Null is an acceptable value
 ```
 
 ### Default Values
 
 ```soli
-V.string().default("guest")      // Use default if missing
-V.int().default(0)               // Default for numbers
-V.bool().default(false)          // Default for booleans
+V.string().default("guest")      # Use default if missing
+V.int().default(0)               # Default for numbers
+V.bool().default(false)          # Default for booleans
 ```
 
 ### Numeric Constraints
 
 ```soli
-V.int().min(0)         // Minimum value
-V.int().max(100)       // Maximum value
-V.float().min(0.0)     // Minimum value
-V.float().max(1.0)     // Maximum value
+V.int().min(0)         # Minimum value
+V.int().max(100)       # Maximum value
+V.float().min(0.0)     # Minimum value
+V.float().max(1.0)     # Maximum value
 ```
 
 ### String Constraints
 
 ```soli
-V.string().min_length(1)           // Minimum characters
-V.string().max_length(255)         // Maximum characters
-V.string().pattern("^\\d+$")       // Regex pattern
-V.string().email()                 // Valid email format
-V.string().url()                   // Valid URL format
+V.string().min_length(1)           # Minimum characters
+V.string().max_length(255)         # Maximum characters
+V.string().pattern("^\\d+$")       # Regex pattern
+V.string().email()                 # Valid email format
+V.string().url()                   # Valid URL format
 ```
 
 ### Enumeration
@@ -113,10 +113,10 @@ let result = validate(req["json"], user_schema);
 Validate arrays with element schemas:
 
 ```soli
-// Validate array of strings
+# Validate array of strings
 let tags_schema = V.array(V.string().required()).required();
 
-// Validate array of objects
+# Validate array of objects
 let items_schema = V.array(
     V.hash({
         "id": V.int().required(),
@@ -124,7 +124,7 @@ let items_schema = V.array(
     })
 ).required();
 
-// Usage
+# Usage
 let result = validate({
     "items": [
         {"id": 1, "name": "Item 1"},
@@ -143,7 +143,7 @@ let result = validate({
 ## Complete Example: User Registration
 
 ```soli
-// app/controllers/users_controller.sl
+# app/controllers/users_controller.sl
 
 fn new(req)
     {
@@ -177,7 +177,7 @@ fn create(req)
 
     let data = result["data"];
 
-    // Check password confirmation
+    # Check password confirmation
     if data["password"] != data["confirm_password"]
         return {
             "status": 422,
@@ -191,7 +191,7 @@ fn create(req)
         };
     end
 
-    // Create user (example)
+    # Create user (example)
     let user = create_user(data["username"], data["email"], data["password"]);
 
     {
@@ -258,13 +258,13 @@ let schema = {
     "score": V.float().required()
 };
 
-// Input (strings get converted)
+# Input (strings get converted)
 let input = {
-    "age": "25",       // -> 25 (int)
-    "active": "true",  // -> true (bool)
-    "score": "95.5"    // -> 95.5 (float)
+    "age": "25",       # -> 25 (int)
+    "active": "true",  # -> true (bool)
+    "score": "95.5"    # -> 95.5 (float)
 };
 
 let result = validate(input, schema);
-// result["data"] contains properly typed values
+# result["data"] contains properly typed values
 ```

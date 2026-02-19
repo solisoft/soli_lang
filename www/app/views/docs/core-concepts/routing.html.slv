@@ -55,14 +55,14 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Root page
+<pre><code class="language-soli text-sm"># Root page
 get("/", "home#index");
 
-// Static pages
+# Static pages
 get("/about", "home#about");
 get("/contact", "home#contact");
 
-// Form submissions
+# Form submissions
 post("/contact", "home#submit_contact");</code></pre>
         </div>
     </div>
@@ -73,13 +73,13 @@ post("/contact", "home#submit_contact");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Capture user ID
+<pre><code class="language-soli text-sm"># Capture user ID
 get("/users/:id", "users#show");
 
-// Multiple parameters
+# Multiple parameters
 get("/posts/:post_id/comments/:comment_id", "comments#show");
 
-// Optional parameters
+# Optional parameters
 get("/users/:id?", "users#show");</code></pre>
         </div>
     </div>
@@ -106,15 +106,15 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Capture remaining path
+<pre><code class="language-soli text-sm"># Capture remaining path
 get("/files/*filepath", "files#serve");
 get("/downloads/*filename", "downloads#handle");
 
-// Combine with parameters
+# Combine with parameters
 get("/users/:id/*action", "users#action");
 get("/api/*version/users/*id", "api#user");
 
-// Root splat
+# Root splat
 get("/*path", "catchall#handle");</code></pre>
         </div>
     </div>
@@ -126,8 +126,8 @@ get("/*path", "catchall#handle");</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def serve(req: Any)    let filepath = req["params"]["filepath"];
 
-    // /files/docs/report.pdf -> filepath = "/docs/report.pdf"
-    // /files/images/photo.jpg -> filepath = "/images/photo.jpg"
+    # /files/docs/report.pdf -> filepath = "/docs/report.pdf"
+    # /files/images/photo.jpg -> filepath = "/images/photo.jpg"
 
     {
         "status": 200,
@@ -177,13 +177,13 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Dynamic docs routes - /docs/routing → docs#routing
+<pre><code class="language-soli text-sm"># Dynamic docs routes - /docs/routing → docs#routing
 get("/docs/*", "docs#*");
 
-// API routes with version - /api/v1/users → api#users
+# API routes with version - /api/v1/users → api#users
 get("/api/*version/*action", "api#*");
 
-// Files serving - /files/docs/readme → files#docs/readme
+# Files serving - /files/docs/readme → files#docs/readme
 get("/files/*filepath", "files#serve");</code></pre>
         </div>
     </div>
@@ -203,7 +203,7 @@ get("/files/*filepath", "files#serve");</code></pre>
         this.layout = "docs";
     end
 
-    def routing(req: Any)        let path = req["params"]["path"];  // "/routing"
+    def routing(req: Any)        let path = req["params"]["path"];  # "/routing"
         render("docs/routing", {"active_page": "routing"})
     end
 
@@ -253,10 +253,10 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/search_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// URL: /search?q=solilang&page=1
+<pre><code class="language-soli text-sm"># URL: /search?q=solilang&page=1
 
-def search(req: Any)    let query = req["query"]["q"];      // "solilang"
-    let page = req["query"]["page"];    // "1"
+def search(req: Any)    let query = req["query"]["q"];      # "solilang"
+    let page = req["query"]["page"];    # "1"
 
     {
         "status": 200,
@@ -314,13 +314,13 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Only /admin/* routes require authentication
+<pre><code class="language-soli text-sm"># Only /admin/* routes require authentication
 middleware("authenticate", ->
     get("/admin", "admin#index");
     get("/admin/users", "admin#users");
 )
 
-// Public routes - no auth needed
+# Public routes - no auth needed
 get("/", "home#index");
 get("/about", "home#about");</code></pre>
         </div>
@@ -337,7 +337,7 @@ get("/about", "home#about");</code></pre>
         )
     )
 )
-// Creates: /api/users/:user_id/posts/:post_id/comments/:id</code></pre>
+# Creates: /api/users/:user_id/posts/:post_id/comments/:id</code></pre>
         </div>
     </div>
 

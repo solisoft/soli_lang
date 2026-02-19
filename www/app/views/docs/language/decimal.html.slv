@@ -29,13 +29,13 @@
         <p class="text-gray-400 mb-4">Floating-point numbers have precision issues:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Float - imprecise (binary floating point)
+<pre><code class="language-soli text-sm"># Float - imprecise (binary floating point)
 let a = 0.1 + 0.2;
-print(a);  // 0.30000000000000004 ❌
+print(a);  # 0.30000000000000004 ❌
 
-// Decimal - exact (base-10)
+# Decimal - exact (base-10)
 let a: Decimal(2) = 0.10D + 0.20D;
-print(a);  // 0.30 ✓</code></pre>
+print(a);  # 0.30 ✓</code></pre>
             </div>
         </div>
     </section>
@@ -52,10 +52,10 @@ print(a);  // 0.30 ✓</code></pre>
         </h2>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let price: Decimal(2) = 19.99D;      // Currency (2 decimals)
-let rate: Decimal(4) = 0.0675D;      // Rates (4 decimals)
-let percent: Decimal(2) = 50.00D;   // Percentages (2 decimals)
-let amount: Decimal(2) = 0.00D;       // Zero with precision</code></pre>
+<pre><code class="language-soli text-sm">let price: Decimal(2) = 19.99D;      # Currency (2 decimals)
+let rate: Decimal(4) = 0.0675D;      # Rates (4 decimals)
+let percent: Decimal(2) = 50.00D;   # Percentages (2 decimals)
+let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             </div>
         </div>
     </section>
@@ -146,13 +146,13 @@ let amount: Decimal(2) = 0.00D;       // Zero with precision</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let rate: Decimal(4) = 0.0675D;
-let rounded: Decimal(2) = rate.prec(2);  // → 0.07D
+let rounded: Decimal(2) = rate.prec(2);  # → 0.07D
 
-// Standard library functions
-round(19.999D, 2)           // → 20.00D
-floor(19.99D)                // → 19.00D
-ceil(19.01D)                 // → 20.00D
-abs(-19.99D)                 // → 19.99D</code></pre>
+# Standard library functions
+round(19.999D, 2)           # → 20.00D
+floor(19.99D)                # → 19.00D
+ceil(19.01D)                 # → 20.00D
+abs(-19.99D)                 # → 19.99D</code></pre>
             </div>
         </div>
     </section>
@@ -162,21 +162,21 @@ abs(-19.99D)                 // → 19.99D</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Standard Library Functions</h2>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Conversions
-decimal("19.99", 2)         // → 19.99D (from string)
-float(19.99D)               // → 19.99 (to float)
-str(19.99D)                 // → "19.99"
+<pre><code class="language-soli text-sm"># Conversions
+decimal("19.99", 2)         # → 19.99D (from string)
+float(19.99D)               # → 19.99 (to float)
+str(19.99D)                 # → "19.99"
 
-// Math
-sqrt(4.00D)                 // → 2.00D
-pow(2.00D, 3)               // → 8.00D
+# Math
+sqrt(4.00D)                 # → 2.00D
+pow(2.00D, 3)               # → 8.00D
 
-// Formatting
-format(19.99D, "$#,##0.00")  // → "$19.99"
+# Formatting
+format(19.99D, "$#,##0.00")  # → "$19.99"
 
-// Comparisons
-min(19.99D, 20.00D)         // → 19.99D
-max(19.99D, 20.00D)         // → 20.00D</code></pre>
+# Comparisons
+min(19.99D, 20.00D)         # → 19.99D
+max(19.99D, 20.00D)         # → 20.00D</code></pre>
             </div>
         </div>
     </section>
@@ -201,9 +201,9 @@ let subtotal: Decimal(2) = price * quantity;
 let tax: Decimal(2) = round(subtotal * tax_rate, 2);
 let total: Decimal(2) = subtotal + tax;
 
-print("Subtotal: $" + str(subtotal));   // $299.97
-print("Tax: $" + str(tax));            // $24.00
-print("Total: $" + str(total));        // $323.97</code></pre>
+print("Subtotal: $" + str(subtotal));   # $299.97
+print("Tax: $" + str(tax));            # $24.00
+print("Total: $" + str(total));        # $323.97</code></pre>
             </div>
         </div>
     </section>
@@ -225,7 +225,7 @@ print("Total: $" + str(total));        // $323.97</code></pre>
     cost: Decimal(2),
     tax_rate: Decimal(4),
 
-    def profit() -> Decimal(2)
+    def profit -> Decimal(2)
         self.price - self.cost
     end
 end
@@ -235,7 +235,7 @@ class Order extends Model
     tax: Decimal(2),
     total: Decimal(2),
 
-    def calculate_total() -> Decimal(2)
+    def calculate_total -> Decimal(2)
         self.subtotal + self.tax
     end
 end</code></pre>

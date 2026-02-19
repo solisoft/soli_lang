@@ -17,17 +17,17 @@ When handling HTTP requests, parameters can come from multiple sources:
 Use `req["all"]` to access all parameters unified:
 
 ```soli
-// Request: POST /users/123/profile?name=alice&age=30
-// Body: {"bio": "Developer", "age": "25"}
+# Request: POST /users/123/profile?name=alice&age=30
+# Body: {"bio": "Developer", "age": "25"}
 
 fn update_profile(req)
-    // Unified access to all params
+    # Unified access to all params
     let all = req["all"];
 
-    print("User ID:", all["id"]);       // "123" (from route)
-    print("Name:", all["name"]);        // "alice" (query overrides route)
-    print("Age:", all["age"]);          // "25" (JSON body overrides query)
-    print("Bio:", all["bio"]);          // "Developer" (from JSON body)
+    print("User ID:", all["id"]);       # "123" (from route)
+    print("Name:", all["name"]);        # "alice" (query overrides route)
+    print("Age:", all["age"]);          # "25" (JSON body overrides query)
+    print("Bio:", all["bio"]);          # "Developer" (from JSON body)
 
     {"status": 200, "body": "Profile updated"}
 end
@@ -42,20 +42,20 @@ When the same parameter exists in multiple sources, values are merged with this 
 3. **Route params** - Lowest priority
 
 ```soli
-// Request: PUT /items/42?status=active
-// Body: {"status": "urgent", "quantity": "5"}
+# Request: PUT /items/42?status=active
+# Body: {"status": "urgent", "quantity": "5"}
 
 fn update_item(req)
     let all = req["all"];
 
-    // "status" appears in both query and body
-    // Body wins: all["status"] = "urgent"
+    # "status" appears in both query and body
+    # Body wins: all["status"] = "urgent"
     print("Status:", all["status"]);
 
-    // "id" only in route
+    # "id" only in route
     print("ID:", all["id"]);
 
-    // "quantity" only in body
+    # "quantity" only in body
     print("Quantity:", all["quantity"]);
 
     {"status": 200, "body": "OK"}
@@ -68,19 +68,19 @@ You can still access individual parameter sources separately:
 
 ```soli
 fn handler(req)
-    // Route parameters only
+    # Route parameters only
     let id = req["params"]["id"];
 
-    // Query parameters only
+    # Query parameters only
     let page = req["query"]["page"];
 
-    // JSON body only
+    # JSON body only
     let data = req["json"];
 
-    // Form data only
+    # Form data only
     let form = req["form"];
 
-    // Or unified access
+    # Or unified access
     let all = req["all"];
 
     {"status": 200, "body": "OK"}
@@ -93,25 +93,25 @@ end
 fn search(req)
     let all = req["all"];
 
-    // Unified params allow flexible API design
-    // Can pass filters via query, body, or both
+    # Unified params allow flexible API design
+    # Can pass filters via query, body, or both
     let query = all["q"] or "";
     let page = all["page"] or "1";
     let limit = all["limit"] or "20";
     let sort = all["sort"] or "relevance";
 
-    // Use unified params for flexible filtering
+    # Use unified params for flexible filtering
     let filters = {
         "query": query,
         "page": page,
         "limit": limit,
         "sort": sort,
-        "category": all["category"],  // Optional, may be null
-        "min_price": all["min_price"], // Optional
-        "max_price": all["max_price"]  // Optional
+        "category": all["category"],  # Optional, may be null
+        "min_price": all["min_price"], # Optional
+        "max_price": all["max_price"]  # Optional
     };
 
-    // Execute search with filters
+    # Execute search with filters
     let results = execute_search(filters);
 
     {
@@ -145,18 +145,18 @@ end
 ### Parameter Access Patterns
 
 ```soli
-// Get single param from unified source
+# Get single param from unified source
 let id = req["all"]["id"];
 
-// Check if param exists
+# Check if param exists
 if req["all"]["page"] != null
     let page = req["all"]["page"];
 end
 
-// Get with default value
+# Get with default value
 let limit = req["all"]["limit"] or "20";
 
-// Iterate over all params
+# Iterate over all params
 for key, value in req["all"]
     print(key + ": " + value);
 end

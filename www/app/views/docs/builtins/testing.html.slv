@@ -80,7 +80,7 @@
         })
 
         it("handles division by zero", def() {
-            // Test error handling
+            # Test error handling
         })
     })
 })</code></pre>
@@ -391,7 +391,7 @@ assert_not_nil(response.body, "response should have body");</code></pre>
                 <p class="text-gray-400 mb-3">Create an instance from a factory.</p>
                 <div class="mt-4">
                     <pre data-filename="Example"><code class="language-soli text-sm">let user = Factory.create("user")
-println(user["name"])  // "Test User"</code></pre>
+println(user["name"])  # "Test User"</code></pre>
                 </div>
             </div>
         </section>
@@ -407,8 +407,8 @@ println(user["name"])  // "Test User"</code></pre>
                 <p class="text-gray-400 mb-3">Create an instance with custom overrides.</p>
                 <div class="mt-4">
                     <pre data-filename="Example"><code class="language-soli text-sm">let admin = Factory.create_with("user", { "role": "admin" })
-println(admin["role"])  // "admin"
-println(admin["name"])  // "Test User" (from factory)</code></pre>
+println(admin["role"])  # "admin"
+println(admin["name"])  # "Test User" (from factory)</code></pre>
                 </div>
             </div>
         </section>

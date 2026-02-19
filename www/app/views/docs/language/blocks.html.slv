@@ -201,7 +201,7 @@ for item in items {
         this.name = name;
     }
 
-    def greet() {
+    def greet {
         print("Hello, " + this.name);
     }
 }</code></pre>
@@ -218,7 +218,7 @@ class Person
 
     new(name: String) end
 
-    def greet() end
+    def greet end
 end</code></pre>
             </div>
         </section>
@@ -237,29 +237,29 @@ end</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">You can freely mix both styles in the same codebase:</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">// Empty function - use end
-def placeholder() end
+            <pre data-filename="Example"><code class="language-soli text-sm"># Empty function - use end
+def placeholder end
 
-// Function with body - use braces
+# Function with body - use braces
 def process_data(data) {
     validate(data);
     transform(data);
     save(data);
 }
 
-// Empty class - use end
+# Empty class - use end
 class EmptyMarker end
 
-// Class with methods - mix both
+# Class with methods - mix both
 class Service
-    def init() end
+    def init end
 
-    def process() {
+    def process {
         fetch_data();
     }
 end
 
-// Control flow - use end for simple guards
+# Control flow - use end for simple guards
 if user.is_admin() end
 
 if user.is_valid() {
@@ -283,8 +283,8 @@ if user.is_valid() {
                 <tbody class="text-gray-300">
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">Function</td>
-                        <td class="py-3 px-4"><code class="text-pink-400">def foo() { }</code></td>
-                        <td class="py-3 px-4"><code class="text-pink-400">def foo() end</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">def foo { }</code></td>
+                        <td class="py-3 px-4"><code class="text-pink-400">def foo end</code></td>
                     </tr>
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">If</td>

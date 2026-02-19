@@ -58,7 +58,7 @@
                     <code class="text-purple-400">String</code> - 64-character hex string (32 bytes)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.sha256("hello")
-// "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"</code></pre>
+# "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"</code></pre>
             </div>
         </section>
 
@@ -80,7 +80,7 @@
                     <code class="text-purple-400">String</code> - 128-character hex string (64 bytes)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.sha512("hello")
-// 128-character hex string</code></pre>
+# 128-character hex string</code></pre>
             </div>
         </section>
 
@@ -102,7 +102,7 @@
                     <code class="text-purple-400">String</code> - 32-character hex string (16 bytes)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.md5("hello")
-// "5d41402abc4b2a76b9719d911017c592"</code></pre>
+# "5d41402abc4b2a76b9719d911017c592"</code></pre>
             </div>
         </section>
 
@@ -125,7 +125,7 @@
                     <code class="text-purple-400">String</code> - 64-character hex string (32 bytes)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let mac = Crypto.hmac("message", "secret_key")
-// Use for API signature verification, webhook validation, etc.</code></pre>
+# Use for API signature verification, webhook validation, etc.</code></pre>
             </div>
         </section>
     </section>
@@ -159,7 +159,7 @@
                     <code class="text-purple-400">String</code> - The Argon2id hash string
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.argon2_hash("secretpassword")
-// $argon2id$v=19$m=19456,t=2,p=1$...</code></pre>
+# $argon2id$v=19$m=19456,t=2,p=1$...</code></pre>
             </div>
         </section>
 
@@ -208,8 +208,8 @@
                     <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair()
-println(keypair["public"])   // Hex-encoded public key
-println(keypair["private"])  // Hex-encoded private key</code></pre>
+println(keypair["public"])   # Hex-encoded public key
+println(keypair["private"])  # Hex-encoded private key</code></pre>
             </div>
         </section>
 
@@ -234,10 +234,10 @@ println(keypair["private"])  // Hex-encoded private key</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">let alice = Crypto.x25519_keypair()
 let bob = Crypto.x25519_keypair()
 
-// Both compute the same shared secret
+# Both compute the same shared secret
 let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
 let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
-// alice_secret == bob_secret</code></pre>
+# alice_secret == bob_secret</code></pre>
             </div>
         </section>
 
@@ -260,7 +260,7 @@ let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair()
 let derived_public = Crypto.x25519_public_key(keypair["private"])
-// derived_public == keypair["public"]</code></pre>
+# derived_public == keypair["public"]</code></pre>
             </div>
         </section>
     </section>
@@ -283,8 +283,8 @@ let derived_public = Crypto.x25519_public_key(keypair["private"])
                     <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.ed25519_keypair()
-// Use keypair["private"] to sign messages
-// Share keypair["public"] for verification</code></pre>
+# Use keypair["private"] to sign messages
+# Share keypair["public"] for verification</code></pre>
             </div>
         </section>
     </section>

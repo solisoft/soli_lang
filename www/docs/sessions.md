@@ -12,7 +12,7 @@ Sessions are automatically available in your controllers. The session cookie is 
 
 ```soli
 fn profile(req)
-    // Check if user is logged in
+    # Check if user is logged in
     if session_get("authenticated") != true
         return {"status": 401, "body": "Please log in"};
     end
@@ -34,7 +34,7 @@ fn login(req)
     let data = req["json"];
     let username = data["username"];
 
-    // Store user data in session
+    # Store user data in session
     session_set("user", username);
     session_set("role", "admin");
     session_set("authenticated", true);
@@ -75,10 +75,10 @@ fn login(req)
     let data = req["json"];
 
     if verify_credentials(data["username"], data["password"])
-        // Regenerate session for security
+        # Regenerate session for security
         session_regenerate();
 
-        // Now set auth data
+        # Now set auth data
         session_set("user_id", get_user_id(data["username"]));
         session_set("authenticated", true);
 
@@ -107,7 +107,7 @@ end
 Create a reusable authentication middleware:
 
 ```soli
-// app/middleware/auth.sl
+# app/middleware/auth.sl
 fn require_auth(req)
     if !session_has("authenticated") || session_get("authenticated") != true
         return {
@@ -115,13 +115,13 @@ fn require_auth(req)
             "body": json_stringify({"error": "Authentication required"})
         };
     end
-    null  // Allow request to continue
+    null  # Allow request to continue
 end
 
 fn require_role(req, required_role: String)
     let result = require_auth(req);
     if result != null
-        return result;  // Return auth error
+        return result;  # Return auth error
     end
 
     let user_role = session_get("role");
@@ -139,7 +139,7 @@ end
 Use in routes:
 
 ```soli
-// config/routes.sl
+# config/routes.sl
 get("/profile", "user#profile", ["auth"]);
 get("/admin", "admin#dashboard", ["auth", "role:admin"]);
 post("/users", "users#create", ["auth", "role:admin"]);

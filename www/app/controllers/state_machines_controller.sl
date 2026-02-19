@@ -1,15 +1,15 @@
-// StateMachine Controller - REST API for State Machine management
+# StateMachine Controller - REST API for State Machine management
 
 import "../../stdlib/state_machine.sl"
 
-// In-memory store for demo (use SolidB/DB in production)
+# In-memory store for demo (use SolidB/DB in production)
 let state_machines: Hash = {}
 
-// Create a new state machine
+# Create a new state machine
 fn create(req)
     let data = req["json"]
 
-    // Validate required fields
+    # Validate required fields
     if data["initial_state"] == null
         return {
             "status": 422,
@@ -40,17 +40,17 @@ fn create(req)
         }
     end
 
-    // Generate unique ID
+    # Generate unique ID
     let id = "sm_" + str(clock()) + "_" + str(clock() % 10000)
 
-    // Create state machine
+    # Create state machine
     let sm = create_state_machine(
         data["initial_state"],
         data["states"],
         data["transitions"]
     )
 
-    // Store in memory
+    # Store in memory
     state_machines[id] = sm
 
     {
@@ -64,7 +64,7 @@ fn create(req)
     }
 end
 
-// Get state machine by ID
+# Get state machine by ID
 fn get(req)
     let id = req["params"]["id"]
 
@@ -95,7 +95,7 @@ fn get(req)
     }
 end
 
-// List all state machines
+# List all state machines
 fn list(req)
     let list = []
     let entries = state_machines.entries()
@@ -119,7 +119,7 @@ fn list(req)
     }
 end
 
-// Perform a transition
+# Perform a transition
 fn transition(req)
     let id = req["params"]["id"]
     let data = req["json"]
@@ -147,7 +147,7 @@ fn transition(req)
 
     let sm = state_machines[id]
 
-    // Check if event is available
+    # Check if event is available
     if !sm.can(event)
         return {
             "status": 400,
@@ -160,7 +160,7 @@ fn transition(req)
         }
     end
 
-    // Perform transition
+    # Perform transition
     let result = sm.transition(event)
 
     {
@@ -176,7 +176,7 @@ fn transition(req)
     }
 end
 
-// Set context value
+# Set context value
 fn set_context(req)
     let id = req["params"]["id"]
     let data = req["json"]
@@ -215,7 +215,7 @@ fn set_context(req)
     }
 end
 
-// Get context value
+# Get context value
 fn get_context(req)
     let id = req["params"]["id"]
     let key = req["params"]["key"]
@@ -243,7 +243,7 @@ fn get_context(req)
     }
 end
 
-// Delete state machine
+# Delete state machine
 fn delete(req)
     let id = req["params"]["id"]
 
@@ -268,7 +268,7 @@ fn delete(req)
     }
 end
 
-// Demo page
+# Demo page
 fn demo(req)
     render("state_machines/demo.html", {
         "title": "State Machine Demo"

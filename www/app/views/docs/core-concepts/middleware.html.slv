@@ -45,15 +45,15 @@ SOLI_REQUEST_LOG=0 soli serve myapp</code></pre>
             </thead>
             <tbody class="text-gray-300">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">// order: N</td>
+                    <td class="py-3 px-4 font-mono text-indigo-400"># order: N</td>
                     <td class="py-3 px-4">Execution order (lower runs first, default: 100)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">// global_only: true</td>
+                    <td class="py-3 px-4 font-mono text-indigo-400"># global_only: true</td>
                     <td class="py-3 px-4">Runs for ALL requests, cannot be scoped to specific routes</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">// scope_only: true</td>
+                    <td class="py-3 px-4 font-mono text-indigo-400"># scope_only: true</td>
                     <td class="py-3 px-4">Only runs when explicitly scoped, never globally</td>
                 </tr>
             </tbody>
@@ -66,10 +66,10 @@ SOLI_REQUEST_LOG=0 soli serve myapp</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/cors.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// order: 5
-// global_only: true
+<pre><code class="language-soli text-sm"># order: 5
+# global_only: true
 
-def add_cors_headers(req: Any)    // Continue to next middleware/handler
+def add_cors_headers(req: Any)    # Continue to next middleware/handler
     {
         "continue": true,
         "request": req
@@ -81,8 +81,8 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/auth.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// order: 20
-// scope_only: true
+<pre><code class="language-soli text-sm"># order: 20
+# scope_only: true
 
 def authenticate(req: Any)    let headers = req["headers"];
     let api_key = "";
@@ -92,7 +92,7 @@ def authenticate(req: Any)    let headers = req["headers"];
     end
 
     if api_key == ""
-        // Short-circuit with error response
+        # Short-circuit with error response
         return {
             "continue": false,
             "response": {
@@ -106,7 +106,7 @@ def authenticate(req: Any)    let headers = req["headers"];
         };
     end
 
-    // Continue to handler
+    # Continue to handler
     {
         "continue": true,
         "request": req
@@ -205,18 +205,18 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Public routes (no auth required)
+<pre><code class="language-soli text-sm"># Public routes (no auth required)
 get("/", "home#index");
 get("/login", "auth#login");
 
-// Protected routes (auth middleware applied)
+# Protected routes (auth middleware applied)
 middleware("authenticate", ->
     get("/dashboard", "dashboard#index");
     get("/profile", "users#profile");
     post("/settings", "users#update_settings");
 end);
 
-// Multiple middleware
+# Multiple middleware
 middleware(["authenticate", "admin_only"], ->
     get("/admin", "admin#index");
     get("/admin/users", "admin#users");

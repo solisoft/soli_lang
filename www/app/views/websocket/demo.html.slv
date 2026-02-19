@@ -95,7 +95,7 @@
                     <div class="p-4 overflow-x-auto">
                         <pre><code class="language-soli text-sm"><span class="text-purple-400">def</span> <span class="text-blue-400">chat_handler</span>(event) {
     <span class="text-purple-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"message"</span> {
-        <span class="text-comment text-gray-500">// Broadcast to all clients</span>
+        <span class="text-comment text-gray-500"># Broadcast to all clients</span>
         <span class="text-purple-400">return</span> { <span class="text-green-400">"broadcast"</span>: event[<span class="text-green-400">"message"</span>] };
     }
 }</code></pre>

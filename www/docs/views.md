@@ -533,11 +533,11 @@ Converts text to a URL-friendly slug by lowercasing, replacing spaces and specia
 You can add your own helpers by editing `app/helpers/application_helper.sl`:
 
 ```soli
-// app/helpers/application_helper.sl
+# app/helpers/application_helper.sl
 
-// ... existing helpers ...
+# ... existing helpers ...
 
-// Custom helper: Format a phone number
+# Custom helper: Format a phone number
 fn format_phone(number)
     let digits = replace(number, "[^0-9]", "")
     if len(digits) == 10
@@ -546,7 +546,7 @@ fn format_phone(number)
     number
 end
 
-// Custom helper: Generate a mailto link
+# Custom helper: Generate a mailto link
 fn mail_to(email, text = null)
     if text == null
         text = email

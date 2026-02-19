@@ -7,7 +7,7 @@ Controllers handle HTTP requests and return responses. SoliLang supports OOP-sty
 Create a file in `app/controllers/` with a `_controller.sl` suffix:
 
 ```soli
-// app/controllers/users_controller.sl
+# app/controllers/users_controller.sl
 class UsersController extends Controller
     fn index(req)
         render("users/index", {
@@ -34,7 +34,7 @@ Controllers are classes that extend the base `Controller` class:
 
 ```soli
 class PostsController extends Controller
-    // Actions go here
+    # Actions go here
     fn index(req) end
     fn show(req) end
 end
@@ -47,10 +47,10 @@ Configure controllers using a `static { ... }` block:
 ```soli
 class ApplicationController extends Controller
     static
-        // Set the layout for all actions
+        # Set the layout for all actions
         this.layout = "application";
 
-        // Before action that runs for all actions
+        # Before action that runs for all actions
         this.before_action = fn(req)
             let user_id = req.session["user_id"];
             if user_id != null {
@@ -90,7 +90,7 @@ end
 Create an `ApplicationController` with shared configuration:
 
 ```soli
-// app/controllers/application_controller.sl
+# app/controllers/application_controller.sl
 class ApplicationController extends Controller
     static
         this.layout = "application";
@@ -117,7 +117,7 @@ end
 Subclasses inherit the configuration and can override it:
 
 ```soli
-// app/controllers/posts_controller.sl
+# app/controllers/posts_controller.sl
 class PostsController extends ApplicationController
     static
         # Override layout for this controller

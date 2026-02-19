@@ -207,7 +207,7 @@ let result = validate({
 
 if result["valid"] {
     println("Data is valid!")
-    println(result["data"])  // Validated & sanitized data
+    println(result["data"])  # Validated & sanitized data
 } else {
     for error in result["errors"] {
         println(error["field"] + ": " + error["message"])

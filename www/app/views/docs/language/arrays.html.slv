@@ -37,15 +37,15 @@
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Create arrays using square brackets with comma-separated values.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Basic array literal
+<pre data-filename="Example"><code class="language-soli text-sm"># Basic array literal
 let numbers = [1, 2, 3, 4, 5];
 let names = ["Alice", "Bob", "Charlie"];
 let mixed = [1, "hello", true, null];
 
-// Empty array
+# Empty array
 let empty = [];
 
-// Nested arrays
+# Nested arrays
 let matrix = [[1, 2], [3, 4], [5, 6]];</code></pre>
                 </div>
             </section>
@@ -59,12 +59,12 @@ let matrix = [[1, 2], [3, 4], [5, 6]];</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Optionally specify array types for clarity and type safety.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Typed arrays
+<pre data-filename="Example"><code class="language-soli text-sm"># Typed arrays
 let scores: Int[] = [95, 87, 92, 88, 90];
 let names: String[] = ["Alice", "Bob", "Charlie"];
 let flags: Bool[] = [true, false, true];
 
-// Multi-dimensional arrays
+# Multi-dimensional arrays
 let matrix: Int[][] = [[1, 2], [3, 4], [5, 6]];</code></pre>
                 </div>
             </section>
@@ -78,10 +78,10 @@ let matrix: Int[][] = [[1, 2], [3, 4], [5, 6]];</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Creates an array of numbers from start to end (exclusive).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">range(0, 5)        // [0, 1, 2, 3, 4]
-range(1, 10)       // [1, 2, 3, 4, 5, 6, 7, 8, 9]
-range(0, 10, 2)    // [0, 2, 4, 6, 8] (step of 2)
-range(5, 0, -1)    // [5, 4, 3, 2, 1] (reverse)</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">range(0, 5)        # [0, 1, 2, 3, 4]
+range(1, 10)       # [1, 2, 3, 4, 5, 6, 7, 8, 9]
+range(0, 10, 2)    # [0, 2, 4, 6, 8] (step of 2)
+range(5, 0, -1)    # [5, 4, 3, 2, 1] (reverse)</code></pre>
                 </div>
             </section>
         </div>
@@ -111,16 +111,16 @@ range(5, 0, -1)    // [5, 4, 3, 2, 1] (reverse)</code></pre>
                     <p class="text-gray-400 mb-3">Access elements using zero-based indexing. Negative indices count from the end.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50];
 
-// Zero-based indexing
-print(arr[0]);    // 10 (first element)
-print(arr[2]);    // 30 (third element)
+# Zero-based indexing
+print(arr[0]);    # 10 (first element)
+print(arr[2]);    # 30 (third element)
 
-// Negative indexing
-print(arr[-1]);   // 50 (last element)
-print(arr[-2]);   // 40 (second to last)
+# Negative indexing
+print(arr[-1]);   # 50 (last element)
+print(arr[-2]);   # 40 (second to last)
 
-// Out of bounds returns null
-print(arr[10]);   // null</code></pre>
+# Out of bounds returns null
+print(arr[10]);   # null</code></pre>
                 </div>
             </section>
 
@@ -135,13 +135,13 @@ print(arr[10]);   // null</code></pre>
                     <p class="text-gray-400 mb-3">Arrays are mutable - you can modify elements by index.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
 
-// Modify existing element
+# Modify existing element
 arr[0] = 100;
-print(arr);  // [100, 2, 3, 4, 5]
+print(arr);  # [100, 2, 3, 4, 5]
 
-// Add new element (extends array)
+# Add new element (extends array)
 arr[10] = 999;
-print(arr);  // [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre>
+print(arr);  # [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre>
                 </div>
             </section>
         </div>
@@ -170,13 +170,13 @@ print(arr);  // [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre
                     <p class="text-gray-400 mb-3">Transform each element using a function. Returns a new array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
 
-// Double each number
+# Double each number
 let doubled = numbers.map(def(x) x * 2);
-print(doubled);  // [2, 4, 6, 8, 10]
+print(doubled);  # [2, 4, 6, 8, 10]
 
-// Convert to strings
+# Convert to strings
 let strings = numbers.map(def(x) str(x));
-print(strings);  // ["1", "2", "3", "4", "5"]</code></pre>
+print(strings);  # ["1", "2", "3", "4", "5"]</code></pre>
                 </div>
             </section>
 
@@ -191,13 +191,13 @@ print(strings);  // ["1", "2", "3", "4", "5"]</code></pre>
                     <p class="text-gray-400 mb-3">Keep elements matching a condition. Returns a new array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-// Keep only even numbers
+# Keep only even numbers
 let evens = numbers.filter(def(x) x % 2 == 0);
-print(evens);  // [2, 4, 6, 8, 10]
+print(evens);  # [2, 4, 6, 8, 10]
 
-// Keep numbers greater than 5
+# Keep numbers greater than 5
 let large = numbers.filter(def(x) x > 5);
-print(large);  // [6, 7, 8, 9, 10]</code></pre>
+print(large);  # [6, 7, 8, 9, 10]</code></pre>
                 </div>
             </section>
 
@@ -212,17 +212,17 @@ print(large);  // [6, 7, 8, 9, 10]</code></pre>
                     <p class="text-gray-400 mb-3">Accumulate array elements to a single value.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
 
-// Sum all numbers
+# Sum all numbers
 let sum = numbers.reduce(def(acc, x) acc + x, 0);
-print(sum);  // 15
+print(sum);  # 15
 
-// Product of all numbers
+# Product of all numbers
 let product = numbers.reduce(def(acc, x) acc * x, 1);
-print(product);  // 120
+print(product);  # 120
 
-// Find maximum
+# Find maximum
 let max = numbers.reduce(def(acc, x) if (x > acc) x else acc, numbers[0]);
-print(max);  // 5</code></pre>
+print(max);  # 5</code></pre>
                 </div>
             </section>
 
@@ -237,16 +237,16 @@ print(max);  // 5</code></pre>
                     <p class="text-gray-400 mb-3">Iterate over elements for side effects. Returns the original array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3];
 
-// Print each number
+# Print each number
 numbers.each(def(x) print(x));
-// Output: 1
-//         2
-//         3
+# Output: 1
+#         2
+#         3
 
-// Modify external state
+# Modify external state
 let sum = 0;
 numbers.each(def(x) sum = sum + x);
-print(sum);  // 6</code></pre>
+print(sum);  # 6</code></pre>
                 </div>
             </section>
 
@@ -261,17 +261,17 @@ print(sum);  // 6</code></pre>
                     <p class="text-gray-400 mb-3">Search and check array elements.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
 
-// find - returns first matching element
+# find - returns first matching element
 let first_even = numbers.find(def(x) x % 2 == 0);
-print(first_even);  // 2
+print(first_even);  # 2
 
-// any? - returns true if any element matches
+# any? - returns true if any element matches
 let has_large = numbers.any?(def(x) x > 4);
-print(has_large);  // true
+print(has_large);  # true
 
-// all? - returns true if all elements match
+# all? - returns true if all elements match
 let all_positive = numbers.all?(def(x) x > 0);
-print(all_positive);  // true</code></pre>
+print(all_positive);  # true</code></pre>
                 </div>
             </section>
 
@@ -286,18 +286,18 @@ print(all_positive);  // true</code></pre>
                     <p class="text-gray-400 mb-3">Sort elements. Default is ascending order, or provide a custom comparator.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [3, 1, 4, 1, 5, 9, 2, 6];
 
-// Default sort (ascending)
+# Default sort (ascending)
 let sorted = numbers.sort();
-print(sorted);  // [1, 1, 2, 3, 4, 5, 6, 9]
+print(sorted);  # [1, 1, 2, 3, 4, 5, 6, 9]
 
-// Custom comparator (descending)
+# Custom comparator (descending)
 let desc = numbers.sort(def(a, b) b - a);
-print(desc);  // [9, 6, 5, 4, 3, 2, 1, 1]
+print(desc);  # [9, 6, 5, 4, 3, 2, 1, 1]
 
-// Sort by string length
+# Sort by string length
 let words = ["cherry", "pie", "apple"];
 let by_length = words.sort(def(a, b) len(a) - len(b));
-print(by_length);  // ["pie", "apple", "cherry"]</code></pre>
+print(by_length);  # ["pie", "apple", "cherry"]</code></pre>
                 </div>
             </section>
 
@@ -316,17 +316,17 @@ print(by_length);  // ["pie", "apple", "cherry"]</code></pre>
   { "name": "Bob", "age": 20 }
 ];
 
-// Sort by hash key (string argument)
+# Sort by hash key (string argument)
 let by_name = people.sort_by("name");
-print(by_name.map(def(p) p.get("name")));  // [Alice, Bob, Charlie]
+print(by_name.map(def(p) p.get("name")));  # [Alice, Bob, Charlie]
 
 let by_age = people.sort_by("age");
-print(by_age.map(def(p) p.get("age")));  // [20, 25, 30]
+print(by_age.map(def(p) p.get("age")));  # [20, 25, 30]
 
-// Sort by function (for computed values)
+# Sort by function (for computed values)
 let words = ["cherry", "pie", "apple"];
 let by_length = words.sort_by(def(w) len(w));
-print(by_length);  // [pie, apple, cherry]</code></pre>
+print(by_length);  # [pie, apple, cherry]</code></pre>
                 </div>
             </section>
 
@@ -341,8 +341,8 @@ print(by_length);  // [pie, apple, cherry]</code></pre>
                     <p class="text-gray-400 mb-3">Return a new array with elements in reverse order.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
 let reversed = arr.reverse();
-print(reversed);  // [5, 4, 3, 2, 1]
-print(arr);       // [1, 2, 3, 4, 5] (original unchanged)</code></pre>
+print(reversed);  # [5, 4, 3, 2, 1]
+print(arr);       # [1, 2, 3, 4, 5] (original unchanged)</code></pre>
                 </div>
             </section>
 
@@ -357,7 +357,7 @@ print(arr);       // [1, 2, 3, 4, 5] (original unchanged)</code></pre>
                     <p class="text-gray-400 mb-3">Remove duplicate elements. Returns a new array with unique values.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 2, 3, 3, 3, 4];
 let unique = arr.uniq();
-print(unique);  // [1, 2, 3, 4]</code></pre>
+print(unique);  # [1, 2, 3, 4]</code></pre>
                 </div>
             </section>
 
@@ -372,7 +372,7 @@ print(unique);  // [1, 2, 3, 4]</code></pre>
                     <p class="text-gray-400 mb-3">Remove null values from the array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, 2, null, 3, null];
 let cleaned = arr.compact();
-print(cleaned);  // [1, 2, 3]</code></pre>
+print(cleaned);  # [1, 2, 3]</code></pre>
                 </div>
             </section>
 
@@ -387,12 +387,12 @@ print(cleaned);  // [1, 2, 3]</code></pre>
                     <p class="text-gray-400 mb-3">Flatten nested arrays. Optionally specify depth.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let nested = [[1, 2], [3, 4], [5, 6]];
 let flat = nested.flatten();
-print(flat);  // [1, 2, 3, 4, 5, 6]
+print(flat);  # [1, 2, 3, 4, 5, 6]
 
-// Flatten only 1 level deep
+# Flatten only 1 level deep
 let deep = [[1, 2], [[3, 4]]];
 let partial = deep.flatten(1);
-print(partial);  // [1, 2, [3, 4]]</code></pre>
+print(partial);  # [1, 2, [3, 4]]</code></pre>
                 </div>
             </section>
 
@@ -406,13 +406,13 @@ print(partial);  // [1, 2, [3, 4]]</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Get the first or last element.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50];
-print(arr.first());  // 10
-print(arr.last());   // 50
+print(arr.first());  # 10
+print(arr.last());   # 50
 
-// Returns null for empty arrays
+# Returns null for empty arrays
 let empty = [];
-print(empty.first());  // null
-print(empty.last());   // null</code></pre>
+print(empty.first());  # null
+print(empty.last());   # null</code></pre>
                 </div>
             </section>
 
@@ -427,12 +427,12 @@ print(empty.last());   // null</code></pre>
                     <p class="text-gray-400 mb-3">Check if array is empty or contains a value.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
 
-print(arr.empty?());      // false
-print(arr.include?(2));   // true
-print(arr.include?(99));  // false
+print(arr.empty?());      # false
+print(arr.include?(2));   # true
+print(arr.include?(99));  # false
 
 let empty = [];
-print(empty.empty?());    // true</code></pre>
+print(empty.empty?());    # true</code></pre>
                 </div>
             </section>
 
@@ -447,13 +447,13 @@ print(empty.empty?());    // true</code></pre>
                     <p class="text-gray-400 mb-3">Random element selection and shuffling.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
 
-// Get random element
+# Get random element
 let random = arr.sample();
-print(random);  // Random element (e.g., 3)
+print(random);  # Random element (e.g., 3)
 
-// Shuffle array
+# Shuffle array
 let shuffled = arr.shuffle();
-print(shuffled);  // Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
+print(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
                 </div>
             </section>
 
@@ -468,13 +468,13 @@ print(shuffled);  // Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
                     <p class="text-gray-400 mb-3">Take or skip the first n elements.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
 
-// Take first n elements
+# Take first n elements
 let first_three = arr.take(3);
-print(first_three);  // [1, 2, 3]
+print(first_three);  # [1, 2, 3]
 
-// Skip first n elements
+# Skip first n elements
 let rest = arr.drop(3);
-print(rest);  // [4, 5]</code></pre>
+print(rest);  # [4, 5]</code></pre>
                 </div>
             </section>
 
@@ -491,7 +491,7 @@ print(rest);  // [4, 5]</code></pre>
 let scores = [95, 87, 92];
 
 let pairs = names.zip(scores);
-// [["Alice", 95], ["Bob", 87], ["Charlie", 92]]</code></pre>
+# [["Alice", 95], ["Bob", 87], ["Charlie", 92]]</code></pre>
                 </div>
             </section>
 
@@ -506,9 +506,9 @@ let pairs = names.zip(scores);
                     <p class="text-gray-400 mb-3">Numeric aggregation methods.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [10, 5, 8, 3, 12];
 
-print(numbers.sum());   // 38.0
-print(numbers.min());   // 3
-print(numbers.max());   // 12</code></pre>
+print(numbers.sum());   # 38.0
+print(numbers.min());   # 3
+print(numbers.max());   # 12</code></pre>
                 </div>
             </section>
 
@@ -522,13 +522,13 @@ print(numbers.max());   // 12</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Joins array elements into a string using the specified delimiter.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let words = ["Hello", "World"];
-print(words.join(" "));   // "Hello World"
+print(words.join(" "));   # "Hello World"
 
 let numbers = [1, 2, 3, 4, 5];
-print(numbers.join("-")); // "1-2-3-4-5"
+print(numbers.join("-")); # "1-2-3-4-5"
 
 let paths = ["usr", "local", "bin"];
-print(paths.join("/"));   // "usr/local/bin"</code></pre>
+print(paths.join("/"));   # "usr/local/bin"</code></pre>
                 </div>
             </section>
         </div>
@@ -550,21 +550,21 @@ print(paths.join("/"));   // "usr/local/bin"</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-// Chain multiple methods together
+# Chain multiple methods together
 let result = numbers
-    .filter(def(x) x % 2 == 0)   // Keep evens: [2, 4, 6, 8, 10]
-    .map(def(x) x * x)           // Square them: [4, 16, 36, 64, 100]
-    .filter(def(x) x < 50);      // Keep less than 50: [4, 16, 36]
+    .filter(def(x) x % 2 == 0)   # Keep evens: [2, 4, 6, 8, 10]
+    .map(def(x) x * x)           # Square them: [4, 16, 36, 64, 100]
+    .filter(def(x) x < 50);      # Keep less than 50: [4, 16, 36]
 
-print(result);  // [4, 16, 36]
+print(result);  # [4, 16, 36]
 
-// With pipeline operator
+# With pipeline operator
 let result2 = numbers
     |> filter(def(x) x > 5)
     |> map(def(x) x * 2)
     |> sum();
 
-print(result2);  // 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
+print(result2);  # 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
             </div>
         </div>
     </section>
@@ -593,8 +593,8 @@ print(result2);  // 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Returns a formatted string representation of the array. Called automatically in REPL.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
-// In REPL, displays: [1, 2, 3]
-// Equivalent to: arr.to_string()</code></pre>
+# In REPL, displays: [1, 2, 3]
+# Equivalent to: arr.to_string()</code></pre>
                 </div>
             </section>
 
@@ -608,7 +608,7 @@ print(result2);  // 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of elements in the array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
-arr.length();  // 3</code></pre>
+arr.length();  # 3</code></pre>
                 </div>
             </section>
 
@@ -622,9 +622,9 @@ arr.length();  // 3</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Adds an element to the end or removes and returns the last element.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [];
-arr.push(1);  // [1]
-arr.push(2);  // [1, 2]
-let last = arr.pop();  // 2, arr is now [1]</code></pre>
+arr.push(1);  # [1]
+arr.push(2);  # [1, 2]
+let last = arr.pop();  # 2, arr is now [1]</code></pre>
                 </div>
             </section>
 
@@ -638,10 +638,10 @@ let last = arr.pop();  // 2, arr is now [1]</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the element at the specified index. Supports negative indices for backward access.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = ["first", "second", "third"];
-arr.get(0);      // "first"
-arr.get(2);      // "third"
-arr.get(-1);     // "third" (last)
-arr.get(-2);     // "second"</code></pre>
+arr.get(0);      # "first"
+arr.get(2);      # "third"
+arr.get(-1);     # "third" (last)
+arr.get(-2);     # "second"</code></pre>
                 </div>
             </section>
 
@@ -656,7 +656,7 @@ arr.get(-2);     // "second"</code></pre>
                     <p class="text-gray-400 mb-3">Removes all elements from the array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
 arr.clear();
-arr.length();  // 0</code></pre>
+arr.length();  # 0</code></pre>
                 </div>
             </section>
         </div>

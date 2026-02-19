@@ -40,7 +40,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The current locale code (e.g., "en", "fr", "de")
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">println(I18n.locale())  // "en"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">println(I18n.locale())  # "en"</code></pre>
             </div>
         </section>
 
@@ -89,8 +89,8 @@ I18n.set_locale("de")</code></pre>
     "en.welcome": "Welcome, {name}!"
 }
 
-I18n.translate("greeting", "fr", translations)  // "Bonjour"
-I18n.translate("greeting", "en", translations)  // "Hello"</code></pre>
+I18n.translate("greeting", "fr", translations)  # "Bonjour"
+I18n.translate("greeting", "en", translations)  # "Hello"</code></pre>
             </div>
         </section>
 
@@ -113,9 +113,9 @@ I18n.translate("greeting", "en", translations)  // "Hello"</code></pre>
     "en.items_other": "{count} items"
 }
 
-I18n.plural("items", 0, "en", translations)   // "No items"
-I18n.plural("items", 1, "en", translations)   // "1 item"
-I18n.plural("items", 5, "en", translations)   // "5 items"</code></pre>
+I18n.plural("items", 0, "en", translations)   # "No items"
+I18n.plural("items", 1, "en", translations)   # "1 item"
+I18n.plural("items", 5, "en", translations)   # "5 items"</code></pre>
             </div>
         </section>
     </section>
@@ -184,7 +184,7 @@ end</code></pre>
             <p class="text-gray-400 text-sm mb-4">
                 Load all translation files at application startup. They'll be available globally.
             </p>
-            <pre data-filename="app.sl"><code class="language-soli text-sm">// Load translation files from locales/ directory
+            <pre data-filename="app.sl"><code class="language-soli text-sm"># Load translation files from locales/ directory
 let en_data = json_parse(slurp("locales/en.json"));
 let fr_data = json_parse(slurp("locales/fr.json"));
 let de_data = json_parse(slurp("locales/de.json"));
@@ -193,10 +193,10 @@ i18n_load_translations("en", en_data);
 i18n_load_translations("fr", fr_data);
 i18n_load_translations("de", de_data);
 
-// Set default locale
+# Set default locale
 I18n.set_locale("en");
 
-// Define routes
+# Define routes
 http_server_get("/", "home#index");
 http_server_listen(3000);</code></pre>
         </div>
@@ -231,9 +231,9 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Format a number according to locale conventions.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">I18n.format_number(1234.56, "en")  // "1,234.56"
-I18n.format_number(1234.56, "fr")  // "1 234,56"
-I18n.format_number(1234.56, "de")  // "1.234,56"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.format_number(1234.56, "en")  # "1,234.56"
+I18n.format_number(1234.56, "fr")  # "1 234,56"
+I18n.format_number(1234.56, "de")  # "1.234,56"</code></pre>
             </div>
         </section>
 
@@ -252,9 +252,9 @@ I18n.format_number(1234.56, "de")  // "1.234,56"</code></pre>
                     <div><code class="text-amber-400">currency</code> : <code class="text-purple-400">String</code> - Currency code (USD, EUR, etc.)</div>
                     <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale</div>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">I18n.format_currency(1234.56, "USD", "en")  // "$1,234.56"
-I18n.format_currency(1234.56, "EUR", "de")  // "1.234,56 €"
-I18n.format_currency(1234.56, "GBP", "en")  // "£1,234.56"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.format_currency(1234.56, "USD", "en")  # "$1,234.56"
+I18n.format_currency(1234.56, "EUR", "de")  # "1.234,56 €"
+I18n.format_currency(1234.56, "GBP", "en")  # "£1,234.56"</code></pre>
             </div>
         </section>
 
@@ -269,9 +269,9 @@ I18n.format_currency(1234.56, "GBP", "en")  // "£1,234.56"</code></pre>
                 <p class="text-gray-400 mb-3">Format a date according to locale conventions.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let ts = __datetime_parse("2024-01-15T10:30:00Z")
 
-I18n.format_date(ts, "en")  // "01/15/2024"
-I18n.format_date(ts, "fr")  // "15/01/2024"
-I18n.format_date(ts, "de")  // "15.01.2024"</code></pre>
+I18n.format_date(ts, "en")  # "01/15/2024"
+I18n.format_date(ts, "fr")  # "15/01/2024"
+I18n.format_date(ts, "de")  # "15.01.2024"</code></pre>
             </div>
         </section>
     </section>
@@ -281,7 +281,7 @@ I18n.format_date(ts, "de")  // "15.01.2024"</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <pre data-filename="Example"><code class="language-soli text-sm">// Define translations
+            <pre data-filename="Example"><code class="language-soli text-sm"># Define translations
 let translations = {
     "en.welcome": "Welcome!",
     "en.cart_items_zero": "Your cart is empty",
@@ -296,10 +296,10 @@ let translations = {
     "fr.total": "Total: {amount}"
 }
 
-// Set locale based on user preference
+# Set locale based on user preference
 I18n.set_locale(user["preferred_locale"] ?? "en")
 
-// Use translations
+# Use translations
 let welcome = I18n.translate("welcome", null, translations)
 let cart_msg = I18n.plural("cart_items", cart_count, null, translations)
 let total = I18n.format_currency(cart_total, "USD")</code></pre>

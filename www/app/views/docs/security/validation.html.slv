@@ -49,12 +49,12 @@
                 <span class="ml-2 text-xs text-gray-500 font-mono">Primitives</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">V.string()        // Matches text
-V.int()           // Matches integers (e.g., "123" -> 123)
-V.float()         // Matches decimals
-V.bool()          // Matches true/false (and "true"/"false")
-V.array(schema)   // Matches a list of items
-V.hash(schema)    // Matches a nested object</code></pre>
+<pre><code class="language-soli text-sm">V.string()        # Matches text
+V.int()           # Matches integers (e.g., "123" -> 123)
+V.float()         # Matches decimals
+V.bool()          # Matches true/false (and "true"/"false")
+V.array(schema)   # Matches a list of items
+V.hash(schema)    # Matches a nested object</code></pre>
             </div>
         </div>
     </section>
@@ -77,7 +77,7 @@ V.hash(schema)    // Matches a nested object</code></pre>
                 <span class="ml-2 text-xs text-gray-500 font-mono">controllers/users_controller.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">// 1. Define the schema
+<pre><code class="language-soli text-sm"># 1. Define the schema
 let user_schema = {
     "email": V.string().required().email().trim(),
     "password": V.string().required().min_length(8),
@@ -85,15 +85,15 @@ let user_schema = {
     "newsletter": V.bool().default(false)
 };
 
-// 2. Validate input data (e.g., from a POST request)
+# 2. Validate input data (e.g., from a POST request)
 let result = validate(req["body"], user_schema);
 
-// 3. Handle results
+# 3. Handle results
 if result["valid"] {
-    // result["data"] contains the clean, coerced data
+    # result["data"] contains the clean, coerced data
     create_user(result["data"]);
 } else {
-    // result["errors"] contains validation messages
+    # result["errors"] contains validation messages
     render("register", { "errors": result["errors"] })
 }</code></pre>
             </div>

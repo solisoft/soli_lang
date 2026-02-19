@@ -20,7 +20,7 @@ Prints a value to standard output without a newline.
 **Example:**
 ```soli
 print("Hello")
-print(" World")  // Output: Hello World
+print(" World")  # Output: Hello World
 ```
 
 #### println(value)
@@ -68,10 +68,10 @@ Returns the type name of a value as a string.
 
 **Example:**
 ```soli
-type(42)        // "int"
-type("hello")   // "string"
-type([1, 2, 3]) // "array"
-type(null)      // "null"
+type(42)        # "int"
+type("hello")   # "string"
+type([1, 2, 3]) # "array"
+type(null)      # "null"
 ```
 
 #### str(value)
@@ -85,10 +85,10 @@ Converts a value to a string.
 
 **Example:**
 ```soli
-str(42)       // "42"
-str(3.14)     // "3.14"
-str(true)     // "true"
-str([1, 2])   // "[1, 2]"
+str(42)       # "42"
+str(3.14)     # "3.14"
+str(true)     # "true"
+str([1, 2])   # "[1, 2]"
 ```
 
 #### int(value)
@@ -102,9 +102,9 @@ Converts a value to an integer.
 
 **Example:**
 ```soli
-int("42")     // 42
-int(3.7)      // 3
-int("3.14")   // 3
+int("42")     # 42
+int(3.7)      # 3
+int("3.14")   # 3
 ```
 
 #### float(value)
@@ -118,8 +118,8 @@ Converts a value to a float.
 
 **Example:**
 ```soli
-float("3.14")  // 3.14
-float(42)      // 42.0
+float("3.14")  # 3.14
+float(42)      # 42.0
 ```
 
 #### len(value)
@@ -133,9 +133,9 @@ Returns the length of a string, array, or hash.
 
 **Example:**
 ```soli
-len("hello")      // 5
-len([1, 2, 3])    // 3
-len({"a": 1})     // 1
+len("hello")      # 5
+len([1, 2, 3])    # 3
+len({"a": 1})     # 1
 ```
 
 ---
@@ -157,9 +157,9 @@ Creates an array of numbers from start to end (exclusive).
 
 **Example:**
 ```soli
-range(0, 5)      // [0, 1, 2, 3, 4]
-range(1, 10, 2)  // [1, 3, 5, 7, 9]
-range(5, 0, -1)  // [5, 4, 3, 2, 1]
+range(0, 5)      # [0, 1, 2, 3, 4]
+range(1, 10, 2)  # [1, 3, 5, 7, 9]
+range(5, 0, -1)  # [5, 4, 3, 2, 1]
 ```
 
 ---
@@ -178,7 +178,7 @@ Returns an array of all keys in a hash.
 **Example:**
 ```soli
 let h = {"name": "Alice", "age": 30}
-keys(h)  // ["name", "age"]
+keys(h)  # ["name", "age"]
 ```
 
 #### values(hash)
@@ -193,7 +193,7 @@ Returns an array of all values in a hash.
 **Example:**
 ```soli
 let h = {"name": "Alice", "age": 30}
-values(h)  // ["Alice", 30]
+values(h)  # ["Alice", 30]
 ```
 
 #### has_key(hash, key)
@@ -209,8 +209,8 @@ Checks if a hash contains a specific key.
 **Example:**
 ```soli
 let h = {"name": "Alice"}
-has_key(h, "name")  // true
-has_key(h, "age")   // false
+has_key(h, "name")  # true
+has_key(h, "age")   # false
 ```
 
 #### delete(hash, key)
@@ -227,7 +227,7 @@ Removes a key-value pair from a hash.
 ```soli
 let h = {"name": "Alice", "age": 30}
 delete(h, "age")
-println(h)  // {"name": "Alice"}
+println(h)  # {"name": "Alice"}
 ```
 
 #### merge(hash1, hash2)
@@ -244,7 +244,7 @@ Merges two hashes into a new hash.
 ```soli
 let a = {"x": 1, "y": 2}
 let b = {"y": 3, "z": 4}
-merge(a, b)  // {"x": 1, "y": 3, "z": 4}
+merge(a, b)  # {"x": 1, "y": 3, "z": 4}
 ```
 
 #### entries(hash)
@@ -259,7 +259,7 @@ Returns an array of [key, value] pairs.
 **Example:**
 ```soli
 let h = {"a": 1, "b": 2}
-entries(h)  // [["a", 1], ["b", 2]]
+entries(h)  # [["a", 1], ["b", 2]]
 ```
 
 #### from_entries(array)
@@ -273,7 +273,7 @@ Creates a hash from an array of [key, value] pairs.
 
 **Example:**
 ```soli
-from_entries([["a", 1], ["b", 2]])  // {"a": 1, "b": 2}
+from_entries([["a", 1], ["b", 2]])  # {"a": 1, "b": 2}
 ```
 
 #### clear(hash)
@@ -289,7 +289,7 @@ Removes all entries from a hash.
 ```soli
 let h = {"a": 1, "b": 2}
 clear(h)
-println(h)  // {}
+println(h)  # {}
 ```
 
 ---
@@ -308,8 +308,8 @@ Splits a string into an array by a separator.
 
 **Example:**
 ```soli
-split("a,b,c", ",")       // ["a", "b", "c"]
-split("hello world", " ") // ["hello", "world"]
+split("a,b,c", ",")       # ["a", "b", "c"]
+split("hello world", " ") # ["hello", "world"]
 ```
 
 #### join(array, separator)
@@ -324,8 +324,8 @@ Joins an array into a string with a separator.
 
 **Example:**
 ```soli
-join(["a", "b", "c"], ",")  // "a,b,c"
-join([1, 2, 3], "-")        // "1-2-3"
+join(["a", "b", "c"], ",")  # "a,b,c"
+join([1, 2, 3], "-")        # "1-2-3"
 ```
 
 #### contains(string, substring)
@@ -340,8 +340,8 @@ Checks if a string contains a substring.
 
 **Example:**
 ```soli
-contains("hello world", "world")  // true
-contains("hello", "xyz")          // false
+contains("hello world", "world")  # true
+contains("hello", "xyz")          # false
 ```
 
 #### index_of(string, substring)
@@ -356,8 +356,8 @@ Finds the position of a substring.
 
 **Example:**
 ```soli
-index_of("hello", "ll")   // 2
-index_of("hello", "xyz")  // -1
+index_of("hello", "ll")   # 2
+index_of("hello", "xyz")  # -1
 ```
 
 #### substring(string, start, end?)
@@ -373,8 +373,8 @@ Extracts a portion of a string.
 
 **Example:**
 ```soli
-substring("hello", 1, 4)  // "ell"
-substring("hello", 2)     // "llo"
+substring("hello", 1, 4)  # "ell"
+substring("hello", 2)     # "llo"
 ```
 
 #### upcase(string)
@@ -388,7 +388,7 @@ Converts a string to uppercase.
 
 **Example:**
 ```soli
-upcase("hello")  // "HELLO"
+upcase("hello")  # "HELLO"
 ```
 
 #### downcase(string)
@@ -402,7 +402,7 @@ Converts a string to lowercase.
 
 **Example:**
 ```soli
-downcase("HELLO")  // "hello"
+downcase("HELLO")  # "hello"
 ```
 
 #### trim(string)
@@ -416,7 +416,7 @@ Removes whitespace from both ends of a string.
 
 **Example:**
 ```soli
-trim("  hello  ")  // "hello"
+trim("  hello  ")  # "hello"
 ```
 
 #### html_escape(string)
@@ -431,7 +431,7 @@ Escapes HTML special characters.
 **Example:**
 ```soli
 html_escape("<script>alert('xss')</script>")
-// "&lt;script&gt;alert('xss')&lt;/script&gt;"
+# "&lt;script&gt;alert('xss')&lt;/script&gt;"
 ```
 
 #### html_unescape(string)
@@ -445,7 +445,7 @@ Unescapes HTML entities.
 
 **Example:**
 ```soli
-html_unescape("&lt;p&gt;")  // "<p>"
+html_unescape("&lt;p&gt;")  # "<p>"
 ```
 
 #### sanitize_html(string)
@@ -460,7 +460,7 @@ Removes potentially dangerous HTML tags and attributes.
 **Example:**
 ```soli
 sanitize_html("<p onclick='evil()'>Hello</p>")
-// "<p>Hello</p>"
+# "<p>Hello</p>"
 ```
 
 ---
@@ -512,8 +512,8 @@ Returns the absolute value of a number.
 
 **Example:**
 ```soli
-abs(-5)    // 5
-abs(-3.14) // 3.14
+abs(-5)    # 5
+abs(-3.14) # 3.14
 ```
 
 #### min(a, b)
@@ -528,8 +528,8 @@ Returns the smaller of two numbers.
 
 **Example:**
 ```soli
-min(3, 7)  // 3
-min(5.5, 2.2)  // 2.2
+min(3, 7)  # 3
+min(5.5, 2.2)  # 2.2
 ```
 
 #### max(a, b)
@@ -544,7 +544,7 @@ Returns the larger of two numbers.
 
 **Example:**
 ```soli
-max(3, 7)  // 7
+max(3, 7)  # 7
 ```
 
 #### sqrt(number)
@@ -558,8 +558,8 @@ Returns the square root of a number.
 
 **Example:**
 ```soli
-sqrt(16)  // 4.0
-sqrt(2)   // 1.4142135623730951
+sqrt(16)  # 4.0
+sqrt(2)   # 1.4142135623730951
 ```
 
 #### pow(base, exponent)
@@ -574,8 +574,8 @@ Returns base raised to the power of exponent.
 
 **Example:**
 ```soli
-pow(2, 3)   // 8.0
-pow(10, -2) // 0.01
+pow(2, 3)   # 8.0
+pow(10, -2) # 0.01
 ```
 
 #### clock()
@@ -587,7 +587,7 @@ Returns the current Unix timestamp as a float with sub-second precision.
 **Example:**
 ```soli
 let start = clock()
-// ... do work ...
+# ... do work ...
 let elapsed = clock() - start
 println("Took " + str(elapsed) + " seconds")
 ```
@@ -811,24 +811,24 @@ Start the HTTP server (blocking call).
 
 **Example:**
 ```soli
-// Define routes
+# Define routes
 http_server_get("/", "home");
 http_server_get("/health", "health");
 http_server_post("/api/users", "create_user");
 
-// Start server (blocks)
+# Start server (blocks)
 http_server_listen(3000);
 ```
 
 **Handler Function Signature:**
 ```soli
-fn my_handler(req)    let id = req["params"]["id"]           // Path parameters
-    let name = req["query"]["name"]         // Query string
-    let data = req["json"]["field"]         // JSON body
-    let token = req["headers"]["Authorization"]  // Headers
+fn my_handler(req)    let id = req["params"]["id"]           # Path parameters
+    let name = req["query"]["name"]         # Query string
+    let data = req["json"]["field"]         # JSON body
+    let token = req["headers"]["Authorization"]  # Headers
     
     return {"status": 200, "body": "Hello"}
-    // Or use helpers: render_json(), render_text(), redirect()
+    # Or use helpers: render_json(), render_text(), redirect()
 end
 ```
 
@@ -848,7 +848,7 @@ Parses a JSON string into a Soli value.
 **Example:**
 ```soli
 let data = json_parse('{"name": "Alice", "age": 30}')
-println(data["name"])  // Alice
+println(data["name"])  # Alice
 ```
 
 ### json_stringify(value)
@@ -863,7 +863,7 @@ Converts a Soli value to a JSON string.
 **Example:**
 ```soli
 let json = json_stringify({ "name": "Alice", "scores": [95, 87, 92] })
-println(json)  // {"name":"Alice","scores":[95,87,92]}
+println(json)  # {"name":"Alice","scores":[95,87,92]}
 ```
 
 ---
@@ -886,7 +886,7 @@ Computes SHA-256 hash of a string.
 **Example:**
 ```soli
 let hash = Crypto.sha256("hello")
-// "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+# "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 ```
 
 #### Crypto.sha512(data) / sha512(data)
@@ -915,7 +915,7 @@ Computes MD5 hash of a string. **Note:** MD5 is cryptographically broken. Use on
 **Example:**
 ```soli
 let hash = Crypto.md5("hello")
-// "5d41402abc4b2a76b9719d911017c592"
+# "5d41402abc4b2a76b9719d911017c592"
 ```
 
 #### Crypto.hmac(message, key) / hmac(message, key)
@@ -931,7 +931,7 @@ Computes HMAC-SHA256 message authentication code.
 **Example:**
 ```soli
 let mac = Crypto.hmac("message", "secret_key")
-// Use for API signature verification, webhook validation, etc.
+# Use for API signature verification, webhook validation, etc.
 ```
 
 ### Base64 Encoding
@@ -957,7 +957,7 @@ Hashes a password using Argon2id (recommended).
 **Example:**
 ```soli
 let hash = Crypto.argon2_hash("secretpassword")
-// $argon2id$v=19$m=19456,t=2,p=1$...
+# $argon2id$v=19$m=19456,t=2,p=1$...
 ```
 
 #### Crypto.argon2_verify(password, hash) / argon2_verify(password, hash)
@@ -1020,16 +1020,16 @@ Computes the shared secret from a private key and another party's public key.
 
 **Example:**
 ```soli
-// Alice
+# Alice
 let alice = Crypto.x25519_keypair()
 
-// Bob
+# Bob
 let bob = Crypto.x25519_keypair()
 
-// Both compute the same shared secret
+# Both compute the same shared secret
 let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
 let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
-// alice_secret == bob_secret
+# alice_secret == bob_secret
 ```
 
 ### Ed25519 Signatures
@@ -1098,7 +1098,7 @@ Decodes a JWT token without verification (unsafe for authentication).
 **Example:**
 ```soli
 let payload = jwt_decode(token)
-println(payload["sub"])  // Inspect claims without verification
+println(payload["sub"])  # Inspect claims without verification
 ```
 
 ---
@@ -1119,8 +1119,8 @@ Tests if a string matches a regex pattern.
 
 **Example:**
 ```soli
-Regex.matches("^[a-z]+$", "hello")  // true
-Regex.matches("^[0-9]+$", "hello")  // false
+Regex.matches("^[a-z]+$", "hello")  # true
+Regex.matches("^[0-9]+$", "hello")  # false
 ```
 
 ### Regex.find(pattern, string)
@@ -1136,8 +1136,8 @@ Finds the first match of a pattern in a string.
 **Example:**
 ```soli
 let result = Regex.find("[0-9]+", "abc123def")
-println(result["match"])  // "123"
-println(result["start"])  // 3
+println(result["match"])  # "123"
+println(result["start"])  # 3
 ```
 
 ### Regex.find_all(pattern, string)
@@ -1153,7 +1153,7 @@ Finds all matches of a pattern in a string.
 **Example:**
 ```soli
 let matches = Regex.find_all("[0-9]+", "a1b2c3")
-// [{"match": "1", ...}, {"match": "2", ...}, {"match": "3", ...}]
+# [{"match": "1", ...}, {"match": "2", ...}, {"match": "3", ...}]
 ```
 
 ### Regex.replace(pattern, string, replacement)
@@ -1169,7 +1169,7 @@ Replaces the first match of a pattern.
 
 **Example:**
 ```soli
-Regex.replace("[0-9]+", "a1b2c3", "X")  // "aXb2c3"
+Regex.replace("[0-9]+", "a1b2c3", "X")  # "aXb2c3"
 ```
 
 ### Regex.replace_all(pattern, string, replacement)
@@ -1185,7 +1185,7 @@ Replaces all matches of a pattern.
 
 **Example:**
 ```soli
-Regex.replace_all("[0-9]+", "a1b2c3", "X")  // "aXbXcX"
+Regex.replace_all("[0-9]+", "a1b2c3", "X")  # "aXbXcX"
 ```
 
 ### Regex.split(pattern, string)
@@ -1200,7 +1200,7 @@ Splits a string by a regex pattern.
 
 **Example:**
 ```soli
-Regex.split("[,;]", "a,b;c,d")  // ["a", "b", "c", "d"]
+Regex.split("[,;]", "a,b;c,d")  # ["a", "b", "c", "d"]
 ```
 
 ### Regex.capture(pattern, string)
@@ -1219,8 +1219,8 @@ let result = Regex.capture(
     "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})",
     "Date: 2024-01-15"
 )
-println(result["year"])   // "2024"
-println(result["month"])  // "01"
+println(result["year"])   # "2024"
+println(result["month"])  # "01"
 ```
 
 ### Regex.escape(string)
@@ -1234,7 +1234,7 @@ Escapes special regex characters in a string.
 
 **Example:**
 ```soli
-Regex.escape("hello.world")  // "hello\\.world"
+Regex.escape("hello.world")  # "hello\\.world"
 ```
 
 ---
@@ -1255,10 +1255,10 @@ Parses a JSON string into a Soli value (Hash, Array, String, Int, Float, Bool, o
 **Example:**
 ```soli
 let data = JSON.parse('{"name": "Alice", "age": 30}')
-println(data["name"])  // "Alice"
+println(data["name"])  # "Alice"
 
 let numbers = JSON.parse('[1, 2, 3, 4, 5]')
-println(numbers[0])  // 1
+println(numbers[0])  # 1
 ```
 
 ### JSON.stringify(value)
@@ -1273,10 +1273,10 @@ Serializes a Soli value to a JSON string.
 **Example:**
 ```soli
 let json = JSON.stringify({ "name": "Alice", "scores": [95, 87] })
-println(json)  // {"name":"Alice","scores":[95,87]}
+println(json)  # {"name":"Alice","scores":[95,87]}
 
 let arr = JSON.stringify([1, 2, 3])
-println(arr)  // [1,2,3]
+println(arr)  # [1,2,3]
 ```
 
 ---
@@ -1324,7 +1324,7 @@ Wraps an XML body in a complete SOAP envelope with the standard SOAP 1.1 namespa
 ```soli
 let body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
 let envelope = SOAP.wrap(body)
-// Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+# Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
 ```
 
 ### SOAP.parse(xml)
@@ -1340,7 +1340,7 @@ Parses an XML string into a nested Hash structure for easy access.
 ```soli
 let xml = "<?xml version=\"1.0\"?><root><item>value</item></root>"
 let parsed = SOAP.parse(xml)
-// Returns: { "root" => { "item" => { "_text" => "value" } } }
+# Returns: { "root" => { "item" => { "_text" => "value" } } }
 ```
 
 ### SOAP.xml_escape(text)
@@ -1355,17 +1355,17 @@ Escapes special XML characters for safe inclusion in XML documents.
 **Example:**
 ```soli
 let escaped = SOAP.xml_escape("<script>alert('xss')</script>")
-// Returns: "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;"
+# Returns: "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;"
 ```
 
 ### Complete SOAP Example
 
 ```soli
-// Build the SOAP request body
+# Build the SOAP request body
 let body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
 let envelope = SOAP.wrap(body)
 
-// Make the SOAP call
+# Make the SOAP call
 let result = await(SOAP.call(
     "https://weather.example.com/service",
     "http://example.com/weather/GetWeather",
@@ -1373,7 +1373,7 @@ let result = await(SOAP.call(
     { "Authorization": "Bearer token123" }
 ))
 
-// Handle the response
+# Handle the response
 if result["status"] == 200
     let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
     let temp = response["Temperature"]
@@ -1456,8 +1456,8 @@ Loads environment variables from a .env file.
 
 **Example:**
 ```soli
-dotenv()                    // Loads .env and .env.{APP_ENV}
-dotenv(".env.production")   // Loads specific file
+dotenv()                    # Loads .env and .env.{APP_ENV}
+dotenv(".env.production")   # Loads specific file
 ```
 
 ### dotenv!(path?)
@@ -1481,7 +1481,7 @@ Gets the current local date and time.
 **Example:**
 ```soli
 let now = DateTime.now()
-println(now.to_iso())  // "2024-01-15T10:30:00"
+println(now.to_iso())  # "2024-01-15T10:30:00"
 ```
 
 #### DateTime.utc()
@@ -1493,7 +1493,7 @@ Gets the current UTC date and time.
 **Example:**
 ```soli
 let utc = DateTime.utc()
-println(utc.to_iso())  // "2024-01-15T15:30:00Z"
+println(utc.to_iso())  # "2024-01-15T15:30:00Z"
 ```
 
 #### DateTime.parse(string)
@@ -1564,7 +1564,7 @@ Gets the day of the week as a string.
 **Example:**
 ```soli
 let dt = DateTime.parse("2024-01-15")
-println(dt.weekday())  // "monday"
+println(dt.weekday())  # "monday"
 ```
 
 ### Instance Methods - Formatting
@@ -1578,7 +1578,7 @@ Gets the Unix timestamp (seconds since epoch).
 **Example:**
 ```soli
 let dt = DateTime.now()
-println(dt.to_unix())  // 1705315800
+println(dt.to_unix())  # 1705315800
 ```
 
 #### .to_iso()
@@ -1590,7 +1590,7 @@ Gets the date/time as an ISO 8601 string.
 **Example:**
 ```soli
 let dt = DateTime.now()
-println(dt.to_iso())  // "2024-01-15T10:30:00"
+println(dt.to_iso())  # "2024-01-15T10:30:00"
 ```
 
 #### .format(pattern)
@@ -1615,9 +1615,9 @@ Common format specifiers:
 **Example:**
 ```soli
 let dt = DateTime.parse("2024-01-15T10:30:00")
-dt.format("%Y-%m-%d %H:%M:%S")  // "2024-01-15 10:30:00"
-dt.format("%B %d, %Y")           // "January 15, 2024"
-dt.format("%A")                  // "Monday"
+dt.format("%Y-%m-%d %H:%M:%S")  # "2024-01-15 10:30:00"
+dt.format("%B %d, %Y")           # "January 15, 2024"
+dt.format("%A")                  # "Monday"
 ```
 
 ### Instance Methods - Arithmetic
@@ -1677,24 +1677,24 @@ Adds years to the date. Use negative values to subtract.
 ### Complete Example
 
 ```soli
-// Get current date/time
+# Get current date/time
 let now = DateTime.now()
 println("Current time: " + now.to_iso())
 
-// Extract components
+# Extract components
 println("Year: " + now.year())
 println("Month: " + now.month())
 println("Day: " + now.day())
 println("Weekday: " + now.weekday())
 
-// Format output
+# Format output
 println(now.format("%B %d, %Y at %H:%M"))
 
-// Date arithmetic
+# Date arithmetic
 let next_week = now.add_weeks(1)
 let last_month = now.add_months(-1)
 
-// Parse a date string
+# Parse a date string
 let birthday = DateTime.parse("1990-06-15")
 println("Birthday was on a " + birthday.weekday())
 ```
@@ -1777,7 +1777,7 @@ Gets the total duration in seconds.
 **Example:**
 ```soli
 let duration = Duration.hours(2)
-println(duration.to_seconds())  // 7200
+println(duration.to_seconds())  # 7200
 ```
 
 #### .to_minutes()
@@ -1789,7 +1789,7 @@ Gets the total duration in minutes.
 **Example:**
 ```soli
 let duration = Duration.hours(2)
-println(duration.to_minutes())  // 120
+println(duration.to_minutes())  # 120
 ```
 
 #### .to_hours()
@@ -1801,25 +1801,25 @@ Gets the total duration in hours.
 **Example:**
 ```soli
 let duration = Duration.days(1)
-println(duration.to_hours())  // 24
+println(duration.to_hours())  # 24
 ```
 
 ### Complete Example
 
 ```soli
-// Create durations
+# Create durations
 let timeout = Duration.seconds(30)
 let break_time = Duration.minutes(15)
 let work_day = Duration.hours(8)
 let trial = Duration.days(7)
 
-// Convert to different units
+# Convert to different units
 println("Timeout: " + timeout.to_seconds() + " seconds")
 println("Break: " + break_time.to_minutes() + " minutes")
 println("Work day: " + work_day.to_hours() + " hours")
 println("Trial: " + trial.to_hours() + " hours")
 
-// Practical example: session expiry
+# Practical example: session expiry
 let session_duration = Duration.hours(1)
 let expiry_seconds = session_duration.to_seconds()
 println("Session expires in " + expiry_seconds + " seconds")
@@ -1968,7 +1968,7 @@ Destroys the entire session.
 
 **Example:**
 ```soli
-// Logout user
+# Logout user
 session_destroy()
 ```
 
@@ -1980,7 +1980,7 @@ Regenerates the session ID (for security after login).
 
 **Example:**
 ```soli
-// After successful login
+# After successful login
 session_set("user_id", user["id"])
 session_regenerate()
 ```
@@ -2229,9 +2229,9 @@ Gets the next value in a sequence.
 
 **Example:**
 ```soli
-Factory.sequence("user_id")  // 0
-Factory.sequence("user_id")  // 1
-Factory.sequence("user_id")  // 2
+Factory.sequence("user_id")  # 0
+Factory.sequence("user_id")  # 1
+Factory.sequence("user_id")  # 2
 ```
 
 ### Factory.clear()
@@ -2252,7 +2252,7 @@ Gets the current locale.
 
 **Example:**
 ```soli
-println(I18n.locale())  // "en"
+println(I18n.locale())  # "en"
 ```
 
 ### I18n.set_locale(locale)
@@ -2288,7 +2288,7 @@ let translations = {
 }
 
 I18n.set_locale("fr")
-I18n.translate("greeting", null, translations)  // "Bonjour"
+I18n.translate("greeting", null, translations)  # "Bonjour"
 ```
 
 ### I18n.plural(key, count, locale?, translations?)
@@ -2311,9 +2311,9 @@ let translations = {
     "en.items_other": "Many items"
 }
 
-I18n.plural("items", 0, null, translations)  // "No items"
-I18n.plural("items", 1, null, translations)  // "1 item"
-I18n.plural("items", 5, null, translations)  // "Many items"
+I18n.plural("items", 0, null, translations)  # "No items"
+I18n.plural("items", 1, null, translations)  # "1 item"
+I18n.plural("items", 5, null, translations)  # "Many items"
 ```
 
 ### Loading from External Files
@@ -2373,7 +2373,7 @@ end
 **Loading in app.sl:**
 
 ```soli
-// Load translation files from locales/ directory
+# Load translation files from locales/ directory
 let en_data = json_parse(slurp("locales/en.json"));
 let fr_data = json_parse(slurp("locales/fr.json"));
 let de_data = json_parse(slurp("locales/de.json"));
@@ -2382,10 +2382,10 @@ i18n_load_translations("en", en_data);
 i18n_load_translations("fr", fr_data);
 i18n_load_translations("de", de_data);
 
-// Set default locale
+# Set default locale
 I18n.set_locale("en");
 
-// Define routes
+# Define routes
 http_server_get("/", "home#index");
 http_server_listen(3000);
 ```
@@ -2417,10 +2417,10 @@ Formats a number according to locale conventions.
 **Example:**
 ```soli
 I18n.set_locale("en")
-I18n.format_number(1234.56)  // "1234.56"
+I18n.format_number(1234.56)  # "1234.56"
 
 I18n.set_locale("fr")
-I18n.format_number(1234.56)  // "1234,56"
+I18n.format_number(1234.56)  # "1234,56"
 ```
 
 ### I18n.format_currency(amount, currency, locale?)
@@ -2436,8 +2436,8 @@ Formats a currency amount.
 
 **Example:**
 ```soli
-I18n.format_currency(1234.56, "USD", "en")  // "$1,234.56"
-I18n.format_currency(1234.56, "EUR", "fr")  // "1.234,56"
+I18n.format_currency(1234.56, "USD", "en")  # "$1,234.56"
+I18n.format_currency(1234.56, "EUR", "fr")  # "1.234,56"
 ```
 
 ### I18n.format_date(timestamp, locale?)
@@ -2452,9 +2452,9 @@ Formats a date according to locale conventions.
 
 **Example:**
 ```soli
-I18n.format_date(ts, "en")  // "01/15/2024"
-I18n.format_date(ts, "fr")  // "15/01/2024"
-I18n.format_date(ts, "de")  // "15.01.2024"
+I18n.format_date(ts, "en")  # "01/15/2024"
+I18n.format_date(ts, "fr")  # "15/01/2024"
+I18n.format_date(ts, "de")  # "15.01.2024"
 ```
 
 ---
@@ -2499,7 +2499,7 @@ Stores a value in the cache.
 **Example:**
 ```soli
 cache_set("user:123", { "name": "Alice", "email": "alice@example.com" })
-cache_set("session", session_data, 1800)  // 30 minute TTL
+cache_set("session", session_data, 1800)  # 30 minute TTL
 ```
 
 ### cache_get(key)
@@ -2609,7 +2609,7 @@ Creates a new rate limiter instance for the given key.
 
 **Example:**
 ```soli
-// Create a rate limiter for API access
+# Create a rate limiter for API access
 let limiter = RateLimiter("api:user123", 100, 60)
 ```
 
@@ -2742,7 +2742,7 @@ Builds a CSP header with default-src directive.
 **Example:**
 ```soli
 set_csp_default_src("'self'", "'https://trusted-cdn.com'")
-// Generates: default-src 'self' 'https://trusted-cdn.com'
+# Generates: default-src 'self' 'https://trusted-cdn.com'
 ```
 
 ### set_hsts(max_age, include_subdomains?, preload?)
@@ -2756,7 +2756,7 @@ Sets the Strict-Transport-Security header.
 
 **Example:**
 ```soli
-set_hsts(31536000, true, false)  // 1 year, include subdomains
+set_hsts(31536000, true, false)  # 1 year, include subdomains
 ```
 
 ### prevent_clickjacking()
@@ -3059,7 +3059,7 @@ Escapes special XML characters in a string.
 **Example:**
 ```soli
 let safe = SOAP.xml_escape("Tom & Jerry <test>")
-// Returns: "Tom &amp; Jerry &lt;test&gt;"
+# Returns: "Tom &amp; Jerry &lt;test&gt;"
 ```
 
 #### SOAP.to_xml(hash, root_element?)
@@ -3092,19 +3092,19 @@ let data = {
 }
 
 let xml = SOAP.to_xml(data, "users")
-// Returns:
-// <users>
-//   <user id="123">
-//     <name>John</name>
-//     <email>john@example.com</email>
-//     <address>
-//       <street>123 Main St</street>
-//       <city>Boston</city>
-//     </address>
-//     <tags_0>admin</tags_0>
-//     <tags_1>user</tags_1>
-//   </user>
-// </users>
+# Returns:
+# <users>
+#   <user id="123">
+#     <name>John</name>
+#     <email>john@example.com</email>
+#     <address>
+#       <street>123 Main St</street>
+#       <city>Boston</city>
+#     </address>
+#     <tags_0>admin</tags_0>
+#     <tags_1>user</tags_1>
+#   </user>
+# </users>
 ```
 
 **Example with _text for element content:**
@@ -3120,14 +3120,14 @@ let data = {
 }
 
 let xml = SOAP.to_xml(data, "catalog")
-// Returns:
-// <catalog>
-//   <product>
-//     <name>Laptop</name>
-//     <description>A high-performance laptop with 16GB RAM</description>
-//     <price>999.99</price>
-//   </product>
-// </catalog>
+# Returns:
+# <catalog>
+#   <product>
+#     <name>Laptop</name>
+#     <description>A high-performance laptop with 16GB RAM</description>
+#     <price>999.99</price>
+#   </product>
+# </catalog>
 ```
 
 ---
@@ -3148,13 +3148,13 @@ Runs a command asynchronously and returns a Future.
 **Example:**
 ```soli
 let result = System.run("echo hello")
-// result is a Future that auto-resolves when used
+# result is a Future that auto-resolves when used
 
-// Access properties directly (auto-resolves)
-print(result.stdout)   // "hello"
-print(result.exit_code) // 0
+# Access properties directly (auto-resolves)
+print(result.stdout)   # "hello"
+print(result.exit_code) # 0
 
-// Or resolve manually
+# Or resolve manually
 let output = await(result)
 print(output["stdout"])
 ```
@@ -3181,13 +3181,13 @@ You can use backtick syntax for convenient command execution:
 
 ```soli
 let result = `echo hello`
-print(result.stdout)  // "hello"
+print(result.stdout)  # "hello"
 
-// With shell features
+# With shell features
 let files = `ls *.sl`
 print(files.stdout)
 
-// Access exit code
+# Access exit code
 let status = `grep pattern file`
 if status.exit_code != 0
     println("Pattern not found")

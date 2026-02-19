@@ -1,13 +1,13 @@
-// ============================================================================
-// Users Controller Tests
-// ============================================================================
+# ============================================================================
+# Users Controller Tests
+# ============================================================================
 //
-// Tests for the UsersController covering:
-// - Authentication (login/logout)
-// - Session management
-// - Registration with validation
-// - JWT token operations
-// ============================================================================
+# Tests for the UsersController covering:
+# - Authentication (login/logout)
+# - Session management
+# - Registration with validation
+# - JWT token operations
+# ============================================================================
 
 describe("UsersController", fn()
     describe("Authentication", fn()

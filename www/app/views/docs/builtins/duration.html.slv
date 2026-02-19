@@ -142,7 +142,7 @@ let trial_period = Duration.days(30)</code></pre>
                     <code class="text-purple-400">Int</code> - Total seconds
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.hours(2)
-println(duration.to_seconds())  // 7200</code></pre>
+println(duration.to_seconds())  # 7200</code></pre>
             </div>
         </section>
 
@@ -160,7 +160,7 @@ println(duration.to_seconds())  // 7200</code></pre>
                     <code class="text-purple-400">Int</code> - Total minutes
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.hours(2)
-println(duration.to_minutes())  // 120</code></pre>
+println(duration.to_minutes())  # 120</code></pre>
             </div>
         </section>
 
@@ -178,7 +178,7 @@ println(duration.to_minutes())  // 120</code></pre>
                     <code class="text-purple-400">Int</code> - Total hours
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.days(1)
-println(duration.to_hours())  // 24</code></pre>
+println(duration.to_hours())  # 24</code></pre>
             </div>
         </section>
     </section>
@@ -188,19 +188,19 @@ println(duration.to_hours())  // 24</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <pre data-filename="Duration Example"><code class="language-soli text-sm">// Create durations
+            <pre data-filename="Duration Example"><code class="language-soli text-sm"># Create durations
 let timeout = Duration.seconds(30)
 let break_time = Duration.minutes(15)
 let work_day = Duration.hours(8)
 let trial = Duration.days(7)
 
-// Convert to different units
+# Convert to different units
 println("Timeout: " + timeout.to_seconds() + " seconds")
 println("Break: " + break_time.to_minutes() + " minutes")
 println("Work day: " + work_day.to_hours() + " hours")
 println("Trial: " + trial.to_hours() + " hours")
 
-// Practical example: session expiry
+# Practical example: session expiry
 let session_duration = Duration.hours(1)
 let expiry_seconds = session_duration.to_seconds()
 println("Session expires in " + expiry_seconds + " seconds")</code></pre>

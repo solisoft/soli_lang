@@ -7,7 +7,7 @@ Middleware provides a way to filter HTTP requests and responses.
 Create a file in `app/middleware/`:
 
 ```soli
-// app/middleware/auth.sl
+# app/middleware/auth.sl
 fn authenticate(req)
     let token = req.headers["Authorization"];
 
@@ -15,7 +15,7 @@ fn authenticate(req)
         return error(401, "Unauthorized");
     end
 
-    // Validate token...
+    # Validate token...
     req
 end
 ```
@@ -27,7 +27,7 @@ end
 Log all incoming requests:
 
 ```soli
-// app/middleware/logging.sl
+# app/middleware/logging.sl
 fn log_request(req)
     let timestamp = datetime::now();
     println(timestamp + " " + req.method + " " + req.path);
@@ -40,7 +40,7 @@ end
 Handle Cross-Origin Resource Sharing:
 
 ```soli
-// app/middleware/cors.sl
+# app/middleware/cors.sl
 fn cors(req)
     let response = req;
     response.headers["Access-Control-Allow-Origin"] = "*";
@@ -53,7 +53,7 @@ end
 ### Authentication
 
 ```soli
-// app/middleware/auth.sl
+# app/middleware/auth.sl
 fn auth(req)
     let session = req.cookies["session"];
 
@@ -61,7 +61,7 @@ fn auth(req)
         return redirect("/login");
     end
 
-    // Verify session...
+    # Verify session...
     req
 end
 ```
@@ -71,7 +71,7 @@ end
 ### In Routes
 
 ```soli
-// config/routes.sl
+# config/routes.sl
 get("/dashboard", "dashboard#index", ["auth", "logging"]);
 get("/admin", "admin#panel", ["auth", "admin_only"]);
 ```
@@ -81,7 +81,7 @@ get("/admin", "admin#panel", ["auth", "admin_only"]);
 Apply to all routes in `config/routes.sl`:
 
 ```soli
-// Apply logging to all routes
+# Apply logging to all routes
 use("middleware/logging");
 
 get("/", "home#index");

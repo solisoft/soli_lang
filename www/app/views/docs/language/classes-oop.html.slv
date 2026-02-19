@@ -49,11 +49,11 @@
         this.email = email ?? "";
     end
 
-    def greet() -> String
+    def greet -> String
         "Hello, I'm " + this.name
     end
 
-    def introduce() -> String
+    def introduce -> String
         let intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old";
         if (this.email != "")
             intro = intro + ". You can reach me at " + this.email;
@@ -61,7 +61,7 @@
         intro
     end
 
-    def have_birthday()
+    def have_birthday
         this.age = this.age + 1;
     end
 end</code></pre>
@@ -104,14 +104,14 @@ end</code></pre>
                 <h3 class="text-lg font-semibold text-white mb-3">Private Method Convention</h3>
                 <p class="text-gray-400 mb-3">In addition to the <code>private</code> keyword, Soli follows a naming convention where methods starting with an underscore (<code>_</code>) are considered internal/private helpers:</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class PostsController < Controller
-    // Underscore prefix marks internal helper methods
+    # Underscore prefix marks internal helper methods
     def _permit_params(params: Any)        {
             "title": params["title"],
             "content": params["content"]
         }
     
 
-    def create(req: Any)        // Using the private helper
+    def create(req: Any)        # Using the private helper
         let permitted = this._permit_params(req["params"]);
         Posts.create(permitted)
     end
@@ -140,8 +140,8 @@ end</code></pre>
     end
 
 let account = new BankAccount("123456789", 1000.0);
-account.deposit(500.0);           // Works - public method
-print(account.get_balance());     // 1500.0</code></pre>
+account.deposit(500.0);           # Works - public method
+print(account.get_balance());     # 1500.0</code></pre>
             </div>
         </div>
     </section>
@@ -186,11 +186,11 @@ print(account.get_balance());     // 1500.0</code></pre>
         value
     end
 
-// Using static members
-print(MathUtils.PI);           // 3.14159265359
-print(MathUtils.square(4.0));  // 16.0
-print(MathUtils.cube(3.0));    // 27.0
-print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
+# Using static members
+print(MathUtils.PI);           # 3.14159265359
+print(MathUtils.square(4.0));  # 16.0
+print(MathUtils.cube(3.0));    # 27.0
+print(MathUtils.clamp(150, 0, 100));  # 100</code></pre>
             </div>
         </section>
     </section>
@@ -205,14 +205,14 @@ print(MathUtils.clamp(150, 0, 100));  // 100</code></pre>
         this.name = name;
     
 
-    def say_hello()
+    def say_hello
         println("Hello, " + this.name);
     
 end</code></pre>
 
         <p class="text-gray-400 mb-3">Inheritance.</p>
         <pre data-filename="my_class.sl"><code class="language-soli text-sm">class Admin < User
-    def say_hello()
+    def say_hello
         super.say_hello();
         println("I am an admin.");
     
@@ -253,26 +253,26 @@ end</code></pre>
             this.inner_value = value;
         
 
-        def get_combined() -> Int
+        def get_combined -> Int
             this.outer.outer_value + this.inner_value
         
 
-        def get_outer_value() -> Int
+        def get_outer_value -> Int
             this.outer.outer_value
         
     
 end
 
-// Using nested classes
+# Using nested classes
 let outer = new Outer(10);
 let inner = new Outer.Inner(outer, 5);
 
-print(inner.get_combined());   // 15
-print(inner.get_outer_value()); // 10
+print(inner.get_combined());   # 15
+print(inner.get_outer_value()); # 10
 
-// Factory pattern
+# Factory pattern
 let inner2 = outer.create_inner(20);
-print(inner2.get_combined());   // 30</code></pre>
+print(inner2.get_combined());   # 30</code></pre>
             </div>
         </section>
 
@@ -335,7 +335,7 @@ tree.insert(7);</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Domain-Driven Naming Convention</h3>
                 <p class="text-gray-400 mb-3">Nested classes with the <code>::</code> separator follow a domain-driven naming convention, commonly used to organize related classes into logical namespaces. This pattern groups related functionality under a domain or context.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// Domain model organization
+                <pre data-filename="Example"><code class="language-soli text-sm"># Domain model organization
 class User
     class Profile
         username: String;
@@ -361,7 +361,7 @@ end
 let profile = new User::Profile("alice");
 let settings = new User::Settings();
 
-// Controller action organization
+# Controller action organization
 class Posts
     class Action
         def create(title: String, content: String)
@@ -403,7 +403,7 @@ action.create("Hello", "World");</code></pre>
     
 end
 
-// Accessing from any scope using fully qualified names
+# Accessing from any scope using fully qualified names
 let db = new Service::Database();
 let cache = new Service::Cache();
 

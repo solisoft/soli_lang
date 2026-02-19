@@ -1,8 +1,8 @@
-// Wildcard controller - demonstrates dynamic action resolution
+# Wildcard controller - demonstrates dynamic action resolution
 //
-// Routes: get("/wildcard/*", "wildcard#*")
-// /wildcard/demo -> wildcard#demo
-// /wildcard/example -> wildcard#example
+# Routes: get("/wildcard/*", "wildcard#*")
+# /wildcard/demo -> wildcard#demo
+# /wildcard/example -> wildcard#example
 
 class WildcardController extends Controller
     fn demo(req)

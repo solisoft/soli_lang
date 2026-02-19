@@ -17,13 +17,13 @@ Create model files in `app/models/`. The collection name is **automatically deri
 - `UserProfile` → `"user_profiles"`
 
 ```soli
-// app/models/user.sl
+# app/models/user.sl
 class User extends Model
 end
 ```
 
 ```soli
-// app/models/blog_post.sl
+# app/models/blog_post.sl
 class BlogPost extends Model
 end
 ```
@@ -42,25 +42,25 @@ let result = User.create({
     "name": "Alice",
     "age": 30
 });
-// Returns: { "valid": true, "record": { "id": "...", "email": "...", ... } }
-// Or on validation failure: { "valid": false, "errors": [...] }
+# Returns: { "valid": true, "record": { "id": "...", "email": "...", ... } }
+# Or on validation failure: { "valid": false, "errors": [...] }
 ```
 
 ### Finding Records
 
 ```soli
-// Find by ID
+# Find by ID
 let user = User.find("user123");
 
-// Find all
+# Find all
 let users = User.all();
 
-// Find with where clause (SDBQL filter syntax)
-// Note: where() returns a QueryBuilder - call .all() to get results
+# Find with where clause (SDBQL filter syntax)
+# Note: where() returns a QueryBuilder - call .all() to get results
 let adults = User.where("doc.age >= @age", { "age": 18 }).all();
 let active = User.where("doc.status == @status", { "status": "active" }).all();
 
-// Complex conditions
+# Complex conditions
 let results = User.where("doc.age >= @min_age AND doc.role == @role", {
     "min_age": 21,
     "role": "admin"
@@ -101,10 +101,10 @@ let results = User
     .offset(20)
     .all();
 
-// Get first result only
+# Get first result only
 let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
 
-// Count with conditions
+# Count with conditions
 let count = User.where("doc.role == @role", { "role": "admin" }).count();
 ```
 
@@ -190,7 +190,7 @@ class User extends Model
     fn normalize_email()        this.email = this.email.downcase();
     end
 
-    fn send_welcome_email()        // Send email logic
+    fn send_welcome_email()        # Send email logic
     end
 end
 ```
@@ -219,7 +219,7 @@ class Post extends Model
 end
 
 class User extends Model
-    // Returns a QueryBuilder for chaining
+    # Returns a QueryBuilder for chaining
     fn posts()        Post.where("doc.author_id == @id", { "id": this.id })
     end
 end
@@ -240,7 +240,7 @@ class User extends Model
     end
 end
 
-// Usage
+# Usage
 let user = User.find("user123");
 if user.is_admin()
     print("Welcome, admin " + user.full_name());
@@ -268,7 +268,7 @@ SDBQL uses:
 ## Complete Example
 
 ```soli
-// app/models/user.sl
+# app/models/user.sl
 class User extends Model
     validates("email", { "presence": true, "uniqueness": true })
     validates("name", { "presence": true, "min_length": 2 })
@@ -286,7 +286,7 @@ class User extends Model
     end
 end
 
-// app/models/blog_post.sl
+# app/models/blog_post.sl
 class BlogPost extends Model
     validates("title", { "presence": true, "min_length": 3 })
 
@@ -294,7 +294,7 @@ class BlogPost extends Model
     end
 end
 
-// Usage in controller
+# Usage in controller
 class UsersController extends Controller
     fn index(req)
         let users = User.all();
@@ -351,7 +351,7 @@ describe("User model", fn()
         User.create({ "name": "Alice", "age": 25 });
         User.create({ "name": "Bob", "age": 17 });
 
-        // where() returns QueryBuilder - chain .all() to get results
+        # where() returns QueryBuilder - chain .all() to get results
         let adults = User.where("doc.age >= @age", { "age": 18 }).all();
         expect(len(adults)).to_equal(1);
     end)

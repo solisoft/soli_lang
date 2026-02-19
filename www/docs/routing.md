@@ -7,7 +7,7 @@ SoliLang MVC uses a simple, declarative routing system.
 Define routes in `config/routes.sl`:
 
 ```soli
-// HTTP method, path, controller#action
+# HTTP method, path, controller#action
 get("/", "home#index");
 post("/submit", "home#submit");
 put("/update/:id", "home#update");
@@ -38,7 +38,7 @@ Access parameters in your controller:
 ```soli
 fn show(req)
     let user_id = req.params["id"];
-    // ...
+    # ...
 end
 ```
 
@@ -47,11 +47,11 @@ end
 Query parameters are automatically parsed:
 
 ```soli
-// URL: /search?q=solilang&page=1
+# URL: /search?q=solilang&page=1
 fn search(req)
-    let query = req.query["q"];  // "solilang"
-    let page = req.query["page"]; // "1"
-    // ...
+    let query = req.query["q"];  # "solilang"
+    let page = req.query["page"]; # "1"
+    # ...
 end
 ```
 
@@ -73,23 +73,23 @@ Generate URLs from route names:
 
 ```soli
 let url = named_routes["user_show"].("/users/:id", {"id": 123});
-// Returns: "/users/123"
+# Returns: "/users/123"
 ```
 
 ## RESTful Routes Example
 
 ```soli
-// Resources
+# Resources
 resources("/users", "users");
 
-// Generates:
-// GET    /users           -> users#index
-// GET    /users/new       -> users#new
-// POST   /users           -> users#create
-// GET    /users/:id       -> users#show
-// GET    /users/:id/edit  -> users#edit
-// PUT    /users/:id       -> users#update
-// DELETE /users/:id       -> users#destroy
+# Generates:
+# GET    /users           -> users#index
+# GET    /users/new       -> users#new
+# POST   /users           -> users#create
+# GET    /users/:id       -> users#show
+# GET    /users/:id/edit  -> users#edit
+# PUT    /users/:id       -> users#update
+# DELETE /users/:id       -> users#destroy
 ```
 
 ## Middleware on Routes

@@ -1,25 +1,25 @@
-// ============================================================================
-// Authentication Middleware
-// ============================================================================
-//
-// This is a SCOPE-ONLY middleware.
-//
-// CHARACTERISTICS:
-// ---------------
-// - Marked with `// scope_only: true`
-// - Does NOT run globally by default
-// - Only runs when explicitly scoped using middleware("authenticate", -> { ... })
-// - Use this for routes that need authentication
-//
-// CONFIGURATION:
-// -------------
-// - `// order: N` - Execution order (lower runs first, default: 100)
-// - `// scope_only: true` - Required for scope-only middleware
-//
-// ============================================================================
+# ============================================================================
+# Authentication Middleware
+# ============================================================================
+#
+# This is a SCOPE-ONLY middleware.
+#
+# CHARACTERISTICS:
+# ---------------
+# - Marked with `# scope_only: true`
+# - Does NOT run globally by default
+# - Only runs when explicitly scoped using middleware("authenticate", -> { ... })
+# - Use this for routes that need authentication
+#
+# CONFIGURATION:
+# -------------
+# - `# order: N` - Execution order (lower runs first, default: 100)
+# - `# scope_only: true` - Required for scope-only middleware
+#
+# ============================================================================
 
-// order: 20
-// scope_only: true - This middleware only runs when explicitly scoped
+# order: 20
+# scope_only: true - This middleware only runs when explicitly scoped
 
 let valid_api_key = "secret-key-123";
 

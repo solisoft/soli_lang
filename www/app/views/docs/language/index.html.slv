@@ -93,13 +93,13 @@
 
         <section id="section-hello-world" class="scroll-mt-20 mb-8">
             <h3 class="text-xl font-semibold text-white mb-4">Hello World</h3>
-            <pre data-filename="hello.sl"><code class="language-soli text-sm">// The classic first program
+            <pre data-filename="hello.sl"><code class="language-soli text-sm"># The classic first program
 print("Hello, World!");</code></pre>
         </section>
 
         <section id="section-first-program" class="scroll-mt-20 mb-8">
             <h3 class="text-xl font-semibold text-white mb-4">Your First Soli Program</h3>
-            <pre data-filename="area.sl"><code class="language-soli text-sm">// A simple program that calculates the area of a circle
+            <pre data-filename="area.sl"><code class="language-soli text-sm"># A simple program that calculates the area of a circle
 def calculate_area(radius: Float) -> Float
     3.14159 * radius * radius
 end
@@ -107,7 +107,7 @@ end
 let radius = 5.0;
 let area = calculate_area(radius);
 print("The area of a circle with radius " + str(radius) + " is " + str(area));
-// Output: The area of a circle with radius 5.0 is 78.53975</code></pre>
+# Output: The area of a circle with radius 5.0 is 78.53975</code></pre>
         </section>
 
         <section id="section-running-soli" class="scroll-mt-20 mb-8">
@@ -143,12 +143,12 @@ soli build --release</code></pre>
         </h2>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <pre data-filename="Variables & Functions"><code class="language-soli text-sm">// Variables
+            <pre data-filename="Variables & Functions"><code class="language-soli text-sm"># Variables
 let name = "Alice";
 let age: Int = 30;
 const PI = 3.14159;
 
-// Function
+# Function
 def add(a: Int, b: Int) -> Int
     a + b
 end</code></pre>
@@ -158,40 +158,40 @@ end</code></pre>
     new(name: String)
         this.name = name;
     end
-    def greet() -> String
+    def greet -> String
         "Hello, " + this.name
     end
 end</code></pre>
 
-            <pre data-filename="Control Flow"><code class="language-soli text-sm">// If/Else
+            <pre data-filename="Control Flow"><code class="language-soli text-sm"># If/Else
 if (condition)
-    // code
+    # code
 else
-    // code
+    # code
 end
 
-// For Loop
+# For Loop
 for (item in collection)
-    // code
+    # code
 end
 
-// Try/Catch
+# Try/Catch
 try
     risky_operation();
 catch e
     print(e);
 end
 
-// Match
+# Match
 match value
     pattern => result,
     _ => default,
 end</code></pre>
 
-            <pre data-filename="Pipeline & Collections"><code class="language-soli text-sm">// Pipeline
+            <pre data-filename="Pipeline & Collections"><code class="language-soli text-sm"># Pipeline
 value |> transform() |> format();
 
-// Collections
+# Collections
 arr.map(def(x) x * 2);
 hash.filter(def(p) p[1] > 0);</code></pre>
         </div>

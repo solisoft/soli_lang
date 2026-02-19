@@ -61,14 +61,14 @@ The model includes:
 - Before save callback hooks
 
 ```soli
-// Users model - auto-generated scaffold
+# Users model - auto-generated scaffold
 class Users extends Model
     static
-        // Fields
-        // name (string)
-        // email (email)
+        # Fields
+        # name (string)
+        # email (email)
 
-        // Validations
+        # Validations
         validates("name", { "presence": true })
         validates("email", { "presence": true })
     end

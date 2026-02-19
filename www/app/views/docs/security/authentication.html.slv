@@ -50,7 +50,7 @@
                 <span class="ml-2 text-xs text-gray-500 font-mono">controllers/auth_controller.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">// 1. Define your payload
+<pre><code class="language-soli text-sm"># 1. Define your payload
 let payload = {
     "sub": "user_12345",
     "name": "Alice Wonderland",
@@ -58,13 +58,13 @@ let payload = {
     "iat": now()
 };
 
-// 2. Get your secret key securely
+# 2. Get your secret key securely
 let secret = getenv("JWT_SECRET");
 
-// 3. Sign the token (default algorithm: HS256)
+# 3. Sign the token (default algorithm: HS256)
 let token = jwt_sign(payload, secret);
 
-// Option: Set expiration (e.g., 1 hour from now)
+# Option: Set expiration (e.g., 1 hour from now)
 let token_with_exp = jwt_sign(
     payload, 
     secret, 
@@ -95,11 +95,11 @@ let token_with_exp = jwt_sign(
 <pre><code class="language-soli text-sm">let result = jwt_verify(token, secret);
 
 if result["error"] == true {
-    // Handle invalid token
+    # Handle invalid token
     print("Auth Error:", result["message"]);
     { "error": "Unauthorized" }
 } else {
-    // Token is valid, access claims
+    # Token is valid, access claims
     let user_id = result["sub"];
     print("Authenticated User:", user_id);
 }</code></pre>

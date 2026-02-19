@@ -1,4 +1,4 @@
-// String manipulation helpers
+# String manipulation helpers
 
 fn truncate(text: String, length: Int, suffix: String) -> String
     if (len(text) <= length) {

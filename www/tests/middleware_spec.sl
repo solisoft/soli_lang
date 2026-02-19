@@ -1,12 +1,12 @@
-// ============================================================================
-// Middleware Tests
-// ============================================================================
+# ============================================================================
+# Middleware Tests
+# ============================================================================
 //
-// Tests for middleware components:
-// - Auth middleware (scope-only)
-// - CORS middleware (global-only)
-// - Logging middleware (global-only)
-// ============================================================================
+# Tests for middleware components:
+# - Auth middleware (scope-only)
+# - CORS middleware (global-only)
+# - Logging middleware (global-only)
+# ============================================================================
 
 describe("Auth Middleware", fn()
     describe("authenticate function", fn()

@@ -97,21 +97,21 @@
                 <span class="ml-2 text-xs text-gray-500 font-mono">controllers/items_controller.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Request: PUT /items/42?status=active
-// Body: {"status": "urgent", "quantity": "5"}
+<pre><code class="language-soli text-sm"># Request: PUT /items/42?status=active
+# Body: {"status": "urgent", "quantity": "5"}
 
-def update_item(req: Any)    // Unified access to all parameters
+def update_item(req: Any)    # Unified access to all parameters
     let all = req["all"];
 
-    // ID from route params
-    print("ID:", all["id"]);           // "42"
+    # ID from route params
+    print("ID:", all["id"]);           # "42"
 
-    // Status appears in both query and body
-    // Body value takes precedence!
-    print("Status:", all["status"]);   // "urgent" (from JSON body)
+    # Status appears in both query and body
+    # Body value takes precedence!
+    print("Status:", all["status"]);   # "urgent" (from JSON body)
 
-    // Quantity from body only
-    print("Quantity:", all["quantity"]); // "5"
+    # Quantity from body only
+    print("Quantity:", all["quantity"]); # "5"
 
     {"status": 200, "body": "Updated"}
 end</code></pre></code></pre>
@@ -177,19 +177,19 @@ end</code></pre></code></pre>
                 <span class="ml-2 text-xs text-gray-500 font-mono">handlers.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">def handler(req: Any)    // Route parameters only
+<pre><code class="language-soli text-sm">def handler(req: Any)    # Route parameters only
     let id = req["params"]["id"];
 
-    // Query parameters only
+    # Query parameters only
     let page = req["query"]["page"];
 
-    // JSON body only
+    # JSON body only
     let data = req["json"];
 
-    // Form data only
+    # Form data only
     let form = req["form"];
 
-    // Or unified access
+    # Or unified access
     let all = req["all"];
 
     {"status": 200, "body": "OK"}
@@ -213,28 +213,28 @@ end</code></pre></code></pre>
                 <span class="ml-2 text-xs text-gray-500 font-mono">controllers/search_controller.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">// GET /api/search?q=2
-// orrust&page= POST /api/search with body {"q": "rust", "filters": "recent"}
+<pre><code class="language-soli text-sm"># GET /api/search?q=2
+# orrust&page= POST /api/search with body {"q": "rust", "filters": "recent"}
 
 def search(req: Any)    let all = req["all"];
 
-    // Unified params allow flexible API design
+    # Unified params allow flexible API design
     let query = all["q"] or "";
     let page = all["page"] or "1";
     let limit = all["limit"] or "20";
 
-    // Use unified params for filtering
+    # Use unified params for filtering
     let filters = {
         "query": query,
         "page": page,
         "limit": limit,
-        "category": all["category"],      // Optional
+        "category": all["category"],      # Optional
         "sort": all["sort"] or "relevance",
-        "min_price": all["min_price"],    // Optional
-        "max_price": all["max_price"]     // Optional
+        "min_price": all["min_price"],    # Optional
+        "max_price": all["max_price"]     # Optional
     };
 
-    // Execute search
+    # Execute search
     let results = execute_search(filters);
 
     {

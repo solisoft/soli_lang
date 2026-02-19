@@ -1,12 +1,12 @@
-// Home controller - handles routes at /
+# Home controller - handles routes at /
 
 class HomeController extends Controller
-    // GET /up
+    # GET /up
     fn up(req)
         render_text("UP")
     end
 
-    // GET /
+    # GET /
     fn index(req)
         render("home/index", {
             "title": "Welcome",
@@ -14,14 +14,14 @@ class HomeController extends Controller
         })
     end
 
-    // GET /health
+    # GET /health
     fn health(req)
         render_json({
             "status": "ok"
         })
     end
 
-    // GET /docs - redirect to documentation
+    # GET /docs - redirect to documentation
     fn docs_redirect(req)
         {
             "status": 302,
@@ -30,7 +30,7 @@ class HomeController extends Controller
         }
     end
 
-    // GET /files/*filepath - Splat route demo
+    # GET /files/*filepath - Splat route demo
     fn files_demo(req)
         render_json({
             "route": "files_demo",
@@ -38,7 +38,7 @@ class HomeController extends Controller
         })
     end
 
-    // GET /api/*version/users/*id - Multi-splat route demo
+    # GET /api/*version/users/*id - Multi-splat route demo
     fn api_demo(req)
         render_json({
             "route": "api_demo",
@@ -46,7 +46,7 @@ class HomeController extends Controller
         })
     end
 
-    // GET /*catchall - Catch-all route demo
+    # GET /*catchall - Catch-all route demo
     fn catchall_demo(req)
         render_json({
             "route": "catchall_demo",

@@ -1,25 +1,25 @@
-// Users Controller - Authentication, Sessions, and Validation Demo
+# Users Controller - Authentication, Sessions, and Validation Demo
 
-// Login form
+# Login form
 fn login(req)
     render("users/login.html", {
         "title": "Login"
     })
 end
 
-// Login handler with session management
+# Login handler with session management
 fn login_post(req)
     let data = req["json"]
 
-    // Demo validation - in real app, check database
+    # Demo validation - in real app, check database
     let email = data["email"]
     let password = data["password"]
 
     if (email == "admin" + "@" + "example.com" && password == "secret123")
-        // Regenerate session for security (prevents session fixation)
+        # Regenerate session for security (prevents session fixation)
         session_regenerate()
 
-        // Set session values
+        # Set session values
         session_set("user", "admin")
         session_set("email", email)
         session_set("user_id", "user_001")
@@ -45,18 +45,18 @@ fn login_post(req)
     }
 end
 
-// Registration form
+# Registration form
 fn register(req)
     render("users/register.html", {
         "title": "Register"
     })
 end
 
-// Registration handler with input validation
+# Registration handler with input validation
 fn register_post(req)
     let data = req["json"]
 
-    // Define validation schema
+    # Define validation schema
     let schema = {
         "username": V.string().required()
             .min_length(3)
@@ -68,7 +68,7 @@ fn register_post(req)
         "age": V.int().optional().min(13).max(150)
     }
 
-    // Validate input
+    # Validate input
     let result = validate(data, schema)
 
     if (!result["valid"])
@@ -83,7 +83,7 @@ fn register_post(req)
 
     let validated = result["data"]
 
-    // Check password confirmation
+    # Check password confirmation
     if (validated["password"] != validated["confirm_password"])
         return {
             "status": 422,
@@ -98,8 +98,8 @@ fn register_post(req)
         }
     end
 
-    // In real app: save to database
-    // For demo, just show success
+    # In real app: save to database
+    # For demo, just show success
     {
         "status": 201,
         "body": json_stringify({
@@ -114,7 +114,7 @@ fn register_post(req)
     }
 end
 
-// Profile page (requires authentication)
+# Profile page (requires authentication)
 fn profile(req)
     if (session_get("authenticated") != true)
         return {
@@ -128,7 +128,7 @@ fn profile(req)
     })
 end
 
-// Logout - destroy session
+# Logout - destroy session
 fn logout(req)
     session_destroy()
 
@@ -138,7 +138,7 @@ fn logout(req)
     }
 end
 
-// Regenerate session ID
+# Regenerate session ID
 fn regenerate_session(req)
     if (session_get("authenticated") != true)
         return {
@@ -158,14 +158,14 @@ fn regenerate_session(req)
     }
 end
 
-// Validation demo page
+# Validation demo page
 fn validation_demo(req)
     render("users/validation-demo.html", {
         "title": "Validation Demo"
     })
 end
 
-// Validation API endpoint
+# Validation API endpoint
 fn validate_registration(req)
     let data = req["json"]
 
@@ -189,11 +189,11 @@ fn validate_registration(req)
     }
 end
 
-// JWT Demo: Create token
+# JWT Demo: Create token
 fn create_token(req)
     let data = req["json"]
 
-    // In real app: verify user credentials first
+    # In real app: verify user credentials first
     let payload = {
         "sub": data["user_id"],
         "name": data["name"],
@@ -201,12 +201,12 @@ fn create_token(req)
         "iat": clock()
     }
 
-    // Handle null values with defaults
+    # Handle null values with defaults
     if (payload["sub"] == null)  payload["sub"] = "user_001" end
     if (payload["name"] == null)  payload["name"] = "Demo User" end
     if (payload["role"] == null)  payload["role"] = "user" end
 
-    // Sign JWT with secret (in real app, use environment variable)
+    # Sign JWT with secret (in real app, use environment variable)
     let secret = "demo-secret-key-change-in-production"
     let options = {}
     if (data["expires_in"])
@@ -230,7 +230,7 @@ fn create_token(req)
     }
 end
 
-// JWT Demo: Verify token
+# JWT Demo: Verify token
 fn verify_token(req)
     let data = req["json"]
     let token = data["token"]
@@ -266,7 +266,7 @@ fn verify_token(req)
     }
 end
 
-// JWT Demo: Decode token (without verification)
+# JWT Demo: Decode token (without verification)
 fn decode_token(req)
     let data = req["json"]
     let token = data["token"]

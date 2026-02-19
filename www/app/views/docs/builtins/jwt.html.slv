@@ -52,7 +52,7 @@
     "my-secret-key",
     { "expires_in": 3600 }
 )
-// eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code></pre>
+# eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code></pre>
             </div>
         </section>
 
@@ -101,9 +101,9 @@ if has_key(result, "error") {
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - The payload without verification
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">// Useful for debugging or extracting public info
+                <pre data-filename="Example"><code class="language-soli text-sm"># Useful for debugging or extracting public info
 let payload = jwt_decode(token)
-println(payload["sub"])  // User ID without verification</code></pre>
+println(payload["sub"])  # User ID without verification</code></pre>
             </div>
         </section>
     </section>
@@ -114,7 +114,7 @@ println(payload["sub"])  // User ID without verification</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
-            <pre data-filename="Example"><code class="language-soli text-sm">// Login endpoint
+            <pre data-filename="Example"><code class="language-soli text-sm"># Login endpoint
 def login(email: String, password: String) -> Hash
     let user = User.find_by_email(email)
     if !user || !argon2_verify(password, user["password_hash"]) {
@@ -124,13 +124,13 @@ def login(email: String, password: String) -> Hash
     let token = jwt_sign(
         { "sub": str(user["id"]), "role": user["role"] },
         getenv("JWT_SECRET"),
-        { "expires_in": 86400 }  // 24 hours
+        { "expires_in": 86400 }  # 24 hours
     )
 
     { "token": token }
 end
 
-// Protected endpoint middleware
+# Protected endpoint middleware
 def authenticate(req: Hash) -> Hash?
     let auth_header = req["headers"]["Authorization"] ?? ""
     if !contains(auth_header, "Bearer ") {

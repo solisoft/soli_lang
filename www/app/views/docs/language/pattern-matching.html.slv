@@ -42,7 +42,7 @@ let result = match x
     0 => "zero",
     _ => "something else",
 end
-print(result);  // "the answer"</code></pre>
+print(result);  # "the answer"</code></pre>
             </div>
         </section>
     </section>
@@ -61,9 +61,9 @@ let category = match n
     n if n >= 10 && n < 100 => "two digit positive",
     _ => "large number",
 end
-print(category);  // "single digit positive"
+print(category);  # "single digit positive"
 
-// Practical example: HTTP status handling
+# Practical example: HTTP status handling
 def handle_status(code: Int) -> String
     match code
         code if code >= 200 && code < 300 => "Success: " + str(code),
@@ -75,8 +75,8 @@ def handle_status(code: Int) -> String
     end
 end
 
-print(handle_status(200));  // "Success: 200"
-print(handle_status(404));  // "Not Found"</code></pre>
+print(handle_status(200));  # "Success: 200"
+print(handle_status(404));  # "Not Found"</code></pre>
             </div>
         </div>
     </section>
@@ -88,7 +88,7 @@ print(handle_status(404));  // "Not Found"</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let numbers = [1, 2, 3];
 
-// Match array length
+# Match array length
 let description = match numbers
     [] => "empty array",
     [_] => "single element array",
@@ -97,7 +97,7 @@ let description = match numbers
     _ => "array with more than 3 elements",
 end
 
-// Destructuring arrays
+# Destructuring arrays
 let result = match numbers
     [first] => "First element is: " + str(first),
     [first, second] => "First: " + str(first) + ", Second: " + str(second),
@@ -105,12 +105,12 @@ let result = match numbers
     [first, ...rest] => "First: " + str(first) + ", Rest has " + str(len(rest)) + " elements",
 end
 
-// Rest pattern
+# Rest pattern
 let arr = [1, 2, 3, 4, 5];
 match arr
     [first, second, ...rest]
         print("First two: " + str(first) + ", " + str(second));
-        print("Remaining: " + str(rest));  // [3, 4, 5]
+        print("Remaining: " + str(rest));  # [3, 4, 5]
     end
 end</code></pre>
             </div>
@@ -124,7 +124,7 @@ end</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let user = {"name": "Alice", "age": 30, "city": "Paris"};
 
-// Match hash structure
+# Match hash structure
 match user
     {} => "empty object",
     {name: n} => "name is: " + n,
@@ -133,7 +133,7 @@ match user
     _ => "unknown structure",
 end
 
-// Nested hash matching
+# Nested hash matching
 let data = {
     "user": {"name": "Alice", "email": "alice@example.com"},
     "posts": [{"title": "Post 1"}, {"title": "Post 2"}]
@@ -167,9 +167,9 @@ end</code></pre>
     end
 end
 
-print(describe_value("hello"));     // "String with 5 characters"
-print(describe_value(42));          // "Integer: 42"
-print(describe_value([1, 2, 3]));   // "Array with 3 elements"</code></pre>
+print(describe_value("hello"));     # "String with 5 characters"
+print(describe_value(42));          # "Integer: 42"
+print(describe_value([1, 2, 3]));   # "Array with 3 elements"</code></pre>
             </div>
         </div>
     </section>
@@ -192,7 +192,7 @@ print(describe_value([1, 2, 3]));   // "Array with 3 elements"</code></pre>
 let message = match status
     "active" => "User is active",
     "inactive" => "User is inactive",
-    _ => "Status: " + status,  // Default case
+    _ => "Status: " + status,  # Default case
 end</code></pre>
             </div>
         </section>

@@ -1,13 +1,13 @@
-// LiveView controller - handles Live View events
+# LiveView controller - handles Live View events
 //
-// Live View handlers receive an event hash with:
-// - event: The event name (e.g., "increment", "decrement")
-// - params: Parameters sent with the event
-// - state: The current component state
+# Live View handlers receive an event hash with:
+# - event: The event name (e.g., "increment", "decrement")
+# - params: Parameters sent with the event
+# - state: The current component state
 //
-// Handlers should return the new state as a hash.
+# Handlers should return the new state as a hash.
 
-// Counter component handler
+# Counter component handler
 fn counter(event_data)
     let event = event_data["event"]
     let state = event_data["state"]
@@ -29,24 +29,24 @@ fn counter(event_data)
         }
     end
 
-    // Return unchanged state for unknown events
+    # Return unchanged state for unknown events
     state
 end
 
-// Metrics component handler - Binary Clock
+# Metrics component handler - Binary Clock
 fn metrics(event_data)
     let event = event_data["event"]
     let state = event_data["state"]
 
     if (event == "tick")
-        // Get current time using DateTime class
+        # Get current time using DateTime class
         let now = DateTime.utc()
         let h = now.hour()
         let m = now.minute()
         let s = now.second()
         let ms = now.millisecond()
 
-        // Format strings with leading zeros
+        # Format strings with leading zeros
         let hours_str = "" + h
         let minutes_str = "" + m
         let seconds_str = "" + s
@@ -70,8 +70,8 @@ fn metrics(event_data)
             end
         end
 
-        // Binary clock bits (pre-computed for template)
-        // Hours: 5 bits (0-23)
+        # Binary clock bits (pre-computed for template)
+        # Hours: 5 bits (0-23)
         let h4 = 0
         let h3 = 0
         let h2 = 0
@@ -85,7 +85,7 @@ fn metrics(event_data)
         if (hv >= 2)  h1 = 1; hv = hv - 2 end
         if (hv >= 1)  h0 = 1 end
 
-        // Minutes: 6 bits (0-59)
+        # Minutes: 6 bits (0-59)
         let m5 = 0
         let m4 = 0
         let m3 = 0
@@ -101,7 +101,7 @@ fn metrics(event_data)
         if (mv >= 2)  m1 = 1; mv = mv - 2 end
         if (mv >= 1)  m0 = 1 end
 
-        // Seconds: 6 bits (0-59)
+        # Seconds: 6 bits (0-59)
         let s5 = 0
         let s4 = 0
         let s3 = 0
@@ -117,7 +117,7 @@ fn metrics(event_data)
         if (sv >= 2)  s1 = 1; sv = sv - 2 end
         if (sv >= 1)  s0 = 1 end
 
-        // Milliseconds: 10 bits (0-999)
+        # Milliseconds: 10 bits (0-999)
         let ms9 = 0
         let ms8 = 0
         let ms7 = 0

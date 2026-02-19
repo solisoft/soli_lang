@@ -40,9 +40,9 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Bool</code> - true if the pattern matches, false otherwise
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_match("^[a-z]+$", "hello")  // true
-regex_match("^[0-9]+$", "hello")  // false
-regex_match("\\d{3}-\\d{4}", "555-1234")  // true</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">regex_match("^[a-z]+$", "hello")  # true
+regex_match("^[0-9]+$", "hello")  # false
+regex_match("\\d{3}-\\d{4}", "555-1234")  # true</code></pre>
             </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let re = regex_new("^hello (\\w+)")</code></pre>
 
@@ -53,28 +53,28 @@ regex_match("\\d{3}-\\d{4}", "555-1234")  // true</code></pre>
 
                 <p class="text-gray-400 mb-3">Find the first match in a string.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let match = regex_find(re, "hello world")
-println(match[0]) // "hello world"</code></pre>
+println(match[0]) # "hello world"</code></pre>
 
                 <p class="text-gray-400 mb-3">Find all matches in a string.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let matches = regex_find_all(re, "hello world, hello universe")
-println(matches[0][0]) // "hello world"
-println(matches[1][0]) // "hello universe"</code></pre>
+println(matches[0][0]) # "hello world"
+println(matches[1][0]) # "hello universe"</code></pre>
 
                 <p class="text-gray-400 mb-3">Replace matches in a string.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let result = regex_replace(re, "hello world", "goodbye $1")
-println(result) // "goodbye world"</code></pre>
+println(result) # "goodbye world"</code></pre>
 
                 <p class="text-gray-400 mb-3">Replace all matches in a string.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let result = regex_replace_all(re, "hello world, hello universe", "hi $1")
-println(result) // "hi world, hi universe"</code></pre>
+println(result) # "hi world, hi universe"</code></pre>
 
                 <p class="text-gray-400 mb-3">Split a string by a pattern.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let parts = regex_split(re, "hello world, hello universe")
-println(parts) // ["", ", ", ""]</code></pre>
+println(parts) # ["", ", ", ""]</code></pre>
 
                 <p class="text-gray-400 mb-3">Escape a string for use in a regex.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let escaped = regex_escape("hello.world")
-println(escaped) // "hello\\.world"</code></pre>
+println(escaped) # "hello\\.world"</code></pre>
         </section>
     </section>
 
@@ -96,9 +96,9 @@ println(escaped) // "hello\\.world"</code></pre>
                     <code class="text-purple-400">Hash?</code> - <code>{ "match": String, "start": Int, "end": Int }</code> or null if no match
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let result = regex_find("[0-9]+", "abc123def")
-println(result["match"])  // "123"
-println(result["start"])  // 3
-println(result["end"])    // 6</code></pre>
+println(result["match"])  # "123"
+println(result["start"])  # 3
+println(result["end"])    # 6</code></pre>
             </div>
         </section>
 
@@ -116,9 +116,9 @@ println(result["end"])    // 6</code></pre>
                     <code class="text-purple-400">Array</code> - Array of match objects
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let all = regex_find_all("[0-9]+", "a1b2c3")
-// [{"match": "1", "start": 1, "end": 2},
-//  {"match": "2", "start": 3, "end": 4},
-//  {"match": "3", "start": 5, "end": 6}]</code></pre>
+# [{"match": "1", "start": 1, "end": 2},
+#  {"match": "2", "start": 3, "end": 4},
+#  {"match": "3", "start": 5, "end": 6}]</code></pre>
             </div>
         </section>
     </section>
@@ -136,7 +136,7 @@ println(result["end"])    // 6</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Replace the first match.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_replace("[0-9]+", "a1b2", "X")  // "aXb2"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">regex_replace("[0-9]+", "a1b2", "X")  # "aXb2"</code></pre>
             </div>
         </section>
 
@@ -149,7 +149,7 @@ println(result["end"])    // 6</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Replace all matches.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_replace_all("[0-9]+", "a1b2", "X")  // "aXbX"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">regex_replace_all("[0-9]+", "a1b2", "X")  # "aXbX"</code></pre>
             </div>
         </section>
     </section>
@@ -167,8 +167,8 @@ println(result["end"])    // 6</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Split a string by a regex pattern.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_split("[,;]", "a,b;c")  // ["a", "b", "c"]
-regex_split("\\s+", "hello   world")  // ["hello", "world"]</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">regex_split("[,;]", "a,b;c")  # ["a", "b", "c"]
+regex_split("\\s+", "hello   world")  # ["hello", "world"]</code></pre>
             </div>
         </section>
 
@@ -185,9 +185,9 @@ regex_split("\\s+", "hello   world")  // ["hello", "world"]</code></pre>
     "(?P&lt;year&gt;[0-9]{4})-(?P&lt;month&gt;[0-9]{2})-(?P&lt;day&gt;[0-9]{2})",
     "2024-01-15"
 )
-println(result["year"])   // "2024"
-println(result["month"])  // "01"
-println(result["day"])    // "15"</code></pre>
+println(result["year"])   # "2024"
+println(result["month"])  # "01"
+println(result["day"])    # "15"</code></pre>
             </div>
         </section>
 
@@ -200,8 +200,8 @@ println(result["day"])    // "15"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Escape special regex characters in a string.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_escape("hello.world")  // "hello\\.world"
-regex_escape("(test)")       // "\\(test\\)"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">regex_escape("hello.world")  # "hello\\.world"
+regex_escape("(test)")       # "\\(test\\)"</code></pre>
             </div>
         </section>
     </section>

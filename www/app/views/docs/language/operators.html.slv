@@ -139,104 +139,104 @@ if (age >= 18 && has_license) {
 }</code></pre>
 
                 <p class="text-gray-400 mb-3">String Concatenation.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// Concatenation
-let greeting = "Hello, " + "World!";    // "Hello, World!"
-let message = "Value: " + 42;           // "Value: 42" (auto-conversion)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Concatenation
+let greeting = "Hello, " + "World!";    # "Hello, World!"
+let message = "Value: " + 42;           # "Value: 42" (auto-conversion)</code></pre>
 
-                <pre data-filename="Example"><code class="language-soli text-sm">// String methods
+                <pre data-filename="Example"><code class="language-soli text-sm"># String methods
 let text = "  Hello, World!  ";
-print(text.trim());           // "Hello, World!"
-print(text.lstrip());         // "Hello, World!  "
-print(text.rstrip());         // "  Hello, World!"
-print(text.upper());          // "  HELLO, WORLD!  "
-print(text.lower());          // "  hello, world!  "
-print(text.len());            // 18
+print(text.trim());           # "Hello, World!"
+print(text.lstrip());         # "Hello, World!  "
+print(text.rstrip());         # "  Hello, World!"
+print(text.upper());          # "  HELLO, WORLD!  "
+print(text.lower());          # "  hello, world!  "
+print(text.len());            # 18
 
-// Substring operations
+# Substring operations
 let s = "Hello, World!";
-print(s.sub(0, 5));           // "Hello" (from index 0, length 5)
-print(s.find("World"));       // 7 (index of first occurrence)
-print(s.contains("Hello"));   // true
-print(s.starts_with("Hell")); // true
-print(s.ends_with("!"));      // true
+print(s.sub(0, 5));           # "Hello" (from index 0, length 5)
+print(s.find("World"));       # 7 (index of first occurrence)
+print(s.contains("Hello"));   # true
+print(s.starts_with("Hell")); # true
+print(s.ends_with("!"));      # true
 
-// String manipulation
-print(s.replace("World", "Soli"));  // "Hello, Soli!"
-print(s.split(", "));              // ["Hello", "World!"]
-print(s.chomp());                 // "Hello, World!" (removes trailing newline)
-print(s.reverse());               // "!dlroW ,olleH"
-print(s.capitalize());            // "Hello, world!"
-print(s.swapcase());              // "hELLO, wORLD!"
+# String manipulation
+print(s.replace("World", "Soli"));  # "Hello, Soli!"
+print(s.split(", "));              # ["Hello", "World!"]
+print(s.chomp());                 # "Hello, World!" (removes trailing newline)
+print(s.reverse());               # "!dlroW ,olleH"
+print(s.capitalize());            # "Hello, world!"
+print(s.swapcase());              # "hELLO, wORLD!"
 
-// String padding
-print("hi".center(10));           // "    hi    "
-print("hi".ljust(10));            // "hi        "
-print("hi".rjust(10));            // "        hi"
+# String padding
+print("hi".center(10));           # "    hi    "
+print("hi".ljust(10));            # "hi        "
+print("hi".rjust(10));            # "        hi"
 
-// String queries
-print(s.count("l"));              // 3
-print(s.gsub("l", "L"));          // "HeLLo, WorLd!"
-print(s.match("H(.*)o"));         // ["Hello", "ell"]
-print(s.scan("[aeiou]"));         // ["e", "o", "o"]
-print(s.tr("aeiou", "AEIOU"));    // "HEllO, WOrld!"
+# String queries
+print(s.count("l"));              # 3
+print(s.gsub("l", "L"));          # "HeLLo, WorLd!"
+print(s.match("H(.*)o"));         # ["Hello", "ell"]
+print(s.scan("[aeiou]"));         # ["e", "o", "o"]
+print(s.tr("aeiou", "AEIOU"));    # "HEllO, WOrld!"
 
-// Character operations
-print("A".ord());                 // 65
-print("hello".bytes());           // [104, 101, 108, 108, 111]
-print("hello".chars());           // ["h", "e", "l", "l", "o"]
-print("a\nb\nc".lines());         // ["a", "b", "c"]
+# Character operations
+print("A".ord());                 # 65
+print("hello".bytes());           # [104, 101, 108, 108, 111]
+print("hello".chars());           # ["h", "e", "l", "l", "o"]
+print("a\nb\nc".lines());         # ["a", "b", "c"]
 
-// Partition and delete
-print("hello-world-test".partition("-"));   // ["hello", "-", "world-test"]
-print("hello-world".delete("l"));           // "heo-word"
-print("hello".delete_prefix("hel"));        // "lo"
-print("hello".delete_suffix("lo"));         // "hel"
+# Partition and delete
+print("hello-world-test".partition("-"));   # ["hello", "-", "world-test"]
+print("hello-world".delete("l"));           # "heo-word"
+print("hello".delete_prefix("hel"));        # "lo"
+print("hello".delete_suffix("lo"));         # "hel"
 
-// String encoding
-print("hello".bytesize());        // 5
+# String encoding
+print("hello".bytesize());        # 5
 
-// Truncate
-print("hello world".truncate(5)); // "he..."</code></pre>
+# Truncate
+print("hello world".truncate(5)); # "he..."</code></pre>
 
                 <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">??</code> to provide default values for null.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let user = {"name": "Alice", "email": null};
 
-// Traditional null check
+# Traditional null check
 let email = user["email"];
 if (email == null) {
     email = "unknown";
 }
 
-// Null coalescing operator
+# Null coalescing operator
 let display_email = user["email"] ?? "unknown";
 
-// Chaining with null values
+# Chaining with null values
 let city = user["address"]["city"] ?? "Unknown City";
-// If any key in the chain is null/missing, returns "Unknown City"</code></pre>
+# If any key in the chain is null/missing, returns "Unknown City"</code></pre>
 
                 <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">&amp;.</code> for safe navigation — access properties or call methods on values that might be null without raising an error.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// Safe navigation operator
-let user = get_user()  // might return null
+                <pre data-filename="Example"><code class="language-soli text-sm"># Safe navigation operator
+let user = get_user()  # might return null
 
-// Returns null if user is null, otherwise returns user.name
+# Returns null if user is null, otherwise returns user.name
 let name = user&.name
 
-// Chain safe navigation for nested access
+# Chain safe navigation for nested access
 let city = user&.address&.city
 
-// Call methods safely — returns null if user is null
+# Call methods safely — returns null if user is null
 let greeting = user&.greet()
 
-// Combine with ?? for default values
+# Combine with ?? for default values
 let display_name = user&.name ?? "Anonymous"</code></pre>
 
                 <p class="text-gray-400 mb-3">Creates a range of integers (exclusive end).</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// Range creates an array
-let numbers = 1..5;  // [1, 2, 3, 4]
+                <pre data-filename="Example"><code class="language-soli text-sm"># Range creates an array
+let numbers = 1..5;  # [1, 2, 3, 4]
 
-// Use in for loops
+# Use in for loops
 for (i in 0..10) {
-    print(i);  // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+    print(i);  # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
 }</code></pre>
     </section>
 

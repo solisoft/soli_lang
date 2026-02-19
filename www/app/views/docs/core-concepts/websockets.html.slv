@@ -30,10 +30,10 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Map path to handler function
+<pre><code class="language-soli text-sm"># Map path to handler function
 router_websocket("/ws/chat", "websocket#chat_handler");
 
-// With dynamic segments
+# With dynamic segments
 router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
         </div>
     </div>
@@ -115,17 +115,17 @@ end</code></pre>
 <pre><code class="language-soli text-sm">def room_handler(event: Any)    let room = "room:" + event["params"]["room_id"];
 
     if (event["type"] == "connect")
-        // Join the room channel on connect
+        # Join the room channel on connect
         return { "join": room };
     end
 
     if (event["type"] == "message")
         let data = JSON.parse(event["message"]);
-        // Broadcast only to users in this room
+        # Broadcast only to users in this room
         return { "broadcast_room": json_encode(data) };
     end
 
-    // Leave is automatic on disconnect
+    # Leave is automatic on disconnect
     {}
 end</code></pre>
         </div>
@@ -174,7 +174,7 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Presence-Enabled Chat Handler</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def chat_handler(event: Any)    let room = "room:general";
-    // Get user from session/auth (example)
+    # Get user from session/auth (example)
     let user = get_current_user();
 
     if (event["type"] == "connect")
@@ -182,8 +182,8 @@ end</code></pre>
             "join": room,
             "track": {
                 "channel": room,
-                "user_id": user["id"],      // Required - groups connections
-                "name": user["name"],       // Extra metadata
+                "user_id": user["id"],      # Required - groups connections
+                "name": user["name"],       # Extra metadata
                 "avatar": user["avatar"]
             }
         };
@@ -192,7 +192,7 @@ end</code></pre>
     if (event["type"] == "message")
         let data = JSON.parse(event["message"]);
 
-        // Handle typing indicators
+        # Handle typing indicators
         if (data["event"] == "typing")
             return { "set_presence": { "channel": room, "state": "typing" } };
         end
@@ -200,11 +200,11 @@ end</code></pre>
             return { "set_presence": { "channel": room, "state": "online" } };
         end
 
-        // Regular messages
+        # Regular messages
         return { "broadcast_room": json_encode(data) };
     end
 
-    // Disconnect auto-untracks and broadcasts leave diff
+    # Disconnect auto-untracks and broadcasts leave diff
     {}
 end</code></pre>
         </div>
@@ -278,12 +278,12 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.event === 'presence_state') {
-        // Initial state - replace all
+        # Initial state - replace all
         presences = data.payload;
         renderUserList();
     }
     else if (data.event === 'presence_diff') {
-        // Apply diff
+        # Apply diff
         Object.entries(data.payload.joins).forEach(([userId, presence]) => {
             presences[userId] = presence;
         });
@@ -297,10 +297,10 @@ ws.onmessage = (event) => {
 function renderUserList() {
     const users = Object.entries(presences).map(([userId, { metas }]) => ({
         userId,
-        ...metas[0],  // Use first meta for display
+        ...metas[0],  # Use first meta for display
         connectionCount: metas.length
     }));
-    // Render users...
+    # Render users...
 }</code></pre>
         </div>
     </div>
@@ -310,17 +310,17 @@ function renderUserList() {
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Get all users in a room
+<pre><code class="language-soli text-sm"># Get all users in a room
 let users = ws_list_presence("room:lobby");
-// Returns: [{ user_id: "123", metas: [...] }, ...]
+# Returns: [{ user_id: "123", metas: [...] }, ...]
 
-// Get user count (unique users, not connections)
+# Get user count (unique users, not connections)
 let count = ws_presence_count("room:lobby");
-// Returns: 5
+# Returns: 5
 
-// Get a specific user's presence
+# Get a specific user's presence
 let user = ws_get_presence("room:lobby", "user_123");
-// Returns: { user_id: "123", metas: [...] } or null</code></pre>
+# Returns: { user_id: "123", metas: [...] } or null</code></pre>
         </div>
     </div>
 
@@ -329,7 +329,7 @@ let user = ws_get_presence("room:lobby", "user_123");
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">JavaScript</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-javascript text-sm">// Connect to WebSocket
+<pre><code class="language-javascript text-sm"># Connect to WebSocket
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${protocol}//${location.host}/ws/chat`);
 
@@ -340,10 +340,10 @@ ws.onmessage = (event) => {
 
 ws.send(JSON.stringify({ text: 'Hello!' }));
 
-// Send typing indicator
+# Send typing indicator
 ws.send(JSON.stringify({ event: 'typing' }));
 
-// Stop typing
+# Stop typing
 ws.send(JSON.stringify({ event: 'stop_typing' }));</code></pre>
         </div>
     </div>

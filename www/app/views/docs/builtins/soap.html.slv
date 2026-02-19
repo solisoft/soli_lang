@@ -47,11 +47,11 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - Response with <code class="text-cyan-400">status</code>, <code class="text-cyan-400">body</code> (raw XML), and <code class="text-cyan-400">parsed</code> (nested Hash)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text the SOAP request body-sm">// Build
+                <pre data-filename="Example"><code class="language-soli text the SOAP request body-sm"># Build
 let body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
 let envelope = SOAP.wrap(body)
 
-// Make the SOAP call (returns Hash directly, no await needed)
+# Make the SOAP call (returns Hash directly, no await needed)
 let result = SOAP.call(
     "https://weather.example.com/service",
     "http://example.com/weather/GetWeather",
@@ -100,7 +100,7 @@ if result["status"] == 200 {
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
 let envelope = SOAP.wrap(body)
-// Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"</code></pre>
+# Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"</code></pre>
             </div>
         </section>
     </section>
@@ -135,7 +135,7 @@ let envelope = SOAP.wrap(body)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let xml = "&lt;?xml version=\"1.0\"?&gt;&lt;root&gt;&lt;item&gt;value&lt;/item&gt;&lt;/root&gt;"
 let parsed = SOAP.parse(xml)
-// Returns: { "root" => { "item" => { "_text" => "value" } } }</code></pre>
+# Returns: { "root" => { "item" => { "_text" => "value" } } }</code></pre>
             </div>
         </section>
     </section>
@@ -169,7 +169,7 @@ let parsed = SOAP.parse(xml)
                     <code class="text-purple-400">String</code> - XML-escaped text (&lt;, &gt;, &amp;, &quot;, &apos;)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let escaped = SOAP.xml_escape("&lt;script&gt;alert('xss')&lt;/script&gt;")
-// Returns: "&amp;lt;script&amp;gt;alert(&amp;apos;xss&amp;ript)"</code></pre>
+# Returns: "&amp;lt;script&amp;gt;alert(&amp;apos;xss&amp;ript)"</code></pre>
             </div>
         </section>
     </section>
@@ -221,18 +221,18 @@ let parsed = SOAP.parse(xml)
 }
 
 let xml = SOAP.to_xml(data, "users")
-// Returns XML:
-// &lt;users&gt;
-//   &lt;user id="123"&gt;
-//     &lt;name&gt;John&lt;/name&gt;
-//     &lt;address&gt;
-//       &lt;street&gt;123 Main St&lt;/street&gt;
-//       &lt;city&gt;Boston&lt;/city&gt;
-//     &lt;/address&gt;
-//     &lt;tags_0&gt;admin&lt;/tags_0&gt;
-//     &lt;tags_1&gt;user&lt;/tags_1&gt;
-//   &lt;/user&gt;
-// &lt;/users&gt;</code></pre>
+# Returns XML:
+# &lt;users&gt;
+#   &lt;user id="123"&gt;
+#     &lt;name&gt;John&lt;/name&gt;
+#     &lt;address&gt;
+#       &lt;street&gt;123 Main St&lt;/street&gt;
+#       &lt;city&gt;Boston&lt;/city&gt;
+#     &lt;/address&gt;
+#     &lt;tags_0&gt;admin&lt;/tags_0&gt;
+#     &lt;tags_1&gt;user&lt;/tags_1&gt;
+#   &lt;/user&gt;
+# &lt;/users&gt;</code></pre>
 
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">With _text for Element Content</h4>
                 <pre data-filename="Example"><code class="language-soli text-sm">let data = {
@@ -246,14 +246,14 @@ let xml = SOAP.to_xml(data, "users")
 }
 
 let xml = SOAP.to_xml(data, "catalog")
-// Returns:
-// &lt;catalog&gt;
-//   &lt;product&gt;
-//     &lt;name&gt;Laptop&lt;/name&gt;
-//     &lt;description&gt;A high-performance laptop with 16GB RAM&lt;/description&gt;
-//     &lt;price&gt;999.99&lt;/price&gt;
-//   &lt;/product&gt;
-// &lt;/catalog&gt;</code></pre>
+# Returns:
+# &lt;catalog&gt;
+#   &lt;product&gt;
+#     &lt;name&gt;Laptop&lt;/name&gt;
+#     &lt;description&gt;A high-performance laptop with 16GB RAM&lt;/description&gt;
+#     &lt;price&gt;999.99&lt;/price&gt;
+#   &lt;/product&gt;
+# &lt;/catalog&gt;</code></pre>
             </div>
         </section>
     </section>
@@ -263,11 +263,11 @@ let xml = SOAP.to_xml(data, "catalog")
         <h2 class="text-2xl font-bold text-white mb-4">Complete SOAP Example</h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <pre data-filename="weather_service.sol"><code class="language-soli text-sm">// Build the SOAP request body
+            <pre data-filename="weather_service.sol"><code class="language-soli text-sm"># Build the SOAP request body
 let body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
 let envelope = SOAP.wrap(body)
 
-// Make the SOAP call (auto-resolved, no await needed)
+# Make the SOAP call (auto-resolved, no await needed)
 let result = SOAP.call(
     "https://weather.example.com/service",
     "http://example.com/weather/GetWeather",
@@ -275,7 +275,7 @@ let result = SOAP.call(
     { "Authorization": "Bearer token123" }
 )
 
-// Handle the response
+# Handle the response
 if result["status"] == 200 {
     let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
     let temp = response["Temperature"]
@@ -296,11 +296,11 @@ if result["status"] == 200 {
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-4">The <code class="text-cyan-400">SOAP.call()</code> returns a Hash with the following structure:</p>
             <pre data-filename="Response Hash"><code class="language-soli text-sm">{
-  "status": 200,           // HTTP status code
-  "status_text": "OK",      // HTTP status text
-  "body": "&lt;?xml ...&gt;",  // Raw XML response string
-  "headers": {...},         // Response headers Hash
-  "parsed": {              // Parsed XML as nested Hash
+  "status": 200,           # HTTP status code
+  "status_text": "OK",      # HTTP status text
+  "body": "&lt;?xml ...&gt;",  # Raw XML response string
+  "headers": {...},         # Response headers Hash
+  "parsed": {              # Parsed XML as nested Hash
     "soap:Envelope": {
       "soap:Body": {
         "ResponseElement": {

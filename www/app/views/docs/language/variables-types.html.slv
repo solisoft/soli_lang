@@ -54,7 +54,7 @@ let is_active = true</code></pre>
         </p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Explicit type annotations
+<pre><code class="language-soli text-sm"># Explicit type annotations
 let name: String = "Alice";
 let age: Int = 30;
 let temperature: Float = 98.6;
@@ -151,8 +151,8 @@ let user: Hash = {"name": "Alice", "age": 30};</code></pre>
 const DEFAULT_TIMEOUT = 30;
 const PI = 3.14159265359;
 
-// const values cannot be reassigned
-// MAX_CONNECTIONS = 200;  // This would cause an error</code></pre>
+# const values cannot be reassigned
+# MAX_CONNECTIONS = 200;  # This would cause an error</code></pre>
             </div>
         </section>
     </section>
@@ -166,12 +166,12 @@ const PI = 3.14159265359;
 <pre><code class="language-soli text-sm">let x = 1;
 
 if (true) {
-    let y = 2;      // y only visible in this block
-    let x = 3;      // shadows outer x
-    print(x);       // Output: 3 (inner x)
+    let y = 2;      # y only visible in this block
+    let x = 3;      # shadows outer x
+    print(x);       # Output: 3 (inner x)
 }
 
-print(x);           // Output: 1 (outer x)</code></pre>
+print(x);           # Output: 1 (outer x)</code></pre>
             </div>
         </div>
     </section>

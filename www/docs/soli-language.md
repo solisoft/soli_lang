@@ -32,14 +32,14 @@ Soli is a modern, statically-typed programming language designed for clarity and
 ### Hello World
 
 ```soli
-// The classic first program
+# The classic first program
 print("Hello, World!");
 ```
 
 ### Your First Soli Program
 
 ```soli
-// A simple program that calculates and displays results
+# A simple program that calculates and displays results
 fn calculate_area(radius: Float) -> Float
     3.14159 * radius * radius
 end
@@ -47,7 +47,7 @@ end
 let radius = 5.0;
 let area = calculate_area(radius);
 print("The area of a circle with radius " + str(radius) + " is " + str(area));
-// Output: The area of a circle with radius 5.0 is 78.53975
+# Output: The area of a circle with radius 5.0 is 78.53975
 ```
 
 ### Running Soli Code
@@ -77,12 +77,12 @@ soli lint app/main.sl  # lint a single file
 Variables are declared using the `let` keyword. Soli uses block scoping.
 
 ```soli
-// Basic variable declarations
-let name = "Alice";           // String
-let age = 30;                 // Int
-let temperature = 98.6;       // Float
-let is_active = true;         // Bool
-let nothing = null;           // Null
+# Basic variable declarations
+let name = "Alice";           # String
+let age = 30;                 # Int
+let temperature = 98.6;       # Float
+let is_active = true;         # Bool
+let nothing = null;           # Null
 ```
 
 ### Type Annotations
@@ -90,7 +90,7 @@ let nothing = null;           // Null
 You can explicitly specify types for better documentation and type safety.
 
 ```soli
-// Explicit type annotations
+# Explicit type annotations
 let name: String = "Alice";
 let age: Int = 30;
 let temperature: Float = 98.6;
@@ -104,22 +104,22 @@ let user: Hash = {"name": "Alice", "age": 30};
 Soli provides five primitive types:
 
 ```soli
-// Int - 64-bit signed integer
+# Int - 64-bit signed integer
 let count = 42;
 let negative = -100;
-let large = 9_000_000;  // Underscores for readability
+let large = 9_000_000;  # Underscores for readability
 
-// Float - 64-bit floating-point
+# Float - 64-bit floating-point
 let pi = 3.14159;
 let small = 0.001;
-let scientific = 2.5e10;  // 25000000000.0
+let scientific = 2.5e10;  # 25000000000.0
 
-// String - UTF-8 text
+# String - UTF-8 text
 let greeting = "Hello, World!";
 let multiline = "Line 1\nLine 2\tTabbed";
-let raw = r"Path: C:\Users\name";  // Raw string (no escape processing)
+let raw = r"Path: C:\Users\name";  # Raw string (no escape processing)
 
-// Multiline strings
+# Multiline strings
 let poem = """The fog comes
 on little cat feet.""";
 
@@ -127,16 +127,16 @@ let story = [[Once upon
 a time in
 the wild west.]];
 
-// Command substitution - execute shell commands
-let files = `ls *.sl`;        // Returns Future<{stdout, stderr, exit_code}>
-let output = files.stdout;     // Auto-resolves when accessed
-let code = files.exit_code;    // Exit code (0 = success)
+# Command substitution - execute shell commands
+let files = `ls *.sl`;        # Returns Future<{stdout, stderr, exit_code}>
+let output = files.stdout;     # Auto-resolves when accessed
+let code = files.exit_code;    # Exit code (0 = success)
 
-// Bool - Boolean values
+# Bool - Boolean values
 let is_valid = true;
 let is_complete = false;
 
-// Null - Absence of value
+# Null - Absence of value
 let missing = null;
 ```
 
@@ -145,17 +145,17 @@ let missing = null;
 Soli automatically infers types when not explicitly specified:
 
 ```soli
-// Type inference examples
-let x = 5;              // Inferred as Int
-let y = 3.14;           // Inferred as Float
-let z = "hello";        // Inferred as String
-let flag = true;        // Inferred as Bool
-let nums = [1, 2, 3];   // Inferred as Int[]
-let person = {"name": "Alice"};  // Inferred as Hash
+# Type inference examples
+let x = 5;              # Inferred as Int
+let y = 3.14;           # Inferred as Float
+let z = "hello";        # Inferred as String
+let flag = true;        # Inferred as Bool
+let nums = [1, 2, 3];   # Inferred as Int[]
+let person = {"name": "Alice"};  # Inferred as Hash
 
-// You can always add annotations even with inference
-let id = 123;  // Int - inferred
-let user_id: Int = 123;  // Explicit annotation, still Int
+# You can always add annotations even with inference
+let id = 123;  # Int - inferred
+let user_id: Int = 123;  # Explicit annotation, still Int
 ```
 
 ### Constants
@@ -167,8 +167,8 @@ const MAX_CONNECTIONS = 100;
 const DEFAULT_TIMEOUT = 30;
 const PI = 3.14159265359;
 
-// const values cannot be reassigned
-// MAX_CONNECTIONS = 200;  // This would cause an error
+# const values cannot be reassigned
+# MAX_CONNECTIONS = 200;  # This would cause an error
 ```
 
 ### Scope
@@ -179,18 +179,18 @@ Variables in Soli are block-scoped:
 let x = 1;
 
 if true
-    let y = 2;      // y is only visible in this block
-    let x = 3;      // This shadows the outer x
-    print(x);       // Output: 3 (inner x)
+    let y = 2;      # y is only visible in this block
+    let x = 3;      # This shadows the outer x
+    print(x);       # Output: 3 (inner x)
 end
 
-print(x);           // Output: 1 (outer x)
+print(x);           # Output: 1 (outer x)
 
-// Loop scope
+# Loop scope
 for i in range(0, 3)
-    print(i);       // i is visible only within the loop
+    print(i);       # i is visible only within the loop
 end
-// print(i);         // Error: i is not defined
+# print(i);         # Error: i is not defined
 ```
 
 ### Shadowing
@@ -202,15 +202,15 @@ let message = "outer";
 
 if true
     let message = "inner";
-    print(message);  // "inner"
+    print(message);  # "inner"
 end
 
-print(message);      // "outer"
+print(message);      # "outer"
 
-// Common use case: transforming data
+# Common use case: transforming data
 let data = get_data();
 if data != null
-    let data = process(data);  // Transform while keeping same name
+    let data = process(data);  # Transform while keeping same name
     print(data);
 end
 ```
@@ -225,22 +225,22 @@ end
 let a = 10;
 let b = 3;
 
-// Basic arithmetic
-print(a + b);   // 13  (addition)
-print(a - b);   // 7   (subtraction)
-print(a * b);   // 30  (multiplication)
-print(a / b);   // 3.3333333333333335  (division - always float!)
-print(a % b);   // 1   (modulo)
+# Basic arithmetic
+print(a + b);   # 13  (addition)
+print(a - b);   # 7   (subtraction)
+print(a * b);   # 30  (multiplication)
+print(a / b);   # 3.3333333333333335  (division - always float!)
+print(a % b);   # 1   (modulo)
 
-// Integer division requires special handling
-let int_result = int(a / b);  // 3
-let remainder = a % b;        // 1
+# Integer division requires special handling
+let int_result = int(a / b);  # 3
+let remainder = a % b;        # 1
 
-// Compound assignment
+# Compound assignment
 let counter = 0;
-counter = counter + 1;  // 1
-counter += 1;           // 2 (shorthand)
-counter *= 2;           // 4
+counter = counter + 1;  # 1
+counter += 1;           # 2 (shorthand)
+counter *= 2;           # 4
 ```
 
 ### Comparison Operators
@@ -249,23 +249,23 @@ counter *= 2;           // 4
 let x = 5;
 let y = 10;
 
-// Equality
-print(x == y);   // false
-print(x != y);   // true
+# Equality
+print(x == y);   # false
+print(x != y);   # true
 
-// Ordering
-print(x < y);    // true
-print(x <= y);   // true
-print(x > y);    // false
-print(x >= y);   // false
+# Ordering
+print(x < y);    # true
+print(x <= y);   # true
+print(x > y);    # false
+print(x >= y);   # false
 
-// String comparison
-print("apple" == "apple");  // true
-print("apple" < "banana");  // true (lexicographic)
+# String comparison
+print("apple" == "apple");  # true
+print("apple" < "banana");  # true (lexicographic)
 
-// Array comparison (element-wise)
-print([1, 2, 3] == [1, 2, 3]);  // true
-print([1, 2] < [1, 2, 3]);      // true (shorter is "less")
+# Array comparison (element-wise)
+print([1, 2, 3] == [1, 2, 3]);  # true
+print([1, 2] < [1, 2, 3]);      # true (shorter is "less")
 ```
 
 ### Logical Operators
@@ -275,22 +275,22 @@ let age = 25;
 let has_license = true;
 let is_weekend = false;
 
-// AND - both conditions must be true
+# AND - both conditions must be true
 if age >= 18 && has_license
     print("Can drive");
 end
 
-// OR - at least one condition must be true
+# OR - at least one condition must be true
 if is_weekend || is_holiday
     print("Day off!");
 end
 
-// NOT - negates the condition
+# NOT - negates the condition
 if !is_raining
     print("No umbrella needed");
 end
 
-// Chained conditions
+# Chained conditions
 let score = 85;
 if score >= 90 && attendance >= 80
     print("Grade: A");
@@ -302,61 +302,61 @@ end
 ### String Operations
 
 ```soli
-// Concatenation
-let greeting = "Hello, " + "World!";    // "Hello, World!"
-let message = "Value: " + 42;           // "Value: 42" (auto-conversion)
-let path = "/home/" + "user";           // "/home/user"
+# Concatenation
+let greeting = "Hello, " + "World!";    # "Hello, World!"
+let message = "Value: " + 42;           # "Value: 42" (auto-conversion)
+let path = "/home/" + "user";           # "/home/user"
 
-// String methods
+# String methods
 let text = "  Hello, World!  ";
-print(text.trim());        // "Hello, World!" (removes whitespace)
-print(text.upper());       // "  HELLO, WORLD!  "
-print(text.lower());       // "  hello, world!  "
-print(text.len());         // 18
+print(text.trim());        # "Hello, World!" (removes whitespace)
+print(text.upper());       # "  HELLO, WORLD!  "
+print(text.lower());       # "  hello, world!  "
+print(text.len());         # 18
 
-// Substring operations
+# Substring operations
 let s = "Hello, World!";
-print(s.sub(0, 5));        // "Hello" (from index 0, length 5)
-print(s.find("World"));    // 7 (index of first occurrence)
-print(s.contains("Hello"));  // true
-print(s.starts_with("Hell"));  // true
-print(s.ends_with("!"));      // true
+print(s.sub(0, 5));        # "Hello" (from index 0, length 5)
+print(s.find("World"));    # 7 (index of first occurrence)
+print(s.contains("Hello"));  # true
+print(s.starts_with("Hell"));  # true
+print(s.ends_with("!"));      # true
 
-// String transformation
-let snake_case = "HelloWorld".snake_case();  // "hello_world"
-let camel_case = "hello_world".camel_case(); // "helloWorld"
+# String transformation
+let snake_case = "HelloWorld".snake_case();  # "hello_world"
+let camel_case = "hello_world".camel_case(); # "helloWorld"
 
-// String interpolation
+# String interpolation
 let name = "World";
-let greeting = "Hello #{name}!";           // "Hello World!"
+let greeting = "Hello #{name}!";           # "Hello World!"
 let a = 2;
 let b = 3;
-let result = "Sum is #{a + b}";             // "Sum is 5"
+let result = "Sum is #{a + b}";             # "Sum is 5"
 let first = "John";
 let last = "Doe";
-let full = "#{first} #{last}";              // "John Doe"
+let full = "#{first} #{last}";              # "John Doe"
 let text = "hello";
-let upper = "Upper: #{text.upper()}";        // "Upper: HELLO"
+let upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
 let items = ["Alice", "Bob"];
-let first_item = "First: #{items[0]}";       // "First: Alice"
+let first_item = "First: #{items[0]}";       # "First: Alice"
 let person = {"name": "Charlie"};
-let person_name = "Name: #{person["name"]}"; // "Name: Charlie"
+let person_name = "Name: #{person["name"]}"; # "Name: Charlie"
 ```
 
 ### Type Coercion
 
 ```soli
-// Int to Float in mixed arithmetic
-let result = 5 + 3.0;      // result is Float: 8.0
-let price = 10 / 3;        // 3.3333333333333335 (float division)
+# Int to Float in mixed arithmetic
+let result = 5 + 3.0;      # result is Float: 8.0
+let price = 10 / 3;        # 3.3333333333333335 (float division)
 
-// Explicit conversion
+# Explicit conversion
 let str_num = "42";
-let num = int(str_num);    // 42
-let f = float("3.14");     // 3.14
+let num = int(str_num);    # 42
+let f = float("3.14");     # 3.14
 
 let n = 123;
-let s = str(n);            // "123" (any type to string)
+let s = str(n);            # "123" (any type to string)
 ```
 
 ### Null-Safe Operations
@@ -364,27 +364,27 @@ let s = str(n);            // "123" (any type to string)
 ```soli
 let user = {"name": "Alice", "email": null};
 
-// Traditional null check
+# Traditional null check
 let email = user["email"];
 if email == null
     email = "unknown";
 end
 
-// Null coalescing operator
+# Null coalescing operator
 let display_email = user["email"] ?? "unknown";
 
-// Chaining with null values
+# Chaining with null values
 let city = user["address"]["city"] ?? "Unknown City";
-// If any key in the chain is null/missing, returns "Unknown City"
+# If any key in the chain is null/missing, returns "Unknown City"
 
-// Safe navigation operator (&.)
-// Access properties or call methods on values that might be null
-let user = get_user()  // might return null
+# Safe navigation operator (&.)
+# Access properties or call methods on values that might be null
+let user = get_user()  # might return null
 
-let name = user&.name              // null if user is null, otherwise user.name
-let city = user&.address&.city     // chain for nested access
-let greeting = user&.greet()       // null if user is null, otherwise calls greet()
-let display = user&.name ?? "Anon" // combine with ?? for defaults
+let name = user&.name              # null if user is null, otherwise user.name
+let city = user&.address&.city     # chain for nested access
+let greeting = user&.greet()       # null if user is null, otherwise calls greet()
+let display = user&.name ?? "Anon" # combine with ?? for defaults
 ```
 
 ---
@@ -396,12 +396,12 @@ let display = user&.name ?? "Anon" // combine with ?? for defaults
 ```soli
 let age = 18;
 
-// Simple if
+# Simple if
 if age >= 18
     print("Adult");
 end
 
-// If-else
+# If-else
 let score = 75;
 if score >= 60
     print("Pass");
@@ -409,7 +409,7 @@ else
     print("Fail");
 end
 
-// Else-if chain
+# Else-if chain
 let grade = 85;
 let letter;
 if grade >= 90
@@ -423,9 +423,9 @@ elsif grade >= 60
 else
     letter = "F";
 end
-print(letter);  // "B"
+print(letter);  # "B"
 
-// Nested conditions
+# Nested conditions
 let is_weekend = true;
 let is_holiday = false;
 let has_plans = true;
@@ -444,20 +444,20 @@ end
 ### While Loops
 
 ```soli
-// Basic while loop
+# Basic while loop
 let i = 0;
 while i < 5
     print("Count: " + str(i));
     i = i + 1;
 end
-// Output:
-// Count: 0
-// Count: 1
-// Count: 2
-// Count: 3
-// Count: 4
+# Output:
+# Count: 0
+# Count: 1
+# Count: 2
+# Count: 3
+# Count: 4
 
-// While with complex condition
+# While with complex condition
 let data = [1, 2, 3, 4, 5];
 let sum = 0;
 let idx = 0;
@@ -465,9 +465,9 @@ while idx < len(data) && data[idx] < 4
     sum = sum + data[idx];
     idx = idx + 1;
 end
-print("Sum: " + str(sum));  // 6 (1+2+3)
+print("Sum: " + str(sum));  # 6 (1+2+3)
 
-// Do-while equivalent (using break)
+# Do-while equivalent (using break)
 let count = 0;
 loop
     count = count + 1;
@@ -481,59 +481,59 @@ end
 ### For Loops
 
 ```soli
-// Iterate over array
+# Iterate over array
 let fruits = ["apple", "banana", "cherry"];
 for fruit in fruits
     print(fruit);
 end
-// Output: apple, banana, cherry
+# Output: apple, banana, cherry
 
-// Iterate with index
+# Iterate with index
 for i, fruit in fruits
     print(str(i) + ": " + fruit);
 end
-// Output:
-// 0: apple
-// 1: banana
-// 2: cherry
+# Output:
+# 0: apple
+# 1: banana
+# 2: cherry
 
-// Iterate with range
+# Iterate with range
 for i in range(0, 5)
-    print(i);  // 0, 1, 2, 3, 4
+    print(i);  # 0, 1, 2, 3, 4
 end
 
-// Range with step
+# Range with step
 for i in range(0, 10, 2)
-    print(i);  // 0, 2, 4, 6, 8
+    print(i);  # 0, 2, 4, 6, 8
 end
 
-// Nested loops
+# Nested loops
 for i in range(1, 4)
     for j in range(1, 4)
         print(str(i) + " x " + str(j) + " = " + str(i * j));
     end
 end
-// Output: Multiplication table 1x1 through 3x3
+# Output: Multiplication table 1x1 through 3x3
 
-// Iterate backwards
+# Iterate backwards
 let arr = [1, 2, 3, 4, 5];
 for i in range(len(arr) - 1, -1, -1)
-    print(arr[i]);  // 5, 4, 3, 2, 1
+    print(arr[i]);  # 5, 4, 3, 2, 1
 end
 
-// Break and continue
+# Break and continue
 let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 let sum = 0;
 for n in numbers
     if n % 2 == 0
-        continue;  // Skip even numbers
+        continue;  # Skip even numbers
     end
     if n > 7
-        break;  // Stop at first number > 7
+        break;  # Stop at first number > 7
     end
     sum = sum + n;
 end
-print("Sum of odd numbers < 7: " + str(sum));  // 1+3+5 = 9
+print("Sum of odd numbers < 7: " + str(sum));  # 1+3+5 = 9
 ```
 
 ### Postfix Conditionals
@@ -547,7 +547,7 @@ print("big") if (x > 5);
 let y = 3;
 print("small") unless (y > 5);
 
-// More examples
+# More examples
 let status = "active";
 print("Welcome!") if (status == "active");
 print("Account locked") unless (status != "banned");
@@ -559,21 +559,21 @@ print("Empty") if (len(items) == 0);
 ### Ternary Operator
 
 ```soli
-// Basic ternary
+# Basic ternary
 let x = 10;
 let size = x > 5 ? "large" : "small";
-print(size);  // "large"
+print(size);  # "large"
 
-// Nested ternary
+# Nested ternary
 let grade = 85;
 let letter = grade >= 90 ? "A"
              : grade >= 80 ? "B"
              : grade >= 70 ? "C"
              : grade >= 60 ? "D"
              : "F";
-print(letter);  // "B"
+print(letter);  # "B"
 
-// In assignments
+# In assignments
 let max_val = a > b ? a : b;
 let status = is_valid ? "valid" : "invalid";
 ```
@@ -583,15 +583,15 @@ let status = is_valid ? "valid" : "invalid";
 Soli's powerful pattern matching (covered in detail in the Pattern Matching section):
 
 ```soli
-// Basic match
+# Basic match
 let x = 42;
 let result = match x {
     42 => "the answer",
     _ => "something else",
 };
-print(result);  // "the answer"
+print(result);  # "the answer"
 
-// Type matching
+# Type matching
 let value: Any = "hello";
 match value {
     s: String => "String: " + s,
@@ -605,10 +605,10 @@ match value {
 Soli follows common truthiness rules:
 
 ```soli
-// Falsy values
+# Falsy values
 let falsy_values = [false, null, 0, 0.0, "", []];
 
-// Truthy values (everything else)
+# Truthy values (everything else)
 if "hello"
     print("Non-empty string is truthy");
 end
@@ -621,7 +621,7 @@ if 42
     print("Non-zero number is truthy");
 end
 
-// Practical examples
+# Practical examples
 let config = get_config();
 if config
     print("Config loaded: " + str(config));
@@ -642,14 +642,14 @@ end
 Soli provides `try`/`catch`/`finally` for exception handling, using `end`-delimited blocks (just like `if`, `while`, and `for`).
 
 ```soli
-// Basic try/catch
+# Basic try/catch
 try
     let result = 10 / 0;
 catch e
     print("Error: " + str(e));
 end
 
-// With finally (always runs)
+# With finally (always runs)
 try
     let data = read_file("config.sl");
     print(data);
@@ -659,7 +659,7 @@ finally
     print("Cleanup done");
 end
 
-// Try/finally without catch
+# Try/finally without catch
 try
     process_data();
 finally
@@ -672,7 +672,7 @@ end
 The catch variable can be written with or without parentheses:
 
 ```soli
-// Both are equivalent
+# Both are equivalent
 catch e
     print(e);
 end
@@ -697,7 +697,7 @@ end
 try
     let result = divide(10, 0);
 catch e
-    print("Caught: " + str(e));  // "Caught: Division by zero"
+    print("Caught: " + str(e));  # "Caught: Division by zero"
 end
 ```
 
@@ -724,32 +724,32 @@ try {
 Functions are declared with the `fn` keyword. You can also use `def` as an alias (Ruby-style).
 
 ```soli
-// No parameters — parentheses are optional
+# No parameters — parentheses are optional
 fn say_hello
     print("Hello!");
 end
 
-// Equivalent with explicit empty parentheses
+# Equivalent with explicit empty parentheses
 fn say_hello()
     print("Hello!");
 end
 
-// `def` works exactly like `fn`
+# `def` works exactly like `fn`
 def greet(name: String)
     print("Hello, " + name + "!");
 end
 
-// With return value
+# With return value
 fn add(a: Int, b: Int) -> Int
     a + b
 end
 
-// Void function (explicit)
+# Void function (explicit)
 def log_message(msg: String)
     print("[LOG] " + msg);
 end
 
-// With type annotations on return
+# With type annotations on return
 fn multiply(a: Float, b: Float) -> Float
     a * b
 end
@@ -758,7 +758,7 @@ end
 ### Function Examples
 
 ```soli
-// Calculate factorial
+# Calculate factorial
 fn factorial(n: Int) -> Int
     if n <= 1
         return 1;
@@ -766,9 +766,9 @@ fn factorial(n: Int) -> Int
     n * factorial(n - 1)
 end
 
-print(factorial(5));  // 120
+print(factorial(5));  # 120
 
-// Calculate Fibonacci
+# Calculate Fibonacci
 fn fibonacci(n: Int) -> Int
     if n <= 1
         return n;
@@ -776,9 +776,9 @@ fn fibonacci(n: Int) -> Int
     fibonacci(n - 1) + fibonacci(n - 2)
 end
 
-print(fibonacci(10));  // 55
+print(fibonacci(10));  # 55
 
-// Check if a number is prime
+# Check if a number is prime
 fn is_prime(n: Int) -> Bool
     if n < 2
         return false;
@@ -799,10 +799,10 @@ fn is_prime(n: Int) -> Bool
     true
 end
 
-// Find maximum in array
+# Find maximum in array
 fn find_max(arr: Int[]) -> Int
     if len(arr) == 0
-        return 0;  // or panic for empty array
+        return 0;  # or panic for empty array
     end
     let max = arr[0];
     for i in range(1, len(arr))
@@ -818,7 +818,7 @@ end
 
 ```soli
 fn process_user(user: Hash) -> Hash
-    // Validate required fields
+    # Validate required fields
     if !has_key(user, "name")
         return {"error": "Name is required"};
     end
@@ -826,13 +826,13 @@ fn process_user(user: Hash) -> Hash
         return {"error": "Email is required"};
     end
 
-    // Validate email format
+    # Validate email format
     let email = user["email"];
     if !email.contains("@")
         return {"error": "Invalid email format"};
     end
 
-    // Process user data
+    # Process user data
     let processed = user;
     processed["status"] = "active";
     processed["created_at"] = DateTime.utc().to_iso();
@@ -846,7 +846,7 @@ end
 Functions can accept other functions as parameters and return functions:
 
 ```soli
-// Function as parameter
+# Function as parameter
 fn apply(x: Int, f: (Int) -> Int) -> Int
     f(x)
 end
@@ -859,10 +859,10 @@ fn square(x: Int) -> Int
     x * x
 end
 
-let result = apply(5, double);   // 10
-let squared = apply(5, square);  // 25
+let result = apply(5, double);   # 10
+let squared = apply(5, square);  # 25
 
-// Passing anonymous functions
+# Passing anonymous functions
 fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
     let result = [];
     for item in arr
@@ -872,9 +872,9 @@ fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
 end
 
 let numbers = [1, 2, 3, 4, 5];
-let doubled = transform_array(numbers, fn(x) x * 2);  // [2, 4, 6, 8, 10]
+let doubled = transform_array(numbers, fn(x) x * 2);  # [2, 4, 6, 8, 10]
 
-// Function that returns a function
+# Function that returns a function
 fn multiplier(factor: Int) -> (Int) -> Int
     fn closure(x: Int) -> Int
         x * factor
@@ -883,17 +883,17 @@ fn multiplier(factor: Int) -> (Int) -> Int
 end
 
 let times_two = multiplier(2);
-print(times_two(5));   // 10
-print(times_two(10));  // 20
+print(times_two(5));   # 10
+print(times_two(10));  # 20
 
 let times_three = multiplier(3);
-print(times_three(5));  // 15
+print(times_three(5));  # 15
 ```
 
 ### Closures
 
 ```soli
-// Counter using closure
+# Counter using closure
 fn make_counter() -> () -> Int
     let count = 0;
     fn counter() -> Int
@@ -906,14 +906,14 @@ end
 let counter1 = make_counter();
 let counter2 = make_counter();
 
-print(counter1());  // 1
-print(counter1());  // 2
-print(counter1());  // 3
+print(counter1());  # 1
+print(counter1());  # 2
+print(counter1());  # 3
 
-print(counter2());  // 1
-print(counter2());  // 2
+print(counter2());  # 1
+print(counter2());  # 2
 
-// Closure capturing variables
+# Closure capturing variables
 fn make_greeter(greeting: String) -> (String) -> String
     fn greet(name: String) -> String
         greeting + ", " + name + "!"
@@ -924,8 +924,8 @@ end
 let say_hello = make_greeter("Hello");
 let say_hola = make_greeter("Hola");
 
-print(say_hello("Alice"));  // "Hello, Alice!"
-print(say_hola("Bob"));     // "Hola, Bob!"
+print(say_hello("Alice"));  # "Hello, Alice!"
+print(say_hola("Bob"));     # "Hola, Bob!"
 ```
 
 ### Default Parameters
@@ -935,11 +935,11 @@ fn greet(name: String, greeting: String = "Hello") -> String
     greeting + ", " + name + "!"
 end
 
-print(greet("Alice"));              // "Hello, Alice!"
-print(greet("Bob", "Hi"));          // "Hi, Bob!"
-print(greet("Charlie", "Welcome")); // "Welcome, Charlie!"
+print(greet("Alice"));              # "Hello, Alice!"
+print(greet("Bob", "Hi"));          # "Hi, Bob!"
+print(greet("Charlie", "Welcome")); # "Welcome, Charlie!"
 
-// Optional parameters
+# Optional parameters
 fn create_user(name: String, email: String = null, role: String = "user") -> Hash
     let user = {"name": name, "role": role};
     if email != null
@@ -962,11 +962,11 @@ fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) 
     print("Connecting to \(host):\(port) with debug=\(debug)");
 end
 
-configure();                              // Using all defaults
-configure(host: "example.com");           // Only specify host
-configure(port: 3000, debug: true);       // Named parameters in any order
-configure("example.com", port: 443);      // Mixed: positional then named
-configure(host: "api.example.com", port: 443, debug: true);  // All named
+configure();                              # Using all defaults
+configure(host: "example.com");           # Only specify host
+configure(port: 3000, debug: true);       # Named parameters in any order
+configure("example.com", port: 443);      # Mixed: positional then named
+configure(host: "api.example.com", port: 443, debug: true);  # All named
 ```
 
 #### Rules
@@ -978,14 +978,14 @@ configure(host: "api.example.com", port: 443, debug: true);  // All named
 5. Default values are used for any parameters not provided
 
 ```soli
-// Error: positional argument after named argument
-configure(port: 3000, "example.com");  // Parser error
+# Error: positional argument after named argument
+configure(port: 3000, "example.com");  # Parser error
 
-// Error: duplicate named argument
-configure(port: 3000, port: 8080);     // Runtime error
+# Error: duplicate named argument
+configure(port: 3000, port: 8080);     # Runtime error
 
-// Error: unknown parameter name
-configure(unknown: 123);               // Runtime error
+# Error: unknown parameter name
+configure(unknown: 123);               # Runtime error
 ```
 
 #### Use Cases
@@ -1006,7 +1006,7 @@ fn http_request(
     timeout: Int = 30
 ) { ... }
 
-// Clear and readable - specify only what changes
+# Clear and readable - specify only what changes
 http_request(
     method: "POST",
     url: "https://api.example.com/users",
@@ -1025,14 +1025,14 @@ fn sum(numbers: Int[]) -> Int
     total
 end
 
-print(sum([1, 2, 3, 4, 5]));  // 15
+print(sum([1, 2, 3, 4, 5]));  # 15
 
-// Using spread operator
+# Using spread operator
 let nums = [1, 2, 3];
-print(sum(nums));             // 6
-print(sum([...nums, 4, 5]));  // 15
+print(sum(nums));             # 6
+print(sum([...nums, 4, 5]));  # 15
 
-// Variadic-like with array
+# Variadic-like with array
 fn format_list(items: String[], separator: String = ", ", final_separator: String = "and") -> String
     let len = len(items);
     if len == 0
@@ -1051,8 +1051,8 @@ fn format_list(items: String[], separator: String = ", ", final_separator: Strin
     result + final_separator + " " + items[len - 1]
 end
 
-print(format_list(["apple", "banana", "cherry"]));  // "apple, banana and cherry"
-print(format_list(["one", "two"]));                 // "one and two"
+print(format_list(["apple", "banana", "cherry"]));  # "apple, banana and cherry"
+print(format_list(["one", "two"]));                 # "one and two"
 ```
 
 ---
@@ -1064,24 +1064,24 @@ print(format_list(["one", "two"]));                 // "one and two"
 #### Creating Arrays
 
 ```soli
-// Basic array creation
+# Basic array creation
 let numbers = [1, 2, 3, 4, 5];
 let names = ["Alice", "Bob", "Charlie"];
 let mixed = [1, "two", 3.0, true];
 
-// Type-annotated arrays
+# Type-annotated arrays
 let scores: Int[] = [95, 87, 92, 88, 90];
-let words: String[] = [];  // Empty array
+let words: String[] = [];  # Empty array
 
-// Array from range
-let range_arr = range(1, 10);  // [1, 2, 3, 4, 5, 6, 7, 8, 9]
-let step_arr = range(0, 10, 2);  // [0, 2, 4, 6, 8]
+# Array from range
+let range_arr = range(1, 10);  # [1, 2, 3, 4, 5, 6, 7, 8, 9]
+let step_arr = range(0, 10, 2);  # [0, 2, 4, 6, 8]
 
-// Initialize with default value
+# Initialize with default value
 let zeros = [];
 for _ in range(0, 5)
     push(zeros, 0);
-end  // [0, 0, 0, 0, 0]
+end  # [0, 0, 0, 0, 0]
 ```
 
 #### Array Access and Modification
@@ -1089,20 +1089,20 @@ end  // [0, 0, 0, 0, 0]
 ```soli
 let fruits = ["apple", "banana", "cherry", "date"];
 
-// Access elements
-print(fruits[0]);   // "apple"
-print(fruits[1]);   // "banana"
-print(fruits[-1]);  // "date" (last element)
-print(fruits[-2]);  // "cherry"
+# Access elements
+print(fruits[0]);   # "apple"
+print(fruits[1]);   # "banana"
+print(fruits[-1]);  # "date" (last element)
+print(fruits[-2]);  # "cherry"
 
-// Modify elements
+# Modify elements
 fruits[0] = "apricot";
-print(fruits[0]);  // "apricot"
+print(fruits[0]);  # "apricot"
 
-// Out of bounds returns null
-print(fruits[100]);  // null
+# Out of bounds returns null
+print(fruits[100]);  # null
 
-// Slicing
+# Slicing
 fn slice(arr: Array, start: Int, end: Int) -> Array {
     let result = [];
     let actual_end = end;
@@ -1115,7 +1115,7 @@ fn slice(arr: Array, start: Int, end: Int) -> Array {
     result
 }
 
-print(slice(fruits, 1, 3));  // ["banana", "cherry"]
+print(slice(fruits, 1, 3));  # ["banana", "cherry"]
 ```
 
 #### Array Methods
@@ -1123,34 +1123,34 @@ print(slice(fruits, 1, 3));  // ["banana", "cherry"]
 ```soli
 let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-// map - transform each element
+# map - transform each element
 let doubled = numbers.map(fn(x) x * 2);
-print(doubled);  // [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+print(doubled);  # [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
 
-// filter - keep elements matching condition
+# filter - keep elements matching condition
 let evens = numbers.filter(fn(x) x % 2 == 0);
-print(evens);  // [2, 4, 6, 8, 10]
+print(evens);  # [2, 4, 6, 8, 10]
 
-// each - iterate with side effects
-numbers.each(fn(x) print(x));  // Prints each number
+# each - iterate with side effects
+numbers.each(fn(x) print(x));  # Prints each number
 
-// reduce - accumulate to single value
-let sum = numbers.reduce(fn(acc, x) acc + x, 0);  // 55
-let product = numbers.reduce(fn(acc, x) acc * x, 1);  // 3628800
+# reduce - accumulate to single value
+let sum = numbers.reduce(fn(acc, x) acc + x, 0);  # 55
+let product = numbers.reduce(fn(acc, x) acc * x, 1);  # 3628800
 
-// find - first matching element
-let first_even = numbers.find(fn(x) x % 2 == 0);  // 2
+# find - first matching element
+let first_even = numbers.find(fn(x) x % 2 == 0);  # 2
 
-// find_index - index of first matching element
-let idx = numbers.find_index(fn(x) x > 5);  // 5
+# find_index - index of first matching element
+let idx = numbers.find_index(fn(x) x > 5);  # 5
 
-// every - check if all elements match
-let all_positive = numbers.every(fn(x) x > 0);  // true
+# every - check if all elements match
+let all_positive = numbers.every(fn(x) x > 0);  # true
 
-// some - check if any element matches
-let has_large = numbers.some(fn(x) x > 8);  // true
+# some - check if any element matches
+let has_large = numbers.some(fn(x) x > 8);  # true
 
-// chunk - split into chunks
+# chunk - split into chunks
 fn chunk(arr: Array, size: Int) -> Array[]
     let result = [];
     let current = [];
@@ -1167,15 +1167,15 @@ fn chunk(arr: Array, size: Int) -> Array[]
     result
 end
 
-print(chunk(numbers, 3));  // [[1,2,3], [4,5,6], [7,8,9], [10]]
+print(chunk(numbers, 3));  # [[1,2,3], [4,5,6], [7,8,9], [10]]
 
-// Chaining methods
+# Chaining methods
 let result = numbers
-    .filter(fn(x) x % 2 == 0)   // [2, 4, 6, 8, 10]
-    .map(fn(x) x * x)           // [4, 16, 36, 64, 100]
-    .filter(fn(x) x < 50);      // [4, 16, 36]
+    .filter(fn(x) x % 2 == 0)   # [2, 4, 6, 8, 10]
+    .map(fn(x) x * x)           # [4, 16, 36, 64, 100]
+    .filter(fn(x) x < 50);      # [4, 16, 36]
 
-print(result);  // [4, 16, 36]
+print(result);  # [4, 16, 36]
 ```
 
 #### Array Functions
@@ -1183,27 +1183,27 @@ print(result);  // [4, 16, 36]
 ```soli
 let arr = [1, 2, 3, 4, 5];
 
-// Length
-print(len(arr));  // 5
+# Length
+print(len(arr));  # 5
 
-// Push - add element to end
+# Push - add element to end
 push(arr, 6);
-print(arr);  // [1, 2, 3, 4, 5, 6]
+print(arr);  # [1, 2, 3, 4, 5, 6]
 
-// Pop - remove and return last element
+# Pop - remove and return last element
 let last = pop(arr);
-print(last);  // 6
-print(arr);   // [1, 2, 3, 4, 5]
+print(last);  # 6
+print(arr);   # [1, 2, 3, 4, 5]
 
-// Unshift - add element to beginning
+# Unshift - add element to beginning
 let new_arr = unshift(arr, 0);
-print(new_arr);  // [0, 1, 2, 3, 4, 5]
+print(new_arr);  # [0, 1, 2, 3, 4, 5]
 
-// Shift - remove and return first element
+# Shift - remove and return first element
 let first = shift(arr);
-print(first);  // 0
+print(first);  # 0
 
-// Insert at index
+# Insert at index
 fn insert(arr: Array, index: Int, value: Any) -> Array
     let result = [];
     for i in range(0, len(arr))
@@ -1218,23 +1218,23 @@ fn insert(arr: Array, index: Int, value: Any) -> Array
     result
 end
 
-// Reverse
+# Reverse
 let reversed = reverse(arr);
-print(reversed);  // [5, 4, 3, 2, 1]
+print(reversed);  # [5, 4, 3, 2, 1]
 
-// Sort
+# Sort
 let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
 let sorted = sort(unsorted);
-print(sorted);  // [1, 1, 2, 3, 4, 5, 6, 9]
+print(sorted);  # [1, 1, 2, 3, 4, 5, 6, 9]
 
-// Sort by hash key
+# Sort by hash key
 let people = [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}, {"name": "Charlie", "age": 35}];
 let by_age = people.sort_by("age");
-print(by_age);  // Sorted by age: Bob, Alice, Charlie
+print(by_age);  # Sorted by age: Bob, Alice, Charlie
 
-// Sort by function
+# Sort by function
 let by_name = people.sort_by(fn(p) p.get("name"));
-print(by_name);  // Sorted by name: Alice, Bob, Charlie
+print(by_name);  # Sorted by name: Alice, Bob, Charlie
 ```
 
 ### Hashes
@@ -1242,17 +1242,17 @@ print(by_name);  // Sorted by name: Alice, Bob, Charlie
 #### Creating Hashes
 
 ```soli
-// Basic hash creation
+# Basic hash creation
 let person = {
     "name": "Alice",
     "age": 30,
     "city": "New York"
 };
 
-// Alternative syntax with =>
+# Alternative syntax with =>
 let scores = {"Alice" => 95, "Bob" => 87, "Charlie" => 92};
 
-// Nested hashes
+# Nested hashes
 let user = {
     "id": 1,
     "profile": {
@@ -1265,10 +1265,10 @@ let user = {
     }
 };
 
-// Empty hash
+# Empty hash
 let empty = {};
 
-// Type-annotated hash
+# Type-annotated hash
 let config: Hash = {
     "host": "localhost",
     "port": 8080,
@@ -1281,21 +1281,21 @@ let config: Hash = {
 ```soli
 let person = {"name": "Alice", "age": 30, "city": "Paris"};
 
-// Access values
-print(person["name"]);   // "Alice"
-print(person["age"]);    // 30
-print(person["email"]);  // null (key doesn't exist)
+# Access values
+print(person["name"]);   # "Alice"
+print(person["age"]);    # 30
+print(person["email"]);  # null (key doesn't exist)
 
-// Modify values
+# Modify values
 person["age"] = 31;
-person["country"] = "France";  // Add new key
+person["country"] = "France";  # Add new key
 
-print(person);  // {name: Alice, age: 31, city: Paris, country: France}
+print(person);  # {name: Alice, age: 31, city: Paris, country: France}
 
-// Delete key
+# Delete key
 let deleted = delete(person, "city");
-print(deleted);  // Paris
-print(person);   // {name: Alice, age: 31, country: France}
+print(deleted);  # Paris
+print(person);   # {name: Alice, age: 31, country: France}
 ```
 
 #### Hash Methods
@@ -1303,37 +1303,37 @@ print(person);   // {name: Alice, age: 31, country: France}
 Hash methods support two function signatures for iteration:
 
 ```soli
-// Two parameters: key and value (recommended)
+# Two parameters: key and value (recommended)
 h.map(fn(key, value) [key, value * 2])
 
-// One parameter: [key, value] pair array
+# One parameter: [key, value] pair array
 h.map(fn(pair) [pair[0], pair[1] * 2])
 ```
 
 ```soli
 let scores = {"Alice": 90, "Bob": 85, "Charlie": 95, "Diana": 88};
 
-// map - transform entries
-// Returns a new hash. The function MUST return [key, value] (exactly 2 elements).
-// Returning fewer or more elements skips that entry.
+# map - transform entries
+# Returns a new hash. The function MUST return [key, value] (exactly 2 elements).
+# Returning fewer or more elements skips that entry.
 let curved = scores.map(fn(k, v) [k, v + 5]);
-print(curved);  // {Alice: 95, Bob: 90, Charlie: 100, Diana: 93}
+print(curved);  # {Alice: 95, Bob: 90, Charlie: 100, Diana: 93}
 
-// Transform only values (keep key unchanged)
+# Transform only values (keep key unchanged)
 let doubled = scores.map(fn(k, v) [k, v * 2]);
 
-// Transform keys (prefix with "user_")
+# Transform keys (prefix with "user_")
 let prefixed = scores.map(fn(k, v) ["user_" + k, v]);
 
-// filter - keep entries matching condition
-// Function receives (key, value) or [key, value] pair
-// Returns boolean or truthy/falsy value
+# filter - keep entries matching condition
+# Function receives (key, value) or [key, value] pair
+# Returns boolean or truthy/falsy value
 let high_scores = scores.filter(fn(k, v) v >= 90);
-print(high_scores);  // {Alice: 90, Charlie: 95}
+print(high_scores);  # {Alice: 90, Charlie: 95}
 
-// each - iterate with side effects
-// Function receives (key, value) or [key, value] pair
-// Returns original hash for chaining (return value is discarded)
+# each - iterate with side effects
+# Function receives (key, value) or [key, value] pair
+# Returns original hash for chaining (return value is discarded)
 scores.each(fn(k, v) print(k + ": " + str(v)));
 ```
 
@@ -1344,14 +1344,14 @@ Hash `.map()` expects your function to return exactly `[key, value]` with 2 elem
 ```soli
 let h = {"a": 1, "b": 2};
 
-// ✓ Returns [key, value] - works correctly
-h.map(fn(k, v) [k, v * 10]);  // {a: 10, b: 20}
+# ✓ Returns [key, value] - works correctly
+h.map(fn(k, v) [k, v * 10]);  # {a: 10, b: 20}
 
-// ✗ Returns [value] only - entry is skipped (not 2 elements!)
-h.map(fn(k, v) [v * 10]);      // {} (empty!)
+# ✗ Returns [value] only - entry is skipped (not 2 elements!)
+h.map(fn(k, v) [v * 10]);      # {} (empty!)
 
-// ✗ Returns single value - entry is skipped
-h.map(fn(k, v) v * 10);         // {} (empty!)
+# ✗ Returns single value - entry is skipped
+h.map(fn(k, v) v * 10);         # {} (empty!)
 ```
 
 **Getting transformed values as an array**
@@ -1361,9 +1361,9 @@ If you only need transformed values (not a new hash):
 ```soli
 let h = {"a": 1, "b": 2};
 
-// Get values first, then map to array
+# Get values first, then map to array
 let doubled = h.values() |> map(fn(v) v * 10);
-print(doubled);  // [10, 20]
+print(doubled);  # [10, 20]
 ```
 
 #### Hash Functions
@@ -1371,33 +1371,33 @@ print(doubled);  // [10, 20]
 ```soli
 let person = {"name": "Alice", "age": 30, "city": "Paris", "country": "France"};
 
-// Get length
-print(len(person));  // 4
+# Get length
+print(len(person));  # 4
 
-// Get all keys
+# Get all keys
 let keys_list = keys(person);
-print(keys_list);  // [name, age, city, country]
+print(keys_list);  # [name, age, city, country]
 
-// Get all values
+# Get all values
 let values_list = values(person);
-print(values_list);  // [Alice, 30, Paris, France]
+print(values_list);  # [Alice, 30, Paris, France]
 
-// Check if key exists
-print(has_key(person, "name"));      // true
-print(has_key(person, "email"));     // false
+# Check if key exists
+print(has_key(person, "name"));      # true
+print(has_key(person, "email"));     # false
 
-// Get entries as [key, value] pairs
+# Get entries as [key, value] pairs
 let entries_list = entries(person);
-print(entries_list);  // [[name, Alice], [age, 30], [city, Paris], [country, France]]
+print(entries_list);  # [[name, Alice], [age, 30], [city, Paris], [country, France]]
 
-// Merge hashes
+# Merge hashes
 let defaults = {"age": 0, "country": "Unknown", "active": true};
 let merged = merge(person, defaults);
-print(merged);  // {name: Alice, age: 30, city: Paris, country: France, active: true}
+print(merged);  # {name: Alice, age: 30, city: Paris, country: France, active: true}
 
-// Clear hash
+# Clear hash
 clear(person);
-print(person);  // {}
+print(person);  # {}
 ```
 
 #### Iterating Over Hashes
@@ -1405,37 +1405,37 @@ print(person);  // {}
 ```soli
 let prices = {"apple": 1.50, "banana": 0.75, "orange": 2.00, "grape": 3.00};
 
-// Iterate entries
+# Iterate entries
 for pair in entries(prices)
     let item = pair[0];
     let price = pair[1];
     print(item + " costs $" + str(price));
 end
 
-// Iterate keys
+# Iterate keys
 for item in keys(prices)
     print(item + ": " + str(prices[item]));
 end
 
-// Iterate values and calculate total
+# Iterate values and calculate total
 let total = 0;
 for price in values(prices)
     total = total + price;
 end
-print("Total: $" + str(total));  // Total: $7.25
+print("Total: $" + str(total));  # Total: $7.25
 
-// Filter and transform
+# Filter and transform
 let expensive = prices
     .filter(fn(k, v) v > 1.00)
-    .map(fn(k, v) [k, v * 1.1]);  // 10% tax
+    .map(fn(k, v) [k, v * 1.1]);  # 10% tax
 
-print(expensive);  // {apple: 1.65, orange: 2.2, grape: 3.3}
+print(expensive);  # {apple: 1.65, orange: 2.2, grape: 3.3}
 ```
 
 ### Common Collection Patterns
 
 ```soli
-// Slicing
+# Slicing
 fn slice(arr: Array, start: Int, end: Int) -> Array
     let result = [];
     let actual_end = end;
@@ -1448,7 +1448,7 @@ fn slice(arr: Array, start: Int, end: Int) -> Array
     result
 end
 
-print(slice(fruits, 1, 3));  // ["banana", "cherry"]
+print(slice(fruits, 1, 3));  # ["banana", "cherry"]
 ```
 
 ---
@@ -1459,19 +1459,19 @@ print(slice(fruits, 1, 3));  // ["banana", "cherry"]
 
 ```soli
 class Person
-    // Instance fields
+    # Instance fields
     name: String;
     age: Int;
     email: String;
 
-    // Constructor
+    # Constructor
     new(name: String, age: Int, email: String = null)
         this.name = name;
         this.age = age;
         this.email = email ?? "";
     end
 
-    // Instance methods
+    # Instance methods
     fn greet() -> String
         "Hello, I'm " + this.name
     end
@@ -1489,16 +1489,16 @@ class Person
     end
 end
 
-// Creating instances
+# Creating instances
 let alice = new Person("Alice", 30);
 let bob = new Person("Bob", 25, "bob@example.com");
 
-// Using instances
-print(alice.greet());      // "Hello, I'm Alice"
-print(bob.introduce());    // "Hi, I'm Bob and I'm 25 years old. You can reach me at bob@example.com"
+# Using instances
+print(alice.greet());      # "Hello, I'm Alice"
+print(bob.introduce());    # "Hi, I'm Bob and I'm 25 years old. You can reach me at bob@example.com"
 
 alice.have_birthday();
-print(alice.age);          // 31
+print(alice.age);          # 31
 ```
 
 ### Constructors and Factory Methods
@@ -1521,12 +1521,12 @@ class Rectangle
         2 * (this.width + this.height)
     end
 
-    // Static factory method
+    # Static factory method
     static fn square(side: Float) -> Rectangle
         new Rectangle(side, side)
     end
 
-    // Another factory method
+    # Another factory method
     static fn from_area(area: Float, aspect_ratio: Float = 1.0) -> Rectangle
         let width = sqrt(area / aspect_ratio);
         let height = width * aspect_ratio;
@@ -1535,14 +1535,14 @@ class Rectangle
 end
 
 let rect = new Rectangle(10.0, 5.0);
-print(rect.area());  // 50.0
+print(rect.area());  # 50.0
 
 let square = Rectangle.square(7.0);
-print(square.area());  // 49.0
+print(square.area());  # 49.0
 
-let from_area = Rectangle.from_area(24.0, 2.0);  // 2:1 aspect ratio
-print(from_area.width);   // ~3.464
-print(from_area.height);  // ~6.928
+let from_area = Rectangle.from_area(24.0, 2.0);  # 2:1 aspect ratio
+print(from_area.width);   # ~3.464
+print(from_area.height);  # ~6.928
 ```
 
 ### Inheritance
@@ -1550,7 +1550,7 @@ print(from_area.height);  // ~6.928
 > **Note:** You can use `<` as an alias for `extends` (e.g., `class Dog < Animal`).
 
 ```soli
-// Base class
+# Base class
 class Animal
     name: String;
     age: Int;
@@ -1569,28 +1569,28 @@ class Animal
     end
 end
 
-// Subclass
+# Subclass
 class Dog < Animal
     breed: String;
 
     new(name: String, age: Int, breed: String)
-        // Call parent constructor
+        # Call parent constructor
         super(name, age);
         this.breed = breed;
     end
 
-    // Override method
+    # Override method
     fn speak() -> String
         this.name + " barks!"
     end
 
-    // Subclass-specific method
+    # Subclass-specific method
     fn fetch() -> String
         this.name + " fetches the ball!"
     end
 end
 
-// Another subclass
+# Another subclass
 class Cat < Animal
     new(name: String, age: Int)
         super(name, age);
@@ -1605,18 +1605,18 @@ class Cat < Animal
     end
 end
 
-// Using inheritance
+# Using inheritance
 let dog = new Dog("Buddy", 3, "Golden Retriever");
-print(dog.speak());        // "Buddy barks!"
-print(dog.get_info());     // "Buddy is 3 years old"
-print(dog.fetch());        // "Buddy fetches the ball!"
-print(dog.breed);          // "Golden Retriever"
+print(dog.speak());        # "Buddy barks!"
+print(dog.get_info());     # "Buddy is 3 years old"
+print(dog.fetch());        # "Buddy fetches the ball!"
+print(dog.breed);          # "Golden Retriever"
 
 let cat = new Cat("Whiskers", 5);
-print(cat.speak());        // "Whiskers meows!"
-print(cat.purr());         // "Whiskers purrs contentedly"
+print(cat.speak());        # "Whiskers meows!"
+print(cat.purr());         # "Whiskers purrs contentedly"
 
-// Polymorphism
+# Polymorphism
 let animals = [
     new Dog("Rex", 2, "German Shepherd"),
     new Cat("Mittens", 4),
@@ -1624,26 +1624,26 @@ let animals = [
 ];
 
 for animal in animals
-    print(animal.speak());  // Each calls the appropriate speak() method
+    print(animal.speak());  # Each calls the appropriate speak() method
 end
 ```
 
 ### Interfaces
 
 ```soli
-// Define an interface
+# Define an interface
 interface Drawable
     fn draw() -> String;
     fn get_color() -> String;
 end
 
-// Another interface
+# Another interface
 interface Resizable
     fn resize(width: Float, height: Float);
     fn get_dimensions() -> {width: Float, height: Float};
 end
 
-// Class implementing multiple interfaces
+# Class implementing multiple interfaces
 class Circle implements Drawable, Resizable
     radius: Float;
     color: String;
@@ -1662,7 +1662,7 @@ class Circle implements Drawable, Resizable
     end
 
     fn resize(width: Float, height: Float)
-        // For a circle, we use the average or just one dimension
+        # For a circle, we use the average or just one dimension
         this.radius = width / 2;
     end
 
@@ -1700,14 +1700,14 @@ class Rectangle implements Drawable, Resizable
     end
 end
 
-// Using interfaces
+# Using interfaces
 let shapes: Drawable[] = [
     new Circle(5.0, "red"),
     new Rectangle(10.0, 6.0, "blue")
 ];
 
 for shape in shapes
-    print(shape.draw());  // Polymorphic call
+    print(shape.draw());  # Polymorphic call
 end
 ```
 
@@ -1715,7 +1715,7 @@ end
 
 ```soli
 class BankAccount
-    // Fields with visibility
+    # Fields with visibility
     public account_number: String;
     private balance: Float;
     protected account_holder: String;
@@ -1728,7 +1728,7 @@ class BankAccount
         this.status = "active";
     end
 
-    // Public method
+    # Public method
     public fn deposit(amount: Float) -> Bool
         if this.validate_amount(amount)
             this.balance = this.balance + amount;
@@ -1738,7 +1738,7 @@ class BankAccount
         false
     end
 
-    // Public method
+    # Public method
     public fn withdraw(amount: Float) -> Bool
         if this.validate_amount(amount) && this.has_sufficient_funds(amount)
             this.balance = this.balance - amount;
@@ -1748,56 +1748,56 @@ class BankAccount
         false
     end
 
-    // Public getter
+    # Public getter
     public fn get_balance() -> Float
         this.balance
     end
 
-    // Private method - internal helper
+    # Private method - internal helper
     private fn validate_amount(amount: Float) -> Bool
         amount > 0
     end
 
-    // Private method
+    # Private method
     private fn has_sufficient_funds(amount: Float) -> Bool
         this.balance >= amount
     end
 
-    // Private method
+    # Private method
     private fn log_transaction(type: String, amount: Float)
-        // Internal logging logic
+        # Internal logging logic
     end
 
-    // Protected method - for subclasses
+    # Protected method - for subclasses
     protected fn update_status(new_status: String)
         this.status = new_status;
     end
 end
 
-// Using the class
+# Using the class
 let account = new BankAccount("123456789", 1000.0);
 
-account.deposit(500.0);           // Works - public method
-print(account.get_balance());     // 1500.0
-print(account.account_number);    // "123456789" - public field
+account.deposit(500.0);           # Works - public method
+print(account.get_balance());     # 1500.0
+print(account.account_number);    # "123456789" - public field
 
-// account.balance;              // Error - private field
-// account.validate_amount(100); // Error - private method
+# account.balance;              # Error - private field
+# account.validate_amount(100); # Error - private method
 ```
 
 ### Static Members
 
 ```soli
 class MathUtils
-    // Static constants
+    # Static constants
     static PI: Float = 3.14159265359;
     static E: Float = 2.71828182846;
     static GOLDEN_RATIO: Float = 1.61803398875;
 
-    // Static field
+    # Static field
     static calculation_count: Int = 0;
 
-    // Static methods
+    # Static methods
     static fn square(x: Float) -> Float
         MathUtils.calculation_count = MathUtils.calculation_count + 1;
         x * x
@@ -1827,21 +1827,21 @@ class MathUtils
     end
 end
 
-// Using static members
-print(MathUtils.PI);           // 3.14159265359
-print(MathUtils.square(4.0));  // 16.0
-print(MathUtils.cube(3.0));    // 27.0
+# Using static members
+print(MathUtils.PI);           # 3.14159265359
+print(MathUtils.square(4.0));  # 16.0
+print(MathUtils.cube(3.0));    # 27.0
 
 let result = MathUtils.clamp(150, 0, 100);
-print(result);  // 100
+print(result);  # 100
 
-print(MathUtils.calculation_count);  // 3
+print(MathUtils.calculation_count);  # 3
 ```
 
 ### Complete Class Example: A Product Inventory System
 
 ```soli
-// Base product class
+# Base product class
 class Product
     id: String;
     name: String;
@@ -1876,7 +1876,7 @@ class Product
     }
 }
 
-// Electronics subclass with additional warranty info
+# Electronics subclass with additional warranty info
 class Electronics < Product
     warranty_months: Int;
     brand: String;
@@ -1896,7 +1896,7 @@ class Electronics < Product
     end
 end
 
-// Inventory class to manage products
+# Inventory class to manage products
 class Inventory
     products: Product[];
 
@@ -1945,15 +1945,15 @@ class Inventory
     end
 end
 
-// Using the inventory system
+# Using the inventory system
 let inventory = new Inventory();
 
-// Add products
+# Add products
 inventory.add_product(new Product("P001", "Laptop", 999.99, 10));
 inventory.add_product(new Electronics("E001", "Headphones", 149.99, 50, "AudioTech", 24));
 inventory.add_product(new Product("P002", "Mouse", 29.99, 100));
 
-// Work with inventory
+# Work with inventory
 print("Total inventory value: $" + str(inventory.get_total_inventory_value()));
 
 let laptop = inventory.find_product("P001");
@@ -1994,11 +1994,11 @@ Use the `::` (scope resolution operator) to access nested classes:
 
 ```soli
 let dept = new Organization::Department();
-print("Department: " + dept.get_name());  // "Department: Engineering"
-print("Budget: $" + str(dept.get_budget()));  // "Budget: $1000000"
+print("Department: " + dept.get_name());  # "Department: Engineering"
+print("Budget: $" + str(dept.get_budget()));  # "Budget: $1000000"
 
 let team = new Organization::Team();
-print("Team: " + team.get_name());  // "Team: Backend Team"
+print("Team: " + team.get_name());  # "Team: Backend Team"
 ```
 
 #### Use Cases
@@ -2008,7 +2008,7 @@ print("Team: " + team.get_name());  // "Team: Backend Team"
 Nested classes are perfect for implementing design patterns:
 
 ```soli
-// State Pattern
+# State Pattern
 class TrafficLight
     class RedState
         fn next()
@@ -2042,8 +2042,8 @@ class TrafficLight
 end
 
 let red = new TrafficLight::RedState();
-print("Red light duration: " + str(red.get_duration()) + "s");  // "Red light duration: 30s"
-print("Next state: " + red.next());  // "Next state: green"
+print("Red light duration: " + str(red.get_duration()) + "s");  # "Red light duration: 30s"
+print("Next state: " + red.next());  # "Next state: green"
 ```
 
 **2. Organization and Encapsulation**
@@ -2075,9 +2075,9 @@ let conn = new Database::Connection();
 let query = new Database::QueryBuilder();
 let tx = new Database::Transaction();
 
-print(conn.connect());  // "Connected to database"
-print(query.select("users"));  // "SELECT * FROM users"
-print(tx.begin());  // "Transaction started"
+print(conn.connect());  # "Connected to database"
+print(query.select("users"));  # "SELECT * FROM users"
+print(tx.begin());  # "Transaction started"
 ```
 
 **3. Configuration Objects**
@@ -2108,7 +2108,7 @@ class Server
 end
 
 let ssl = new Server::SSLConfig();
-print("Protocol: " + ssl.get_protocol());  // "Protocol: TLS 1.3"
+print("Protocol: " + ssl.get_protocol());  # "Protocol: TLS 1.3"
 ```
 
 #### Multiple Nested Classes
@@ -2140,9 +2140,9 @@ let db = new Service::Database();
 let cache = new Service::Cache();
 let logger = new Service::Logger();
 
-print(db.connect());  // "DB connected"
-print(cache.get("test"));  // "cached:test"
-print(logger.log("test message"));  // "[LOG] test message"
+print(db.connect());  # "DB connected"
+print(cache.get("test"));  # "cached:test"
+print(logger.log("test message"));  # "[LOG] test message"
 ```
 
 ---
@@ -2152,16 +2152,16 @@ print(logger.log("test message"));  // "[LOG] test message"
 ### Basic Pattern Matching
 
 ```soli
-// Simple value matching
+# Simple value matching
 let x = 42;
 let result = match x {
     42 => "the answer to everything",
     0 => "zero",
     _ => "something else",
 };
-print(result);  // "the answer to everything"
+print(result);  # "the answer to everything"
 
-// String matching
+# String matching
 let status = "active";
 let status_message = match status {
     "active" => "User is active and can access the system",
@@ -2170,13 +2170,13 @@ let status_message = match status {
     "banned" => "Access permanently denied",
     _ => "Unknown status",
 };
-print(status_message);  // "User is active and can access the system"
+print(status_message);  # "User is active and can access the system"
 ```
 
 ### Guard Clauses
 
 ```soli
-// Guard clauses with conditions
+# Guard clauses with conditions
 let n = 5;
 let category = match n {
     n if n < 0 => "negative",
@@ -2185,9 +2185,9 @@ let category = match n {
     n if n >= 10 && n < 100 => "two digit positive",
     _ => "large number",
 };
-print(category);  // "single digit positive"
+print(category);  # "single digit positive"
 
-// Practical example: HTTP status handling
+# Practical example: HTTP status handling
 fn handle_status(code: Int) -> String {
     match code {
         code if code >= 200 && code < 300 => "Success: " + str(code),
@@ -2200,9 +2200,9 @@ fn handle_status(code: Int) -> String {
     }
 }
 
-print(handle_status(200));  // "Success: 200"
-print(handle_status(404));  // "Not Found"
-print(handle_status(503));  // "Server Error: 503"
+print(handle_status(200));  # "Success: 200"
+print(handle_status(404));  # "Not Found"
+print(handle_status(503));  # "Server Error: 503"
 ```
 
 ### Array Patterns
@@ -2210,7 +2210,7 @@ print(handle_status(503));  // "Server Error: 503"
 ```soli
 let numbers = [1, 2, 3];
 
-// Match array length
+# Match array length
 let description = match numbers {
     [] => "empty array",
     [_] => "single element array",
@@ -2219,7 +2219,7 @@ let description = match numbers {
     _ => "array with more than 3 elements",
 };
 
-// Destructuring arrays
+# Destructuring arrays
 let result = match numbers {
     [first] => "First element is: " + str(first),
     [first, second] => "First: " + str(first) + ", Second: " + str(second),
@@ -2227,12 +2227,12 @@ let result = match numbers {
     [first, ...rest] => "First: " + str(first) + ", Rest has " + str(len(rest)) + " elements",
 };
 
-// Rest pattern
+# Rest pattern
 let arr = [1, 2, 3, 4, 5];
 match arr {
     [first, second, ...rest] => {
         print("First two: " + str(first) + ", " + str(second));
-        print("Remaining: " + str(rest));  // [3, 4, 5]
+        print("Remaining: " + str(rest));  # [3, 4, 5]
     },
 };
 ```
@@ -2242,7 +2242,7 @@ match arr {
 ```soli
 let user = {"name": "Alice", "age": 30, "city": "Paris"};
 
-// Match hash structure
+# Match hash structure
 match user {
     {} => "empty object",
     {name: n} => "name is: " + n,
@@ -2251,7 +2251,7 @@ match user {
     _ => "unknown structure",
 };
 
-// Nested hash matching
+# Nested hash matching
 let data = {
     "user": {"name": "Alice", "email": "alice@example.com"},
     "posts": [{"title": "Post 1"}, {"title": "Post 2"}]
@@ -2268,7 +2268,7 @@ match data {
 ### Type-Based Matching
 
 ```soli
-// Type patterns with Any values
+# Type patterns with Any values
 let value: Any = get_some_value();
 
 fn describe_value(val: Any) -> String {
@@ -2284,7 +2284,7 @@ fn describe_value(val: Any) -> String {
     }
 }
 
-// Practical example: JSON value handler
+# Practical example: JSON value handler
 fn handle_json_value(value: Any) -> String {
     match value {
         null => "null",
@@ -2307,7 +2307,7 @@ fn handle_json_value(value: Any) -> String {
 ### Advanced Pattern Matching Examples
 
 ```soli
-// Command pattern matching
+# Command pattern matching
 fn execute_command(command: Hash) -> String {
     match command {
         {"action": "create", "type": "user", "data": data} => {
@@ -2326,7 +2326,7 @@ fn execute_command(command: Hash) -> String {
     }
 }
 
-// Tree traversal with pattern matching
+# Tree traversal with pattern matching
 fn process_tree(node: Any) {
     match node {
         {"type": "leaf", "value": value} => {
@@ -2358,12 +2358,12 @@ fn double(x: Int) -> Int { x * 2 }
 fn add_one(x: Int) -> Int { x + 1 }
 fn square(x: Int) -> Int { x * x }
 
-// Without pipeline (nested calls)
-let result1 = square(add_one(double(5)));  // Hard to read
+# Without pipeline (nested calls)
+let result1 = square(add_one(double(5)));  # Hard to read
 
-// With pipeline (left to right)
+# With pipeline (left to right)
 let result2 = 5 |> double() |> add_one() |> square();
-print(result2);  // (5 * 2 + 1)^2 = 121
+print(result2);  # (5 * 2 + 1)^2 = 121
 ```
 
 ### Pipeline with Multiple Arguments
@@ -2372,11 +2372,11 @@ print(result2);  // (5 * 2 + 1)^2 = 121
 fn add(a: Int, b: Int) -> Int { a + b }
 fn multiply(a: Int, b: Int) -> Int { a * b }
 
-// 5 |> add(3) means add(5, 3)
+# 5 |> add(3) means add(5, 3)
 let result = 5 |> add(3) |> multiply(2);
-print(result);  // (5 + 3) * 2 = 16
+print(result);  # (5 + 3) * 2 = 16
 
-// More complex chaining
+# More complex chaining
 fn subtract(a: Int, b: Int) -> Int { a - b }
 fn divide(a: Int, b: Int) -> Int { int(a / b) }
 
@@ -2384,7 +2384,7 @@ let calc = 100
     |> fn(x) { subtract(x, 10) }()
     |> fn(x) { divide(x, 3) }()
     |> fn(x) { multiply(x, 4) }();
-print(calc);  // ((100 - 10) / 3) * 4 = 120
+print(calc);  # ((100 - 10) / 3) * 4 = 120
 ```
 
 ### Pipeline with Collection Methods
@@ -2392,13 +2392,13 @@ print(calc);  // ((100 - 10) / 3) * 4 = 120
 ```soli
 let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-// Method chaining with pipeline
+# Method chaining with pipeline
 let result = numbers
     .filter(fn(x) x % 2 == 0)
     .map(fn(x) x * x)
     .each(fn(x) print(x));
 
-// Equivalent using pipeline
+# Equivalent using pipeline
 let result2 = numbers
     |> filter(fn(x) x % 2 == 0)
     |> map(fn(x) x * x)
@@ -2408,7 +2408,7 @@ let result2 = numbers
 ### Real-World Pipeline Examples
 
 ```soli
-// Data processing pipeline
+# Data processing pipeline
 fn process_user_data(raw_data: Hash) -> Hash {
     raw_data
         |> fn(d) { d["sanitized_email"] = d["email"].lower().trim(); d }()
@@ -2417,7 +2417,7 @@ fn process_user_data(raw_data: Hash) -> Hash {
         |> calculate_metrics()
 }
 
-// HTTP request pipeline
+# HTTP request pipeline
 fn fetch_and_process(url: String) -> Hash {
     url
         |> http_get_json()
@@ -2426,7 +2426,7 @@ fn fetch_and_process(url: String) -> Hash {
         |> format_output()
 }
 
-// String transformation pipeline
+# String transformation pipeline
 fn format_filename(filename: String) -> String {
     filename
         |> fn(s) { s.lower() }()
@@ -2435,13 +2435,13 @@ fn format_filename(filename: String) -> String {
         |> fn(s) { s + ".txt" }()
 }
 
-print(format_filename("My Document"));  // "my_document.txt"
+print(format_filename("My Document"));  # "my_document.txt"
 ```
 
 ### Inline Transformations
 
 ```soli
-// Using inline functions for transformations
+# Using inline functions for transformations
 let numbers = [1, 2, 3, 4, 5];
 
 let result = numbers
@@ -2449,9 +2449,9 @@ let result = numbers
     |> filter(fn(x) x > 4)
     |> reduce(fn(acc, x) acc + x, 0);
 
-print(result);  // 18 (6+8+10)
+print(result);  # 18 (6+8+10)
 
-// Fetch and process user with async pipeline
+# Fetch and process user with async pipeline
 fn get_user_data(user_id: Int) -> Hash {
     user_id
         |> fn(id) { {"id": id} }()
@@ -2460,7 +2460,7 @@ fn get_user_data(user_id: Int) -> Hash {
         |> cache_result()
 }
 
-// Complex data pipeline
+# Complex data pipeline
 let sales_data = [
     {"product": "A", "quantity": 10, "price": 100},
     {"product": "B", "quantity": 5, "price": 200},
@@ -2471,7 +2471,7 @@ let total_revenue = sales_data
     |> map(fn(sale) sale["quantity"] * sale["price"])
     |> reduce(fn(acc, rev) acc + rev, 0);
 
-print("Total Revenue: $" + str(total_revenue));  // $2750
+print("Total Revenue: $" + str(total_revenue));  # $2750
 ```
 
 ---
@@ -2481,14 +2481,14 @@ print("Total Revenue: $" + str(total_revenue));  // $2750
 ### Creating Modules
 
 ```soli
-// math.sl - A module exporting utility functions
+# math.sl - A module exporting utility functions
 
-// Private function (not exported)
+# Private function (not exported)
 fn validate_number(n: Int) -> Bool {
     n >= 0
 }
 
-// Exported functions
+# Exported functions
 export fn add(a: Int, b: Int) -> Int {
     a + b
 }
@@ -2526,26 +2526,26 @@ export fn fibonacci(n: Int) -> Int {
 ### Importing Modules
 
 ```soli
-// Import all exports from a module
+# Import all exports from a module
 import "./math.sl";
 
-print(add(2, 3));        // 5
-print(factorial(5));     // 120
-print(fibonacci(10));    // 55
+print(add(2, 3));        # 5
+print(factorial(5));     # 120
+print(fibonacci(10));    # 55
 
-// Named imports - only import specific functions
+# Named imports - only import specific functions
 import { add, multiply } from "./math.sl";
 
-let sum = add(1, 2);          // 3
-let product = multiply(3, 4); // 12
+let sum = add(1, 2);          # 3
+let product = multiply(3, 4); # 12
 
-// Aliased imports - import with different names
+# Aliased imports - import with different names
 import { add as sum, multiply as times } from "./math.sl";
 
-let result = sum(10, 20);  // 30
-let doubled = times(5, 6); // 30
+let result = sum(10, 20);  # 30
+let doubled = times(5, 6); # 30
 
-// Import everything with a namespace
+# Import everything with a namespace
 import "./utils.sl" as utils;
 
 let formatted = utils.format_date(DateTime.utc());
@@ -2573,7 +2573,7 @@ my-project/
 ```
 
 ```soli
-// src/main.sl
+# src/main.sl
 import "./config.sl";
 import "./utils/mod.sl" as utils;
 import "../lib/math/mod.sl" as math;
@@ -2625,19 +2625,19 @@ test = "soli test"
 ### I/O Functions
 
 ```soli
-// Print to stdout
+# Print to stdout
 print("Hello, World!");
 print(42);
 print([1, 2, 3]);
 
-// Print multiple values
+# Print multiple values
 print("Name:", "Alice", "Age:", 30);
 
-// Read input from stdin
+# Read input from stdin
 let name = input("Enter your name: ");
 print("Hello, " + name + "!");
 
-// Input with default
+# Input with default
 let age_str = input("Enter age: ", "18");
 let age = int(age_str);
 ```
@@ -2648,20 +2648,20 @@ let age = int(age_str);
 let num_str = "42";
 let float_str = "3.14";
 
-// String conversions
-let num = int(num_str);        // 42
-let f = float(float_str);      // 3.14
-let s = str(123);              // "123"
-let s2 = str(3.14);            // "3.14"
-let s3 = str([1, 2, 3]);       // "[1, 2, 3]"
+# String conversions
+let num = int(num_str);        # 42
+let f = float(float_str);      # 3.14
+let s = str(123);              # "123"
+let s2 = str(3.14);            # "3.14"
+let s3 = str([1, 2, 3]);       # "[1, 2, 3]"
 
-// Type checking
+# Type checking
 let value: Any = "hello";
-print(type(value));  // "String"
-print(type(123));    // "Int"
-print(type(3.14));   // "Float"
-print(type(true));   // "Bool"
-print(type(null));   // "Null"
+print(type(value));  # "String"
+print(type(123));    # "Int"
+print(type(3.14));   # "Float"
+print(type(true));   # "Bool"
+print(type(null));   # "Null"
 ```
 
 ### Array Functions
@@ -2669,60 +2669,60 @@ print(type(null));   // "Null"
 ```soli
 let arr = [1, 2, 3, 4, 5];
 
-// Length
-print(len(arr));  // 5
+# Length
+print(len(arr));  # 5
 
-// Range
-let nums = range(1, 6);  // [1, 2, 3, 4, 5]
+# Range
+let nums = range(1, 6);  # [1, 2, 3, 4, 5]
 
-// Add and remove
-push(arr, 6);   // [1, 2, 3, 4, 5, 6]
-let last = pop(arr);  // 6, arr is now [1, 2, 3, 4, 5]
+# Add and remove
+push(arr, 6);   # [1, 2, 3, 4, 5, 6]
+let last = pop(arr);  # 6, arr is now [1, 2, 3, 4, 5]
 
-// Sort
+# Sort
 let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
-let sorted = unsorted.sort();  // [1, 1, 2, 3, 4, 5, 6, 9]
+let sorted = unsorted.sort();  # [1, 1, 2, 3, 4, 5, 6, 9]
 
-// Sort by key
+# Sort by key
 let items = [{"name": "Bob"}, {"name": "Alice"}];
-let sorted_items = items.sort_by("name");  // [{name: Alice}, {name: Bob}]
+let sorted_items = items.sort_by("name");  # [{name: Alice}, {name: Bob}]
 
-// Reverse
-let reversed = reverse([1, 2, 3]);  // [3, 2, 1]
+# Reverse
+let reversed = reverse([1, 2, 3]);  # [3, 2, 1]
 
-// Join
-let joined = join(["a", "b", "c"], ", ");  // "a, b, c"
+# Join
+let joined = join(["a", "b", "c"], ", ");  # "a, b, c"
 ```
 
 ### Math Functions
 
 ```soli
-// Basic math
-print(abs(-5));        // 5
-print(min(3, 7));      // 3
-print(max(3, 7));      // 7
+# Basic math
+print(abs(-5));        # 5
+print(min(3, 7));      # 3
+print(max(3, 7));      # 7
 
-// Power and roots
-print(sqrt(16));       // 4.0
-print(pow(2, 10));     // 1024.0
-print(pow(27, 1/3));   // 3.0 (cube root)
+# Power and roots
+print(sqrt(16));       # 4.0
+print(pow(2, 10));     # 1024.0
+print(pow(27, 1/3));   # 3.0 (cube root)
 
-// Trigonometry
-print(sin(0));         // 0.0
-print(cos(0));         // 1.0
-print(tan(0.785398));  // ~1.0 (45 degrees in radians)
+# Trigonometry
+print(sin(0));         # 0.0
+print(cos(0));         # 1.0
+print(tan(0.785398));  # ~1.0 (45 degrees in radians)
 
-// Rounding
-print(floor(3.7));     // 3
-print(ceil(3.2));      // 4
-print(round(3.5));     // 4
+# Rounding
+print(floor(3.7));     # 3
+print(ceil(3.2));      # 4
+print(round(3.5));     # 4
 
-// Random
-let random_num = random();        // 0.0 to 1.0
-let random_int = random_int(1, 100);  // 1 to 100
+# Random
+let random_num = random();        # 0.0 to 1.0
+let random_int = random_int(1, 100);  # 1 to 100
 
-// Time
-print(clock());  // Current time in seconds since epoch
+# Time
+print(clock());  # Current time in seconds since epoch
 ```
 
 ### Hash Functions
@@ -2730,64 +2730,64 @@ print(clock());  // Current time in seconds since epoch
 ```soli
 let person = {"name": "Alice", "age": 30, "city": "Paris"};
 
-// Keys and values
-let keys_list = keys(person);   // ["name", "age", "city"]
-let values_list = values(person);  // ["Alice", 30, "Paris"]
+# Keys and values
+let keys_list = keys(person);   # ["name", "age", "city"]
+let values_list = values(person);  # ["Alice", 30, "Paris"]
 
-// Check existence
-print(has_key(person, "name"));   // true
-print(has_key(person, "email"));  // false
+# Check existence
+print(has_key(person, "name"));   # true
+print(has_key(person, "email"));  # false
 
-// Merge
+# Merge
 let additional = {"country": "France", "email": "alice@example.com"};
 let merged = merge(person, additional);
 
-// Delete
+# Delete
 let deleted = delete(person, "age");
-print(deleted);  // 30
-print(person);   // {name: Alice, city: Paris}
+print(deleted);  # 30
+print(person);   # {name: Alice, city: Paris}
 
-// Entries
-let entries_list = entries(person);  // [["name", "Alice"], ["age", 30], ["city", "Paris"]]
+# Entries
+let entries_list = entries(person);  # [["name", "Alice"], ["age", 30], ["city", "Paris"]]
 
-// Clear
+# Clear
 clear(person);
-print(person);  // {}
+print(person);  # {}
 ```
 
 ### File I/O
 
 ```soli
-// Write to file
+# Write to file
 let content = "Hello, World!\nLine 2";
 barf("output.txt", content);
 
-// Read from file
+# Read from file
 let data = slurp("input.txt");
 print(data);
 
-// Binary mode
-barf("data.bin", bytes_data, true);  // true for binary
+# Binary mode
+barf("data.bin", bytes_data, true);  # true for binary
 let binary_data = slurp("data.bin", true);
 ```
 
 ### HTTP Functions
 
 ```soli
-// GET request (async)
+# GET request (async)
 let response = http_get("https://api.example.com/data");
-print(response["status"]);  // 200
-print(response["body"]);    // Response body
+print(response["status"]);  # 200
+print(response["body"]);    # Response body
 
-// GET JSON and parse automatically
+# GET JSON and parse automatically
 let json_data = http_get_json("https://api.example.com/users");
 print(json_data[0]["name"]);
 
-// POST request
+# POST request
 let post_response = http_post("https://api.example.com/submit", {"key": "value"});
 print(post_response["body"]);
 
-// Generic request with options
+# Generic request with options
 let custom_request = http_request("DELETE", "https://api.example.com/resource/123", null, {
     "headers": {"Authorization": "Bearer token123"},
     "timeout": 30,
@@ -2797,17 +2797,17 @@ let custom_request = http_request("DELETE", "https://api.example.com/resource/12
 ### JSON Functions
 
 ```soli
-// Parse JSON string
+# Parse JSON string
 let json_str = '{"name": "Alice", "age": 30, "scores": [95, 87, 92]}';
 let parsed = json_parse(json_str);
 
-print(parsed["name"]);   // "Alice"
-print(parsed["scores"]); // [95, 87, 92]
+print(parsed["name"]);   # "Alice"
+print(parsed["scores"]); # [95, 87, 92]
 
-// Convert to JSON
+# Convert to JSON
 let data = {"users": [{"name": "Alice"}, {"name": "Bob"}], "count": 2};
 let json_string = json_stringify(data);
-// '{"users":[{"name":"Alice"},{"name":"Bob"}],"count":2}'
+# '{"users":[{"name":"Alice"},{"name":"Bob"}],"count":2}'
 ```
 
 ### Regex Class
@@ -2815,46 +2815,46 @@ let json_string = json_stringify(data);
 ```soli
 let text = "The quick brown fox jumps over the lazy dog";
 
-// Match check
-let has_fox = Regex.matches("fox", text);  // true
+# Match check
+let has_fox = Regex.matches("fox", text);  # true
 
-// Find matches
-let first_word = Regex.find("\\w+", text);  // "The"
-let all_words = Regex.find_all("\\w+", text);  // ["The", "quick", "brown", "fox", ...]
+# Find matches
+let first_word = Regex.find("\\w+", text);  # "The"
+let all_words = Regex.find_all("\\w+", text);  # ["The", "quick", "brown", "fox", ...]
 
-// Replace
-let replaced = Regex.replace("fox", text, "cat");  // "The quick brown cat..."
-let all_replaced = Regex.replace_all("\\s+", text, "-");  // "The-quick-brown-fox-..."
+# Replace
+let replaced = Regex.replace("fox", text, "cat");  # "The quick brown cat..."
+let all_replaced = Regex.replace_all("\\s+", text, "-");  # "The-quick-brown-fox-..."
 
-// Split
-let words = Regex.split("\\s+", text);  // ["The", "quick", "brown", "fox", ...]
+# Split
+let words = Regex.split("\\s+", text);  # ["The", "quick", "brown", "fox", ...]
 
-// Capture groups
+# Capture groups
 let date = "2024-01-15";
 let captures = Regex.capture("(\\d{4})-(\\d{2})-(\\d{2})", date);
-print(captures["match"]);  // "2024-01-15"
-print(captures[0]);  // "2024" (when using numbered groups)
-print(captures[1]);  // "01"
-print(captures[2]);  // "15"
+print(captures["match"]);  # "2024-01-15"
+print(captures[0]);  # "2024" (when using numbered groups)
+print(captures[1]);  # "01"
+print(captures[2]);  # "15"
 
-// Escape special characters
+# Escape special characters
 let escaped = Regex.escape("file.txt (1).pdf");
-// "file\\.txt\\ \\(1\\)\\.pdf"
+# "file\\.txt\\ \\(1\\)\\.pdf"
 ```
 
 ### Cryptographic Functions
 
 ```soli
-// Password hashing with Argon2
+# Password hashing with Argon2
 let password = "secure_password_123";
 let hash = argon2_hash(password);
-print(hash);  // Long hash string
+print(hash);  # Long hash string
 
-// Verify password
-let is_valid = argon2_verify(password, hash);  // true
-let is_wrong = argon2_verify("wrong_password", hash);  // false
+# Verify password
+let is_valid = argon2_verify(password, hash);  # true
+let is_wrong = argon2_verify("wrong_password", hash);  # false
 
-// X25519 key exchange for secure communication
+# X25519 key exchange for secure communication
 let alice_keys = x25519_keypair();
 let alice_private = alice_keys["private"];
 let alice_public = alice_keys["public"];
@@ -2863,45 +2863,45 @@ let bob_keys = x25519_keypair();
 let bob_private = bob_keys["private"];
 let bob_public = bob_keys["public"];
 
-// Compute shared secrets
+# Compute shared secrets
 let alice_shared = x25519_shared_secret(alice_private, bob_public);
 let bob_shared = x25519_shared_secret(bob_private, alice_public);
 
-print(alice_shared == bob_shared);  // true - same shared secret!
+print(alice_shared == bob_shared);  # true - same shared secret!
 
-// Derive public key from private
+# Derive public key from private
 let derived_public = x25519_public_key(alice_private);
 
-// Ed25519 digital signatures
+# Ed25519 digital signatures
 let ed_keys = ed25519_keypair();
 let private_key = ed_keys["private"];
 let public_key = ed_keys["public"];
 
-// Sign a message
+# Sign a message
 let message = "Hello, this message is signed";
 let signature = ed25519_sign(message, private_key);
 
-// Verify signature
+# Verify signature
 let is_valid = ed25519_verify(message, signature, public_key);
-print(is_valid);  // true
+print(is_valid);  # true
 ```
 
 ### HTML Functions
 
 ```soli
-// Escape HTML special characters
+# Escape HTML special characters
 let user_input = "<script>alert('xss')</script>";
 let escaped = html_escape(user_input);
-// "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
+# "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
 
-// Unescape HTML entities
+# Unescape HTML entities
 let html = "&lt;div&gt;Content&lt;/div&gt;";
-let unescaped = html_unescape(html);  // "<div>Content</div>"
+let unescaped = html_unescape(html);  # "<div>Content</div>"
 
-// Sanitize HTML (remove dangerous tags)
+# Sanitize HTML (remove dangerous tags)
 let raw_html = "<div><script>evil()</script><p>Safe content</p></div>";
 let safe = sanitize_html(raw_html);
-// "<div><p>Safe content</p></div>"
+# "<div><p>Safe content</p></div>"
 ```
 
 ---
@@ -2911,20 +2911,20 @@ let safe = sanitize_html(raw_html);
 ### Creating DateTime Instances
 
 ```soli
-// Current local time
+# Current local time
 let now = DateTime.utc();
-print(now.to_string());  // "2024-01-15 10:30:00"
+print(now.to_string());  # "2024-01-15 10:30:00"
 
-// Parse from ISO 8601 string
+# Parse from ISO 8601 string
 let parsed = DateTime.parse("2024-01-15T10:30:00");
-print(parsed.year());    // 2024
-print(parsed.month());   // 1
-print(parsed.day());     // 15
+print(parsed.year());    # 2024
+print(parsed.month());   # 1
+print(parsed.day());     # 15
 
-// Parse with timezone
+# Parse with timezone
 let with_tz = DateTime.parse("2024-01-15T10:30:00+05:00");
 
-// Create from Unix timestamp
+# Create from Unix timestamp
 let from_timestamp = DateTime.from_unix(1705315800);
 ```
 
@@ -2933,25 +2933,25 @@ let from_timestamp = DateTime.from_unix(1705315800);
 ```soli
 let dt = DateTime.parse("2024-01-15T10:30:45");
 
-// Component accessors
-print(dt.year());       // 2024
-print(dt.month());      // 1
-print(dt.day());        // 15
-print(dt.hour());       // 10
-print(dt.minute());     // 30
-print(dt.second());     // 45
+# Component accessors
+print(dt.year());       # 2024
+print(dt.month());      # 1
+print(dt.day());        # 15
+print(dt.hour());       # 10
+print(dt.minute());     # 30
+print(dt.second());     # 45
 
-// Weekday (0 = Monday, 6 = Sunday)
-print(dt.weekday());    // "monday" (or 0)
+# Weekday (0 = Monday, 6 = Sunday)
+print(dt.weekday());    # "monday" (or 0)
 
-// Conversion
-let unix_ts = dt.to_unix();           // 1705315845
-let iso_str = dt.to_iso();            // "2024-01-15T10:30:45"
-let human = dt.to_string();           // "2024-01-15 10:30:45"
+# Conversion
+let unix_ts = dt.to_unix();           # 1705315845
+let iso_str = dt.to_iso();            # "2024-01-15T10:30:45"
+let human = dt.to_string();           # "2024-01-15 10:30:45"
 
-// Formatting
-let custom = dt.format("YYYY-MM-DD");  // "2024-01-15"
-let time_only = dt.format("HH:mm:ss"); // "10:30:45"
+# Formatting
+let custom = dt.format("YYYY-MM-DD");  # "2024-01-15"
+let time_only = dt.format("HH:mm:ss"); # "10:30:45"
 ```
 
 ### DateTime Arithmetic
@@ -2959,50 +2959,50 @@ let time_only = dt.format("HH:mm:ss"); // "10:30:45"
 ```soli
 let now = DateTime.utc();
 
-// Add durations
+# Add durations
 let tomorrow = now.add(Duration.days(1));
 let next_week = now.add(Duration.weeks(1));
 let in_30_minutes = now.add(Duration.minutes(30));
 let next_month = now.add(Duration.days(30));
 
-// Subtract durations
+# Subtract durations
 let yesterday = now.sub(Duration.days(1));
 let last_week = now.sub(Duration.weeks(1));
 
-// Difference between DateTimes
+# Difference between DateTimes
 let start = DateTime.parse("2024-01-01T00:00:00");
 let end = DateTime.parse("2024-01-15T12:30:00");
 let diff = end.sub(start);
-print(diff.total_days());   // 14.5
-print(diff.total_hours());  // 348.0
+print(diff.total_days());   # 14.5
+print(diff.total_hours());  # 348.0
 ```
 
 ### Duration Class
 
 ```soli
-// Create duration from components
-let dur1 = Duration.days(7);           // 7 days
-let dur2 = Duration.hours(24);         // 24 hours (same as 1 day)
-let dur3 = Duration.minutes(90);       // 90 minutes
-let dur4 = Duration.seconds(3600);     // 3600 seconds (1 hour)
+# Create duration from components
+let dur1 = Duration.days(7);           # 7 days
+let dur2 = Duration.hours(24);         # 24 hours (same as 1 day)
+let dur3 = Duration.minutes(90);       # 90 minutes
+let dur4 = Duration.seconds(3600);     # 3600 seconds (1 hour)
 
-// Duration between two DateTimes
+# Duration between two DateTimes
 let dt1 = DateTime.parse("2024-01-01T00:00:00");
 let dt2 = DateTime.parse("2024-01-02T12:00:00");
 let between = Duration.between(dt1, dt2);
 
-// Duration methods
-print(between.total_seconds());  // 108000.0
-print(between.total_minutes());  // 1800.0
-print(between.total_hours());    // 30.0
-print(between.total_days());     // 1.25
-print(between.to_string());      // "1 day, 6 hours"
+# Duration methods
+print(between.total_seconds());  # 108000.0
+print(between.total_minutes());  # 1800.0
+print(between.total_hours());    # 30.0
+print(between.total_days());     # 1.25
+print(between.to_string());      # "1 day, 6 hours"
 ```
 
 ### Practical DateTime Examples
 
 ```soli
-// Calculate age from birthdate
+# Calculate age from birthdate
 fn calculate_age(birthdate: DateTime) -> Int {
     let now = DateTime.utc();
     let age = now.year() - birthdate.year();
@@ -3014,9 +3014,9 @@ fn calculate_age(birthdate: DateTime) -> Int {
 }
 
 let birthdate = DateTime.parse("1990-05-15");
-print(calculate_age(birthdate));  // e.g., 33
+print(calculate_age(birthdate));  # e.g., 33
 
-// Format relative time
+# Format relative time
 fn relative_time(dt: DateTime) -> String {
     let now = DateTime.utc();
     let diff = now.sub(dt);
@@ -3040,13 +3040,13 @@ fn relative_time(dt: DateTime) -> String {
     dt.to_string()
 }
 
-// Check if date is in the past
+# Check if date is in the past
 fn is_past(dt: DateTime) -> Bool {
     let now = DateTime.utc();
     dt.to_unix() < now.to_unix()
 }
 
-// Get start of day
+# Get start of day
 fn start_of_day(dt: DateTime) -> DateTime {
     DateTime.parse(
         str(dt.year()) + "-" +
@@ -3055,7 +3055,7 @@ fn start_of_day(dt: DateTime) -> DateTime {
     )
 }
 
-// Get business days between two dates
+# Get business days between two dates
 fn business_days(start: DateTime, end: DateTime) -> Int {
     let count = 0;
     let current = start;
@@ -3119,43 +3119,43 @@ The VS Code / Cursor extension (`editors/vscode/`) runs `soli lint` automaticall
 ### Variables & Types
 
 ```soli
-// Good: Use type inference when obvious
+# Good: Use type inference when obvious
 let count = 10;
 let name = "Alice";
 
-// Good: Add annotations for public API or complex types
+# Good: Add annotations for public API or complex types
 pub fn process_user(user_id: Int) -> User {
-    // ...
+    # ...
 }
 
-// Good: Use meaningful names
+# Good: Use meaningful names
 let items_per_page = 25;
 let max_retry_attempts = 3;
 
-// Avoid: Single-letter names except for loop variables
-let c = 10;           // Bad
-let item_count = 10;  // Good
+# Avoid: Single-letter names except for loop variables
+let c = 10;           # Bad
+let item_count = 10;  # Good
 ```
 
 ### Functions
 
 ```soli
-// Good: Single responsibility
+# Good: Single responsibility
 fn validate_email(email: String) -> Bool {
     email.contains("@") && email.contains(".")
 }
 
-// Good: Descriptive names
+# Good: Descriptive names
 fn calculate_total_with_tax() -> Float {
-    // ...
+    # ...
 }
 
-// Good: Limit parameters
+# Good: Limit parameters
 fn create_user(info: Hash) -> User {
-    // Instead of: fn create_user(name, email, age, address, phone)
+    # Instead of: fn create_user(name, email, age, address, phone)
 }
 
-// Good: Early returns for validation
+# Good: Early returns for validation
 fn process_order(order: Hash) -> Result {
     if (!has_key(order, "items")) {
         return {"error": "Missing items"};
@@ -3163,17 +3163,17 @@ fn process_order(order: Hash) -> Result {
     if (!has_key(order, "customer")) {
         return {"error": "Missing customer"};
     }
-    // Main logic...
+    # Main logic...
 }
 ```
 
 ### Collections
 
 ```soli
-// Good: Initialize with known values
+# Good: Initialize with known values
 let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
-// Good: Check bounds
+# Good: Check bounds
 fn safe_get(arr: Array, index: Int) -> Any? {
     if (index >= 0 && index < len(arr)) {
         return arr[index];
@@ -3181,7 +3181,7 @@ fn safe_get(arr: Array, index: Int) -> Any? {
     null
 }
 
-// Good: Use functional methods for transformations
+# Good: Use functional methods for transformations
 let doubled = numbers.map(fn(x) x * 2);
 let evens = numbers.filter(fn(x) x % 2 == 0);
 ```
@@ -3189,23 +3189,23 @@ let evens = numbers.filter(fn(x) x % 2 == 0);
 ### Classes
 
 ```soli
-// Good: Single responsibility
+# Good: Single responsibility
 class User {}
 class UserRepository {}
 class UserService {}
 
-// Good: Program to interfaces
+# Good: Program to interfaces
 interface Repository {
     fn find(id: Int) -> Any?;
     fn save(entity: Any);
 }
 
-// Good: Use private fields for encapsulation
+# Good: Use private fields for encapsulation
 class BankAccount {
     private balance: Float;
 
     public fn deposit(amount: Float) {
-        // ...
+        # ...
     }
 
     public fn get_balance() -> Float {
@@ -3217,7 +3217,7 @@ class BankAccount {
 ### Control Flow
 
 ```soli
-// Good: Avoid deep nesting
+# Good: Avoid deep nesting
 fn process(data: Hash) -> Result {
     if (data == null) {
         return {"error": "No data"};
@@ -3227,11 +3227,11 @@ fn process(data: Hash) -> Result {
         return {"error": "Missing required field"};
     }
 
-    // Main logic at less indentation
+    # Main logic at less indentation
     do_processing(data)
 }
 
-// Good: Use pattern matching for complex conditions
+# Good: Use pattern matching for complex conditions
 fn handle_event(event: Hash) -> String {
     match event {
         {"type": "click", "element": "button"} => "Button clicked",
@@ -3264,7 +3264,7 @@ fn add(a: Int, b: Int) -> Int {
     a + b
 }
 
-// `def` is an alias for `fn`
+# `def` is an alias for `fn`
 def greet(name: String)
     print("Hello, " + name + "!");
 end
@@ -3286,19 +3286,19 @@ class Person {
 ### Control Flow
 ```soli
 if (condition) {
-    // code
+    # code
 } elsif (other) {
-    // code
+    # code
 } else {
-    // code
+    # code
 }
 
 for (item in collection) {
-    // code
+    # code
 }
 
 while (condition) {
-    // code
+    # code
 }
 
 match value {
@@ -3334,12 +3334,12 @@ value |> fn1() |> fn2();
 
 ### Module
 ```soli
-// math.sl
+# math.sl
 export fn add(a: Int, b: Int) -> Int {
     a + b
 }
 
-// main.sl
+# main.sl
 import "./math.sl";
 print(add(2, 3));
 ```

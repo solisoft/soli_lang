@@ -115,7 +115,7 @@ cargo build --release
 Create a test file:
 
 ```soli
-// test.sl
+# test.sl
 println("Hello, SoliLang!");
 ```
 

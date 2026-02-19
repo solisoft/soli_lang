@@ -104,7 +104,7 @@ A typical test file structure with assertions:
 
 ```soli
 class UserModelTest
-    static fn run()
+    static fn run
         let results = []
 
         # Test 1: Create user
@@ -194,7 +194,7 @@ end
 
 ```soli
 class TransactionModelTest
-    static fn run()
+    static fn run
         let results = []
         MockDatabase.reset()
 

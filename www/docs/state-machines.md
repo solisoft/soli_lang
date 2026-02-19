@@ -57,13 +57,13 @@ let transitions = [
 
 let order = create_state_machine("pending", states, transitions);
 
-// Set guard conditions
+# Set guard conditions
 order.set("can_ship", true);
 order.set("is_deliverable", true);
 
-// Transitions will fail if guard is false
+# Transitions will fail if guard is false
 order.set("can_ship", false);
-order.ship();  // Error: Guard condition 'can_ship' is false
+order.ship();  # Error: Guard condition 'can_ship' is false
 ```
 
 The `if` and `guard` keys specify a context field that must be `true` (or undefined) for the transition to proceed.
@@ -77,7 +77,7 @@ Returns information about the last transition:
 ```soli
 order.confirm();
 let last = order.last_transition();
-// {from => pending, to => confirmed, event => confirm}
+# {from => pending, to => confirmed, event => confirm}
 ```
 
 ### can(event)
@@ -96,7 +96,7 @@ Returns an array of events available from the current state:
 
 ```soli
 let events = order.available_events();
-// ["confirm", "cancel"] from pending state
+# ["confirm", "cancel"] from pending state
 ```
 
 ## Instance Methods
@@ -106,7 +106,7 @@ let events = order.available_events();
 Returns the current state as a string:
 
 ```soli
-print(order.current_state());  // "pending"
+print(order.current_state());  # "pending"
 ```
 
 ### is(state)
@@ -164,11 +164,11 @@ Returns information about the last transition as a hash:
 ```soli
 order.confirm();
 let last = order.last_transition();
-// {from => pending, to => confirmed, event => confirm}
+# {from => pending, to => confirmed, event => confirm}
 
-print(last["from"]);  // "pending"
-print(last["to"]);    // "confirmed"
-print(last["event"]); // "confirm"
+print(last["from"]);  # "pending"
+print(last["to"]);    # "confirmed"
+print(last["event"]); # "confirm"
 ```
 
 ### can(event)
@@ -188,7 +188,7 @@ Returns an array of events available from the current state:
 
 ```soli
 let events = order.available_events();
-// ["confirm", "cancel"] from pending state
+# ["confirm", "cancel"] from pending state
 ```
 
 ## Automatic Transition Methods
@@ -196,19 +196,19 @@ let events = order.available_events();
 When you define transitions, Soli automatically creates methods for each event:
 
 ```soli
-// From the transitions array above
-order.confirm();   // Transitions from "pending" to "confirmed"
-order.process();   // Transitions from "confirmed" to "processing"
-order.ship();      // Transitions from "processing" to "shipped"
-order.deliver();   // Transitions from "shipped" to "delivered"
-order.cancel();    // Transitions from "pending" to "cancelled"
+# From the transitions array above
+order.confirm();   # Transitions from "pending" to "confirmed"
+order.process();   # Transitions from "confirmed" to "processing"
+order.ship();      # Transitions from "processing" to "shipped"
+order.deliver();   # Transitions from "shipped" to "delivered"
+order.cancel();    # Transitions from "pending" to "cancelled"
 ```
 
 Invalid transitions are rejected:
 
 ```soli
 order.ship();
-// Error: Cannot transition 'ship' from state 'pending'. Valid states: processing
+# Error: Cannot transition 'ship' from state 'pending'. Valid states: processing
 ```
 
 ## Example: Order Processing Workflow
@@ -264,10 +264,10 @@ payment.set("amount", 99.99);
 payment.set("currency", "USD");
 
 payment.authorize();
-print("Payment status: " + payment.current_state());  // "authorized"
+print("Payment status: " + payment.current_state());  # "authorized"
 
 payment.capture();
-print("Payment status: " + payment.current_state());  // "captured"
+print("Payment status: " + payment.current_state());  # "captured"
 ```
 
 ## Database Persistence
@@ -275,7 +275,7 @@ print("Payment status: " + payment.current_state());  // "captured"
 State machines can be persisted to the database for long-running workflows:
 
 ```soli
-// Save state to database
+# Save state to database
 let state_data = {
     "machine_type": "Order",
     "machine_id": order.get("id"),
@@ -287,7 +287,7 @@ let state_data = {
 };
 Order.update(order.get("id"), state_data);
 
-// Load state from database
+# Load state from database
 let saved_data = Order.find(order.get("id"));
 let loaded_order = create_state_machine(
     saved_data["current_state"],

@@ -51,14 +51,14 @@ hello()</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Makes a function, class, or constant available to other modules.</p>
-<pre data-filename="math.sl"><code class="language-soli text-sm">// math.sl
+<pre data-filename="math.sl"><code class="language-soli text-sm"># math.sl
 
-// Private function (not exported)
+# Private function (not exported)
 def validate_number(n: Int) -> Bool
     n >= 0
 end
 
-// Exported functions
+# Exported functions
 export def add(a: Int, b: Int) -> Int
     a + b
 end
@@ -97,9 +97,9 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Modules can contain classes, enabling organized domain-driven code structures.</p>
-<pre data-filename="models.sl"><code class="language-soli text-sm">// models.sl
+<pre data-filename="models.sl"><code class="language-soli text-sm"># models.sl
 
-// Private helper class (not exported)
+# Private helper class (not exported)
 class ValidationResult
     is_valid: Bool;
     errors: String[];
@@ -115,7 +115,7 @@ class ValidationResult
     end
 end
 
-// Exported classes
+# Exported classes
 export class User
     id: Int;
     username: String;
@@ -127,7 +127,7 @@ export class User
         this.email = email;
     end
 
-    def get_display_name() -> String
+    def get_display_name -> String
         this.username + " (" + this.email + ")"
     end
 end
@@ -145,7 +145,7 @@ export class Post
         this.author = author;
     end
 
-    def get_summary() -> String
+    def get_summary -> String
         let preview = this.content.slice(0, 100);
         this.title + " by " + this.author.username
     end
@@ -162,22 +162,22 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Modules can also contain nested classes using the <code>::</code> pattern for domain organization.</p>
-<pre data-filename="controllers.sl"><code class="language-soli text-sm">// controllers.sl
+<pre data-filename="controllers.sl"><code class="language-soli text-sm"># controllers.sl
 
 export class Posts
     class Action
         def create(title: String, content: String) -> Post
-            // Create a new post
+            # Create a new post
             new Post(0, title, content, current_user())
         end
 
         def update(id: Int, updates: Any) -> Post?
-            // Update an existing post
+            # Update an existing post
             find_post_by_id(id).update(updates)
         end
 
         def delete(id: Int) -> Bool
-            // Delete a post
+            # Delete a post
             remove_post(id)
         end
     end
@@ -222,19 +222,19 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Import classes from modules using named imports or module namespace.</p>
-<pre data-filename="main.sl"><code class="language-soli text-sm">// Import classes by name
+<pre data-filename="main.sl"><code class="language-soli text-sm"># Import classes by name
 import { User, Post } from "./models.sl";
 
 let user = new User(1, "alice", "alice@example.com");
 let post = new Post(1, "Hello World", "Content here", user);
 
-// Import with namespace
+# Import with namespace
 import "./controllers.sl" as controllers;
 
 let action = new controllers.Posts.Action();
 action.create("My Post", "Post content");
 
-// Import nested classes directly
+# Import nested classes directly
 import { Posts::Action, Posts::View } from "./controllers.sl";
 
 let view = new Posts::View();
@@ -256,22 +256,22 @@ let posts = view.list(1, 10);</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Import functions and classes from other modules.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// Import all exports
+                <pre data-filename="Example"><code class="language-soli text-sm"># Import all exports
 import "./math.sl";
-print(add(2, 3));        // 5
-print(factorial(5));     // 120
+print(add(2, 3));        # 5
+print(factorial(5));     # 120
 
-// Named imports
+# Named imports
 import { add, multiply } from "./math.sl";
-let sum = add(1, 2);          // 3
-let product = multiply(3, 4); // 12
+let sum = add(1, 2);          # 3
+let product = multiply(3, 4); # 12
 
-// Aliased imports
+# Aliased imports
 import { add as sum, multiply as times } from "./math.sl";
-let result = sum(10, 20);  // 30
-let doubled = times(5, 6); // 30
+let result = sum(10, 20);  # 30
+let doubled = times(5, 6); # 30
 
-// Import everything with a namespace
+# Import everything with a namespace
 import "./utils.sl" as utils;
 let formatted = utils.format_date(DateTime.utc());</code></pre>
             </div>

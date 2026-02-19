@@ -177,12 +177,12 @@ For raw database queries, use the `db` object or the `@sdql{}` query block synta
 ### Using db.query()
 
 ```soli
-// SDBQL query with named parameters
+# SDBQL query with named parameters
 let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
     "age": 18
 });
 
-// Insert
+# Insert
 db.query("INSERT { name: @name, email: @email } INTO users", {
     "name": "Bob",
     "email": "bob@example.com"
@@ -194,14 +194,14 @@ db.query("INSERT { name: @name, email: @email } INTO users", {
 The `@sdql{}` syntax provides a more readable way to write database queries with interpolation:
 
 ```soli
-// Simple query with interpolation
+# Simple query with interpolation
 let users = @sdql{
     FOR u IN users
     FILTER u.age >= #{age}
     RETURN u
 };
 
-// Query with multiple interpolations
+# Query with multiple interpolations
 let results = @sdql{
     FOR u IN users
     FILTER u.age >= #{min_age} AND u.city == #{city}
@@ -210,7 +210,7 @@ let results = @sdql{
     RETURN u
 };
 
-// Insert with interpolation
+# Insert with interpolation
 @sdql{
     INSERT {
         name: #{name},
@@ -219,7 +219,7 @@ let results = @sdql{
     } INTO users
 };
 
-// Update with interpolation
+# Update with interpolation
 @sdql{
     UPDATE #{user_id} IN users
     SET {
@@ -227,7 +227,7 @@ let results = @sdql{
     }
 };
 
-// Delete with interpolation
+# Delete with interpolation
 @sdql{
     REMOVE #{user_id} IN users
 };

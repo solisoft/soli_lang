@@ -60,7 +60,7 @@ let transitions = [
 
 let order = create_state_machine("pending", states, transitions);
 
-print(order.current_state());  // "pending"</code></pre>
+print(order.current_state());  # "pending"</code></pre>
             </div>
         </div>
 
@@ -140,7 +140,7 @@ print(order.current_state());  // "pending"</code></pre>
                 <h3 class="font-semibold text-white mb-2"><code class="text-lime-300">current_state()</code></h3>
                 <p class="text-gray-400 text-sm mb-3">Returns the current state as a string.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
-<pre><code class="language-soli text-sm">print(order.current_state());  // "pending"</code></pre>
+<pre><code class="language-soli text-sm">print(order.current_state());  # "pending"</code></pre>
                 </div>
             </div>
 
@@ -197,11 +197,11 @@ print(hist);</code></pre>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
 <pre><code class="language-soli text-sm">order.confirm();
 let last = order.last_transition();
-// {from => pending, to => confirmed, event => confirm}
+# {from => pending, to => confirmed, event => confirm}
 
-print(last["from"]);   // "pending"
-print(last["to"]);     // "confirmed"
-print(last["event"]);  // "confirm"</code></pre>
+print(last["from"]);   # "pending"
+print(last["to"]);     # "confirmed"
+print(last["event"]);  # "confirm"</code></pre>
                 </div>
             </div>
 
@@ -213,7 +213,7 @@ print(last["event"]);  // "confirm"</code></pre>
 <pre><code class="language-soli text-sm">if (order.can("ship")) {
     print("Order can be shipped");
 }
-// Returns: true or false</code></pre>
+# Returns: true or false</code></pre>
                 </div>
             </div>
 
@@ -223,7 +223,7 @@ print(last["event"]);  // "confirm"</code></pre>
                 <p class="text-gray-400 text-sm mb-3">Returns an array of events available from the current state.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
 <pre><code class="language-soli text-sm">let events = order.available_events();
-// ["confirm", "cancel"] from pending state</code></pre>
+# ["confirm", "cancel"] from pending state</code></pre>
                 </div>
             </div>
         </div>
@@ -242,12 +242,12 @@ print(last["event"]);  // "confirm"</code></pre>
 
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">// From the transitions array above
-order.confirm();   // Transitions from "pending" to "confirmed"
-order.process();   // Transitions from "confirmed" to "processing"
-order.ship();      // Transitions from "processing" to "shipped"
-order.deliver();   // Transitions from "shipped" to "delivered"
-order.cancel();    // Transitions from "pending" to "cancelled"</code></pre>
+<pre><code class="language-soli text-sm"># From the transitions array above
+order.confirm();   # Transitions from "pending" to "confirmed"
+order.process();   # Transitions from "confirmed" to "processing"
+order.ship();      # Transitions from "processing" to "shipped"
+order.deliver();   # Transitions from "shipped" to "delivered"
+order.cancel();    # Transitions from "pending" to "cancelled"</code></pre>
             </div>
         </div>
 
@@ -265,7 +265,7 @@ order.cancel();    // Transitions from "pending" to "cancelled"</code></pre>
             </div>
             <div class="mt-4 bg-[#1e1e1e] rounded-lg p-4">
 <pre><code class="language-soli text-sm">order.ship();
-// Error: Cannot transition 'ship' from state 'pending'. Valid states: processing</code></pre>
+# Error: Cannot transition 'ship' from state 'pending'. Valid states: processing</code></pre>
             </div>
         </div>
     </section>
@@ -298,14 +298,14 @@ order.cancel();    // Transitions from "pending" to "cancelled"</code></pre>
 
 let order = create_state_machine("pending", states, transitions);
 
-// Set guard conditions
+# Set guard conditions
 order.set("can_ship", true);
 order.set("is_deliverable", true);
 
-// Transitions will fail if guard is false
+# Transitions will fail if guard is false
 order.set("can_ship", false);
 order.ship();
-// Error: Guard condition 'can_ship' is false</code></pre>
+# Error: Guard condition 'can_ship' is false</code></pre>
             </div>
         </div>
 
@@ -365,7 +365,7 @@ order.ship();
     end
 end
 
-// Usage
+# Usage
 let workflow = new OrderWorkflow();
 let order = workflow.create_order(["Widget A", "Widget B"], 149.99);
 workflow.process_order(order);</code></pre></code></pre>
@@ -396,10 +396,10 @@ payment.set("amount", 99.99);
 payment.set("currency", "USD");
 
 payment.authorize();
-print("Payment status: " + payment.current_state());  // "authorized"
+print("Payment status: " + payment.current_state());  # "authorized"
 
 payment.capture();
-print("Payment status: " + payment.current_state());  // "captured"</code></pre>
+print("Payment status: " + payment.current_state());  # "captured"</code></pre>
             </div>
         </div>
     </section>
@@ -417,7 +417,7 @@ print("Payment status: " + payment.current_state());  // "captured"</code></pre>
 
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">// Save state to database
+<pre><code class="language-soli text-sm"># Save state to database
 let state_data = {
     "machine_type": "Order",
     "machine_id": order.get("id"),
@@ -429,7 +429,7 @@ let state_data = {
 };
 Order.update(order.get("id"), state_data);
 
-// Load state from database
+# Load state from database
 let saved_data = Order.find(order.get("id"));
 let loaded_order = create_state_machine(
     saved_data["current_state"],

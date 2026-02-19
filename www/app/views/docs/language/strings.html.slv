@@ -37,20 +37,20 @@
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Create strings using double quotes. Supports escape sequences for special characters.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Basic string literals
+<pre data-filename="Example"><code class="language-soli text-sm"># Basic string literals
 let greeting = "Hello, World!";
 let name = "Alice";
 let empty = "";
 
-// Escape sequences
+# Escape sequences
 let newline = "Line 1\nLine 2";
 let tab = "Column1\tColumn2";
 let quote = "She said \"Hello\"";
 let backslash = "Path: C:\\Users\\name";
 
-// Unicode characters
-let emoji = "Hello \u{1F44B}";  // Hello with wave emoji
-let unicode = "\u{00E9}";       // e with accent</code></pre>
+# Unicode characters
+let emoji = "Hello \u{1F44B}";  # Hello with wave emoji
+let unicode = "\u{00E9}";       # e with accent</code></pre>
                 </div>
             </section>
 
@@ -63,13 +63,13 @@ let unicode = "\u{00E9}";       // e with accent</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Raw strings don't process escape sequences - useful for paths and regex patterns.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Raw strings - no escape processing
+<pre data-filename="Example"><code class="language-soli text-sm"># Raw strings - no escape processing
 let path = r"C:\Users\name\Documents";
 let regex = r"\d+\.\d+";
 
-// Compare with regular strings
-let regular = "C:\\Users\\name";  // Need double backslashes
-let raw = r"C:\Users\name";       // Single backslashes work</code></pre>
+# Compare with regular strings
+let regular = "C:\\Users\\name";  # Need double backslashes
+let raw = r"C:\Users\name";       # Single backslashes work</code></pre>
                 </div>
             </section>
 
@@ -82,24 +82,24 @@ let raw = r"C:\Users\name";       // Single backslashes work</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Use triple quotes or bracket syntax for multiline strings. Preserves newlines and indentation.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Triple quote syntax (recommended)
+<pre data-filename="Example"><code class="language-soli text-sm"># Triple quote syntax (recommended)
 let poem = """The fog comes
 on little cat feet.
 It sits looking
 over harbor and city.""";
 
-// Bracket syntax [[ ]]
+# Bracket syntax [[ ]]
 let story = [[Once upon
 a time in
 the wild west.]];
 
-// HTML template example
+# HTML template example
 let html = """<div class="container">
     <h1>Welcome</h1>
     <p>This is a paragraph.</p>
 </div>""";
 
-// SQL query example
+# SQL query example
 let query = """SELECT id, name, email
 FROM users
 WHERE active = true
@@ -119,15 +119,15 @@ ORDER BY created_at DESC""";</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Join strings together using the + operator. Non-string values are automatically converted.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Basic concatenation
-let greeting = "Hello, " + "World!";  // "Hello, World!"
+<pre data-filename="Example"><code class="language-soli text-sm"># Basic concatenation
+let greeting = "Hello, " + "World!";  # "Hello, World!"
 
-// Auto-conversion of other types
-let message = "Value: " + 42;         // "Value: 42"
-let result = "Pi is " + 3.14159;      // "Pi is 3.14159"
-let status = "Active: " + true;       // "Active: true"
+# Auto-conversion of other types
+let message = "Value: " + 42;         # "Value: 42"
+let result = "Pi is " + 3.14159;      # "Pi is 3.14159"
+let status = "Active: " + true;       # "Active: true"
 
-// Building strings
+# Building strings
 let name = "Alice";
 let age = 30;
 let intro = "My name is " + name + " and I am " + str(age) + " years old.";</code></pre>
@@ -143,31 +143,31 @@ let intro = "My name is " + name + " and I am " + str(age) + " years old.";</cod
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Embed expressions directly in strings using <code class="text-indigo-400">#{expression}</code> syntax.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Basic variable interpolation
+<pre data-filename="Example"><code class="language-soli text-sm"># Basic variable interpolation
 let name = "World";
-let greeting = "Hello #{name}!";           // "Hello World!"
+let greeting = "Hello #{name}!";           # "Hello World!"
 
-// Arithmetic expressions
+# Arithmetic expressions
 let a = 2;
 let b = 3;
-let result = "Sum is #{a + b}";             // "Sum is 5"
+let result = "Sum is #{a + b}";             # "Sum is 5"
 
-// Multiple interpolations
+# Multiple interpolations
 let first = "John";
 let last = "Doe";
-let full = "#{first} #{last}";              // "John Doe"
+let full = "#{first} #{last}";              # "John Doe"
 
-// Method calls
+# Method calls
 let text = "hello";
-let upper = "Upper: #{text.upper()}";        // "Upper: HELLO"
+let upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
 
-// Array access
+# Array access
 let items = ["Alice", "Bob"];
-let first_item = "First: #{items[0]}";       // "First: Alice"
+let first_item = "First: #{items[0]}";       # "First: Alice"
 
-// Hash access
+# Hash access
 let person = {"name": "Charlie"};
-let person_name = "Name: #{person["name"]}"; // "Name: Charlie"</code></pre>
+let person_name = "Name: #{person["name"]}"; # "Name: Charlie"</code></pre>
                 </div>
             </section>
 
@@ -180,14 +180,14 @@ let person_name = "Name: #{person["name"]}"; // "Name: Charlie"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Optionally specify string types for clarity and type safety.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">// Typed strings
+<pre data-filename="Example"><code class="language-soli text-sm"># Typed strings
 let name: String = "Alice";
 let message: String = "";
 
-// String arrays
+# String arrays
 let names: String[] = ["Alice", "Bob", "Charlie"];
 
-// Function parameters
+# Function parameters
 def greet(name: String) -> String
     "Hello, " + name + "!"
 end</code></pre>
@@ -220,16 +220,16 @@ end</code></pre>
                     <p class="text-gray-400 mb-3">Access individual characters using zero-based indexing. Negative indices count from the end.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let str = "Hello, World!";
 
-// Zero-based indexing
-print(str[0]);    // "H" (first character)
-print(str[7]);    // "W"
+# Zero-based indexing
+print(str[0]);    # "H" (first character)
+print(str[7]);    # "W"
 
-// Negative indexing
-print(str[-1]);   // "!" (last character)
-print(str[-2]);   // "d" (second to last)
+# Negative indexing
+print(str[-1]);   # "!" (last character)
+print(str[-2]);   # "d" (second to last)
 
-// Out of bounds returns null
-print(str[100]);  // null</code></pre>
+# Out of bounds returns null
+print(str[100]);  # null</code></pre>
                 </div>
             </section>
 
@@ -245,13 +245,13 @@ print(str[100]);  // null</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let original = "hello";
 let upper = upcase(original);
 
-print(original);  // "hello" (unchanged)
-print(upper);     // "HELLO" (new string)
+print(original);  # "hello" (unchanged)
+print(upper);     # "HELLO" (new string)
 
-// To "modify", reassign the variable
+# To "modify", reassign the variable
 let text = "hello";
 text = upcase(text);
-print(text);  // "HELLO"</code></pre>
+print(text);  # "HELLO"</code></pre>
                 </div>
             </section>
         </div>
@@ -278,9 +278,9 @@ print(text);  // "HELLO"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of characters in the string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">print(len("hello"));  // 5
-print(len(""));       // 0
-print(len("Hello, World!"));  // 13</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">print(len("hello"));  # 5
+print(len(""));       # 0
+print(len("Hello, World!"));  # 13</code></pre>
                 </div>
             </section>
 
@@ -293,12 +293,12 @@ print(len("Hello, World!"));  // 13</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Convert any value to its string representation.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">str(42)           // "42"
-str(3.14)         // "3.14"
-str(true)         // "true"
-str(null)         // "null"
-str([1, 2, 3])    // "[1, 2, 3]"
-str({"a": 1})     // "{\"a\": 1}"</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">str(42)           # "42"
+str(3.14)         # "3.14"
+str(true)         # "true"
+str(null)         # "null"
+str([1, 2, 3])    # "[1, 2, 3]"
+str({"a": 1})     # "{\"a\": 1}"</code></pre>
                 </div>
             </section>
 
@@ -311,12 +311,12 @@ str({"a": 1})     // "{\"a\": 1}"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Splits a string into an array by the specified separator.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">split("a,b,c", ",")         // ["a", "b", "c"]
-split("hello world", " ")   // ["hello", "world"]
-split("one--two--three", "--")  // ["one", "two", "three"]
+<pre data-filename="Example"><code class="language-soli text-sm">split("a,b,c", ",")         # ["a", "b", "c"]
+split("hello world", " ")   # ["hello", "world"]
+split("one--two--three", "--")  # ["one", "two", "three"]
 
-// Split into characters
-split("hello", "")          // ["h", "e", "l", "l", "o"]</code></pre>
+# Split into characters
+split("hello", "")          # ["h", "e", "l", "l", "o"]</code></pre>
                 </div>
             </section>
 
@@ -329,10 +329,10 @@ split("hello", "")          // ["h", "e", "l", "l", "o"]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Joins array elements into a string with the specified separator.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">join(["a", "b", "c"], ",")      // "a,b,c"
-join(["hello", "world"], " ")   // "hello world"
-join([1, 2, 3], "-")            // "1-2-3"
-join(["one"], ", ")             // "one"</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">join(["a", "b", "c"], ",")      # "a,b,c"
+join(["hello", "world"], " ")   # "hello world"
+join([1, 2, 3], "-")            # "1-2-3"
+join(["one"], ", ")             # "one"</code></pre>
                 </div>
             </section>
 
@@ -345,10 +345,10 @@ join(["one"], ", ")             // "one"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Extracts a portion of a string from start index to end index (exclusive).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">substring("hello", 0, 2)    // "he"
-substring("hello", 1, 4)    // "ell"
-substring("hello", 2)       // "llo" (to end)
-substring("hello", -3)      // "llo" (negative start)</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">substring("hello", 0, 2)    # "he"
+substring("hello", 1, 4)    # "ell"
+substring("hello", 2)       # "llo" (to end)
+substring("hello", -3)      # "llo" (negative start)</code></pre>
                 </div>
             </section>
 
@@ -361,10 +361,10 @@ substring("hello", -3)      // "llo" (negative start)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Checks if a string contains the specified substring.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">contains("hello world", "world")  // true
-contains("hello world", "foo")    // false
-contains("hello", "")             // true (empty string always matches)
-contains("", "hello")             // false</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">contains("hello world", "world")  # true
+contains("hello world", "foo")    # false
+contains("hello", "")             # true (empty string always matches)
+contains("", "hello")             # false</code></pre>
                 </div>
             </section>
 
@@ -377,10 +377,10 @@ contains("", "hello")             // false</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Finds the position of the first occurrence of a substring. Returns -1 if not found.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">index_of("hello world", "world")  // 6
-index_of("hello world", "o")      // 4 (first occurrence)
-index_of("hello world", "foo")    // -1 (not found)
-index_of("hello", "")             // 0</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">index_of("hello world", "world")  # 6
+index_of("hello world", "o")      # 4 (first occurrence)
+index_of("hello world", "foo")    # -1 (not found)
+index_of("hello", "")             # 0</code></pre>
                 </div>
             </section>
 
@@ -393,11 +393,11 @@ index_of("hello", "")             // 0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Convert a string to uppercase or lowercase.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">upcase("hello")       // "HELLO"
-upcase("Hello World") // "HELLO WORLD"
+<pre data-filename="Example"><code class="language-soli text-sm">upcase("hello")       # "HELLO"
+upcase("Hello World") # "HELLO WORLD"
 
-downcase("HELLO")       // "hello"
-downcase("Hello World") // "hello world"</code></pre>
+downcase("HELLO")       # "hello"
+downcase("Hello World") # "hello world"</code></pre>
                 </div>
             </section>
 
@@ -410,9 +410,9 @@ downcase("Hello World") // "hello world"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Removes whitespace from both ends of a string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">trim("  hello  ")     // "hello"
-trim("\n\thello\n")   // "hello"
-trim("hello")         // "hello" (no change)</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">trim("  hello  ")     # "hello"
+trim("\n\thello\n")   # "hello"
+trim("hello")         # "hello" (no change)</code></pre>
                 </div>
             </section>
 
@@ -425,9 +425,9 @@ trim("hello")         // "hello" (no change)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Replace all occurrences of a substring with another string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">replace("hello world", "world", "Soli")  // "hello Soli"
-replace("aaa", "a", "b")                  // "bbb" (replaces all)
-replace("hello", "x", "y")                // "hello" (no match)</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">replace("hello world", "world", "Soli")  # "hello Soli"
+replace("aaa", "a", "b")                  # "bbb" (replaces all)
+replace("hello", "x", "y")                # "hello" (no match)</code></pre>
                 </div>
             </section>
         </div>
@@ -456,13 +456,13 @@ replace("hello", "x", "y")                // "hello" (no match)</code></pre>
                     <p class="text-gray-400 mb-3">Check if a string starts or ends with a given substring.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let url = "https://example.com/page";
 
-url.starts_with("https://")  // true
-url.starts_with("http://")   // false
+url.starts_with("https://")  # true
+url.starts_with("http://")   # false
 
-url.ends_with("/page")       // true
-url.ends_with(".html")       // false
+url.ends_with("/page")       # true
+url.ends_with(".html")       # false
 
-// Practical use
+# Practical use
 let filename = "report.pdf";
 if (filename.ends_with(".pdf"))
     print("PDF file detected");
@@ -481,13 +481,13 @@ end</code></pre>
                     <p class="text-gray-400 mb-3">Convert string to an array of individual characters.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let str = "hello";
 let chars = str.chars();
-print(chars);  // ["h", "e", "l", "l", "o"]
+print(chars);  # ["h", "e", "l", "l", "o"]
 
-// Iterate over characters
+# Iterate over characters
 for (c in "Soli".chars())
     print(c);
 end
-// Output: S, o, l, i</code></pre>
+# Output: S, o, l, i</code></pre>
                 </div>
             </section>
 
@@ -500,16 +500,16 @@ end
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Return a new string with characters in reverse order.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"hello".reverse()   // "olleh"
-"Soli".reverse()    // "iloS"
-"12345".reverse()   // "54321"
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".reverse()   # "olleh"
+"Soli".reverse()    # "iloS"
+"12345".reverse()   # "54321"
 
-// Check palindrome
+# Check palindrome
 def is_palindrome(s: String) -> Bool
     let cleaned = downcase(s);
     cleaned == cleaned.reverse()
 end
-print(is_palindrome("racecar"));  // true</code></pre>
+print(is_palindrome("racecar"));  # true</code></pre>
                 </div>
             </section>
 
@@ -522,13 +522,13 @@ print(is_palindrome("racecar"));  // true</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Repeat a string n times.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"ab".repeat(3)      // "ababab"
-"-".repeat(10)      // "----------"
-"ha".repeat(0)      // ""
+<pre data-filename="Example"><code class="language-soli text-sm">"ab".repeat(3)      # "ababab"
+"-".repeat(10)      # "----------"
+"ha".repeat(0)      # ""
 
-// Create separator line
+# Create separator line
 let separator = "=".repeat(40);
-print(separator);  // ========================================</code></pre>
+print(separator);  # ========================================</code></pre>
                 </div>
             </section>
 
@@ -541,15 +541,15 @@ print(separator);  // ========================================</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Pad a string to a specified length with a character (default is space).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"42".pad_start(5, "0")     // "00042"
-"5".pad_start(3)           // "  5" (default space)
+<pre data-filename="Example"><code class="language-soli text-sm">"42".pad_start(5, "0")     # "00042"
+"5".pad_start(3)           # "  5" (default space)
 
-"hi".pad_end(5, ".")       // "hi..."
-"test".pad_end(8)          // "test    "
+"hi".pad_end(5, ".")       # "hi..."
+"test".pad_end(8)          # "test    "
 
-// Format numbers
+# Format numbers
 let price = str(9.99);
-print(price.pad_start(10));  // "      9.99"</code></pre>
+print(price.pad_start(10));  # "      9.99"</code></pre>
                 </div>
             </section>
 
@@ -562,14 +562,14 @@ print(price.pad_start(10));  // "      9.99"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if string is empty or blank (empty or only whitespace).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"".empty?()       // true
-"hello".empty?()  // false
-"   ".empty?()    // false
+<pre data-filename="Example"><code class="language-soli text-sm">"".empty?()       # true
+"hello".empty?()  # false
+"   ".empty?()    # false
 
-"".blank?()       // true
-"   ".blank?()    // true (only whitespace)
-"\n\t".blank?()   // true
-"hello".blank?()  // false</code></pre>
+"".blank?()       # true
+"   ".blank?()    # true (only whitespace)
+"\n\t".blank?()   # true
+"hello".blank?()  # false</code></pre>
                 </div>
             </section>
         </div>
@@ -597,13 +597,13 @@ print(price.pad_start(10));  // "      9.99"</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Escape HTML special characters to prevent XSS attacks.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">html_escape("&lt;div class='test'&gt;Hello&lt;/div&gt;")
-// "&amp;lt;div class='test'&amp;gt;Hello&amp;lt;/div&amp;gt;"
+# "&amp;lt;div class='test'&amp;gt;Hello&amp;lt;/div&amp;gt;"
 
 html_escape("Tom &amp; Jerry")
-// "Tom &amp;amp; Jerry"
+# "Tom &amp;amp; Jerry"
 
 html_escape("5 &gt; 3 &amp;&amp; 3 &lt; 5")
-// "5 &amp;gt; 3 &amp;amp;&amp;amp; 3 &amp;lt; 5"</code></pre>
+# "5 &amp;gt; 3 &amp;amp;&amp;amp; 3 &amp;lt; 5"</code></pre>
                 </div>
             </section>
 
@@ -617,10 +617,10 @@ html_escape("5 &gt; 3 &amp;&amp; 3 &lt; 5")
                     </a>
                     <p class="text-gray-400 mb-3">Convert HTML entities back to their original characters.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">html_unescape("&amp;lt;div&amp;gt;")
-// "&lt;div&gt;"
+# "&lt;div&gt;"
 
 html_unescape("Tom &amp;amp; Jerry")
-// "Tom &amp; Jerry"</code></pre>
+# "Tom &amp; Jerry"</code></pre>
                 </div>
             </section>
 
@@ -634,10 +634,10 @@ html_unescape("Tom &amp;amp; Jerry")
                     </a>
                     <p class="text-gray-400 mb-3">Remove dangerous HTML tags while keeping safe formatting tags.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">sanitize_html("&lt;b&gt;Bold&lt;/b&gt; &lt;style&gt;body{color:red}&lt;/style&gt;")
-// "&lt;b&gt;Bold&lt;/b&gt; "
+# "&lt;b&gt;Bold&lt;/b&gt; "
 
 sanitize_html("&lt;p&gt;Hello&lt;/p&gt;&lt;object data='file.swf'&gt;&lt;/object&gt;")
-// "&lt;p&gt;Hello&lt;/p&gt;"</code></pre>
+# "&lt;p&gt;Hello&lt;/p&gt;"</code></pre>
                 </div>
             </section>
         </div>
@@ -663,20 +663,20 @@ sanitize_html("&lt;p&gt;Hello&lt;/p&gt;&lt;object data='file.swf'&gt;&lt;/object
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-<pre data-filename="Example"><code class="language-soli text-sm">// Parse CSV line
+<pre data-filename="Example"><code class="language-soli text-sm"># Parse CSV line
 let csv_line = "Alice,30,Engineer";
 let fields = split(csv_line, ",");
-let name = fields[0];    // "Alice"
-let age = int(fields[1]); // 30
-let job = fields[2];     // "Engineer"
+let name = fields[0];    # "Alice"
+let age = int(fields[1]); # 30
+let job = fields[2];     # "Engineer"
 
-// Format currency
+# Format currency
 def format_currency(amount: Float) -> String
     let formatted = str(amount);
     "$" + formatted
 end
 
-// Parse URL query string
+# Parse URL query string
 def parse_query(query: String) -> Hash
     let result = {};
     let pairs = split(query, "&");
@@ -689,7 +689,7 @@ def parse_query(query: String) -> Hash
     result
 end
 let params = parse_query("name=Alice&age=30");
-// {"name": "Alice", "age": "30"}</code></pre>
+# {"name": "Alice", "age": "30"}</code></pre>
                 </div>
             </section>
 
@@ -701,17 +701,17 @@ let params = parse_query("name=Alice&age=30");
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-<pre data-filename="Example"><code class="language-soli text-sm">// Basic email validation
+<pre data-filename="Example"><code class="language-soli text-sm"># Basic email validation
 def is_valid_email(email: String) -> Bool
     contains(email, "@") && contains(email, ".")
 end
 
-// Check minimum length
+# Check minimum length
 def has_min_length(str: String, min: Int) -> Bool
     len(str) >= min
 end
 
-// Check if string is numeric
+# Check if string is numeric
 def is_numeric(str: String) -> Bool
     if (str.empty?())
         return false;
@@ -724,7 +724,7 @@ def is_numeric(str: String) -> Bool
     true
 end
 
-// Validate username
+# Validate username
 def is_valid_username(username: String) -> Bool
     let trimmed = trim(username);
     len(trimmed) >= 3 && len(trimmed) <= 20
@@ -740,7 +740,7 @@ end</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-<pre data-filename="Example"><code class="language-soli text-sm">// Simple template replacement
+<pre data-filename="Example"><code class="language-soli text-sm"># Simple template replacement
 def template(str: String, vars: Hash) -> String
     let result = str;
     for (pair in entries(vars))
@@ -753,9 +753,9 @@ end
 
 let tmpl = "Hello, {{name}}! You have {{count}} messages.";
 let output = template(tmpl, {"name": "Alice", "count": 5});
-// "Hello, Alice! You have 5 messages."
+# "Hello, Alice! You have 5 messages."
 
-// Build HTML safely
+# Build HTML safely
 def build_link(url: String, text: String) -> String
     "<a href=\"" + html_escape(url) + "\">" + html_escape(text) + "</a>"
 end</code></pre>
@@ -788,8 +788,8 @@ end</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the string value. Called automatically in REPL to display string values.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let greeting = "Hello, World!";
-// In REPL, displays: Hello, World!
-// Equivalent to: greeting.to_string()</code></pre>
+# In REPL, displays: Hello, World!
+# Equivalent to: greeting.to_string()</code></pre>
                 </div>
             </section>
 
@@ -803,7 +803,7 @@ end</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of characters in the string.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello");
-let len = s.length();  // 5</code></pre>
+let len = s.length();  # 5</code></pre>
                 </div>
             </section>
 
@@ -817,8 +817,8 @@ let len = s.length();  // 5</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Converts the string to uppercase or lowercase.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("Hello World");
-s.upcase();   // "HELLO WORLD"
-s.downcase(); // "hello world"</code></pre>
+s.upcase();   # "HELLO WORLD"
+s.downcase(); # "hello world"</code></pre>
                 </div>
             </section>
 
@@ -832,7 +832,7 @@ s.downcase(); // "hello world"</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Removes leading and trailing whitespace.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("  hello  ");
-s.trim();  // "hello"</code></pre>
+s.trim();  # "hello"</code></pre>
                 </div>
             </section>
 
@@ -846,9 +846,9 @@ s.trim();  // "hello"</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Check if string contains, starts with, or ends with a substring.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("Hello, World!");
-s.contains("World");    // true
-s.starts_with("Hello"); // true
-s.ends_with("!");       // true</code></pre>
+s.contains("World");    # true
+s.starts_with("Hello"); # true
+s.ends_with("!");       # true</code></pre>
                 </div>
             </section>
 
@@ -862,7 +862,7 @@ s.ends_with("!");       // true</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Splits the string by delimiter and returns an array of parts.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("a,b,c");
-let parts = s.split(",");  // ["a", "b", "c"]</code></pre>
+let parts = s.split(",");  # ["a", "b", "c"]</code></pre>
                 </div>
             </section>
 
@@ -875,10 +875,10 @@ let parts = s.split(",");  // ["a", "b", "c"]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Creates a new String instance from various value types.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">                        String.new(42);        // "42"
-String.new(3.14);      // "3.14"
-String.new(true);      // "true"
-String.new([1, 2, 3]); // "[1, 2, 3]"</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">                        String.new(42);        # "42"
+String.new(3.14);      # "3.14"
+String.new(true);      # "true"
+String.new([1, 2, 3]); # "[1, 2, 3]"</code></pre>
                 </div>
             </section>
 
@@ -892,9 +892,9 @@ String.new([1, 2, 3]); // "[1, 2, 3]"</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the index of the first occurrence of substring, or -1 if not found.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world");
-s.index_of("world");  // 6
-s.index_of("hello");  // 0
-s.index_of("foo");    // -1</code></pre>
+s.index_of("world");  # 6
+s.index_of("hello");  # 0
+s.index_of("foo");    # -1</code></pre>
                 </div>
             </section>
 
@@ -908,8 +908,8 @@ s.index_of("foo");    // -1</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Extracts a substring from start to end (exclusive).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world");
-s.substring(0, 5).to_string();   // "hello"
-s.substring(6, 11).to_string();  // "world"</code></pre>
+s.substring(0, 5).to_string();   # "hello"
+s.substring(6, 11).to_string();  # "world"</code></pre>
                 </div>
             </section>
 
@@ -923,7 +923,7 @@ s.substring(6, 11).to_string();  // "world"</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Replaces all occurrences of 'from' with 'to'.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world");
-s.replace("world", "soli").to_string();  // "hello soli"</code></pre>
+s.replace("world", "soli").to_string();  # "hello soli"</code></pre>
                 </div>
             </section>
 
@@ -937,9 +937,9 @@ s.replace("world", "soli").to_string();  // "hello soli"</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Pads the string to reach the specified width.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hi");
-s.lpad(5).to_string();     // "   hi"
-s.rpad(5).to_string();     // "hi   "
-s.lpad(5, "*").to_string(); // "***hi"</code></pre>
+s.lpad(5).to_string();     # "   hi"
+s.rpad(5).to_string();     # "hi   "
+s.lpad(5, "*").to_string(); # "***hi"</code></pre>
                 </div>
             </section>
         </div>

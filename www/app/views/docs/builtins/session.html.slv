@@ -96,7 +96,7 @@ session_delete("temporary_data")</code></pre>
                     <code class="text-purple-400">Bool</code> - true if the key exists
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">if session_has("user_id") {
-    // User is logged in
+    # User is logged in
 }</code></pre>
             </div>
         </section>
@@ -115,7 +115,7 @@ session_delete("temporary_data")</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Destroy the entire session. Removes all data and invalidates the session ID.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// Logout
+                <pre data-filename="Example"><code class="language-soli text-sm"># Logout
 session_destroy()</code></pre>
             </div>
         </section>
@@ -129,9 +129,9 @@ session_destroy()</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Generate a new session ID while preserving data. <span class="text-yellow-400">Important:</span> Call this after login to prevent session fixation attacks.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">// After successful login
+                <pre data-filename="Example"><code class="language-soli text-sm"># After successful login
 session_set("user_id", user["id"])
-session_regenerate()  // Security: generate new session ID</code></pre>
+session_regenerate()  # Security: generate new session ID</code></pre>
             </div>
         </section>
 
@@ -158,7 +158,7 @@ session_regenerate()  // Security: generate new session ID</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
-            <pre data-filename="Example"><code class="language-soli text-sm">// Login
+            <pre data-filename="Example"><code class="language-soli text-sm"># Login
 def login(email: String, password: String) -> Bool
     let user = User.find_by_email(email)
     if !user || !argon2_verify(password, user["password_hash"]) {
@@ -166,12 +166,12 @@ def login(email: String, password: String) -> Bool
     }
 
     session_set("user_id", user["id"])
-    session_regenerate()  // Prevent session fixation
+    session_regenerate()  # Prevent session fixation
     true
 end
 
-// Check authentication
-def current_user() -> Hash?
+# Check authentication
+def current_user -> Hash?
     let user_id = session_get("user_id")
     if !user_id {
         return null
@@ -179,29 +179,29 @@ def current_user() -> Hash?
     User.find(user_id)
 end
 
-// Logout
-def logout()
+# Logout
+def logout
     session_destroy()
 end</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Flash Messages</h3>
-            <pre data-filename="Example"><code class="language-soli text-sm">// Set a flash message
+            <pre data-filename="Example"><code class="language-soli text-sm"># Set a flash message
 def flash(type: String, message: String)
     let flashes = session_get("_flashes") ?? []
     push(flashes, { "type": type, "message": message })
     session_set("_flashes", flashes)
 end
 
-// Get and clear flash messages
-def get_flashes() -> Array
+# Get and clear flash messages
+def get_flashes -> Array
     let flashes = session_get("_flashes") ?? []
     session_delete("_flashes")
     flashes
 end
 
-// Usage
+# Usage
 flash("success", "Account created!")
 flash("error", "Invalid email address")</code></pre>
         </div>

@@ -104,20 +104,20 @@
                     <div class="px-6 py-6 overflow-x-auto min-h-[300px]">
                         <!-- Model Content -->
                         <div id="content-model">
-<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Post</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span>
-    <span class="text-gray-500">// Validations</span>
+<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Post</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Model</span>
+    <span class="text-gray-500"># Validations</span>
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"title"</span>, {
         <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
         <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">3</span>
     })
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"author_id"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
 
-    <span class="text-gray-500">// Relationships via methods</span>
-    <span class="text-purple-400">def</span> <span class="text-blue-400">author</span>()
+    <span class="text-gray-500"># Relationships via methods</span>
+    <span class="text-purple-400">def</span> <span class="text-blue-400">author</span>
         <span class="text-yellow-200">User</span>.<span class="text-blue-400">find</span>(<span class="text-blue-400">this</span>.author_id)
     <span class="text-purple-400">end</span>
 
-    <span class="text-purple-400">def</span> <span class="text-blue-400">comments</span>()
+    <span class="text-purple-400">def</span> <span class="text-blue-400">comments</span>
         <span class="text-yellow-200">Comment</span>.<span class="text-blue-400">where</span>(
             <span class="text-green-400">"doc.post_id == @id"</span>,
             { <span class="text-green-400">"id"</span>: <span class="text-blue-400">this</span>.id }
@@ -146,13 +146,13 @@
 
                         <!-- Controller Content -->
                         <div id="content-controller" class="hidden">
-<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">PostsController</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Controller</span>
+<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">PostsController</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Controller</span>
     <span class="text-purple-400">def</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>)
         <span class="text-purple-400">let</span> posts = <span class="text-yellow-200">Post</span>
             .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.status == @s"</span>, { <span class="text-green-400">"s"</span>: <span class="text-green-400">"published"</span> })
             .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
             .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
-            .<span class="text-blue-400">all</span>();
+            .<span class="text-blue-400">all</span>
 
         <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, {
             <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span>,
@@ -412,6 +412,190 @@
     </div>
 </section>
 
+<!-- SoliDB Database Section -->
+<section class="relative py-24 sm:py-32">
+    <div class="container mx-auto max-w-7xl px-6 lg:px-8">
+        <div class="mb-12 reveal-on-scroll">
+            <div class="flex items-center gap-4 mb-4">
+                <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                    Powered by <span class="bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">SoliDB</span>
+                </h2>
+            </div>
+            <p class="mt-4 text-lg text-gray-400 max-w-3xl">
+                A distributed, ACID-compliant multi-model database built in Rust.
+                Documents, time-series, graph, key-value, vector search, and blob storage &mdash; all in a single runtime.
+            </p>
+        </div>
+
+        <!-- SoliDB capabilities grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-12 reveal-on-scroll">
+            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-all">
+                <div class="text-lg font-bold text-cyan-400 group-hover:scale-110 transition-transform">Documents</div>
+                <div class="text-xs text-gray-500 mt-1">JSON Store</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-blue-500/10 hover:border-blue-500/30 transition-all">
+                <div class="text-lg font-bold text-blue-400 group-hover:scale-110 transition-transform">Graph</div>
+                <div class="text-xs text-gray-500 mt-1">Edges & Traversal</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all">
+                <div class="text-lg font-bold text-indigo-400 group-hover:scale-110 transition-transform">Vector</div>
+                <div class="text-xs text-gray-500 mt-1">HNSW Search</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-purple-500/10 hover:border-purple-500/30 transition-all">
+                <div class="text-lg font-bold text-purple-400 group-hover:scale-110 transition-transform">Time Series</div>
+                <div class="text-xs text-gray-500 mt-1">Metrics & Logs</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-pink-500/10 hover:border-pink-500/30 transition-all">
+                <div class="text-lg font-bold text-pink-400 group-hover:scale-110 transition-transform">Full-Text</div>
+                <div class="text-xs text-gray-500 mt-1">Search Engine</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-amber-500/10 hover:border-amber-500/30 transition-all">
+                <div class="text-lg font-bold text-amber-400 group-hover:scale-110 transition-transform">Blobs</div>
+                <div class="text-xs text-gray-500 mt-1">File Storage</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Model + Validations -->
+            <div class="reveal-on-scroll">
+                <div class="rounded-2xl bg-gray-950 border border-white/10 overflow-hidden shadow-xl">
+                    <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center">
+                        <span class="text-xs text-gray-400 font-mono">app/models/user.sl</span>
+                    </div>
+                    <div class="p-4 overflow-x-auto">
+<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">User</span> <span class="text-purple-400">extends</span> <span class="text-yellow-200">Model</span>
+    <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, {
+        <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
+        <span class="text-green-400">"uniqueness"</span>: <span class="text-purple-400">true</span>
+    })
+    <span class="text-blue-400">validates</span>(<span class="text-green-400">"name"</span>, {
+        <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
+        <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">2</span>
+    })
+
+    <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_email"</span>)
+    <span class="text-blue-400">after_create</span>(<span class="text-green-400">"send_welcome_email"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-blue-400">normalize_email</span>
+        <span class="text-purple-400">this</span>.email = <span class="text-purple-400">this</span>.email.<span class="text-blue-400">downcase</span>
+    <span class="text-purple-400">end</span>
+
+    <span class="text-purple-400">def</span> <span class="text-blue-400">posts</span>
+        <span class="text-yellow-200">Post</span>.<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.user_id == @id"</span>, { <span class="text-green-400">"id"</span>: <span class="text-purple-400">this</span>.id })
+    <span class="text-purple-400">end</span>
+<span class="text-purple-400">end</span></code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Query Builder -->
+            <div class="reveal-on-scroll" style="transition-delay: 100ms;">
+                <div class="rounded-2xl bg-gray-950 border border-white/10 overflow-hidden shadow-xl">
+                    <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center">
+                        <span class="text-xs text-gray-400 font-mono">app/controllers/users_controller.sl</span>
+                    </div>
+                    <div class="p-4 overflow-x-auto">
+<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-gray-500"># Chainable query builder</span>
+<span class="text-purple-400">let</span> admins = <span class="text-yellow-200">User</span>
+    .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.role == @role"</span>, { <span class="text-green-400">"role"</span>: <span class="text-green-400">"admin"</span> })
+    .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.active == @a"</span>, { <span class="text-green-400">"a"</span>: <span class="text-purple-400">true</span> })
+    .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
+    .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
+    .<span class="text-blue-400">all</span>
+
+<span class="text-gray-500"># CRUD with validations</span>
+<span class="text-purple-400">let</span> result = <span class="text-yellow-200">User</span>.<span class="text-blue-400">create</span>({
+    <span class="text-green-400">"name"</span>: <span class="text-green-400">"Alice"</span>,
+    <span class="text-green-400">"email"</span>: <span class="text-green-400">"alice@example.com"</span>
+})
+
+<span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>]
+    <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users/"</span> + result[<span class="text-green-400">"record"</span>][<span class="text-green-400">"id"</span>])
+<span class="text-purple-400">else</span>
+    <span class="text-blue-400">render</span>(<span class="text-green-400">"users/new"</span>, { <span class="text-green-400">"errors"</span>: result[<span class="text-green-400">"errors"</span>] })
+<span class="text-purple-400">end</span></code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Migrations -->
+        <div class="mt-8 reveal-on-scroll" style="transition-delay: 200ms;">
+            <div class="rounded-2xl bg-gray-950 border border-white/10 overflow-hidden shadow-xl">
+                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center">
+                    <span class="text-xs text-gray-400 font-mono">db/migrations/20260122_create_users.sl</span>
+                </div>
+                <div class="p-4 overflow-x-auto">
+<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-purple-400">def</span> <span class="text-blue-400">up</span>(<span class="text-orange-300">db</span>)
+    db.<span class="text-blue-400">create_collection</span>(<span class="text-green-400">"users"</span>)
+    db.<span class="text-blue-400">create_index</span>(<span class="text-green-400">"users"</span>, <span class="text-green-400">"idx_email"</span>, [<span class="text-green-400">"email"</span>], { <span class="text-green-400">"unique"</span>: <span class="text-purple-400">true</span> })
+    db.<span class="text-blue-400">create_index</span>(<span class="text-green-400">"users"</span>, <span class="text-green-400">"idx_role"</span>, [<span class="text-green-400">"role"</span>], {})
+<span class="text-purple-400">end</span>
+
+<span class="text-purple-400">def</span> <span class="text-blue-400">down</span>(<span class="text-orange-300">db</span>)
+    db.<span class="text-blue-400">drop_collection</span>(<span class="text-green-400">"users"</span>)
+<span class="text-purple-400">end</span></code></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feature cards -->
+        <div class="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 reveal-on-scroll" style="transition-delay: 300ms;">
+            <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 mb-4">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-2">Live Queries</h3>
+                <p class="text-sm text-gray-400">WebSocket-powered real-time updates. Query once, get live changes pushed to clients.</p>
+            </div>
+            <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 mb-4">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-2">ACID Transactions</h3>
+                <p class="text-sm text-gray-400">Multi-document atomic commits, rollbacks, and configurable isolation levels.</p>
+            </div>
+            <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 mb-4">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-2">Distributed</h3>
+                <p class="text-sm text-gray-400">Master-master replication, auto-sharding, and automatic failover built in.</p>
+            </div>
+            <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400 mb-4">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-2">Lua Runtime</h3>
+                <p class="text-sm text-gray-400">Embedded scripting for triggers, stored procedures, and server-side logic.</p>
+            </div>
+        </div>
+
+        <div class="mt-8 flex items-center justify-center gap-6 reveal-on-scroll">
+            <a href="/docs/database/models" class="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+                <span>Soli ORM Docs</span>
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+            </a>
+            <a href="https://solidb.solisoft.net/docs" target="_blank" class="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors">
+                <span>SoliDB Documentation</span>
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+            </a>
+        </div>
+    </div>
+</section>
+
 <!-- Live View Demo Section -->
 <section id="live-view-demo" class="relative py-24 sm:py-32">
     <div class="container mx-auto max-w-7xl px-6 lg:px-8">
@@ -511,7 +695,7 @@
                             <span class="text-xs text-gray-400 font-mono">app/controllers/live_controller.sl</span>
                         </div>
                         <div class="p-4 overflow-x-auto">
-<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-gray-500">// Server pushes updates via tick events</span>
+<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-gray-500"># Server pushes updates via tick events</span>
 <span class="text-purple-400">def</span> <span class="text-blue-400">metrics</span>(<span class="text-orange-300">event</span>)
     <span class="text-purple-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"tick"</span>
         <span class="text-purple-400">return</span> {

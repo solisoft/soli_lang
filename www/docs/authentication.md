@@ -12,7 +12,7 @@ fn login(req)
     let username = data["username"];
     let password = data["password"];
 
-    // Verify credentials (example)
+    # Verify credentials (example)
     if username == "admin" && password == "secret"
         let payload = {
             "sub": username,
@@ -54,9 +54,9 @@ fn authenticate_middleware(req)
         return {"status": 401, "body": "Invalid token: " + result["message"]};
     end
 
-    // Token is valid - add user info to request
+    # Token is valid - add user info to request
     req["current_user"] = result;
-    null  // Continue to next middleware/controller
+    null  # Continue to next middleware/controller
 end
 ```
 
@@ -69,7 +69,7 @@ fn get_token_info(req)
     let token = req["headers"]["Authorization"];
     let token = Regex.replace("^Bearer ", token, "");
 
-    // Decode without verification (for reading only)
+    # Decode without verification (for reading only)
     let claims = jwt_decode(token);
 
     {
