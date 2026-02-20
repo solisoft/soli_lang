@@ -1009,6 +1009,7 @@ mod tests {
     use crate::parser::Parser;
     use crate::vm::compiler::Compiler;
 
+    #[allow(dead_code)]
     fn compile_and_run(source: &str) -> Result<Value, crate::error::RuntimeError> {
         let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
         let program = Parser::new(tokens).parse().expect("parser error");

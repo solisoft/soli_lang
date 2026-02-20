@@ -757,11 +757,16 @@ fn run_hyper_server_worker_pool(
                         let _ = tx.send(());
                     }
                     last_reload_time = Some(Instant::now());
-                    println!("   -> Browser reload sent (cooldown: {}ms)", RELOAD_COOLDOWN_MS);
+                    println!(
+                        "   -> Browser reload sent (cooldown: {}ms)",
+                        RELOAD_COOLDOWN_MS
+                    );
                 } else {
                     let elapsed = Instant::now().duration_since(last_reload_time.unwrap());
-                    println!("   -> Skipped reload (cooldown active: {}ms remaining)",
-                        RELOAD_COOLDOWN_MS.saturating_sub(elapsed.as_millis() as u64));
+                    println!(
+                        "   -> Skipped reload (cooldown active: {}ms remaining)",
+                        RELOAD_COOLDOWN_MS.saturating_sub(elapsed.as_millis() as u64)
+                    );
                 }
 
                 println!();

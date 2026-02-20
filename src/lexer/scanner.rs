@@ -967,7 +967,7 @@ mod tests {
             scan("42 3.14"),
             vec![
                 TokenKind::IntLiteral(42),
-                TokenKind::FloatLiteral(3.14),
+                TokenKind::FloatLiteral(std::f64::consts::PI),
                 TokenKind::Eof,
             ]
         );

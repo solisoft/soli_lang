@@ -1,7 +1,7 @@
 //! Parser tests.
 
 #[cfg(test)]
-mod tests {
+mod parser_tests {
     use crate::ast::expr::Argument;
     use crate::ast::*;
     use crate::lexer::Scanner;
@@ -344,6 +344,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn parse_should_fail(source: &str) -> bool {
         let tokens = Scanner::new(source).scan_tokens().unwrap();
         let mut parser = Parser::new(tokens);

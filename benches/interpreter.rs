@@ -23,7 +23,7 @@ fn run_program(source: &str) {
 /// Load and run a benchmark program file.
 fn run_benchmark_file(name: &str) {
     let path = format!("benches/programs/{}.sl", name);
-    let source = fs::read_to_string(&path).expect(&format!("failed to read {}", path));
+    let source = fs::read_to_string(&path).unwrap_or_else(|_| panic!("failed to read {}", path));
     run_program(&source);
 }
 
