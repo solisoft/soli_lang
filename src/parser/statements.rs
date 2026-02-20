@@ -441,8 +441,13 @@ impl Parser {
         let start_span = self.current_span();
         let expr = self.expression()?;
 
+        // Line of the last token consumed by the expression.
+        // Postfix if/unless must be on the same line to avoid stealing
+        // a block-level `if`/`unless` from the next line.
+        let expr_end_line = self.previous_span().line;
+
         // Check for postfix if: expr if cond (parentheses optional)
-        if self.check(&TokenKind::If) {
+        if self.check(&TokenKind::If) && self.peek().span.line == expr_end_line {
             self.advance(); // consume if
             let has_paren = self.match_token(&TokenKind::LeftParen);
             let cond = self.expression()?;
@@ -468,7 +473,7 @@ impl Parser {
         }
 
         // Check for postfix unless: expr unless cond (parentheses optional)
-        if self.check(&TokenKind::Unless) {
+        if self.check(&TokenKind::Unless) && self.peek().span.line == expr_end_line {
             self.advance(); // consume unless
             let has_paren = self.match_token(&TokenKind::LeftParen);
             let cond = self.expression()?;

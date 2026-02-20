@@ -1321,4 +1321,65 @@ mod parser_tests {
             _ => panic!("Expected NullishCoalescing, got {:?}", expr.kind),
         }
     }
+
+    // =========================================================================
+    // Postfix if/unless same-line requirement
+    // =========================================================================
+
+    #[test]
+    fn test_postfix_if_same_line() {
+        // Postfix if on the same line should work
+        let stmts = parse_stmts("let x = 0\nx = 42 if true\n");
+        assert_eq!(stmts.len(), 2);
+        // Second statement should be an if (postfix form)
+        assert!(matches!(stmts[1], StmtKind::If { .. }));
+    }
+
+    #[test]
+    fn test_expression_followed_by_if_block_end_style() {
+        // Expression on one line followed by if/end block on next lines
+        // must NOT be treated as postfix-if
+        let stmts = parse_stmts("print(\"hello\")\nif true\n  let x = 1\nend\n");
+        assert_eq!(stmts.len(), 2);
+        // First: expression statement (print call)
+        assert!(matches!(stmts[0], StmtKind::Expression(_)));
+        // Second: regular if statement (not postfix)
+        match &stmts[1] {
+            StmtKind::If { then_branch, .. } => {
+                // then_branch should contain a let statement
+                match &then_branch.kind {
+                    StmtKind::Block(body) => assert!(!body.is_empty()),
+                    _ => panic!("Expected block in then_branch"),
+                }
+            }
+            _ => panic!("Expected if statement, got {:?}", stmts[1]),
+        }
+    }
+
+    #[test]
+    fn test_method_call_with_hash_arg_followed_by_if_end() {
+        // This was the original bug: method call with hash literal arg
+        // followed by if/end on next line
+        let stmts = parse_stmts("Vm.update(\"id\", {\"status\": \"ready\"})\nif true\n  print(\"ok\")\nend\n");
+        assert_eq!(stmts.len(), 2);
+        assert!(matches!(stmts[0], StmtKind::Expression(_)));
+        assert!(matches!(stmts[1], StmtKind::If { .. }));
+    }
+
+    #[test]
+    fn test_postfix_unless_same_line() {
+        let stmts = parse_stmts("let x = 0\nx = 42 unless false\n");
+        assert_eq!(stmts.len(), 2);
+        assert!(matches!(stmts[1], StmtKind::If { .. }));
+    }
+
+    #[test]
+    fn test_expression_followed_by_if_block_with_return() {
+        // Full pattern from controllers: expr, if/end, return
+        let stmts = parse_stmts("print(\"hello\")\nif true\n  print(\"world\")\nend\nreturn \"ok\"\n");
+        assert_eq!(stmts.len(), 3);
+        assert!(matches!(stmts[0], StmtKind::Expression(_)));
+        assert!(matches!(stmts[1], StmtKind::If { .. }));
+        assert!(matches!(stmts[2], StmtKind::Return(_)));
+    }
 }
