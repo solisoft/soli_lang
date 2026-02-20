@@ -6,7 +6,7 @@
     <title><%= title %> - Soli App</title>
 
     <!-- Tailwind CSS (compiled) -->
-    <link rel="stylesheet" href="<%= public_path("css/output.css") %>">
+    <link rel="stylesheet" href="<%= public_path("css/application.css") %>">
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

@@ -1,6 +1,6 @@
 [package]
 name = "solilang"
-version = "0.28.0"
+version = "0.29.0"
 edition = "2021"
 description = "A dynamically-typed, class-based OOP language with optional type annotations and pipeline operators"
 authors = ["Solilang Team"]
@@ -84,6 +84,9 @@ nix = { version = "0.29", features = ["signal", "process"] }
 
 # Ordered hash map with O(1) lookups
 indexmap = "2"
+
+# File watching for hot reload
+notify = "7"
 
 # Test framework
 walkdir = "2"

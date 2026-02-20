@@ -69,6 +69,29 @@ impl Parser {
             TokenKind::Null => Ok(Expr::new(ExprKind::Null, start_span)),
 
             TokenKind::Identifier(name) => {
+                // Command-style calls: identifier followed by argument on the SAME LINE
+                // e.g., print x, print "hello", puts result
+                // Same-line requirement prevents ambiguity with multi-line bodies:
+                //   fn foo
+                //     bar    ← not a call to foo
+                //   end
+                let next = self.peek();
+                if next.span.line == start_span.line
+                    && Self::is_command_arg(&next.kind)
+                {
+                    let arguments = self.parse_command_arguments()?;
+                    let span = start_span.merge(&self.previous_span());
+                    return Ok(Expr::new(
+                        ExprKind::Call {
+                            callee: Box::new(Expr::new(
+                                ExprKind::Variable(name.clone()),
+                                start_span,
+                            )),
+                            arguments,
+                        },
+                        span,
+                    ));
+                }
                 Ok(Expr::new(ExprKind::Variable(name.clone()), start_span))
             }
 
@@ -1196,5 +1219,47 @@ impl Parser {
         // Parse from the tokens
         let mut parser = crate::parser::Parser::new(tokens);
         parser.expression()
+    }
+
+    /// Check if a token is a valid first token for a command-style argument.
+    /// Allows literals, identifiers, null, and this — but NOT operators,
+    /// parens, braces, or keywords that would create ambiguity.
+    fn is_command_arg(token_kind: &TokenKind) -> bool {
+        matches!(
+            token_kind,
+            TokenKind::IntLiteral(_)
+                | TokenKind::FloatLiteral(_)
+                | TokenKind::DecimalLiteral(_)
+                | TokenKind::StringLiteral(_)
+                | TokenKind::InterpolatedString(_)
+                | TokenKind::BacktickString(_)
+                | TokenKind::BoolLiteral(_)
+                | TokenKind::Identifier(_)
+                | TokenKind::Null
+                | TokenKind::This
+        )
+    }
+
+    /// Parse arguments for command-style calls (without parentheses).
+    /// e.g., `print "hello", "world"` or `print x, y`
+    fn parse_command_arguments(&mut self) -> ParseResult<Vec<Argument>> {
+        let mut arguments = Vec::new();
+
+        if !Self::is_command_arg(&self.peek().kind) {
+            return Ok(arguments);
+        }
+
+        let expr = self.expression()?;
+        arguments.push(Argument::Positional(expr));
+
+        while self.match_token(&TokenKind::Comma) {
+            if !Self::is_command_arg(&self.peek().kind) {
+                break;
+            }
+            let expr = self.expression()?;
+            arguments.push(Argument::Positional(expr));
+        }
+
+        Ok(arguments)
     }
 }

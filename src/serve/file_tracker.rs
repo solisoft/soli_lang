@@ -6,6 +6,7 @@ use crate::serve::hot_reload::FileTracker;
 use crate::serve::server_constants;
 
 /// Recursively track view files (.erb) in a directory
+#[allow(dead_code)]
 pub fn track_views_recursive(dir: &Path, tracker: &mut FileTracker) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
@@ -20,6 +21,7 @@ pub fn track_views_recursive(dir: &Path, tracker: &mut FileTracker) {
 }
 
 /// Recursively track static files (CSS, JS, etc.) in a directory
+#[allow(dead_code)]
 pub fn track_static_recursive(dir: &Path, tracker: &mut FileTracker) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {

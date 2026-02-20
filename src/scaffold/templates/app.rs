@@ -41,8 +41,8 @@ pub fn package_json(name: &str) -> String {
   "version": "1.0.0",
   "description": "A Soli MVC application",
   "scripts": {{
-    "build:css": "npx tailwindcss -i ./public/css/app.css -o ./public/css/output.css",
-    "watch:css": "npx tailwindcss -i ./public/css/app.css -o ./public/css/output.css --watch"
+    "build:css": "npx tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css",
+    "watch:css": "npx tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css --watch"
   }},
   "devDependencies": {{
     "tailwindcss": "^3.4.0"
@@ -91,6 +91,9 @@ soli serve . -d
 ```
 {}/
 ├── app/
+│   ├── assets/
+│   │   └── css/
+│   │       └── application.css  # Source CSS with Tailwind directives
 │   ├── controllers/     # Request handlers
 │   ├── models/          # Data models
 │   └── views/           # HTML templates
@@ -100,10 +103,9 @@ soli serve . -d
 │   └── routes.sl      # Route definitions
 ├── db/
 │   └── migrations/      # Database migrations
-├── public/              # Static assets
+├── public/              # Static assets (compiled output)
 │   ├── css/
-│   │   ├── app.css      # Source CSS with Tailwind directives
-│   │   └── output.css   # Compiled CSS (generated)
+│   │   └── application.css  # Compiled CSS (generated)
 │   ├── js/
 │   └── images/
 ├── tests/               # Test files

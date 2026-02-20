@@ -141,8 +141,8 @@ pub(crate) struct ResponseData {
     pub(crate) body: String,
 }
 
-// File tracking functions are now in file_tracker module
-use file_tracker::{track_static_recursive, track_views_recursive};
+// File tracking functions (used by app_loader for initial file tracking in workers)
+// The watcher thread now uses notify crate for event-driven file watching.
 
 // File upload functions are now in file_upload module
 use file_upload::uploaded_files_to_value;
@@ -554,55 +554,94 @@ fn run_hyper_server_worker_pool(
             // Hold onto the Tailwind process - it will be killed when dropped
             let _tailwind_process = tailwind_process;
 
-            let mut file_tracker = FileTracker::new();
+            use notify::{RecursiveMode, Watcher};
 
-            // Track all controller files
-            if let Ok(entries) = std::fs::read_dir(&watch_controllers_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().is_some_and(|ext| ext == "sl") {
-                        file_tracker.track(&path);
-                    }
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut watcher = match notify::recommended_watcher(tx) {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("Hot reload: Failed to create file watcher: {}", e);
+                    return;
+                }
+            };
+
+            // Watch directories — handles new files automatically
+            let mut watch_count = 0u32;
+            if watch_controllers_dir.exists()
+                && watcher.watch(&watch_controllers_dir, RecursiveMode::NonRecursive).is_ok()
+            {
+                watch_count += 1;
+            }
+            if watch_middleware_dir.exists()
+                && watcher.watch(&watch_middleware_dir, RecursiveMode::NonRecursive).is_ok()
+            {
+                watch_count += 1;
+            }
+            if watch_helpers_dir.exists()
+                && watcher.watch(&watch_helpers_dir, RecursiveMode::NonRecursive).is_ok()
+            {
+                watch_count += 1;
+            }
+            if watch_views_dir.exists()
+                && watcher.watch(&watch_views_dir, RecursiveMode::Recursive).is_ok()
+            {
+                watch_count += 1;
+            }
+            if watch_public_dir.exists()
+                && watcher.watch(&watch_public_dir, RecursiveMode::Recursive).is_ok()
+            {
+                watch_count += 1;
+            }
+            if let Some(routes_parent) = watch_routes_file.parent() {
+                if routes_parent.exists()
+                    && watcher.watch(routes_parent, RecursiveMode::NonRecursive).is_ok()
+                {
+                    watch_count += 1;
                 }
             }
 
-            // Track middleware files
-            if let Ok(entries) = std::fs::read_dir(&watch_middleware_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().is_some_and(|ext| ext == "sl") {
-                        file_tracker.track(&path);
+            println!("Hot reload: Watching {} directories (event-driven)", watch_count);
+
+            // Debounce: collect events over a short window before processing
+            const DEBOUNCE_MS: u64 = 300;
+
+            while let Ok(first) = rx.recv() {
+                // Collect additional events that arrive within the debounce window
+                let mut raw_events = vec![first];
+                let deadline = Instant::now() + Duration::from_millis(DEBOUNCE_MS);
+                loop {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        break;
+                    }
+                    match rx.recv_timeout(remaining) {
+                        Ok(ev) => raw_events.push(ev),
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                     }
                 }
-            }
 
-            // Track routes.sl file
-            if watch_routes_file.exists() {
-                file_tracker.track(&watch_routes_file);
-            }
+                // Extract unique paths from all events
+                let mut changed_paths = std::collections::HashSet::new();
+                for event in raw_events.into_iter().flatten() {
+                    for path in event.paths {
+                        changed_paths.insert(path);
+                    }
+                }
 
-            // Track view files recursively
-            track_views_recursive(&watch_views_dir, &mut file_tracker);
+                // Filter to relevant extensions only
+                let changed: Vec<PathBuf> = changed_paths
+                    .into_iter()
+                    .filter(|path| {
+                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                            matches!(ext, "sl" | "erb" | "slv")
+                                || server_constants::is_tracked_static_extension(ext)
+                        } else {
+                            false
+                        }
+                    })
+                    .collect();
 
-            // Track static files (CSS, JS) in public directory
-            if watch_public_dir.exists() {
-                track_static_recursive(&watch_public_dir, &mut file_tracker);
-            }
-
-            // Note: We don't track source CSS files (app/assets/css) here
-            // because Tailwind's --watch mode already handles CSS changes.
-            // Tracking them would cause an infinite loop since trigger_tailwind_rebuild
-            // touches the CSS file to force a rebuild.
-
-            println!(
-                "Hot reload: Watching {} files",
-                file_tracker.tracked_count()
-            );
-
-            loop {
-                thread::sleep(Duration::from_secs(1));
-
-                let changed = file_tracker.get_changed_files();
                 if changed.is_empty() {
                     continue;
                 }
@@ -638,9 +677,6 @@ fn run_hyper_server_worker_pool(
                             views_changed = true;
                         }
                     }
-
-                    // Track new modification time
-                    file_tracker.track(path);
                 }
 
                 // Increment version counters - workers will pick this up

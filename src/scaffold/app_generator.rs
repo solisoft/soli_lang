@@ -23,6 +23,8 @@ pub fn create_directories(app_path: &Path) -> Result<(), String> {
         "config",
         "db",
         "db/migrations",
+        "app/assets",
+        "app/assets/css",
         "public",
         "public/css",
         "public/js",
@@ -78,9 +80,9 @@ pub fn create_index_view(app_path: &Path) -> Result<(), String> {
     )
 }
 
-/// Create the CSS file
+/// Create the CSS file (Tailwind source in app/assets/css/)
 pub fn create_css_file(app_path: &Path) -> Result<(), String> {
-    write_file(&app_path.join("public/css/app.css"), app::CSS_TEMPLATE)
+    write_file(&app_path.join("app/assets/css/application.css"), app::CSS_TEMPLATE)
 }
 
 /// Create the .env file
