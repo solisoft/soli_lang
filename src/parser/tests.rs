@@ -650,6 +650,49 @@ mod parser_tests {
         }
     }
 
+    #[test]
+    fn test_class_method_named_new() {
+        let stmts = parse_stmts("class Foo\n  def new(req)\n    42\n  end\nend");
+        match &stmts[0] {
+            StmtKind::Class(c) => {
+                assert_eq!(c.name, "Foo");
+                assert_eq!(c.methods.len(), 1);
+                assert_eq!(c.methods[0].name, "new");
+            }
+            other => panic!("Expected class, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_class_method_named_new_with_body() {
+        let stmts = parse_stmts(
+            "class MyController\n  def new(req)\n    return 1\n  end\n  def index(req)\n    return 2\n  end\nend",
+        );
+        match &stmts[0] {
+            StmtKind::Class(c) => {
+                assert_eq!(c.name, "MyController");
+                assert_eq!(c.methods.len(), 2);
+                assert_eq!(c.methods[0].name, "new");
+                assert_eq!(c.methods[1].name, "index");
+            }
+            other => panic!("Expected class, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_class_method_named_new_brace_style() {
+        let stmts = parse_stmts("class Foo { fn new(x) { return x } }");
+        match &stmts[0] {
+            StmtKind::Class(c) => {
+                assert_eq!(c.name, "Foo");
+                assert_eq!(c.methods.len(), 1);
+                assert_eq!(c.methods[0].name, "new");
+                assert_eq!(c.methods[0].params.len(), 1);
+            }
+            other => panic!("Expected class, got {:?}", other),
+        }
+    }
+
     // ================================================================
     // Inline lambda tests: fn(params) expr
     // ================================================================

@@ -95,6 +95,10 @@ impl Parser {
                 self.advance();
                 Ok(name)
             }
+            TokenKind::New => {
+                self.advance();
+                Ok("new".to_string())
+            }
             _ => Err(ParserError::unexpected_token(
                 "identifier",
                 format!("{}", self.peek().kind),

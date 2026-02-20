@@ -655,3 +655,71 @@ describe("Const Fields", fn() {
         assert_eq(Registry.count, 5);
     });
 });
+
+// ============================================================================
+// Method named "new" (keyword used as method name)
+// ============================================================================
+
+describe("Method named new", fn() {
+    test("def new as a regular method (end-style)", fn() {
+        class AppsController
+            def new(req)
+                return "new form"
+            end
+        end
+        let c = AppsController()
+        assert_eq(c.new("GET"), "new form")
+    });
+
+    test("fn new as a regular method (brace-style)", fn() {
+        class UsersController {
+            fn new(req) {
+                return "create user form"
+            }
+        }
+        let c = new UsersController();
+        assert_eq(c.new("GET"), "create user form");
+    });
+
+    test("new method alongside other methods", fn() {
+        class ItemsController
+            def index(req)
+                return "list"
+            end
+
+            def new(req)
+                return "new form"
+            end
+
+            def create(req)
+                return "created"
+            end
+
+            def show(req)
+                return "detail"
+            end
+        end
+        let c = ItemsController()
+        assert_eq(c.index("GET"), "list")
+        assert_eq(c.new("GET"), "new form")
+        assert_eq(c.create("POST"), "created")
+        assert_eq(c.show("GET"), "detail")
+    });
+
+    test("new method with constructor in same class", fn() {
+        class Widget {
+            name: String;
+
+            new(name: String) {
+                this.name = name;
+            }
+
+            fn new(req) {
+                return "new " + this.name + " form"
+            }
+        }
+        let w = new Widget("button");
+        assert_eq(w.name, "button");
+        assert_eq(w.new("GET"), "new button form");
+    });
+});
