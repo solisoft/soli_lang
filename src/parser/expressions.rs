@@ -76,9 +76,7 @@ impl Parser {
                 //     bar    ← not a call to foo
                 //   end
                 let next = self.peek();
-                if next.span.line == start_span.line
-                    && Self::is_command_arg(&next.kind)
-                {
+                if next.span.line == start_span.line && Self::is_command_arg(&next.kind) {
                     let arguments = self.parse_command_arguments()?;
                     let span = start_span.merge(&self.previous_span());
                     return Ok(Expr::new(

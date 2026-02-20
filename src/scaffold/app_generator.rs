@@ -82,7 +82,10 @@ pub fn create_index_view(app_path: &Path) -> Result<(), String> {
 
 /// Create the CSS file (Tailwind source in app/assets/css/)
 pub fn create_css_file(app_path: &Path) -> Result<(), String> {
-    write_file(&app_path.join("app/assets/css/application.css"), app::CSS_TEMPLATE)
+    write_file(
+        &app_path.join("app/assets/css/application.css"),
+        app::CSS_TEMPLATE,
+    )
 }
 
 /// Create the .env file

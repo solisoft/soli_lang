@@ -568,39 +568,54 @@ fn run_hyper_server_worker_pool(
             // Watch directories — handles new files automatically
             let mut watch_count = 0u32;
             if watch_controllers_dir.exists()
-                && watcher.watch(&watch_controllers_dir, RecursiveMode::NonRecursive).is_ok()
+                && watcher
+                    .watch(&watch_controllers_dir, RecursiveMode::NonRecursive)
+                    .is_ok()
             {
                 watch_count += 1;
             }
             if watch_middleware_dir.exists()
-                && watcher.watch(&watch_middleware_dir, RecursiveMode::NonRecursive).is_ok()
+                && watcher
+                    .watch(&watch_middleware_dir, RecursiveMode::NonRecursive)
+                    .is_ok()
             {
                 watch_count += 1;
             }
             if watch_helpers_dir.exists()
-                && watcher.watch(&watch_helpers_dir, RecursiveMode::NonRecursive).is_ok()
+                && watcher
+                    .watch(&watch_helpers_dir, RecursiveMode::NonRecursive)
+                    .is_ok()
             {
                 watch_count += 1;
             }
             if watch_views_dir.exists()
-                && watcher.watch(&watch_views_dir, RecursiveMode::Recursive).is_ok()
+                && watcher
+                    .watch(&watch_views_dir, RecursiveMode::Recursive)
+                    .is_ok()
             {
                 watch_count += 1;
             }
             if watch_public_dir.exists()
-                && watcher.watch(&watch_public_dir, RecursiveMode::Recursive).is_ok()
+                && watcher
+                    .watch(&watch_public_dir, RecursiveMode::Recursive)
+                    .is_ok()
             {
                 watch_count += 1;
             }
             if let Some(routes_parent) = watch_routes_file.parent() {
                 if routes_parent.exists()
-                    && watcher.watch(routes_parent, RecursiveMode::NonRecursive).is_ok()
+                    && watcher
+                        .watch(routes_parent, RecursiveMode::NonRecursive)
+                        .is_ok()
                 {
                     watch_count += 1;
                 }
             }
 
-            println!("Hot reload: Watching {} directories (event-driven)", watch_count);
+            println!(
+                "Hot reload: Watching {} directories (event-driven)",
+                watch_count
+            );
 
             // Debounce: collect events over a short window before processing
             const DEBOUNCE_MS: u64 = 300;
