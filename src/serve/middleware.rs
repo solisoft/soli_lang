@@ -308,13 +308,10 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
         let trimmed = line.trim();
 
         // Strip comment prefix (// or #) and get the directive content
-        let comment_body = if trimmed.starts_with("//") {
-            Some(trimmed[2..].trim_start())
-        } else if trimmed.starts_with('#') {
-            Some(trimmed[1..].trim_start())
-        } else {
-            None
-        };
+        let comment_body = trimmed
+            .strip_prefix("//")
+            .or_else(|| trimmed.strip_prefix('#'))
+            .map(|rest| rest.trim_start());
 
         if let Some(body) = comment_body {
             // Check for order directive
@@ -331,7 +328,9 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
                 if let Some(value_str) = body.split(':').nth(1) {
                     let value = value_str.trim().to_lowercase();
                     pending_global_only = Some(
-                        value.starts_with("true") || value.starts_with("1") || value.starts_with("yes"),
+                        value.starts_with("true")
+                            || value.starts_with("1")
+                            || value.starts_with("yes"),
                     );
                 }
             }
@@ -341,7 +340,9 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
                 if let Some(value_str) = body.split(':').nth(1) {
                     let value = value_str.trim().to_lowercase();
                     pending_scope_only = Some(
-                        value.starts_with("true") || value.starts_with("1") || value.starts_with("yes"),
+                        value.starts_with("true")
+                            || value.starts_with("1")
+                            || value.starts_with("yes"),
                     );
                 }
             }
