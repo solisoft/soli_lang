@@ -619,6 +619,9 @@ fn run_hyper_server_worker_pool(
 
             // Debounce: collect events over a short window before processing
             const DEBOUNCE_MS: u64 = 300;
+            // Cooldown to prevent reload loops (e.g., when Tailwind rebuilds CSS after view changes)
+            const RELOAD_COOLDOWN_MS: u64 = 2000;
+            let mut last_reload_time: Option<Instant> = None;
 
             while let Ok(first) = rx.recv() {
                 // Collect additional events that arrive within the debounce window
@@ -740,9 +743,25 @@ fn run_hyper_server_worker_pool(
                     println!("   ✓ Signaled routes reload to all workers");
                 }
 
-                // Notify browser for live reload
-                if let Some(ref tx) = browser_reload_tx {
-                    let _ = tx.send(());
+                // Notify browser for live reload (with cooldown to prevent loops)
+                let should_reload = match last_reload_time {
+                    Some(last_time) => {
+                        let elapsed = Instant::now().duration_since(last_time);
+                        elapsed.as_millis() as u64 >= RELOAD_COOLDOWN_MS
+                    }
+                    None => true,
+                };
+
+                if should_reload {
+                    if let Some(ref tx) = browser_reload_tx {
+                        let _ = tx.send(());
+                    }
+                    last_reload_time = Some(Instant::now());
+                    println!("   -> Browser reload sent (cooldown: {}ms)", RELOAD_COOLDOWN_MS);
+                } else {
+                    let elapsed = Instant::now().duration_since(last_reload_time.unwrap());
+                    println!("   -> Skipped reload (cooldown active: {}ms remaining)",
+                        RELOAD_COOLDOWN_MS.saturating_sub(elapsed.as_millis() as u64));
                 }
 
                 println!();
