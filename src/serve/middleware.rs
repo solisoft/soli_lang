@@ -291,10 +291,11 @@ pub fn scan_middleware_files(middleware_dir: &Path) -> Result<Vec<PathBuf>, Runt
 
 /// Extract middleware function names from source code.
 /// Returns (function_name, order, global_only, scope_only) tuples.
-/// Order is determined by a comment like `// order: 10` before the function,
+/// Order is determined by a comment like `// order: 10` or `# order: 10` before the function,
 /// or defaults to 100.
-/// Global-only is determined by a comment like `// global_only: true` before the function.
-/// Scope-only is determined by a comment like `// scope_only: true` before the function.
+/// Global-only is determined by a comment like `// global_only: true` or `# global_only: true`.
+/// Scope-only is determined by a comment like `// scope_only: true` or `# scope_only: true`.
+/// Function declarations can use either `fn` or `def` keyword.
 pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, bool)> {
     let mut functions = Vec::new();
     let lines: Vec<&str> = source.lines().collect();
@@ -306,50 +307,65 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
     for line in lines.iter() {
         let trimmed = line.trim();
 
-        // Check for order comment
-        if trimmed.starts_with("// order:") || trimmed.starts_with("//order:") {
-            if let Some(order_str) = trimmed.split(':').nth(1) {
-                if let Ok(order) = order_str.trim().parse::<i32>() {
-                    pending_order = Some(order);
+        // Strip comment prefix (// or #) and get the directive content
+        let comment_body = if trimmed.starts_with("//") {
+            Some(trimmed[2..].trim_start())
+        } else if trimmed.starts_with('#') {
+            Some(trimmed[1..].trim_start())
+        } else {
+            None
+        };
+
+        if let Some(body) = comment_body {
+            // Check for order directive
+            if body.starts_with("order:") {
+                if let Some(order_str) = body.split(':').nth(1) {
+                    if let Ok(order) = order_str.trim().parse::<i32>() {
+                        pending_order = Some(order);
+                    }
+                }
+            }
+
+            // Check for global_only directive
+            if body.starts_with("global_only:") {
+                if let Some(value_str) = body.split(':').nth(1) {
+                    let value = value_str.trim().to_lowercase();
+                    pending_global_only = Some(
+                        value.starts_with("true") || value.starts_with("1") || value.starts_with("yes"),
+                    );
+                }
+            }
+
+            // Check for scope_only directive
+            if body.starts_with("scope_only:") {
+                if let Some(value_str) = body.split(':').nth(1) {
+                    let value = value_str.trim().to_lowercase();
+                    pending_scope_only = Some(
+                        value.starts_with("true") || value.starts_with("1") || value.starts_with("yes"),
+                    );
                 }
             }
         }
 
-        // Check for global_only comment
-        if trimmed.starts_with("// global_only:") || trimmed.starts_with("//global_only:") {
-            if let Some(value_str) = trimmed.split(':').nth(1) {
-                let value = value_str.trim().to_lowercase();
-                // Check if value STARTS with true/1/yes (handles comments after the value)
-                pending_global_only = Some(
-                    value.starts_with("true") || value.starts_with("1") || value.starts_with("yes"),
-                );
-            }
-        }
+        // Check for function declaration (fn or def)
+        let func_rest = if trimmed.starts_with("fn ") {
+            trimmed.strip_prefix("fn ")
+        } else if trimmed.starts_with("def ") {
+            trimmed.strip_prefix("def ")
+        } else {
+            None
+        };
 
-        // Check for scope_only comment
-        if trimmed.starts_with("// scope_only:") || trimmed.starts_with("//scope_only:") {
-            if let Some(value_str) = trimmed.split(':').nth(1) {
-                let value = value_str.trim().to_lowercase();
-                // Check if value STARTS with true/1/yes (handles comments after the value)
-                pending_scope_only = Some(
-                    value.starts_with("true") || value.starts_with("1") || value.starts_with("yes"),
-                );
-            }
-        }
+        if let Some(rest) = func_rest {
+            if let Some(paren_pos) = rest.find('(') {
+                let func_name = rest[..paren_pos].trim().to_string();
 
-        // Check for function declaration
-        if trimmed.starts_with("fn ") {
-            if let Some(rest) = trimmed.strip_prefix("fn ") {
-                if let Some(paren_pos) = rest.find('(') {
-                    let func_name = rest[..paren_pos].trim().to_string();
-
-                    // Skip private functions
-                    if !func_name.starts_with('_') {
-                        let order = pending_order.unwrap_or(100);
-                        let global_only = pending_global_only.unwrap_or(false);
-                        let scope_only = pending_scope_only.unwrap_or(false);
-                        functions.push((func_name, order, global_only, scope_only));
-                    }
+                // Skip private functions
+                if !func_name.starts_with('_') {
+                    let order = pending_order.unwrap_or(100);
+                    let global_only = pending_global_only.unwrap_or(false);
+                    let scope_only = pending_scope_only.unwrap_or(false);
+                    functions.push((func_name, order, global_only, scope_only));
                 }
             }
             pending_order = None;
@@ -399,6 +415,35 @@ fn _private_helper() {
             functions[2],
             ("default_order".to_string(), 100, false, false)
         );
+    }
+
+    #[test]
+    fn test_extract_middleware_functions_def_and_hash_comments() {
+        let source = r#"
+# order: 10
+# scope_only: true
+
+def require_auth(req: Any) -> Any
+    return {"continue": true, "request": req}
+end
+
+# order: 5
+# global_only: true
+
+def add_cors(req: Any) -> Any
+    return {"continue": true, "request": req}
+end
+
+def _private_helper()
+    # should be skipped
+end
+"#;
+
+        let functions = extract_middleware_functions(source);
+
+        assert_eq!(functions.len(), 2);
+        assert_eq!(functions[0], ("require_auth".to_string(), 10, false, true));
+        assert_eq!(functions[1], ("add_cors".to_string(), 5, true, false));
     }
 
     #[test]
