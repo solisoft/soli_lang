@@ -693,6 +693,37 @@ mod parser_tests {
         }
     }
 
+    #[test]
+    fn test_class_method_named_match() {
+        let stmts = parse_stmts("class Foo { fn match(pattern) { return true } }");
+        match &stmts[0] {
+            StmtKind::Class(c) => {
+                assert_eq!(c.name, "Foo");
+                assert_eq!(c.methods.len(), 1);
+                assert_eq!(c.methods[0].name, "match");
+            }
+            other => panic!("Expected class, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_match_as_method_call() {
+        // name.match("pattern") should parse as a method call, not a match expression
+        let expr = parse_expr("name.match(\"^[a-z]+$\")");
+        match &expr.kind {
+            ExprKind::Call { callee, arguments, .. } => {
+                assert_eq!(arguments.len(), 1);
+                match &callee.kind {
+                    ExprKind::Member { name, .. } => {
+                        assert_eq!(name, "match");
+                    }
+                    other => panic!("Expected member access, got {:?}", other),
+                }
+            }
+            other => panic!("Expected call, got {:?}", other),
+        }
+    }
+
     // ================================================================
     // Inline lambda tests: fn(params) expr
     // ================================================================

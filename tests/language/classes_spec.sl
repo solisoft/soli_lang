@@ -723,3 +723,43 @@ describe("Method named new", fn() {
         assert_eq(w.new("GET"), "new button form");
     });
 });
+
+// ============================================================================
+// Method named "match" (keyword used as method name)
+// ============================================================================
+
+describe("Method named match", fn() {
+    test("match as a method name in a class", fn() {
+        class Validator {
+            fn match(pattern) {
+                return "matched: " + pattern
+            }
+        }
+        let v = new Validator();
+        assert_eq(v.match("^[a-z]+$"), "matched: ^[a-z]+$");
+    });
+
+    test("calling .match() on a string", fn() {
+        let name = "hello"
+        let result = name.match("^[a-z]+$")
+        assert_eq(result.empty?(), false)
+    });
+
+    test("match method alongside match expression", fn() {
+        class Checker {
+            fn match(input) {
+                return "checking: " + input
+            }
+        }
+        let c = new Checker();
+        assert_eq(c.match("test"), "checking: test");
+
+        // match expression still works
+        let x = 42
+        let result = match x {
+            42 => "forty-two",
+            _ => "other"
+        }
+        assert_eq(result, "forty-two");
+    });
+});
