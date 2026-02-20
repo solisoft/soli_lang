@@ -16,10 +16,10 @@ pub const INDEX_VIEW_TEMPLATE: &str = include_str!("index.html.slv");
 pub const CSS_TEMPLATE: &str = include_str!("app.css");
 
 /// Environment file template
-pub const ENV_TEMPLATE: &str = include_str!(".env");
+pub const ENV_TEMPLATE: &str = include_str!("env.template");
 
 /// Gitignore template
-pub const GITIGNORE_TEMPLATE: &str = include_str!(".gitignore");
+pub const GITIGNORE_TEMPLATE: &str = include_str!("gitignore.template");
 
 /// Application helper template
 pub const APPLICATION_HELPER_TEMPLATE: &str = include_str!("application_helper.sl");
