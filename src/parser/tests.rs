@@ -711,7 +711,9 @@ mod parser_tests {
         // name.match("pattern") should parse as a method call, not a match expression
         let expr = parse_expr("name.match(\"^[a-z]+$\")");
         match &expr.kind {
-            ExprKind::Call { callee, arguments, .. } => {
+            ExprKind::Call {
+                callee, arguments, ..
+            } => {
                 assert_eq!(arguments.len(), 1);
                 match &callee.kind {
                     ExprKind::Member { name, .. } => {
