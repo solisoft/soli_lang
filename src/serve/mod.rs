@@ -292,7 +292,7 @@ pub fn serve_folder_with_options_and_workers(
         // Note: Using named functions for blocks since lambda expressions are not supported
         // IMPORTANT: Function parameters require type annotations in Soli
         let dsl_source = r#"
-            fn resources(name: Any, block: Any) {
+            fn resources(name: Any, block: Any = null) {
                 router_resource_enter(name, null);
                 if (block != null) { block(); }
                 router_resource_exit();

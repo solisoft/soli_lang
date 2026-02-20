@@ -348,7 +348,7 @@ pub(crate) fn load_controllers_in_worker(
 /// This must be called before routes.sl can be executed.
 pub(crate) fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
     let dsl_source = r#"
-        fn resources(name: Any, block: Any) {
+        fn resources(name: Any, block: Any = null) {
             router_resource_enter(name, null);
             if (block != null) { block(); }
             router_resource_exit();
