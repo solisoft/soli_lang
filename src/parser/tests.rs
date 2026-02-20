@@ -1360,7 +1360,9 @@ mod parser_tests {
     fn test_method_call_with_hash_arg_followed_by_if_end() {
         // This was the original bug: method call with hash literal arg
         // followed by if/end on next line
-        let stmts = parse_stmts("Vm.update(\"id\", {\"status\": \"ready\"})\nif true\n  print(\"ok\")\nend\n");
+        let stmts = parse_stmts(
+            "Vm.update(\"id\", {\"status\": \"ready\"})\nif true\n  print(\"ok\")\nend\n",
+        );
         assert_eq!(stmts.len(), 2);
         assert!(matches!(stmts[0], StmtKind::Expression(_)));
         assert!(matches!(stmts[1], StmtKind::If { .. }));
@@ -1376,7 +1378,8 @@ mod parser_tests {
     #[test]
     fn test_expression_followed_by_if_block_with_return() {
         // Full pattern from controllers: expr, if/end, return
-        let stmts = parse_stmts("print(\"hello\")\nif true\n  print(\"world\")\nend\nreturn \"ok\"\n");
+        let stmts =
+            parse_stmts("print(\"hello\")\nif true\n  print(\"world\")\nend\nreturn \"ok\"\n");
         assert_eq!(stmts.len(), 3);
         assert!(matches!(stmts[0], StmtKind::Expression(_)));
         assert!(matches!(stmts[1], StmtKind::If { .. }));
