@@ -962,12 +962,13 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_numbers() {
         assert_eq!(
             scan("42 3.14"),
             vec![
                 TokenKind::IntLiteral(42),
-                TokenKind::FloatLiteral(std::f64::consts::PI),
+                TokenKind::FloatLiteral(3.14),
                 TokenKind::Eof,
             ]
         );

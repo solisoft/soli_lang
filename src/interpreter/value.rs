@@ -1447,9 +1447,10 @@ mod return_type_tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_float_matches_float() {
         let ty = make_type(TypeKind::Named("Float".to_string()));
-        assert!(value_matches_type(&Value::Float(std::f64::consts::PI), &ty));
+        assert!(value_matches_type(&Value::Float(3.14), &ty));
         assert!(!value_matches_type(&Value::Int(3), &ty));
     }
 

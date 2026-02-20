@@ -154,11 +154,12 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_coerce_string_to_float() {
         let result = coerce_to_float(&Value::String("3.14".to_string()));
         assert!(result.is_ok());
         if let Ok(Value::Float(f)) = result {
-            assert!((f - std::f64::consts::PI).abs() < 0.001);
+            assert!((f - 3.14).abs() < 0.001);
         } else {
             panic!("Expected Float");
         }
