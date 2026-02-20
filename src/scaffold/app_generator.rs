@@ -395,20 +395,20 @@ pub fn print_success_message(name: &str) {
     println!();
     println!("  \x1b[2m┌─────────────────────────────────────────┐\x1b[0m");
     println!(
-        "  \x1b[2m│\x1b[0m  \x1b[1mGet started:\x1b[0m                          \x1b[2m│\x1b[0m"
+        "  \x1b[2m│\x1b[0m  \x1b[1mGet started:\x1b[0m                        \x1b[2m│\x1b[0m"
     );
-    println!("  \x1b[2m│\x1b[0m                                         \x1b[2m│\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m                                       \x1b[2m│\x1b[0m");
     println!(
         "  \x1b[2m│\x1b[0m    \x1b[36mcd {}\x1b[0m{}  \x1b[2m│\x1b[0m",
         name,
-        " ".repeat(32 - name.len().min(32))
+        " ".repeat(30_usize.saturating_sub(name.len()))
     );
     println!(
-        "  \x1b[2m│\x1b[0m    \x1b[36msoli serve . --dev\x1b[0m                  \x1b[2m│\x1b[0m"
+        "  \x1b[2m│\x1b[0m    \x1b[36msoli serve . --dev\x1b[0m                 \x1b[2m│\x1b[0m"
     );
-    println!("  \x1b[2m│\x1b[0m                                         \x1b[2m│\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m                                       \x1b[2m│\x1b[0m");
     println!(
-        "  \x1b[2m│\x1b[0m  Then open \x1b[4mhttp://localhost:3000\x1b[0m       \x1b[2m│\x1b[0m"
+        "  \x1b[2m│\x1b[0m  Then open \x1b[4mhttp://localhost:3000\x1b[0m      \x1b[2m│\x1b[0m"
     );
     println!("  \x1b[2m└─────────────────────────────────────────┘\x1b[0m");
     println!();

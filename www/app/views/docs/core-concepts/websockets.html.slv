@@ -282,7 +282,7 @@ ws.onmessage = (event) => {
         presences = data.payload;
         renderUserList();
     }
-    else if (data.event === 'presence_diff') {
+    elsif (data.event === 'presence_diff') {
         # Apply diff
         Object.entries(data.payload.joins).forEach(([userId, presence]) => {
             presences[userId] = presence;

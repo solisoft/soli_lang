@@ -22,7 +22,7 @@
                         </span>
                         <span class="font-medium text-indigo-300">New</span>
                         <span class="w-1 h-1 rounded-full bg-gray-600"></span>
-                        <span>Soli v1.0 Beta is here</span>
+                        <span id="version-badge">Loading latest version ...</span>
                     </span>
                 </div>
             </div>
@@ -84,7 +84,7 @@
                                 <div class="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-500 transition-colors cursor-pointer"></div>
                                 <div class="w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-500 transition-colors cursor-pointer"></div>
                             </div>
-                            
+
                             <!-- Tabs -->
                             <div class="flex space-x-1 bg-black/20 p-1 rounded-lg">
                                 <button onclick="switchTab('model')" id="tab-model" class="px-3 py-1 text-xs font-medium rounded-md transition-all text-white bg-white/10 shadow-sm">Model</button>
@@ -205,7 +205,7 @@
                             <p class="text-gray-400 leading-relaxed">
                                 Built on Rust for raw speed, with the expressiveness of Ruby. Soli handles over <span class="text-green-400 font-semibold">1.2 million</span> plaintext requests per second.
                             </p>
-                            
+
                             <!-- Mini Chart Representation -->
                             <div class="mt-8 flex items-end gap-2 h-24 w-full max-w-[200px] opacity-70 group-hover:opacity-100 transition-opacity">
                                 <div class="w-1/4 bg-gray-700 rounded-t-sm h-[30%]"></div>
@@ -821,7 +821,7 @@
     // Typing Animation
     document.addEventListener('DOMContentLoaded', () => {
         const typeElements = document.querySelectorAll('.type-animation');
-        
+
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
@@ -840,24 +840,24 @@
             const html = element.innerHTML;
             element.innerHTML = '';
             element.classList.remove('invisible');
-            
+
             let i = 0;
             let tag = false;
             let currentHtml = '';
-            
+
             function type() {
                 if (i < html.length) {
                     let char = html.charAt(i);
-                    
+
                     if (char === '<') {
                         tag = true;
-                    } else if (char === '>') {
+                    } elsif (char === '>') {
                         tag = false;
                     }
-                    
+
                     currentHtml += char;
                     element.innerHTML = currentHtml; // + (tag ? '' : '<span class="animate-pulse">|</span>');
-                    
+
                     i++;
                     if (tag || char === ' ') {
                         type(); // Skip delay for tags and spaces to make it faster
@@ -868,7 +868,7 @@
                     // element.innerHTML = html; // Remove cursor at end
                 }
             }
-            
+
             type();
         }
     });
