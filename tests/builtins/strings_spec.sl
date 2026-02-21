@@ -8,6 +8,22 @@ describe("String Length", fn() {
         assert_eq(len(""), 0);
         assert_eq(len("hello world"), 11);
     });
+
+    test(".len() instance method returns string length", fn() {
+        assert_eq("hello".len(), 5);
+        assert_eq("".len(), 0);
+        assert_eq("hello world".len(), 11);
+    });
+
+    test(".len() and .length() return same value", fn() {
+        let s = "test string";
+        assert_eq(s.len(), s.length());
+    });
+
+    test(".len() on variable", fn() {
+        let s = "abcdef";
+        assert_eq(s.len(), 6);
+    });
 });
 
 describe("HTML String Functions", fn() {

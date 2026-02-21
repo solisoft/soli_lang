@@ -334,7 +334,7 @@ impl Interpreter {
         // Handle string methods and properties
         match name {
             // Core string methods
-            "length" | "to_string" | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "contains" | "starts_with"
+            "length" | "len" | "to_string" | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "contains" | "starts_with"
             | "ends_with" | "split" | "index_of" | "substring" | "replace" | "lpad"
             | "rpad" | "join" | "empty?"
             // Ruby-style methods

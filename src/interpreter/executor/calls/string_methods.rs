@@ -50,7 +50,7 @@ impl Interpreter {
             "hex" => self.string_hex(s, arguments, span),
             "oct" => self.string_oct(s, arguments, span),
             "truncate" => self.string_truncate(s, arguments, span),
-            "length" => self.string_length(s, arguments, span),
+            "length" | "len" => self.string_length(s, arguments, span),
             "to_string" => Ok(Value::String(s.to_string())),
             "upcase" | "uppercase" => Ok(Value::String(s.to_uppercase())),
             "downcase" | "lowercase" => Ok(Value::String(s.to_lowercase())),

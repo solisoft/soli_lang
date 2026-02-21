@@ -477,6 +477,7 @@ fn is_zero_arg_builtin_method(method_name: &str, receiver: &Value) -> bool {
         Value::String(_) => matches!(
             method_name,
             "length"
+                | "len"
                 | "to_string"
                 | "upcase"
                 | "uppercase"
