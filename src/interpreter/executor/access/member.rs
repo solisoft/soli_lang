@@ -161,7 +161,7 @@ impl Interpreter {
 
                 let bound_func = NativeFunction::new(
                     Box::leak(format!("bound_{}", method_name).into_boxed_str()),
-                    original_arity,
+                    original_arity.map(|a| a - 1),
                     move |args| {
                         let mut full_args = vec![class_val.clone()];
                         full_args.extend(args);

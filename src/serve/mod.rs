@@ -3659,6 +3659,18 @@ fn execute_repl_code(
         );
     }
 
+    // Load models into REPL session on first use
+    if !*session.models_loaded.borrow() {
+        let app_root = crate::live::component::get_app_root();
+        let models_dir = app_root.join("app/models");
+        if models_dir.exists() {
+            if let Err(e) = load_models(&mut interpreter, &models_dir) {
+                eprintln!("REPL: Error loading models: {}", e);
+            }
+        }
+        *session.models_loaded.borrow_mut() = true;
+    }
+
     // Inject view helpers into REPL environment (same helpers available in templates)
     for (name, value) in crate::interpreter::builtins::template::get_view_helpers() {
         interpreter.environment.borrow_mut().define(name, value);

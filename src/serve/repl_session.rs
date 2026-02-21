@@ -15,6 +15,7 @@ use crate::interpreter::Interpreter;
 pub(crate) struct ReplSession {
     pub interpreter: RefCell<Interpreter>,
     pub last_accessed: RefCell<Instant>,
+    pub models_loaded: RefCell<bool>,
 }
 
 /// Thread-local REPL session store
@@ -60,6 +61,7 @@ impl ReplSessionStore {
         let session = Rc::new(ReplSession {
             interpreter: RefCell::new(Interpreter::new()),
             last_accessed: RefCell::new(Instant::now()),
+            models_loaded: RefCell::new(false),
         });
 
         {

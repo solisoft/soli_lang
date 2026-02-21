@@ -8,7 +8,8 @@ fn chat_handler(event)
 
     if (event_type == "connect")
         return {
-            "broadcast": "{\"type\":\"join\",\"user\":\"" + connection_id + "\"}"
+            "broadcast": "{\"type\":\"join\",\"user\":\"" + connection_id + "\"}",
+            "send": "{\"type\":\"welcome\",\"id\":\"" + connection_id + "\"}"
         }
     end
 
