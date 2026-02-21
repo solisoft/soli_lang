@@ -13,7 +13,10 @@ pub fn track_views_recursive(dir: &Path, tracker: &mut FileTracker) {
             let path = entry.path();
             if path.is_dir() {
                 track_views_recursive(&path, tracker);
-            } else if path.extension().is_some_and(|ext| ext == "erb") {
+            } else if path
+                .extension()
+                .is_some_and(|ext| ext == "erb" || ext == "md")
+            {
                 tracker.track(&path);
             }
         }

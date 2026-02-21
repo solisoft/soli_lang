@@ -3,6 +3,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Base styles */
+@layer base {
+    html {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        scroll-behavior: smooth;
+    }
+
+    body {
+        @apply bg-white text-gray-900 leading-relaxed;
+    }
+
+    h1 { @apply text-4xl font-bold tracking-tight; }
+    h2 { @apply text-3xl font-semibold tracking-tight; }
+    h3 { @apply text-2xl font-semibold; }
+    h4 { @apply text-xl font-medium; }
+    h5 { @apply text-lg font-medium; }
+    h6 { @apply text-base font-medium; }
+
+    a { @apply text-indigo-600 hover:text-indigo-500 transition-colors; }
+
+    img, video { @apply max-w-full h-auto; }
+}
+
 /* Custom application styles */
 
 /* Custom animations */

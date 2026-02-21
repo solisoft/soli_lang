@@ -93,6 +93,13 @@ impl TemplateCache {
             Some(&template_path_str),
         )?;
 
+        // If the template is a markdown file, convert to HTML
+        let content = if is_markdown_template(&template_path) {
+            markdown_to_html(&content)
+        } else {
+            content
+        };
+
         // Apply layout if specified
         match layout {
             Some(Some(layout_name)) => {
@@ -137,12 +144,19 @@ impl TemplateCache {
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
 
-        render_nodes_with_path(
+        let content = render_nodes_with_path(
             &nodes,
             data,
             Some(&partial_renderer),
             Some(&template_path_str),
-        )
+        )?;
+
+        // If the partial is a markdown file, convert to HTML
+        if is_markdown_template(&template_path) {
+            Ok(markdown_to_html(&content))
+        } else {
+            Ok(content)
+        }
     }
 
     /// Render content with a named layout.
@@ -214,6 +228,18 @@ impl TemplateCache {
 
         // Try with .slv extension (new)
         let path = self.views_dir.join(format!("{}.slv", name));
+        if path.exists() {
+            return Ok(path);
+        }
+
+        // Try with .html.md extension (markdown views)
+        let path = self.views_dir.join(format!("{}.html.md", name));
+        if path.exists() {
+            return Ok(path);
+        }
+
+        // Try with .md extension (markdown views)
+        let path = self.views_dir.join(format!("{}.md", name));
         if path.exists() {
             return Ok(path);
         }
@@ -332,5 +358,173 @@ pub fn html_response(body: String, status: i64) -> Value {
     Value::Hash(Rc::new(RefCell::new(result)))
 }
 
-// Integration tests requiring filesystem would go here.
-// These are better tested via integration tests or with tempfile dev-dependency.
+/// Check if a template path is a markdown file.
+fn is_markdown_template(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    s.ends_with(".md")
+}
+
+/// Convert markdown text to HTML using pulldown-cmark.
+fn markdown_to_html(markdown: &str) -> String {
+    use pulldown_cmark::{html, Options, Parser};
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(markdown, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    html_output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_is_markdown_template() {
+        assert!(is_markdown_template(Path::new("app/views/docs/index.md")));
+        assert!(is_markdown_template(Path::new(
+            "app/views/docs/index.html.md"
+        )));
+        assert!(!is_markdown_template(Path::new(
+            "app/views/docs/index.html.slv"
+        )));
+        assert!(!is_markdown_template(Path::new("app/views/docs/index.slv")));
+        assert!(!is_markdown_template(Path::new("app/views/docs/index.erb")));
+    }
+
+    #[test]
+    fn test_markdown_to_html_basic() {
+        let md = "# Hello World\n\nThis is **bold** and *italic*.";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<h1>Hello World</h1>"));
+        assert!(html.contains("<strong>bold</strong>"));
+        assert!(html.contains("<em>italic</em>"));
+    }
+
+    #[test]
+    fn test_markdown_to_html_list() {
+        let md = "- Item 1\n- Item 2\n- Item 3";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<ul>"));
+        assert!(html.contains("<li>Item 1</li>"));
+        assert!(html.contains("<li>Item 2</li>"));
+        assert!(html.contains("<li>Item 3</li>"));
+    }
+
+    #[test]
+    fn test_markdown_to_html_table() {
+        let md = "| Col A | Col B |\n|-------|-------|\n| 1     | 2     |";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<table>"));
+        assert!(html.contains("<th>Col A</th>"));
+        assert!(html.contains("<td>1</td>"));
+    }
+
+    #[test]
+    fn test_markdown_to_html_strikethrough() {
+        let md = "This is ~~deleted~~ text.";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<del>deleted</del>"));
+    }
+
+    #[test]
+    fn test_markdown_to_html_code_block() {
+        let md = "```rust\nfn main() {}\n```";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<code"));
+        assert!(html.contains("fn main() {}"));
+    }
+
+    #[test]
+    fn test_resolve_template_path_md() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        // Create a .html.md file
+        fs::write(views.join("page.html.md"), "# Page").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let resolved = cache.resolve_template_path("page").unwrap();
+        assert!(resolved.to_string_lossy().ends_with(".html.md"));
+    }
+
+    #[test]
+    fn test_resolve_template_path_md_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        // Create a .md file (no .html prefix)
+        fs::write(views.join("page.md"), "# Page").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let resolved = cache.resolve_template_path("page").unwrap();
+        assert!(resolved.to_string_lossy().ends_with(".md"));
+    }
+
+    #[test]
+    fn test_resolve_template_path_slv_preferred_over_md() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        // Create both .html.slv and .html.md — .slv should win
+        fs::write(views.join("page.html.slv"), "<h1>SLV</h1>").unwrap();
+        fs::write(views.join("page.html.md"), "# MD").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let resolved = cache.resolve_template_path("page").unwrap();
+        assert!(resolved.to_string_lossy().ends_with(".html.slv"));
+    }
+
+    #[test]
+    fn test_render_md_template() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        fs::write(views.join("test.md"), "# Hello\n\nThis is **bold**.").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let result = cache.render("test", &Value::Null, Some(None)).unwrap();
+        assert!(result.contains("<h1>Hello</h1>"));
+        assert!(result.contains("<strong>bold</strong>"));
+    }
+
+    #[test]
+    fn test_render_md_template_with_template_tags() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        fs::write(views.join("greeting.md"), "# Hello <%= name %>").unwrap();
+
+        let mut data = IndexMap::new();
+        data.insert(
+            HashKey::String("name".to_string()),
+            Value::String("World".to_string()),
+        );
+        let data = Value::Hash(Rc::new(RefCell::new(data)));
+
+        let cache = TemplateCache::new(&views);
+        let result = cache.render("greeting", &data, Some(None)).unwrap();
+        assert!(result.contains("<h1>Hello World</h1>"));
+    }
+
+    #[test]
+    fn test_render_md_partial() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        fs::write(views.join("_note.md"), "**Important:** remember this.").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let result = cache.render_partial("note", &Value::Null).unwrap();
+        assert!(result.contains("<strong>Important:</strong>"));
+    }
+}

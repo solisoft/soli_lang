@@ -582,6 +582,141 @@
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Markdown Views</h2>
+    <p class="text-gray-400 mb-6">
+        For content-heavy pages like documentation, you can write views as Markdown files instead of HTML templates.
+        Soli supports <code>.md</code> and <code>.html.md</code> extensions. The rendering pipeline processes template tags first, then compiles Markdown to HTML.
+    </p>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-blue-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-blue-400 mb-1">Rendering Pipeline</h4>
+                <p class="text-blue-200/80 text-sm">
+                    Markdown views follow the pipeline: <strong>template engine</strong> (<code>&lt;%= %&gt;</code> tags) &rarr; <strong>Markdown &rarr; HTML</strong> &rarr; <strong>layout</strong>.
+                    This means you can use all the same template tags and helpers inside your <code>.md</code> files.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">File Extensions</h3>
+    <div class="overflow-x-auto mb-12">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Extension</th>
+                    <th class="text-left py-3 px-4 text-gray-300 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">.html.md</td>
+                    <td class="py-3 px-4">Markdown view (preferred, explicit about HTML output)</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-indigo-400">.md</td>
+                    <td class="py-3 px-4">Markdown view (shorter form)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-6">Resolution priority: <code>.html.slv</code> &gt; <code>.slv</code> &gt; <code>.html.md</code> &gt; <code>.md</code> &gt; <code>.html.erb</code> &gt; <code>.erb</code></p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Example</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/docs/getting-started.html.md</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-markdown text-sm"># Getting Started with &lt;%= app_name %&gt;
+
+Welcome! This guide will help you set up your project.
+
+## Installation
+
+Run the following command:
+
+```bash
+soli new my_app
+cd my_app
+soli serve
+```
+
+## Features
+
+- **Hot reload** &mdash; changes appear instantly
+- **ERB-style tags** &mdash; use `&lt;%= %&gt;` for dynamic content
+- **Layouts** &mdash; Markdown views are wrapped in your layout
+
+&lt;% if show_advanced %&gt;
+## Advanced Configuration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| port   | 3000    | Server port |
+| host   | 0.0.0.0 | Bind address |
+&lt;% end %&gt;</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Supported Markdown Features</h3>
+    <ul class="space-y-3 mb-8">
+        <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Headings, paragraphs, bold, italic, links, images</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Ordered and unordered lists</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Fenced code blocks with language hints</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Tables (GitHub-flavored)</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Strikethrough (<code>~~text~~</code>)</span>
+        </li>
+        <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="text-gray-300">Task lists (<code>- [x] done</code>)</span>
+        </li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Markdown Partials</h3>
+    <p class="text-gray-400 mb-6">Partials can also be Markdown files. Name them with a leading underscore like any partial.</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Rendering a markdown partial</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;!-- In an .slv template, include a markdown partial --&gt;
+&lt;%= render_partial("docs/intro") %&gt;
+
+&lt;!-- This renders app/views/docs/_intro.md (or _intro.html.md) --&gt;</code></pre>
+        </div>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Passing Data</h2>
     <p class="text-gray-400 mb-6">Pass a hash of data from your controller to the view.</p>
 

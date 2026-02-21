@@ -692,7 +692,10 @@ fn run_hyper_server_worker_pool(
                             middleware_changed = true;
                         } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
                             helpers_changed = true;
-                        } else if name.ends_with(".erb") || name.ends_with(".slv") {
+                        } else if name.ends_with(".erb")
+                            || name.ends_with(".slv")
+                            || name.ends_with(".md")
+                        {
                             views_changed = true;
                         }
                     }
@@ -3889,22 +3892,24 @@ fn render_error_page(
 
     // Try format 1: "at line:col in file.html.slv"
     let view_pattern1 = regex::Regex::new(
-        r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb))",
+        r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))",
     )
     .ok();
     // Try format 2: "in file.html.slv at line:col"
     let view_pattern2 = regex::Regex::new(
-        r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb)) at (\d+):(\d+)",
+        r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)) at (\d+):(\d+)",
     )
     .ok();
     // Try format 3: "at file.html.slv:line" (new template renderer format)
-    let view_pattern3 =
-        regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb)):(\d+)")
-            .ok();
+    let view_pattern3 = regex::Regex::new(
+        r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)):(\d+)",
+    )
+    .ok();
     // Try format 4: "in file.html.slv" (no line number)
-    let view_pattern4 =
-        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb))(?:\s|$)")
-            .ok();
+    let view_pattern4 = regex::Regex::new(
+        r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))(?:\s|$)",
+    )
+    .ok();
 
     let mut view_added = false;
 
@@ -4045,9 +4050,10 @@ struct SpanInfo {
 fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     // Try to find file path pattern - supports .sl, .html.slv, .slv, .html.erb, and .erb files
     // Include @ for paths like /home/user@domain.com/...
-    let file_re =
-        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb|\.sl))")
-            .unwrap();
+    let file_re = regex::Regex::new(
+        r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl))",
+    )
+    .unwrap();
     let file = file_re
         .captures(error_msg)
         .and_then(|caps| caps.get(1))
@@ -4055,9 +4061,10 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
 
     // Try format "at file.html.slv:line" first (new template renderer format)
     // This prioritizes view file errors over controller errors
-    let at_file_line_re =
-        regex::Regex::new(r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb)):(\d+)")
-            .unwrap();
+    let at_file_line_re = regex::Regex::new(
+        r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)):(\d+)",
+    )
+    .unwrap();
     if let Some(caps) = at_file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps
@@ -4087,9 +4094,10 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     }
 
     // Try to find patterns like "file.sl:line" or "file.html.slv:line"
-    let file_line_re =
-        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb|\.sl)):(\d+)")
-            .unwrap();
+    let file_line_re = regex::Regex::new(
+        r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl)):(\d+)",
+    )
+    .unwrap();
     if let Some(caps) = file_line_re.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps
@@ -4127,9 +4135,10 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
 /// Extract file path from a stack frame string like "func_name at ./path/file.sl:10"
 fn extract_file_from_frame(frame: &str) -> Option<String> {
     // Support .sl, .html.slv, .slv, .html.erb, and .erb files (include @ for paths like /home/user@domain.com/...)
-    let file_re =
-        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb|\.sl))")
-            .ok()?;
+    let file_re = regex::Regex::new(
+        r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl))",
+    )
+    .ok()?;
     file_re
         .captures(frame)
         .and_then(|caps| caps.get(1))
@@ -4191,15 +4200,17 @@ pub fn render_dev_error_page(
     let mut frame_index = 0;
 
     // Regex to find file paths with line numbers - supports .sl, .html.slv, .slv, .html.erb, .erb (include @ for paths)
-    let file_regex =
-        regex::Regex::new(r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb|\.sl)):(\d+)")
-            .unwrap();
+    let file_regex = regex::Regex::new(
+        r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl)):(\d+)",
+    )
+    .unwrap();
     // Regex to find span info after "at" (line:column)
     let span_regex = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
     // Regex to find view files in error messages (e.g., "error in /path/to/file.html.slv")
-    let view_file_regex =
-        regex::Regex::new(r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.erb|\.erb))")
-            .unwrap();
+    let view_file_regex = regex::Regex::new(
+        r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))",
+    )
+    .unwrap();
 
     for frame in stack_trace.iter() {
         // Skip "Error: ..." entries - they're not actual stack frames
@@ -4245,6 +4256,8 @@ pub fn render_dev_error_page(
             s.contains(".sl")
                 || s.contains(".html.slv")
                 || s.contains(".slv")
+                || s.contains(".html.md")
+                || s.contains(".md")
                 || s.contains(".html.erb")
                 || s.contains(".erb")
         };

@@ -1,6 +1,6 @@
 [package]
 name = "solilang"
-version = "0.31.2"
+version = "0.32.0"
 edition = "2021"
 description = "A dynamically-typed, class-based OOP language with optional type annotations and pipeline operators"
 authors = ["Solilang Team"]
@@ -97,6 +97,9 @@ urlencoding = "2"
 
 # XML support for SOAP
 quick-xml = { version = "0.36", features = ["serialize"] }
+
+# Markdown rendering for .md views
+pulldown-cmark = "0.12"
 
 # Archive extraction for git archive
 flate2 = "1.0"
