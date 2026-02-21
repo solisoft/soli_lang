@@ -168,7 +168,7 @@ impl TypeChecker {
     /// Check string method access.
     fn check_string_method(&self, name: &str, span: Span) -> TypeResult<Type> {
         match name {
-            "length" | "count" | "ord" | "bytesize" | "index_of" => Ok(Type::Function {
+            "length" | "len" | "count" | "ord" | "bytesize" | "index_of" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Int),
             }),

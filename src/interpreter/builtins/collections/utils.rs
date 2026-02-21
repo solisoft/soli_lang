@@ -74,6 +74,20 @@ fn register_string_class(env: &mut Environment) {
     );
 
     string_native_methods.insert(
+        "len".to_string(),
+        Rc::new(NativeFunction::new("String.len", Some(0), |args| {
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst,
+                _ => return Err("String.len() called on non-String".to_string()),
+            };
+            match this.borrow().fields.get("__value").cloned() {
+                Some(Value::String(s)) => Ok(Value::Int(s.len() as i64)),
+                _ => Err("String missing internal value".to_string()),
+            }
+        })),
+    );
+
+    string_native_methods.insert(
         "upcase".to_string(),
         Rc::new(NativeFunction::new("String.upcase", Some(0), {
             let class_ref = empty_class.clone();

@@ -722,8 +722,8 @@ fn run_hyper_server_worker_pool(
                         .views
                         .fetch_add(1, Ordering::Release);
                     println!("   ✓ Signaled template cache clear to all workers");
-
                 }
+
                 if static_files_changed && !views_changed {
                     // Only signal static file reload when no views changed.
                     // When views change, Tailwind rebuilds CSS into public/ which

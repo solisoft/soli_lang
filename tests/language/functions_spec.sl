@@ -44,7 +44,7 @@ describe("Functions", fn() {
             return host + ":" + str(port) + " (debug: " + str(debug) + ")";
         }
         assert_eq(configure(), "localhost:8080 (debug: false)");
-        assert_eq(configure(port: 3000), "localhost:5011 (debug: false)");
+        assert_eq(configure(port: 3000), "localhost:3000 (debug: false)");
         assert_eq(configure(host: "example.com", port: 443), "example.com:443 (debug: false)");
         assert_eq(configure(port: 9000, debug: true, host: "api.example.com"), "api.example.com:9000 (debug: true)");
     });

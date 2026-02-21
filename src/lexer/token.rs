@@ -157,6 +157,8 @@ impl TokenKind {
             "finally" => Some(TokenKind::Finally),
             "throw" => Some(TokenKind::Throw),
             "not" => Some(TokenKind::Not),
+            "and" => Some(TokenKind::And),
+            "or" => Some(TokenKind::Or),
             "async" => Some(TokenKind::Async),
             "await" => Some(TokenKind::Await),
             "match" => Some(TokenKind::Match),
