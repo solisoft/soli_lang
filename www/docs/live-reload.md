@@ -28,7 +28,7 @@ Or use the dev script:
 When the server starts, you'll see a message indicating live reload is enabled:
 
 ```
-Live reload enabled. Open http://localhost:3000 in your browser.
+Live reload enabled. Open http://localhost:5011 in your browser.
 ```
 
 As you edit and save files, the browser will automatically reload to reflect your changes.
@@ -59,7 +59,7 @@ When any file in these directories changes, a reload signal is sent to connected
 ### Live Reload Not Working
 
 1. **Check browser console**: Look for `[livereload]` messages indicating connection status
-2. **Verify port availability**: Ensure port 3000 is not in use by another process
+2. **Verify port availability**: Ensure port 5011 is not in use by another process
 3. **Disable browser extensions**: Some extensions may interfere with WebSocket connections
 4. **Check file permissions**: Ensure the server has read access to your application files
 

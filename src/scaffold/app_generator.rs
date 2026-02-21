@@ -413,7 +413,7 @@ pub fn print_success_message(name: &str) {
     );
     println!("  \x1b[2m│\x1b[0m                                       \x1b[2m│\x1b[0m");
     println!(
-        "  \x1b[2m│\x1b[0m  Then open \x1b[4mhttp://localhost:3000\x1b[0m      \x1b[2m│\x1b[0m"
+        "  \x1b[2m│\x1b[0m  Then open \x1b[4mhttp://localhost:5011\x1b[0m      \x1b[2m│\x1b[0m"
     );
     println!("  \x1b[2m└─────────────────────────────────────────┘\x1b[0m");
     println!();

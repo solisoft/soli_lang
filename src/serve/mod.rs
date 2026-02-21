@@ -361,12 +361,10 @@ pub fn serve_folder_with_options_and_workers(
     // Public directory for static files
     let public_dir = folder.join("public");
 
-    // Start Tailwind CSS watch process (dev mode only)
-    let tailwind_process = if dev_mode {
-        spawn_tailwind_watch(folder)
-    } else {
-        None
-    };
+    // Compile Tailwind CSS once at startup (not watch mode to avoid reload loops)
+    if dev_mode {
+        tailwind::compile_tailwind_css_once(folder);
+    }
 
     // Always use hyper-based MVC server
     run_hyper_server_worker_pool(
@@ -382,7 +380,6 @@ pub fn serve_folder_with_options_and_workers(
         workers,
         views_dir,
         routes_file,
-        tailwind_process,
     )
 }
 
@@ -393,12 +390,11 @@ use app_loader::{
 };
 
 // Import tailwind functions
-use tailwind::{spawn_tailwind_watch, trigger_tailwind_rebuild};
 
 /// Run the MVC HTTP server with a worker pool for parallel request processing.
 #[allow(clippy::too_many_arguments)]
 fn run_hyper_server_worker_pool(
-    folder: &Path,
+    _folder: &Path,
     port: u16,
     controllers_dir: PathBuf,
     models_dir: PathBuf,
@@ -410,7 +406,6 @@ fn run_hyper_server_worker_pool(
     num_workers: usize,
     views_dir: PathBuf,
     routes_file: PathBuf,
-    tailwind_process: Option<std::process::Child>,
 ) -> Result<(), RuntimeError> {
     let reload_tx = if dev_mode {
         let (tx, _) = broadcast::channel::<()>(16);
@@ -541,7 +536,6 @@ fn run_hyper_server_worker_pool(
 
     // Spawn file watcher thread for hot reload (only in dev mode)
     if dev_mode {
-        let watch_folder = folder.to_path_buf();
         let watch_controllers_dir = controllers_dir.clone();
         let watch_views_dir = views_dir.clone();
         let watch_middleware_dir = middleware_dir.clone();
@@ -549,11 +543,7 @@ fn run_hyper_server_worker_pool(
         let watch_public_dir = public_dir.clone();
         let watch_routes_file = routes_file.clone();
         let browser_reload_tx = reload_tx.clone();
-        let dev_mode_for_watcher = dev_mode;
         thread::spawn(move || {
-            // Hold onto the Tailwind process - it will be killed when dropped
-            let _tailwind_process = tailwind_process;
-
             use notify::{RecursiveMode, Watcher};
 
             let (tx, rx) = std::sync::mpsc::channel();
@@ -639,11 +629,22 @@ fn run_hyper_server_worker_pool(
                     }
                 }
 
-                // Extract unique paths from all events
+                // Extract unique paths from content-change events only.
+                // Exclude metadata-only events (e.g. atime updates from reads)
+                // which fire IN_ATTRIB on Linux when the server reads templates.
                 let mut changed_paths = std::collections::HashSet::new();
                 for event in raw_events.into_iter().flatten() {
-                    for path in event.paths {
-                        changed_paths.insert(path);
+                    use notify::EventKind;
+                    match event.kind {
+                        EventKind::Create(_)
+                        | EventKind::Remove(_)
+                        | EventKind::Modify(notify::event::ModifyKind::Data(_))
+                        | EventKind::Modify(notify::event::ModifyKind::Name(_)) => {
+                            for path in event.paths {
+                                changed_paths.insert(path);
+                            }
+                        }
+                        _ => {} // Ignore Access, Metadata, and Other events
                     }
                 }
 
@@ -722,15 +723,12 @@ fn run_hyper_server_worker_pool(
                         .fetch_add(1, Ordering::Release);
                     println!("   ✓ Signaled template cache clear to all workers");
 
-                    // Touch input CSS to trigger Tailwind watch mode rebuild
-                    // (new classes may have been added to templates)
-                    if dev_mode_for_watcher {
-                        trigger_tailwind_rebuild(&watch_folder);
-                        // Note: No need to set static_files_changed here - the file watcher
-                        // will detect when Tailwind updates public/css/application.css
-                    }
                 }
-                if static_files_changed {
+                if static_files_changed && !views_changed {
+                    // Only signal static file reload when no views changed.
+                    // When views change, Tailwind rebuilds CSS into public/ which
+                    // would trigger a redundant reload — the view reload already
+                    // causes the browser to fetch updated CSS.
                     hot_reload_versions_for_watcher
                         .static_files
                         .fetch_add(1, Ordering::Release);
@@ -770,6 +768,12 @@ fn run_hyper_server_worker_pool(
                 }
 
                 println!();
+
+                // Drain any events that arrived during processing to prevent
+                // cascading reload loops (e.g. workers reading files can generate
+                // inotify events on some Linux configurations).
+                std::thread::sleep(Duration::from_millis(DEBOUNCE_MS));
+                while rx.try_recv().is_ok() {}
             }
         });
     } // end if dev_mode for hot reload thread

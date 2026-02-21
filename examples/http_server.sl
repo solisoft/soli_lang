@@ -145,12 +145,12 @@ http_server_get("/echo", handle_echo);
 
 println("Starting HTTP server...");
 println("Try these commands:");
-println("  curl http://localhost:3000/");
-println("  curl http://localhost:3000/health");
-println("  curl http://localhost:3000/users");
-println("  curl -X POST -H 'Content-Type: application/json' -d '{\"name\":\"Alice\",\"email\":\"alice@example.com\"}' http://localhost:3000/users");
-println("  curl http://localhost:3000/users/1");
-println("  curl 'http://localhost:3000/echo?foo=bar&baz=qux'");
+println("  curl http://localhost:5011/");
+println("  curl http://localhost:5011/health");
+println("  curl http://localhost:5011/users");
+println("  curl -X POST -H 'Content-Type: application/json' -d '{\"name\":\"Alice\",\"email\":\"alice@example.com\"}' http://localhost:5011/users");
+println("  curl http://localhost:5011/users/1");
+println("  curl 'http://localhost:5011/echo?foo=bar&baz=qux'");
 println("");
 
 // Start the server (blocking)

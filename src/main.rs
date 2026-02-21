@@ -100,7 +100,7 @@ fn print_usage() {
     eprintln!("  --no-type-check Skip type checking");
     eprintln!("  -d              Daemonize server (creates soli.pid and soli.log)");
     eprintln!("  --dev           Enable development mode (hot reload, no caching)");
-    eprintln!("  --port PORT     Port for serve command (default: 3000)");
+    eprintln!("  --port PORT     Port for serve command (default: 5011)");
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
     eprintln!("  --jobs N        Number of parallel test workers (default: CPU cores)");
     eprintln!("  --coverage      Generate coverage report");
@@ -298,7 +298,7 @@ fn parse_args() -> Options {
                 let folder = args[i].clone();
 
                 // Check for options
-                let mut port = 3000u16;
+                let mut port = 5011u16;
                 let mut dev_mode = false; // Production by default
                 let mut daemonize = false;
                 // Default to number of CPU cores for optimal parallelism

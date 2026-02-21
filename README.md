@@ -102,7 +102,7 @@ npm install
 soli serve . --dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to see your app!
+Visit [http://localhost:5011](http://localhost:5011) to see your app!
 
 ### Generate a Resource
 
@@ -145,7 +145,7 @@ my_app/
 
 ## Documentation
 
-Full documentation is available at [http://localhost:3000/docs](http://localhost:3000/docs) when running the server, covering:
+Full documentation is available at [http://localhost:5011/docs](http://localhost:5011/docs) when running the server, covering:
 
 - **Getting Started** - Installation and first steps
 - **Core Concepts** - Routing, controllers, middleware, views
@@ -317,8 +317,8 @@ Benchmarked on a standard server (16 cores):
 | Transfer/sec | 23.01 MB |
 
 ```bash
-$ wrk -t12 -c400 -d30s http://localhost:3000/
-Running 30s test @ http://localhost:3000/
+$ wrk -t12 -c400 -d30s http://localhost:5011/
+Running 30s test @ http://localhost:5011/
   12 threads and 400 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency   0.58ms    0.89ms  42.31ms   98.76%

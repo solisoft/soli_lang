@@ -70,14 +70,14 @@ Start the development server with hot reload:
 soli serve . --dev
 ```
 
-Your app will be available at [http://localhost:3000](http://localhost:3000)
+Your app will be available at [http://localhost:5011](http://localhost:5011)
 
 ### Production Server
 
 Start the production server:
 
 ```bash
-soli serve . --port 3000
+soli serve . --port 5011
 ```
 
 Or run as a daemon:

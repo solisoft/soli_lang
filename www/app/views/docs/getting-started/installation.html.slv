@@ -94,7 +94,7 @@ soli new my_app</code></pre>
 soli serve . --dev</code></pre>
 
     <p class="mb-8 text-gray-400">
-        Your app is now running at <a href="http://localhost:3000" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:3000</a>
+        Your app is now running at <a href="http://localhost:5011" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:5011</a>
     </p>
 
     <div class="my-8 p-4 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
@@ -148,7 +148,7 @@ soli serve . --dev</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Production Deployment</h2>
 
     <pre data-filename="Terminal"><code class="language-bash text-sm"># Start production server
-soli serve . --port 3000
+soli serve . --port 5011
 
 # Or run as a daemon (background process)
 soli serve . -d</code></pre>
@@ -164,7 +164,7 @@ soli serve . -d</code></pre>
                 <h4 class="text-yellow-400 font-medium">Troubleshooting</h4>
                 <ul class="text-sm text-yellow-200/80 mt-1 space-y-1 list-disc list-inside">
                     <li>If changes don't appear, check the terminal for errors</li>
-                    <li>Make sure port 3000 isn't in use by another process</li>
+                    <li>Make sure port 5011 isn't in use by another process</li>
                 </ul>
             </div>
         </div>

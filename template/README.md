@@ -12,7 +12,7 @@ Start the development server with hot reload:
 soli serve . --dev
 ```
 
-Your app will be available at [http://localhost:3000](http://localhost:3000)
+Your app will be available at [http://localhost:5011](http://localhost:5011)
 
 ### Production Server
 
@@ -57,7 +57,7 @@ This template includes the `stdlib/` folder with useful modules:
 ```soli
 import { create_state_machine } from "./stdlib/state_machine.sl";
 
-let order = create_state_machine("pending", 
+let order = create_state_machine("pending",
     ["pending", "confirmed", "processing", "shipped", "delivered"],
     [
         {"event": "confirm", "from": "pending", "to": "confirmed"},
@@ -86,5 +86,5 @@ npm run watch:css
 
 ## Learn More
 
-- [Soli Documentation](http://localhost:3000/docs)
-- [State Machines Guide](http://localhost:3000/docs/core-concepts/state-machines)
+- [Soli Documentation](http://localhost:5011/docs)
+- [State Machines Guide](http://localhost:5011/docs/core-concepts/state-machines)

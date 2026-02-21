@@ -25,7 +25,7 @@ soli serve . --dev
 ./dev.sh
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) for the app, and [http://localhost:3000/docs](http://localhost:3000/docs) for full documentation.
+Visit [http://localhost:5011](http://localhost:5011) for the app, and [http://localhost:5011/docs](http://localhost:5011/docs) for full documentation.
 
 ## Tailwind CSS Integration
 
@@ -124,7 +124,7 @@ namespace("api", -> {
 
 ## 📚 Documentation
 
-**Full documentation available at:** [http://localhost:3000/docs](http://localhost:3000/docs)
+**Full documentation available at:** [http://localhost:5011/docs](http://localhost:5011/docs)
 
 ### Topics Covered
 
@@ -264,20 +264,20 @@ soli test tests/builtins --coverage
 ### Public Routes
 
 ```bash
-curl http://localhost:3000/
-curl http://localhost:3000/health
-curl http://localhost:3000/docs
+curl http://localhost:5011/
+curl http://localhost:5011/health
+curl http://localhost:5011/docs
 ```
 
 ### Documentation Routes
 
 ```bash
-curl http://localhost:3000/docs/introduction
-curl http://localhost:3000/docs/installation
-curl http://localhost:3000/docs/routing
-curl http://localhost:3000/docs/controllers
-curl http://localhost:3000/docs/middleware
-curl http://localhost:3000/docs/views
+curl http://localhost:5011/docs/introduction
+curl http://localhost:5011/docs/installation
+curl http://localhost:5011/docs/routing
+curl http://localhost:5011/docs/controllers
+curl http://localhost:5011/docs/middleware
+curl http://localhost:5011/docs/views
 ```
 
 ## 🔥 Hot Reload
@@ -330,7 +330,7 @@ get("/users/:id", "users#show");
 
 ## 📖 Learn More
 
-- **Full Docs:** [http://localhost:3000/docs](http://localhost:3000/docs)
+- **Full Docs:** [http://localhost:5011/docs](http://localhost:5011/docs)
 - **GitHub:** https://github.com/solilang/solilang
 - **Examples:** See `examples/mvc_app/`
 
