@@ -72,6 +72,7 @@ struct CachedDbConfig {
     cursor_url: String,
     database: String,
     api_key: Option<String>,
+    basic_auth: Option<String>,
 }
 
 /// Initialize DB config from environment - call this after .env is loaded.
@@ -91,10 +92,24 @@ fn get_db_config() -> &'static CachedDbConfig {
         let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         let cursor_url = format!("http://{}/_api/database/{}/cursor", host, database);
         let api_key = std::env::var("SOLIDB_API_KEY").ok();
+        let basic_auth = match (
+            std::env::var("SOLIDB_USERNAME").ok(),
+            std::env::var("SOLIDB_PASSWORD").ok(),
+        ) {
+            (Some(u), Some(p)) => {
+                use base64::Engine;
+                Some(format!(
+                    "Basic {}",
+                    base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", u, p))
+                ))
+            }
+            _ => None,
+        };
         CachedDbConfig {
             cursor_url,
             database,
             api_key,
+            basic_auth,
         }
     })
 }
@@ -112,6 +127,11 @@ pub fn get_cursor_url() -> &'static str {
 /// Get API key.
 pub fn get_api_key() -> Option<&'static str> {
     get_db_config().api_key.as_deref()
+}
+
+/// Get Basic auth header value.
+pub fn get_basic_auth() -> Option<&'static str> {
+    get_db_config().basic_auth.as_deref()
 }
 
 /// Get or create metadata for a model class.

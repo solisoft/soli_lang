@@ -3529,9 +3529,11 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
         .unwrap_or("")
         .to_string();
 
-    // Execute the code using the interpreter
-    let (result, new_session_id) =
-        execute_repl_code(&code, request_data, breakpoint_env, &repl_session_id);
+    // Execute the code using the interpreter.
+    // Use block_in_place so model DB queries can call block_on without panicking.
+    let (result, new_session_id) = tokio::task::block_in_place(|| {
+        execute_repl_code(&code, request_data, breakpoint_env, &repl_session_id)
+    });
 
     let response_json = serde_json::json!({
         "result": result.result,

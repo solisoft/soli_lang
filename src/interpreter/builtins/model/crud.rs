@@ -9,7 +9,31 @@ use crate::interpreter::builtins::http_class::get_http_client;
 use crate::interpreter::value::{HashKey, Value};
 use crate::serve::get_tokio_handle;
 
-use super::core::{get_api_key, get_cursor_url, get_database_name};
+use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name, DB_RUNTIME};
+
+/// Apply DB authentication headers (API key or basic auth) to a request.
+fn apply_db_auth(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    if let Some(key) = get_api_key() {
+        builder.header("X-API-Key", key)
+    } else if let Some(auth) = get_basic_auth() {
+        builder.header("Authorization", auth)
+    } else {
+        builder
+    }
+}
+
+/// Run a future using the worker's thread-local tokio handle,
+/// falling back to the dedicated DB runtime (e.g. from the REPL).
+fn run_db_future<F, T>(future: F) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    if let Some(rt) = get_tokio_handle() {
+        rt.block_on(future)
+    } else {
+        DB_RUNTIME.block_on(future)
+    }
+}
 
 /// Execute DB operation that returns serde_json::Value directly.
 /// This skips the double JSON conversion (Value -> String -> Value).
@@ -59,9 +83,7 @@ pub fn exec_async_query_with_binds(
 ) -> Result<Vec<serde_json::Value>, String> {
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
-    let api_key = get_api_key();
 
-    let rt = get_tokio_handle().ok_or("No tokio runtime available")?;
     let client = get_http_client().clone();
 
     let future = async move {
@@ -70,14 +92,12 @@ pub fn exec_async_query_with_binds(
             payload["bindVars"] = serde_json::json!(bv);
         }
 
-        let mut request = client
-            .post(url)
-            .header("Content-Type", "application/json")
-            .body(payload.to_string());
-
-        if let Some(key) = api_key {
-            request = request.header("X-API-Key", key);
-        }
+        let request = apply_db_auth(
+            client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .body(payload.to_string()),
+        );
 
         let resp = request
             .send()
@@ -101,7 +121,7 @@ pub fn exec_async_query_with_binds(
             .unwrap_or_default())
     };
 
-    rt.block_on(future)
+    run_db_future(future)
 }
 
 /// Simple async query without bind variables - convenience wrapper.
@@ -121,23 +141,16 @@ pub fn exec_async_query(sdbql: String) -> Value {
 pub fn exec_async_query_raw(sdbql: String) -> Value {
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
-    let api_key = get_api_key();
     let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\"#));
 
-    let Some(rt) = get_tokio_handle() else {
-        return Value::String("Error: No tokio runtime available".to_string());
-    };
-
     let client = get_http_client().clone();
-    match rt.block_on(async move {
-        let mut request = client
-            .post(url)
-            .header("Content-Type", "application/json")
-            .body(body);
-
-        if let Some(key) = api_key {
-            request = request.header("X-API-Key", key);
-        }
+    match run_db_future(async move {
+        let request = apply_db_auth(
+            client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .body(body),
+        );
 
         let resp = request
             .send()
@@ -164,12 +177,8 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
     let api_key = "sk_8bc935c8fc837e147a0ab100747d197b354d5cdf80635bbd5951bc1a313a1ab8";
     let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\"#));
 
-    let Some(rt) = get_tokio_handle() else {
-        return Value::String("Error: No tokio runtime available".to_string());
-    };
-
     let client = get_http_client().clone();
-    match rt.block_on(async move {
+    match run_db_future(async move {
         let request = client
             .post(url)
             .header("Content-Type", "application/json")
@@ -201,22 +210,18 @@ fn create_collection_sync(name: &str) -> Result<(), String> {
         .to_string();
     let database = get_database_name();
     let url = format!("http://{}/_api/database/{}/collection", host, database);
-    let api_key = std::env::var("SOLIDB_API_KEY").ok();
 
     let body = serde_json::json!({ "name": name }).to_string();
 
-    let rt = get_tokio_handle().ok_or("No tokio runtime available")?;
     let client = get_http_client().clone();
 
-    rt.block_on(async move {
-        let mut request = client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .body(body);
-
-        if let Some(key) = api_key {
-            request = request.header("X-API-Key", key);
-        }
+    run_db_future(async move {
+        let request = apply_db_auth(
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body),
+        );
 
         let resp = request
             .send()
@@ -286,14 +291,29 @@ pub fn exec_auto_collection_with_binds(
 use crate::interpreter::builtins::model::core::DB_CONFIG;
 use crate::solidb_http::SoliDBClient;
 
+/// Create a SoliDBClient configured with database and auth from the environment.
+fn create_db_client() -> Result<SoliDBClient, String> {
+    let mut client =
+        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+    client.set_database(get_database_name());
+    if let Some(key) = get_api_key() {
+        client = client.with_api_key(key);
+    } else if let (Ok(user), Ok(pass)) = (
+        std::env::var("SOLIDB_USERNAME"),
+        std::env::var("SOLIDB_PASSWORD"),
+    ) {
+        client = client.with_basic_auth(&user, &pass);
+    }
+    Ok(client)
+}
+
 /// Execute a SoliDBClient insert operation with automatic collection creation.
 pub fn exec_insert(
     collection: &str,
     key: Option<&str>,
     document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let client =
-        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+    let client = create_db_client()?;
 
     let result = client
         .insert(collection, key, document.clone())
@@ -302,8 +322,7 @@ pub fn exec_insert(
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = SoliDBClient::connect(&DB_CONFIG.host)
-                .map_err(|e| format!("Failed to connect: {}", e))?;
+            let client = create_db_client()?;
             return client
                 .insert(collection, key, document)
                 .map_err(|e| format!("Create failed: {}", e));
@@ -315,8 +334,7 @@ pub fn exec_insert(
 
 /// Execute a SoliDBClient get operation with automatic collection creation.
 pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String> {
-    let client =
-        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+    let client = create_db_client()?;
 
     let result = client
         .get(collection, key)
@@ -326,8 +344,7 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = SoliDBClient::connect(&DB_CONFIG.host)
-                .map_err(|e| format!("Failed to connect: {}", e))?;
+            let client = create_db_client()?;
             return client
                 .get(collection, key)
                 .map_err(|e| format!("Find failed: {}", e))
@@ -345,8 +362,7 @@ pub fn exec_update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
-    let client =
-        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+    let client = create_db_client()?;
 
     let result = client
         .update(collection, key, document.clone(), merge)
@@ -355,8 +371,7 @@ pub fn exec_update(
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = SoliDBClient::connect(&DB_CONFIG.host)
-                .map_err(|e| format!("Failed to connect: {}", e))?;
+            let client = create_db_client()?;
             return client
                 .update(collection, key, document, merge)
                 .map_err(|e| format!("Update failed: {}", e))
@@ -369,8 +384,7 @@ pub fn exec_update(
 
 /// Execute a SoliDBClient delete operation with automatic collection creation.
 pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, String> {
-    let client =
-        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+    let client = create_db_client()?;
 
     let result = client
         .delete(collection, key)
@@ -379,8 +393,7 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = SoliDBClient::connect(&DB_CONFIG.host)
-                .map_err(|e| format!("Failed to connect: {}", e))?;
+            let client = create_db_client()?;
             return client
                 .delete(collection, key)
                 .map_err(|e| format!("Delete failed: {}", e))
@@ -393,8 +406,7 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
 
 /// Execute a SoliDBClient query operation with automatic collection creation.
 pub fn exec_query(collection: &str, sdbql: String) -> Result<Vec<serde_json::Value>, String> {
-    let client =
-        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
+    let client = create_db_client()?;
 
     let result = client
         .query(&sdbql, None)
@@ -403,8 +415,7 @@ pub fn exec_query(collection: &str, sdbql: String) -> Result<Vec<serde_json::Val
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = SoliDBClient::connect(&DB_CONFIG.host)
-                .map_err(|e| format!("Failed to connect: {}", e))?;
+            let client = create_db_client()?;
             return client
                 .query(&sdbql, None)
                 .map_err(|e| format!("Query failed: {}", e));

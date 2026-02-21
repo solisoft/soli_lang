@@ -4,13 +4,6 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-fn serialize_msgpack(value: &Value) -> Result<Vec<u8>, SoliDBError> {
-    rmp_serde::to_vec(value).map_err(|e| SoliDBError {
-        message: format!("MessagePack serialization error: {}", e),
-        code: None,
-    })
-}
-
 fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
     rmp_serde::from_slice(bytes).map_err(|e| SoliDBError {
         message: format!("MessagePack deserialization error: {}", e),
@@ -124,13 +117,16 @@ impl SoliDBClient {
             request = request.basic_auth(u, Some(p));
         }
 
-        request = request.header("Accept", "application/msgpack");
+        request = request.header("Accept", "application/json");
 
         if let Some(b) = body {
-            let msgpack_bytes = serialize_msgpack(b)?;
+            let json_bytes = serde_json::to_vec(b).map_err(|e| SoliDBError {
+                message: format!("Failed to serialize request body: {}", e),
+                code: None,
+            })?;
             request = request
-                .header("Content-Type", "application/msgpack")
-                .body(msgpack_bytes);
+                .header("Content-Type", "application/json")
+                .body(json_bytes);
         }
 
         let response = request.send().map_err(|e| SoliDBError {

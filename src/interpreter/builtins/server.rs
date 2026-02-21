@@ -624,18 +624,18 @@ pub fn parse_query_string(query: &str) -> HashMap<String, String> {
 
     for pair in query.split('&') {
         if let Some((key, value)) = pair.split_once('=') {
-            // URL decode (basic)
-            let decoded_value = value
-                .replace("%20", " ")
-                .replace("+", " ")
-                .replace("%2F", "/")
-                .replace("%3A", ":")
-                .replace("%3F", "?")
-                .replace("%3D", "=")
-                .replace("%26", "&");
-            result.insert(key.to_string(), decoded_value);
+            let decoded_key = urlencoding::decode(&key.replace('+', " "))
+                .unwrap_or_else(|_| key.into())
+                .into_owned();
+            let decoded_value = urlencoding::decode(&value.replace('+', " "))
+                .unwrap_or_else(|_| value.into())
+                .into_owned();
+            result.insert(decoded_key, decoded_value);
         } else {
-            result.insert(pair.to_string(), String::new());
+            let decoded = urlencoding::decode(&pair.replace('+', " "))
+                .unwrap_or_else(|_| pair.into())
+                .into_owned();
+            result.insert(decoded, String::new());
         }
     }
 
