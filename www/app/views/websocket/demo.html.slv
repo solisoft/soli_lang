@@ -163,9 +163,9 @@ function connect() {
 
             if (data.type === 'join') {
                 addSystemMessage('New user joined the session');
-            } elsif (data.type === 'leave') {
+            } else if (data.type === 'leave') {
                 addSystemMessage('User left the session');
-            } elsif (data.type === 'message') {
+            } else if (data.type === 'message') {
                 // Determine if it's my message (simplified for demo)
                 // In a real app, we'd check user ID
                 addMessage(data.text, 'others');

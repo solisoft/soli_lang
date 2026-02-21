@@ -278,12 +278,12 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.event === 'presence_state') {
-        # Initial state - replace all
+        // Initial state - replace all
         presences = data.payload;
         renderUserList();
     }
-    elsif (data.event === 'presence_diff') {
-        # Apply diff
+    else if (data.event === 'presence_diff') {
+        // Apply diff
         Object.entries(data.payload.joins).forEach(([userId, presence]) => {
             presences[userId] = presence;
         });
@@ -297,10 +297,10 @@ ws.onmessage = (event) => {
 function renderUserList() {
     const users = Object.entries(presences).map(([userId, { metas }]) => ({
         userId,
-        ...metas[0],  # Use first meta for display
+        ...metas[0],  // Use first meta for display
         connectionCount: metas.length
     }));
-    # Render users...
+    // Render users...
 }</code></pre>
         </div>
     </div>
@@ -329,7 +329,7 @@ let user = ws_get_presence("room:lobby", "user_123");
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">JavaScript</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-javascript text-sm"># Connect to WebSocket
+<pre><code class="language-javascript text-sm">// Connect to WebSocket
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${protocol}//${location.host}/ws/chat`);
 
@@ -340,10 +340,10 @@ ws.onmessage = (event) => {
 
 ws.send(JSON.stringify({ text: 'Hello!' }));
 
-# Send typing indicator
+// Send typing indicator
 ws.send(JSON.stringify({ event: 'typing' }));
 
-# Stop typing
+// Stop typing
 ws.send(JSON.stringify({ event: 'stop_typing' }));</code></pre>
         </div>
     </div>

@@ -851,7 +851,7 @@
 
                     if (char === '<') {
                         tag = true;
-                    } elsif (char === '>') {
+                    } else if (char === '>') {
                         tag = false;
                     }
 

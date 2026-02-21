@@ -1387,6 +1387,42 @@
       "keywords": ["conditional", "branch", "control flow"]
     },
     {
+      "title": "elsif",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/control-flow#kw-if",
+      "signature": "elsif (condition) { ... }",
+      "description": "Additional conditional branch in if/else chain",
+      "keywords": ["conditional", "branch", "control flow", "else if", "elseif"]
+    },
+    {
+      "title": "not",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/operators#section-logical",
+      "signature": "not expression / if not (condition)",
+      "description": "Logical negation operator, alternative to !",
+      "keywords": ["negation", "logical", "boolean", "if not", "negate"]
+    },
+    {
+      "title": ".length()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-length",
+      "signature": "string.length()",
+      "description": "Returns the number of characters in the string",
+      "keywords": ["string", "length", "len", "size", "count", "characters"]
+    },
+    {
+      "title": ".len()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-length",
+      "signature": "string.len()",
+      "description": "Returns the number of characters in the string (alias for .length())",
+      "keywords": ["string", "length", "len", "size", "count", "characters"]
+    },
+    {
       "title": "while",
       "type": "keyword",
       "category": "Language",
@@ -1709,6 +1745,924 @@
       "signature": "ws_clients_in(channel)",
       "description": "Get all client IDs in a specific channel",
       "keywords": ["websocket", "ws", "clients", "channel", "connections"]
+    },
+    {
+      "title": ".starts_with()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-starts-ends",
+      "signature": "string.starts_with(prefix)",
+      "description": "Check if a string starts with the given prefix",
+      "keywords": ["string", "starts_with", "prefix", "begins"]
+    },
+    {
+      "title": ".ends_with()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-starts-ends",
+      "signature": "string.ends_with(suffix)",
+      "description": "Check if a string ends with the given suffix",
+      "keywords": ["string", "ends_with", "suffix", "ending"]
+    },
+    {
+      "title": ".starts_with?()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-starts-ends",
+      "signature": "string.starts_with?(prefix)",
+      "description": "Check if a string starts with the given prefix (predicate alias)",
+      "keywords": ["string", "starts_with", "prefix", "begins", "predicate"]
+    },
+    {
+      "title": ".ends_with?()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-starts-ends",
+      "signature": "string.ends_with?(suffix)",
+      "description": "Check if a string ends with the given suffix (predicate alias)",
+      "keywords": ["string", "ends_with", "suffix", "ending", "predicate"]
+    },
+    {
+      "title": ".empty?()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-empty-blank",
+      "signature": "string.empty?()",
+      "description": "Check if the string is empty",
+      "keywords": ["string", "empty", "blank", "check", "predicate"]
+    },
+    {
+      "title": ".include?()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-contains-starts-ends",
+      "signature": "string.include?(substring)",
+      "description": "Check if the string contains a substring (Ruby-style alias for contains)",
+      "keywords": ["string", "include", "contains", "search", "predicate"]
+    },
+    {
+      "title": ".chomp()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.chomp()",
+      "description": "Remove trailing newline characters from a string",
+      "keywords": ["string", "chomp", "newline", "strip", "trim"]
+    },
+    {
+      "title": ".lstrip()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.lstrip()",
+      "description": "Remove leading whitespace from a string",
+      "keywords": ["string", "lstrip", "strip", "trim", "whitespace", "left"]
+    },
+    {
+      "title": ".rstrip()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.rstrip()",
+      "description": "Remove trailing whitespace from a string",
+      "keywords": ["string", "rstrip", "strip", "trim", "whitespace", "right"]
+    },
+    {
+      "title": ".squeeze()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.squeeze(chars?)",
+      "description": "Remove consecutive duplicate characters",
+      "keywords": ["string", "squeeze", "compress", "duplicates"]
+    },
+    {
+      "title": ".count()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.count(substring)",
+      "description": "Count occurrences of a substring",
+      "keywords": ["string", "count", "occurrences", "frequency"]
+    },
+    {
+      "title": ".gsub()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.gsub(pattern, replacement, limit?)",
+      "description": "Replace all matches of a pattern (global substitution)",
+      "keywords": ["string", "gsub", "replace", "regex", "substitute", "global"]
+    },
+    {
+      "title": ".sub()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.sub(pattern, replacement)",
+      "description": "Replace the first match of a pattern",
+      "keywords": ["string", "sub", "replace", "regex", "substitute", "first"]
+    },
+    {
+      "title": ".match()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.match(pattern)",
+      "description": "Test if the string matches a regex pattern",
+      "keywords": ["string", "match", "regex", "pattern", "test"]
+    },
+    {
+      "title": ".scan()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.scan(pattern)",
+      "description": "Find all matches of a pattern and return as an array",
+      "keywords": ["string", "scan", "regex", "find", "all", "matches"]
+    },
+    {
+      "title": ".tr()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.tr(from, to)",
+      "description": "Transliterate characters in a string",
+      "keywords": ["string", "tr", "transliterate", "replace", "characters"]
+    },
+    {
+      "title": ".center()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.center(width, pad?)",
+      "description": "Center the string by padding both sides",
+      "keywords": ["string", "center", "pad", "align", "format"]
+    },
+    {
+      "title": ".ljust()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.ljust(width, pad?)",
+      "description": "Left-justify by padding the right side",
+      "keywords": ["string", "ljust", "pad", "align", "left", "justify"]
+    },
+    {
+      "title": ".rjust()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.rjust(width, pad?)",
+      "description": "Right-justify by padding the left side",
+      "keywords": ["string", "rjust", "pad", "align", "right", "justify"]
+    },
+    {
+      "title": ".ord()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.ord()",
+      "description": "Returns the Unicode code point of the first character",
+      "keywords": ["string", "ord", "unicode", "codepoint", "ascii"]
+    },
+    {
+      "title": ".bytes()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-chars",
+      "signature": "string.bytes()",
+      "description": "Returns an array of byte values",
+      "keywords": ["string", "bytes", "byte", "array", "encoding"]
+    },
+    {
+      "title": ".chars()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-chars",
+      "signature": "string.chars()",
+      "description": "Returns an array of individual characters",
+      "keywords": ["string", "chars", "characters", "array", "split"]
+    },
+    {
+      "title": ".lines()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.lines()",
+      "description": "Split the string into an array of lines",
+      "keywords": ["string", "lines", "split", "newline", "array"]
+    },
+    {
+      "title": ".bytesize()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.bytesize()",
+      "description": "Returns the byte length of the string",
+      "keywords": ["string", "bytesize", "bytes", "length", "size"]
+    },
+    {
+      "title": ".capitalize()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.capitalize()",
+      "description": "Capitalize the first letter and lowercase the rest",
+      "keywords": ["string", "capitalize", "case", "first", "letter"]
+    },
+    {
+      "title": ".swapcase()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.swapcase()",
+      "description": "Swap the case of all characters",
+      "keywords": ["string", "swapcase", "case", "toggle", "upper", "lower"]
+    },
+    {
+      "title": ".insert()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.insert(index, str)",
+      "description": "Insert a string at the given index",
+      "keywords": ["string", "insert", "add", "index", "position"]
+    },
+    {
+      "title": ".delete()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.delete(substring)",
+      "description": "Remove all occurrences of a substring",
+      "keywords": ["string", "delete", "remove", "strip"]
+    },
+    {
+      "title": ".delete_prefix()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.delete_prefix(prefix)",
+      "description": "Remove the given prefix from the string",
+      "keywords": ["string", "delete_prefix", "prefix", "remove", "strip"]
+    },
+    {
+      "title": ".delete_suffix()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.delete_suffix(suffix)",
+      "description": "Remove the given suffix from the string",
+      "keywords": ["string", "delete_suffix", "suffix", "remove", "strip"]
+    },
+    {
+      "title": ".partition()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.partition(separator)",
+      "description": "Split into three parts at the first occurrence of the separator",
+      "keywords": ["string", "partition", "split", "separator", "first"]
+    },
+    {
+      "title": ".rpartition()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.rpartition(separator)",
+      "description": "Split into three parts at the last occurrence of the separator",
+      "keywords": ["string", "rpartition", "split", "separator", "last"]
+    },
+    {
+      "title": ".reverse()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-reverse",
+      "signature": "string.reverse()",
+      "description": "Reverse the characters in the string",
+      "keywords": ["string", "reverse", "backwards", "flip"]
+    },
+    {
+      "title": ".hex()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.hex()",
+      "description": "Parse the string as a hexadecimal number",
+      "keywords": ["string", "hex", "hexadecimal", "parse", "number"]
+    },
+    {
+      "title": ".oct()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.oct()",
+      "description": "Parse the string as an octal number",
+      "keywords": ["string", "oct", "octal", "parse", "number"]
+    },
+    {
+      "title": ".truncate()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.truncate(length, suffix?)",
+      "description": "Truncate the string to a maximum length with an optional suffix",
+      "keywords": ["string", "truncate", "shorten", "ellipsis", "limit"]
+    },
+    {
+      "title": ".upcase()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-upcase-downcase",
+      "signature": "string.upcase()",
+      "description": "Convert all characters to uppercase",
+      "keywords": ["string", "upcase", "uppercase", "case", "upper"]
+    },
+    {
+      "title": ".downcase()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-upcase-downcase",
+      "signature": "string.downcase()",
+      "description": "Convert all characters to lowercase",
+      "keywords": ["string", "downcase", "lowercase", "case", "lower"]
+    },
+    {
+      "title": ".trim()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-trim",
+      "signature": "string.trim()",
+      "description": "Remove whitespace from both ends of the string",
+      "keywords": ["string", "trim", "strip", "whitespace"]
+    },
+    {
+      "title": ".contains()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-contains-starts-ends",
+      "signature": "string.contains(substring)",
+      "description": "Check if the string contains a substring",
+      "keywords": ["string", "contains", "includes", "search", "find"]
+    },
+    {
+      "title": ".index_of()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-index-of",
+      "signature": "string.index_of(substring)",
+      "description": "Returns the index of the first occurrence of a substring, or -1 if not found",
+      "keywords": ["string", "index_of", "find", "position", "search"]
+    },
+    {
+      "title": ".substring()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-substring",
+      "signature": "string.substring(start, end?)",
+      "description": "Extract a portion of the string",
+      "keywords": ["string", "substring", "slice", "extract", "sub"]
+    },
+    {
+      "title": ".split()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-split",
+      "signature": "string.split(separator)",
+      "description": "Split the string into an array by separator",
+      "keywords": ["string", "split", "tokenize", "separator", "array"]
+    },
+    {
+      "title": ".replace()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-replace",
+      "signature": "string.replace(from, to)",
+      "description": "Replace all occurrences of a substring",
+      "keywords": ["string", "replace", "substitute", "swap"]
+    },
+    {
+      "title": ".lpad()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-lpad-rpad",
+      "signature": "string.lpad(width, pad?)",
+      "description": "Left-pad the string to the specified width",
+      "keywords": ["string", "lpad", "pad", "left", "fill"]
+    },
+    {
+      "title": ".rpad()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-lpad-rpad",
+      "signature": "string.rpad(width, pad?)",
+      "description": "Right-pad the string to the specified width",
+      "keywords": ["string", "rpad", "pad", "right", "fill"]
+    },
+    {
+      "title": ".to_string()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#string-to-string",
+      "signature": "string.to_string()",
+      "description": "Returns the string itself",
+      "keywords": ["string", "to_string", "convert", "cast"]
+    },
+    {
+      "title": ".map()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-map",
+      "signature": "array.map(fn)",
+      "description": "Transform each element using a function",
+      "keywords": ["array", "map", "transform", "each", "collect"]
+    },
+    {
+      "title": ".filter()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-filter",
+      "signature": "array.filter(fn)",
+      "description": "Keep only elements that satisfy a condition",
+      "keywords": ["array", "filter", "select", "where", "condition"]
+    },
+    {
+      "title": ".each()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-each",
+      "signature": "array.each(fn)",
+      "description": "Execute a function for each element",
+      "keywords": ["array", "each", "foreach", "iterate", "loop"]
+    },
+    {
+      "title": ".reduce()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-reduce",
+      "signature": "array.reduce(initial, fn)",
+      "description": "Reduce array to a single value by applying a function",
+      "keywords": ["array", "reduce", "fold", "accumulate", "aggregate"]
+    },
+    {
+      "title": ".find()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-find",
+      "signature": "array.find(fn)",
+      "description": "Find the first element matching a condition",
+      "keywords": ["array", "find", "search", "first", "detect"]
+    },
+    {
+      "title": ".any?()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-empty-include",
+      "signature": "array.any?(fn)",
+      "description": "Check if any element satisfies a condition",
+      "keywords": ["array", "any", "some", "exists", "predicate"]
+    },
+    {
+      "title": ".all?()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-empty-include",
+      "signature": "array.all?(fn)",
+      "description": "Check if all elements satisfy a condition",
+      "keywords": ["array", "all", "every", "predicate"]
+    },
+    {
+      "title": ".sort()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-sort",
+      "signature": "array.sort()",
+      "description": "Sort the array elements",
+      "keywords": ["array", "sort", "order", "arrange"]
+    },
+    {
+      "title": ".reverse()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-reverse",
+      "signature": "array.reverse()",
+      "description": "Reverse the order of elements",
+      "keywords": ["array", "reverse", "backwards", "flip"]
+    },
+    {
+      "title": ".uniq()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-uniq",
+      "signature": "array.uniq()",
+      "description": "Remove duplicate elements",
+      "keywords": ["array", "uniq", "unique", "distinct", "deduplicate"]
+    },
+    {
+      "title": ".compact()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-compact",
+      "signature": "array.compact()",
+      "description": "Remove null values from the array",
+      "keywords": ["array", "compact", "null", "remove", "clean"]
+    },
+    {
+      "title": ".flatten()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-flatten",
+      "signature": "array.flatten()",
+      "description": "Flatten nested arrays into a single array",
+      "keywords": ["array", "flatten", "nested", "flat", "unwrap"]
+    },
+    {
+      "title": ".first()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-first-last",
+      "signature": "array.first()",
+      "description": "Get the first element of the array",
+      "keywords": ["array", "first", "head", "front"]
+    },
+    {
+      "title": ".last()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-first-last",
+      "signature": "array.last()",
+      "description": "Get the last element of the array",
+      "keywords": ["array", "last", "tail", "end", "back"]
+    },
+    {
+      "title": ".empty?()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-empty-include",
+      "signature": "array.empty?()",
+      "description": "Check if the array is empty",
+      "keywords": ["array", "empty", "check", "predicate"]
+    },
+    {
+      "title": ".include?()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-empty-include",
+      "signature": "array.include?(value)",
+      "description": "Check if the array contains a value",
+      "keywords": ["array", "include", "contains", "has", "predicate"]
+    },
+    {
+      "title": ".sample()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-sample-shuffle",
+      "signature": "array.sample()",
+      "description": "Get a random element from the array",
+      "keywords": ["array", "sample", "random", "pick"]
+    },
+    {
+      "title": ".shuffle()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-sample-shuffle",
+      "signature": "array.shuffle()",
+      "description": "Randomly reorder the array elements",
+      "keywords": ["array", "shuffle", "random", "reorder", "randomize"]
+    },
+    {
+      "title": ".take()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-take-drop",
+      "signature": "array.take(n)",
+      "description": "Take the first n elements",
+      "keywords": ["array", "take", "first", "slice", "head"]
+    },
+    {
+      "title": ".drop()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-take-drop",
+      "signature": "array.drop(n)",
+      "description": "Drop the first n elements",
+      "keywords": ["array", "drop", "skip", "tail", "rest"]
+    },
+    {
+      "title": ".zip()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-zip",
+      "signature": "array.zip(other)",
+      "description": "Combine two arrays element-wise into pairs",
+      "keywords": ["array", "zip", "combine", "pair", "merge"]
+    },
+    {
+      "title": ".sum()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-sum-min-max",
+      "signature": "array.sum()",
+      "description": "Sum all numeric elements in the array",
+      "keywords": ["array", "sum", "total", "add", "math"]
+    },
+    {
+      "title": ".min()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-sum-min-max",
+      "signature": "array.min()",
+      "description": "Get the minimum value in the array",
+      "keywords": ["array", "min", "minimum", "smallest"]
+    },
+    {
+      "title": ".max()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-sum-min-max",
+      "signature": "array.max()",
+      "description": "Get the maximum value in the array",
+      "keywords": ["array", "max", "maximum", "largest"]
+    },
+    {
+      "title": ".join()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-join",
+      "signature": "array.join(separator)",
+      "description": "Join array elements into a string with a separator",
+      "keywords": ["array", "join", "string", "concatenate", "implode"]
+    },
+    {
+      "title": ".length()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-length",
+      "signature": "array.length()",
+      "description": "Returns the number of elements in the array",
+      "keywords": ["array", "length", "size", "count"]
+    },
+    {
+      "title": ".get()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-get",
+      "signature": "array.get(index)",
+      "description": "Get an element by index with bounds checking",
+      "keywords": ["array", "get", "index", "access", "safe"]
+    },
+    {
+      "title": ".push()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-push-pop",
+      "signature": "array.push(value)",
+      "description": "Add an element to the end of the array",
+      "keywords": ["array", "push", "append", "add"]
+    },
+    {
+      "title": ".pop()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-push-pop",
+      "signature": "array.pop()",
+      "description": "Remove and return the last element",
+      "keywords": ["array", "pop", "remove", "last"]
+    },
+    {
+      "title": ".clear()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-clear",
+      "signature": "array.clear()",
+      "description": "Remove all elements from the array",
+      "keywords": ["array", "clear", "empty", "reset"]
+    },
+    {
+      "title": ".get()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-get-fetch",
+      "signature": "hash.get(key, default?)",
+      "description": "Get a value by key with optional default",
+      "keywords": ["hash", "get", "access", "default", "safe"]
+    },
+    {
+      "title": ".fetch()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-get-fetch",
+      "signature": "hash.fetch(key)",
+      "description": "Get a value by key, raises error if not found",
+      "keywords": ["hash", "fetch", "get", "strict", "error"]
+    },
+    {
+      "title": ".dig()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-dig",
+      "signature": "hash.dig(key1, key2, ...)",
+      "description": "Access nested hash values safely",
+      "keywords": ["hash", "dig", "nested", "deep", "access", "safe"]
+    },
+    {
+      "title": ".map()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-map-filter-each",
+      "signature": "hash.map(fn)",
+      "description": "Transform hash entries using a function",
+      "keywords": ["hash", "map", "transform", "collect"]
+    },
+    {
+      "title": ".filter()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-map-filter-each",
+      "signature": "hash.filter(fn)",
+      "description": "Keep only entries that satisfy a condition",
+      "keywords": ["hash", "filter", "select", "where", "condition"]
+    },
+    {
+      "title": ".each()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-map-filter-each",
+      "signature": "hash.each(fn)",
+      "description": "Execute a function for each key-value pair",
+      "keywords": ["hash", "each", "foreach", "iterate", "loop"]
+    },
+    {
+      "title": ".invert()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-invert",
+      "signature": "hash.invert()",
+      "description": "Swap keys and values",
+      "keywords": ["hash", "invert", "swap", "flip", "reverse"]
+    },
+    {
+      "title": ".transform_values()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-transform",
+      "signature": "hash.transform_values(fn)",
+      "description": "Transform all values using a function",
+      "keywords": ["hash", "transform_values", "map", "values", "modify"]
+    },
+    {
+      "title": ".transform_keys()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-transform",
+      "signature": "hash.transform_keys(fn)",
+      "description": "Transform all keys using a function",
+      "keywords": ["hash", "transform_keys", "map", "keys", "rename"]
+    },
+    {
+      "title": ".select()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-select-reject",
+      "signature": "hash.select(fn)",
+      "description": "Keep entries that satisfy a condition (alias for filter)",
+      "keywords": ["hash", "select", "filter", "keep", "where"]
+    },
+    {
+      "title": ".reject()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-select-reject",
+      "signature": "hash.reject(fn)",
+      "description": "Remove entries that satisfy a condition",
+      "keywords": ["hash", "reject", "exclude", "remove", "filter"]
+    },
+    {
+      "title": ".slice()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-slice-except",
+      "signature": "hash.slice(keys...)",
+      "description": "Return a new hash with only the specified keys",
+      "keywords": ["hash", "slice", "pick", "subset", "keys"]
+    },
+    {
+      "title": ".except()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-slice-except",
+      "signature": "hash.except(keys...)",
+      "description": "Return a new hash excluding the specified keys",
+      "keywords": ["hash", "except", "omit", "exclude", "without"]
+    },
+    {
+      "title": ".compact()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-compact",
+      "signature": "hash.compact()",
+      "description": "Remove entries with null values",
+      "keywords": ["hash", "compact", "null", "remove", "clean"]
+    },
+    {
+      "title": ".length()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-length",
+      "signature": "hash.length()",
+      "description": "Returns the number of key-value pairs",
+      "keywords": ["hash", "length", "size", "count"]
+    },
+    {
+      "title": ".keys()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-keys-values",
+      "signature": "hash.keys()",
+      "description": "Returns an array of all keys",
+      "keywords": ["hash", "keys", "names", "properties"]
+    },
+    {
+      "title": ".values()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-keys-values",
+      "signature": "hash.values()",
+      "description": "Returns an array of all values",
+      "keywords": ["hash", "values", "data", "entries"]
+    },
+    {
+      "title": ".has_key()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-has-key",
+      "signature": "hash.has_key(key)",
+      "description": "Check if a key exists in the hash",
+      "keywords": ["hash", "has_key", "contains", "exists", "check"]
+    },
+    {
+      "title": ".delete()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#def-delete",
+      "signature": "hash.delete(key)",
+      "description": "Remove a key-value pair from the hash",
+      "keywords": ["hash", "delete", "remove", "key"]
+    },
+    {
+      "title": ".merge()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#def-merge",
+      "signature": "hash.merge(other)",
+      "description": "Merge another hash into this one",
+      "keywords": ["hash", "merge", "combine", "extend", "join"]
+    },
+    {
+      "title": ".entries()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#def-entries",
+      "signature": "hash.entries()",
+      "description": "Returns an array of [key, value] pairs",
+      "keywords": ["hash", "entries", "pairs", "items", "iterate"]
+    },
+    {
+      "title": ".clear()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#def-clear",
+      "signature": "hash.clear()",
+      "description": "Remove all entries from the hash",
+      "keywords": ["hash", "clear", "empty", "reset"]
+    },
+    {
+      "title": ".set()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-get-set",
+      "signature": "hash.set(key, value)",
+      "description": "Set a key-value pair in the hash",
+      "keywords": ["hash", "set", "add", "assign", "store"]
+    },
+    {
+      "title": ".empty?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#section-methods",
+      "signature": "hash.empty?()",
+      "description": "Check if the hash has no entries",
+      "keywords": ["hash", "empty", "check", "predicate"]
+    },
+    {
+      "title": ".to_string()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-to-string",
+      "signature": "hash.to_string()",
+      "description": "Convert the hash to its string representation",
+      "keywords": ["hash", "to_string", "convert", "print", "display"]
     }
   ]
 }
