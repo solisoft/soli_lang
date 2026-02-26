@@ -116,6 +116,7 @@ impl TypeChecker {
 
             StmtKind::For {
                 variable,
+                index_variable,
                 iterable,
                 body,
             } => {
@@ -133,6 +134,9 @@ impl TypeChecker {
 
                 self.env.push_scope();
                 self.env.define(variable.clone(), elem_type);
+                if let Some(idx_var) = index_variable {
+                    self.env.define(idx_var.clone(), Type::Int);
+                }
                 self.check_stmt(body)?;
                 self.env.pop_scope();
                 Ok(())

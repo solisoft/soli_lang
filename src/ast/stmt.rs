@@ -50,9 +50,10 @@ pub enum StmtKind {
     /// While loop: while (cond) { ... }
     While { condition: Expr, body: Box<Stmt> },
 
-    /// For loop: for (x in iter) { ... }
+    /// For loop: for (x in iter) { ... } or for (x, i in iter) { ... }
     For {
         variable: String,
+        index_variable: Option<String>,
         iterable: Expr,
         body: Box<Stmt>,
     },

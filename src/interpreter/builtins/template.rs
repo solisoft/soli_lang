@@ -335,7 +335,7 @@ fn get_file_mtime_cached(path: &PathBuf) -> Result<String, String> {
 }
 
 /// Inject template helper functions into the data context
-fn inject_template_helpers(data: &Value) -> Value {
+pub fn inject_template_helpers(data: &Value) -> Value {
     match data {
         Value::Hash(hash) => {
             let mut new_hash: IndexMap<HashKey, Value> = hash.borrow().clone();
@@ -362,7 +362,14 @@ fn inject_template_helpers(data: &Value) -> Value {
 
             if !has_range {
                 let range_func =
-                    Value::NativeFunction(NativeFunction::new("range", Some(2), |args| {
+                    Value::NativeFunction(NativeFunction::new("range", None, |args| {
+                        if args.len() < 2 || args.len() > 3 {
+                            return Err(format!(
+                                "range() expects 2 or 3 arguments, got {}",
+                                args.len()
+                            ));
+                        }
+
                         let start = match &args[0] {
                             Value::Int(n) => *n,
                             other => {
@@ -382,7 +389,40 @@ fn inject_template_helpers(data: &Value) -> Value {
                             }
                         };
 
-                        let values: Vec<Value> = (start..end).map(Value::Int).collect();
+                        let step = if args.len() == 3 {
+                            match &args[2] {
+                                Value::Int(n) => {
+                                    if *n == 0 {
+                                        return Err("range() step cannot be zero".to_string());
+                                    }
+                                    *n
+                                }
+                                other => {
+                                    return Err(format!(
+                                        "range() expects integer step, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                            }
+                        } else {
+                            1
+                        };
+
+                        let mut values = Vec::new();
+                        if step > 0 {
+                            let mut i = start;
+                            while i < end {
+                                values.push(Value::Int(i));
+                                i += step;
+                            }
+                        } else {
+                            let mut i = start;
+                            while i > end {
+                                values.push(Value::Int(i));
+                                i += step;
+                            }
+                        }
+
                         Ok(Value::Array(Rc::new(RefCell::new(values))))
                     }));
 
@@ -1104,6 +1144,74 @@ pub fn register_template_builtins(env: &mut Environment) {
                 other => format!("{}", other),
             };
             Ok(Value::String(crate::template::renderer::html_escape(&s)))
+        })),
+    );
+
+    // range(start, end, step?) - Create a range of integers
+    env.define(
+        "range".to_string(),
+        Value::NativeFunction(NativeFunction::new("range", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "range() expects 2 or 3 arguments, got {}",
+                    args.len()
+                ));
+            }
+
+            let start = match &args[0] {
+                Value::Int(n) => *n,
+                other => {
+                    return Err(format!(
+                        "range() expects integer start, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let end = match &args[1] {
+                Value::Int(n) => *n,
+                other => {
+                    return Err(format!(
+                        "range() expects integer end, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let step = if args.len() == 3 {
+                match &args[2] {
+                    Value::Int(n) => {
+                        if *n == 0 {
+                            return Err("range() step cannot be zero".to_string());
+                        }
+                        *n
+                    }
+                    other => {
+                        return Err(format!(
+                            "range() expects integer step, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                1
+            };
+
+            let mut values = Vec::new();
+            if step > 0 {
+                let mut i = start;
+                while i < end {
+                    values.push(Value::Int(i));
+                    i += step;
+                }
+            } else {
+                let mut i = start;
+                while i > end {
+                    values.push(Value::Int(i));
+                    i += step;
+                }
+            }
+
+            Ok(Value::Array(Rc::new(RefCell::new(values))))
         })),
     );
 

@@ -5,6 +5,7 @@ use serde_json::Value as JsonValue;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use crate::interpreter::builtins::template::inject_template_helpers;
 use crate::interpreter::value::json_to_value;
 use crate::template::parser::parse_template;
 use crate::template::renderer::render_nodes;
@@ -160,9 +161,12 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
     // Convert JSON state to interpreter Value
     let data = json_to_value(state)?;
 
+    // Inject template helpers (range, public_path, html_escape, etc.)
+    let data_with_helpers = inject_template_helpers(&data);
+
     // Parse the template using the existing ERB parser
     let nodes = parse_template(&content)?;
 
     // Render using the existing template renderer
-    render_nodes(&nodes, &data, None)
+    render_nodes(&nodes, &data_with_helpers, None)
 }

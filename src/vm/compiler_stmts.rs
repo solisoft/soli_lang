@@ -51,10 +51,11 @@ impl Compiler {
             }
             StmtKind::For {
                 variable,
+                index_variable,
                 iterable,
                 body,
             } => {
-                self.compile_for(variable, iterable, body, line)?;
+                self.compile_for(variable, index_variable.as_deref(), iterable, body, line)?;
             }
             StmtKind::Return(expr) => {
                 if let Some(expr) = expr {
@@ -174,11 +175,12 @@ impl Compiler {
     fn compile_for(
         &mut self,
         variable: &str,
+        index_variable: Option<&str>,
         iterable: &crate::ast::Expr,
         body: &Stmt,
         line: usize,
     ) -> CompileResult<()> {
-        // for x in iter { body }
+        // for x in iter { body } or for x, i in iter { body }
         self.begin_scope();
 
         self.compile_expr(iterable)?;
@@ -191,7 +193,18 @@ impl Compiler {
         // Bind the loop variable
         self.add_local(variable.to_string(), false);
 
+        // Bind the index variable if present
+        if let Some(idx_var) = index_variable {
+            self.add_local(idx_var.to_string(), false);
+        }
+
         self.compile_stmt(body)?;
+
+        // Pop the index variable if present
+        if index_variable.is_some() {
+            self.emit(Op::Pop, line);
+            self.locals.pop();
+        }
 
         // Pop the loop variable
         self.emit(Op::Pop, line);

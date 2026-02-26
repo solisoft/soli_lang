@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 
 use crate::interpreter::value::{HashKey, Value};
 use crate::interpreter::Interpreter;
+use crate::template::helpers::{call_array_method, call_string_method};
 use crate::template::parser::{BinaryOp, CompareOp, Expr, TemplateNode};
 
 /// Type alias for partial renderer callbacks to reduce type complexity.
@@ -59,6 +60,7 @@ pub fn render_nodes_with_path(
     template_path: Option<&str>,
 ) -> Result<String, String> {
     let mut output = String::new();
+    let mut current_data = data.clone();
 
     for node in nodes {
         // Track line number for error reporting
@@ -67,6 +69,7 @@ pub fn render_nodes_with_path(
             TemplateNode::If { line, .. } => Some(*line),
             TemplateNode::For { line, .. } => Some(*line),
             TemplateNode::Partial { line, .. } => Some(*line),
+            TemplateNode::CodeBlock { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -80,7 +83,7 @@ pub fn render_nodes_with_path(
                     escaped,
                     line: _,
                 } => {
-                    let value = evaluate_expr(expr, data)?;
+                    let value = evaluate_expr(expr, &current_data)?;
                     let s = value_to_string(&value);
                     if *escaped {
                         output.push_str(&html_escape(&s));
@@ -94,18 +97,18 @@ pub fn render_nodes_with_path(
                     else_body,
                     line: _,
                 } => {
-                    let cond_value = evaluate_expr(condition, data)?;
+                    let cond_value = evaluate_expr(condition, &current_data)?;
                     if is_truthy(&cond_value) {
                         output.push_str(&render_nodes_with_path(
                             body,
-                            data,
+                            &current_data,
                             partial_renderer,
                             template_path,
                         )?);
                     } else if let Some(else_nodes) = else_body {
                         output.push_str(&render_nodes_with_path(
                             else_nodes,
-                            data,
+                            &current_data,
                             partial_renderer,
                             template_path,
                         )?);
@@ -113,16 +116,23 @@ pub fn render_nodes_with_path(
                 }
                 TemplateNode::For {
                     var,
+                    index_var,
                     iterable,
                     body,
                     line: _,
                 } => {
-                    let iterable_value = evaluate_expr(iterable, data)?;
+                    let iterable_value = evaluate_expr(iterable, &current_data)?;
                     match &iterable_value {
                         Value::Array(arr) => {
-                            for item in arr.borrow().iter() {
+                            for (i, item) in arr.borrow().iter().enumerate() {
                                 // Create new context with loop variable
-                                let loop_data = with_variable(data, var, item.clone())?;
+                                let loop_data = with_variable(&current_data, var, item.clone())?;
+                                // Add index variable if specified
+                                let loop_data = if let Some(idx_var) = index_var {
+                                    with_variable(&loop_data, idx_var, Value::Int(i as i64))?
+                                } else {
+                                    loop_data
+                                };
                                 output.push_str(&render_nodes_with_path(
                                     body,
                                     &loop_data,
@@ -138,7 +148,7 @@ pub fn render_nodes_with_path(
                                     k.to_value(),
                                     v.clone(),
                                 ])));
-                                let loop_data = with_variable(data, var, pair)?;
+                                let loop_data = with_variable(&current_data, var, pair)?;
                                 output.push_str(&render_nodes_with_path(
                                     body,
                                     &loop_data,
@@ -167,14 +177,17 @@ pub fn render_nodes_with_path(
                 } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
-                            evaluate_expr(ctx_expr, data)?
+                            evaluate_expr(ctx_expr, &current_data)?
                         } else {
-                            data.clone()
+                            current_data.clone()
                         };
                         output.push_str(&renderer(name, &partial_data)?);
                     } else {
                         return Err(format!("Partial rendering not available for '{}'", name));
                     }
+                }
+                TemplateNode::CodeBlock { expr, line: _ } => {
+                    current_data = evaluate_code_block(expr, &current_data)?;
                 }
             }
             Ok(())
@@ -200,6 +213,11 @@ pub fn render_nodes_with_path(
     }
 
     Ok(output)
+}
+
+/// Evaluate a code block expression (e.g., variable assignment)
+fn evaluate_code_block(expr: &Expr, data: &Value) -> Result<Value, String> {
+    evaluate_expr(expr, data)
 }
 
 /// Evaluate a pre-compiled expression in the context of the data.
@@ -271,14 +289,153 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
 
         Expr::Method(base, method) => {
             let base_value = evaluate_expr(base, data)?;
-            match method.as_str() {
-                "length" | "len" | "size" => match &base_value {
-                    Value::Array(arr) => Ok(Value::Int(arr.borrow().len() as i64)),
-                    Value::String(s) => Ok(Value::Int(s.len() as i64)),
-                    Value::Hash(h) => Ok(Value::Int(h.borrow().len() as i64)),
-                    _ => Err(format!("Cannot get length of {}", base_value.type_name())),
-                },
-                _ => Err(format!("Unknown method: {}", method)),
+
+            // Handle methods that require function arguments by returning an error
+            // that suggests using the full language instead
+            let needs_function = matches!(
+                method.as_str(),
+                "map"
+                    | "filter"
+                    | "each"
+                    | "reduce"
+                    | "find"
+                    | "any?"
+                    | "all?"
+                    | "sort"
+                    | "sort_by"
+                    | "uniq"
+                    | "compact"
+                    | "flatten"
+                    | "include?"
+                    | "sample"
+                    | "shuffle"
+                    | "take"
+                    | "drop"
+                    | "zip"
+            );
+
+            if needs_function {
+                return Err(format!(
+                    "Method '{}' requires a function argument. Use the full language in <% %> tags instead.",
+                    method
+                ));
+            }
+
+            match &base_value {
+                Value::Array(arr) => {
+                    let items: Vec<Value> = arr.borrow().clone();
+                    call_array_method(&items, method, vec![])
+                }
+                Value::String(s) => call_string_method(s, method, vec![]),
+                Value::Hash(h) => {
+                    // Hash methods
+                    match method.as_str() {
+                        "length" | "len" | "size" => Ok(Value::Int(h.borrow().len() as i64)),
+                        "empty" | "is_empty" => Ok(Value::Bool(h.borrow().is_empty())),
+                        "keys" => {
+                            let keys: Vec<Value> = h
+                                .borrow()
+                                .keys()
+                                .map(|k| match k {
+                                    HashKey::String(s) => Value::String(s.clone()),
+                                    HashKey::Int(n) => Value::Int(*n),
+                                    HashKey::Decimal(_) => Value::Null,
+                                    HashKey::Bool(b) => Value::Bool(*b),
+                                    HashKey::Null => Value::Null,
+                                })
+                                .collect();
+                            Ok(Value::Array(Rc::new(RefCell::new(keys))))
+                        }
+                        "values" => {
+                            let values: Vec<Value> = h.borrow().values().cloned().collect();
+                            Ok(Value::Array(Rc::new(RefCell::new(values))))
+                        }
+                        "has_key" | "has" => Err("Use 'in' operator: key in hash".to_string()),
+                        _ => Err(format!("Unknown hash method: {}", method)),
+                    }
+                }
+                _ => Err(format!(
+                    "Cannot call method '{}' on {}",
+                    method,
+                    base_value.type_name()
+                )),
+            }
+        }
+
+        Expr::MethodCall { base, method, args } => {
+            let base_value = evaluate_expr(base, data)?;
+
+            // Evaluate arguments
+            let evaluated_args: Result<Vec<Value>, String> =
+                args.iter().map(|arg| evaluate_expr(arg, data)).collect();
+            let evaluated_args = evaluated_args?;
+
+            // Handle methods that require function arguments
+            let needs_function = matches!(
+                method.as_str(),
+                "map"
+                    | "filter"
+                    | "each"
+                    | "reduce"
+                    | "find"
+                    | "any?"
+                    | "all?"
+                    | "sort"
+                    | "sort_by"
+                    | "uniq"
+                    | "compact"
+                    | "flatten"
+                    | "include?"
+                    | "sample"
+                    | "shuffle"
+                    | "take"
+                    | "drop"
+                    | "zip"
+            );
+
+            if needs_function {
+                return Err(format!(
+                    "Method '{}' requires a function argument. Use the full language in <% %> tags instead.",
+                    method
+                ));
+            }
+
+            match &base_value {
+                Value::Array(arr) => {
+                    let items: Vec<Value> = arr.borrow().clone();
+                    call_array_method(&items, method, evaluated_args)
+                }
+                Value::String(s) => call_string_method(s, method, evaluated_args),
+                Value::Hash(h) => {
+                    // Hash methods with arguments
+                    match method.as_str() {
+                        "get" | "fetch" => {
+                            if let Some(key_val) = evaluated_args.first() {
+                                let hash_key = match key_val.to_hash_key() {
+                                    Some(k) => k,
+                                    None => {
+                                        return Err(format!(
+                                            "Invalid hash key for value: {}",
+                                            key_val.type_name()
+                                        ))
+                                    }
+                                };
+                                if let Some(v) = h.borrow().get(&hash_key) {
+                                    return Ok(v.clone());
+                                }
+                                Ok(Value::Null)
+                            } else {
+                                Err("get/fetch requires a key argument".to_string())
+                            }
+                        }
+                        _ => Err(format!("Unknown hash method with args: {}", method)),
+                    }
+                }
+                _ => Err(format!(
+                    "Cannot call method '{}' on {}",
+                    method,
+                    base_value.type_name()
+                )),
             }
         }
 
@@ -310,6 +467,26 @@ fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
                     name,
                     func_value.type_name()
                 )),
+            }
+        }
+
+        Expr::Assign(name, value_expr) => {
+            let value = evaluate_expr(value_expr, data)?;
+            with_variable(data, name, value)
+        }
+
+        Expr::Range(start, end) => {
+            let start_val = evaluate_expr(start, data)?;
+            let end_val = evaluate_expr(end, data)?;
+            match (start_val, end_val) {
+                (Value::Int(s), Value::Int(e)) => {
+                    let mut arr = Vec::new();
+                    for i in s..e {
+                        arr.push(Value::Int(i));
+                    }
+                    Ok(Value::Array(Rc::new(RefCell::new(arr))))
+                }
+                _ => Err("Range requires integer values".to_string()),
             }
         }
     }
@@ -693,6 +870,7 @@ mod tests {
     fn test_render_for_loop() {
         let nodes = vec![TemplateNode::For {
             var: "item".to_string(),
+            index_var: None,
             iterable: Expr::Var("items".to_string()),
             body: vec![TemplateNode::Output {
                 expr: Expr::Var("item".to_string()),
@@ -730,5 +908,84 @@ mod tests {
             html_escape("<script>alert('xss')</script>"),
             "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
         );
+    }
+
+    #[test]
+    fn test_code_block_assignment() {
+        let nodes = vec![
+            TemplateNode::CodeBlock {
+                expr: Expr::Assign(
+                    "colors".to_string(),
+                    Box::new(Expr::ArrayLit(vec![
+                        Expr::StringLit("#D3CCFF".to_string()),
+                        Expr::StringLit("#FF8C8C".to_string()),
+                    ])),
+                ),
+                line: 1,
+            },
+            TemplateNode::Output {
+                expr: Expr::Var("colors".to_string()),
+                escaped: true,
+                line: 2,
+            },
+        ];
+        let data = make_hash(vec![]);
+        let result = render_nodes(&nodes, &data, None).unwrap();
+        assert_eq!(result, "#D3CCFF, #FF8C8C");
+    }
+
+    #[test]
+    fn test_code_block_for_loop() {
+        let nodes = vec![
+            TemplateNode::CodeBlock {
+                expr: Expr::Assign(
+                    "colors".to_string(),
+                    Box::new(Expr::ArrayLit(vec![
+                        Expr::StringLit("#D3CCFF".to_string()),
+                        Expr::StringLit("#FF8C8C".to_string()),
+                    ])),
+                ),
+                line: 1,
+            },
+            TemplateNode::For {
+                var: "color".to_string(),
+                index_var: None,
+                iterable: Expr::Var("colors".to_string()),
+                body: vec![TemplateNode::Output {
+                    expr: Expr::Var("color".to_string()),
+                    escaped: true,
+                    line: 3,
+                }],
+                line: 2,
+            },
+        ];
+        let data = make_hash(vec![]);
+        let result = render_nodes(&nodes, &data, None).unwrap();
+        assert_eq!(result, "#D3CCFF#FF8C8C");
+    }
+
+    #[test]
+    fn test_render_for_loop_with_index() {
+        // Test for loop with index: for item, i in items
+        let nodes = vec![TemplateNode::For {
+            var: "item".to_string(),
+            index_var: Some("i".to_string()),
+            iterable: Expr::Var("items".to_string()),
+            body: vec![TemplateNode::Output {
+                expr: Expr::Var("i".to_string()),
+                escaped: true,
+                line: 1,
+            }],
+            line: 1,
+        }];
+        let items = Value::Array(Rc::new(RefCell::new(vec![
+            Value::String("a".to_string()),
+            Value::String("b".to_string()),
+            Value::String("c".to_string()),
+        ])));
+        let data = make_hash(vec![("items", items)]);
+        let result = render_nodes(&nodes, &data, None).unwrap();
+        // Should output 0, 1, 2 (indices)
+        assert_eq!(result, "012");
     }
 }

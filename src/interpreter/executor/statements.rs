@@ -94,9 +94,10 @@ impl Interpreter {
 
             StmtKind::For {
                 variable,
+                index_variable,
                 iterable,
                 body,
-            } => self.execute_for_loop(variable, iterable, body),
+            } => self.execute_for_loop(variable, index_variable.as_deref(), iterable, body),
 
             StmtKind::Return(value) => {
                 let return_value = if let Some(expr) = value {
@@ -237,6 +238,7 @@ impl Interpreter {
     fn execute_for_loop(
         &mut self,
         variable: &str,
+        index_variable: Option<&str>,
         iterable: &Expr,
         body: &Stmt,
     ) -> RuntimeResult<ControlFlow> {
@@ -245,10 +247,13 @@ impl Interpreter {
             Value::Array(arr) => {
                 // Clone items once outside the loop to avoid holding borrow across loop body
                 let items: Vec<Value> = arr.borrow().iter().cloned().collect();
-                for item in items {
+                for (i, item) in items.into_iter().enumerate() {
                     // Create loop environment with variable already defined (avoids extra borrow_mut)
                     let mut loop_env = Environment::with_enclosing(self.environment.clone());
                     loop_env.define(variable.to_string(), item);
+                    if let Some(idx_var) = index_variable {
+                        loop_env.define(idx_var.to_string(), Value::Int(i as i64));
+                    }
                     let prev_env =
                         std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
                     let result = self.execute(body);

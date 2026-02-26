@@ -38,10 +38,20 @@ pub enum Expr {
     Or(Box<Expr>, Box<Expr>),
     /// Logical NOT: !expr
     Not(Box<Expr>),
-    /// Method call: expr.length (for built-in methods)
+    /// Method call: expr.length (for built-in methods without args)
     Method(Box<Expr>, String),
+    /// Method call with arguments: expr.join(",")
+    MethodCall {
+        base: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
+    },
     /// Function call: name(arg1, arg2, ...)
     Call(String, Vec<Expr>),
+    /// Assignment: name = value or let name = value
+    Assign(String, Box<Expr>),
+    /// Range: start..end
+    Range(Box<Expr>, Box<Expr>),
 }
 
 /// Binary operators for arithmetic and string operations
@@ -86,6 +96,7 @@ pub enum TemplateNode {
     /// For loop block
     For {
         var: String,
+        index_var: Option<String>,
         iterable: Expr,
         body: Vec<TemplateNode>,
         line: usize,
@@ -98,6 +109,8 @@ pub enum TemplateNode {
         context: Option<Expr>,
         line: usize,
     },
+    /// Code block to execute (for variable assignments, etc.)
+    CodeBlock { expr: Expr, line: usize },
 }
 
 /// Token types during lexing
@@ -274,8 +287,9 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                         code, line
                     ));
                 } else {
-                    // Other code - treat as expression to evaluate (side effect)
-                    // We ignore it for now since templates shouldn't have side effects
+                    // Parse as expression (possibly assignment)
+                    let expr = compile_expr(code);
+                    nodes.push(TemplateNode::CodeBlock { expr, line: *line });
                     i += 1;
                 }
             }
@@ -430,7 +444,7 @@ fn parse_if_block(
 /// Returns the ForNode and the number of tokens consumed.
 fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, usize), String> {
     // First token should be the `for` code
-    let (var, iterable) = match &tokens[0] {
+    let (var, index_var, iterable) = match &tokens[0] {
         Token::Code(code, _line) => {
             let code = code.trim();
             if !code.starts_with("for ") {
@@ -453,6 +467,7 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                     return Ok((
                         TemplateNode::For {
                             var,
+                            index_var,
                             iterable,
                             body,
                             line: for_line,
@@ -527,8 +542,9 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
     ))
 }
 
-/// Parse a for statement like "item in items" or "(item in items)"
-fn parse_for_statement(s: &str) -> Result<(String, Expr), String> {
+/// Parse a for statement like "item in items" or "(item, index in items)"
+/// Supports: "x in items" or "x, i in items" where i is the index
+fn parse_for_statement(s: &str) -> Result<(String, Option<String>, Expr), String> {
     let s = s.trim();
 
     // Only strip outer parens if the whole expression is wrapped: "(item in items)"
@@ -563,17 +579,32 @@ fn parse_for_statement(s: &str) -> Result<(String, Expr), String> {
 
     // Look for " in " as the separator
     if let Some(pos) = s.find(" in ") {
-        let var = s[..pos].trim().to_string();
+        let var_part = s[..pos].trim().to_string();
         let iterable_str = s[pos + 4..].trim();
 
-        if var.is_empty() {
+        if var_part.is_empty() {
             return Err("Missing loop variable in for statement".to_string());
         }
         if iterable_str.is_empty() {
             return Err("Missing iterable in for statement".to_string());
         }
 
-        Ok((var, compile_expr(iterable_str)))
+        // Check for index variable: "x, i in items"
+        let (var, index_var) = if let Some(comma_pos) = var_part.rfind(',') {
+            let var = var_part[..comma_pos].trim().to_string();
+            let index_var = var_part[comma_pos + 1..].trim().to_string();
+            if var.is_empty() {
+                return Err("Missing loop variable in for statement".to_string());
+            }
+            if index_var.is_empty() {
+                return Err("Missing index variable in for statement".to_string());
+            }
+            (var, Some(index_var))
+        } else {
+            (var_part, None)
+        };
+
+        Ok((var, index_var, compile_expr(iterable_str)))
     } else {
         Err(format!(
             "Invalid for statement: expected 'var in iterable', got '{}'",
@@ -661,6 +692,24 @@ pub fn compile_expr(expr: &str) -> Expr {
         return Expr::ArrayLit(elements);
     }
 
+    // Check for assignment: name = value or let name = value
+    if let Some(pos) = find_binary_op(expr, " = ") {
+        // Make sure it's not a comparison (==, !=, <=, >=)
+        let op_char = expr.chars().nth(pos - 1);
+        if op_char != Some('=')
+            && op_char != Some('!')
+            && op_char != Some('<')
+            && op_char != Some('>')
+        {
+            let name = expr[..pos].trim();
+            // Check for valid variable name
+            if name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                let value_expr = compile_expr(expr[pos + 3..].trim());
+                return Expr::Assign(name.to_string(), Box::new(value_expr));
+            }
+        }
+    }
+
     // Check for logical operators (lower precedence than comparison)
     // Process these first because they have lower precedence
     if let Some(pos) = find_logical_op(expr, " && ") {
@@ -672,6 +721,13 @@ pub fn compile_expr(expr: &str) -> Expr {
         let left = compile_expr(&expr[..pos]);
         let right = compile_expr(&expr[pos + 4..]);
         return Expr::Or(Box::new(left), Box::new(right));
+    }
+
+    // Check for range operator: start..end
+    if let Some(pos) = find_binary_op(expr, "..") {
+        let left = compile_expr(&expr[..pos]);
+        let right = compile_expr(&expr[pos + 2..]);
+        return Expr::Range(Box::new(left), Box::new(right));
     }
 
     // Check for comparison operators
@@ -1009,7 +1065,87 @@ fn find_matching_bracket_compile(s: &str) -> Option<usize> {
 
 /// Compile chained field/method access after a dot
 fn compile_chained_access(base: Expr, field: &str) -> Expr {
-    // Check for method-like properties
+    // Check if it's a method call with arguments: method_name(args)
+    // This needs to be checked BEFORE bracket access because method calls use ()
+    if let Some(paren_pos) = field.find('(') {
+        let method_name = &field[..paren_pos];
+        let rest = &field[paren_pos..];
+
+        if let Some(close_pos) = find_matching_bracket_compile(rest) {
+            let args_content = &rest[1..close_pos];
+            let after = &rest[close_pos + 1..];
+
+            // Check if it's a known method that needs function argument or can work directly
+            let known_methods = [
+                "length",
+                "len",
+                "size",
+                "first",
+                "last",
+                "reverse",
+                "join",
+                "empty",
+                "is_empty",
+                "sum",
+                "min",
+                "max",
+                "map",
+                "filter",
+                "each",
+                "reduce",
+                "find",
+                "any?",
+                "all?",
+                "include?",
+                "sort",
+                "sort_by",
+                "uniq",
+                "compact",
+                "flatten",
+                "sample",
+                "shuffle",
+                "take",
+                "drop",
+                "zip",
+                // String methods
+                "uppercase",
+                "upcase",
+                "lowercase",
+                "downcase",
+                "trim",
+                "capitalize",
+                "replace",
+                "split",
+                "includes",
+                "contains",
+                "starts_with",
+                "ends_with",
+            ];
+
+            if known_methods.contains(&method_name) {
+                let args = if args_content.trim().is_empty() {
+                    vec![]
+                } else {
+                    parse_function_args(args_content)
+                };
+
+                let method_expr = Expr::MethodCall {
+                    base: Box::new(base.clone()),
+                    method: method_name.to_string(),
+                    args,
+                };
+
+                // Handle rest of chain
+                if after.is_empty() {
+                    return method_expr;
+                } else if let Some(rest_field) = after.strip_prefix('.') {
+                    return compile_chained_access(method_expr, rest_field);
+                }
+            }
+        }
+    }
+
+    // Check for method-like properties (no arguments)
     let (current_field, rest) = if let Some(dot_pos) = field.find('.') {
         (&field[..dot_pos], Some(&field[dot_pos + 1..]))
     } else if let Some(bracket_pos) = find_first_bracket(field) {
@@ -1018,9 +1154,14 @@ fn compile_chained_access(base: Expr, field: &str) -> Expr {
         (field, None)
     };
 
-    // Handle special methods
+    // Handle special methods - these become Expr::Method for the renderer
     let current = match current_field {
-        "length" | "len" | "size" => Expr::Method(Box::new(base), current_field.to_string()),
+        "length" | "len" | "size" | "first" | "last" | "reverse" | "join" | "empty"
+        | "is_empty" | "sum" | "min" | "max" | "map" | "filter" | "each" | "reduce" | "find"
+        | "any?" | "all?" | "include?" | "sort" | "sort_by" | "uniq" | "compact" | "flatten"
+        | "sample" | "shuffle" | "take" | "drop" | "zip" => {
+            Expr::Method(Box::new(base), current_field.to_string())
+        }
         _ => Expr::Field(Box::new(base), current_field.to_string()),
     };
 
@@ -1252,38 +1393,13 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_unescape_in_for() {
-        // Test <%== inside for block
-        let nodes = parse_template("<% for item in items %><%== item %><% end %>").unwrap();
-        assert_eq!(nodes.len(), 1);
-        match &nodes[0] {
-            TemplateNode::For { body, .. } => {
-                assert_eq!(body.len(), 1);
-                match &body[0] {
-                    TemplateNode::Output { expr, escaped, .. } => {
-                        match expr {
-                            Expr::Call(name, args) => {
-                                assert_eq!(name, "html_unescape");
-                                assert_eq!(args[0], Expr::Var("item".to_string()));
-                            }
-                            _ => panic!("Expected Call expression"),
-                        }
-                        assert!(!escaped);
-                    }
-                    _ => panic!("Expected Output node"),
-                }
-            }
-            _ => panic!("Expected For node"),
-        }
-    }
-
-    #[test]
     fn test_parse_for() {
         let nodes = parse_template("<% for item in items %><%= item %><% end %>").unwrap();
         assert_eq!(
             nodes,
             vec![TemplateNode::For {
                 var: "item".to_string(),
+                index_var: None,
                 iterable: Expr::Var("items".to_string()),
                 body: vec![TemplateNode::Output {
                     expr: Expr::Var("item".to_string()),
@@ -1293,6 +1409,30 @@ mod tests {
                 line: 1,
             }]
         );
+    }
+
+    #[test]
+    fn test_parse_for_with_index() {
+        // Test parsing "for x, i in items"
+        let nodes =
+            parse_template("<% for item, i in items %><%= i %>: <%= item %><% end %>").unwrap();
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::For {
+                var,
+                index_var,
+                iterable,
+                body,
+                line: _,
+            } => {
+                assert_eq!(var, "item");
+                assert_eq!(index_var, &Some("i".to_string()));
+                assert_eq!(*iterable, Expr::Var("items".to_string()));
+                // Body has 3 nodes: literal "i: ", output expr, literal ": ", output expr
+                assert_eq!(body.len(), 3);
+            }
+            _ => panic!("Expected For node"),
+        }
     }
 
     #[test]

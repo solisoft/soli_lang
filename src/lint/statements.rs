@@ -64,10 +64,14 @@ impl Linter {
 
             StmtKind::For {
                 variable,
+                index_variable,
                 iterable,
                 body,
             } => {
                 rules::naming::check_variable_name(variable, stmt.span, &mut self.diagnostics);
+                if let Some(idx_var) = index_variable {
+                    rules::naming::check_variable_name(idx_var, stmt.span, &mut self.diagnostics);
+                }
                 self.depth += 1;
                 rules::smell::check_deep_nesting(self.depth, stmt.span, &mut self.diagnostics);
                 self.lint_expr(iterable);

@@ -136,6 +136,14 @@ impl Parser {
         // Parentheses are optional around the for clause
         let has_paren = self.match_token(&TokenKind::LeftParen);
         let variable = self.expect_identifier()?;
+
+        // Check for optional index variable: "x, i in iter"
+        let index_variable = if self.match_token(&TokenKind::Comma) {
+            Some(self.expect_identifier()?)
+        } else {
+            None
+        };
+
         self.expect(&TokenKind::In)?;
         let iterable = self.expression()?;
         if has_paren {
@@ -148,6 +156,7 @@ impl Parser {
         Ok(Stmt::new(
             StmtKind::For {
                 variable,
+                index_variable,
                 iterable,
                 body,
             },

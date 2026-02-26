@@ -7,6 +7,7 @@
 //! - `<%= yield %>` - Layout content insertion point
 //! - `<%= render 'partial' %>` - Partial rendering
 
+pub mod helpers;
 pub mod layout;
 pub mod parser;
 pub mod renderer;

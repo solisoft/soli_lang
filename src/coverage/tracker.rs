@@ -388,6 +388,7 @@ impl CoverageTracker {
             }
             For {
                 variable: _,
+                index_variable: _,
                 iterable,
                 body,
             } => {
