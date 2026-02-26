@@ -121,22 +121,19 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Both conditions must be true.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let age = 25;
-let has_license = true;
+                <pre data-filename="Example"><code class="language-soli text-sm">let age = 25
+let has_license = true
 
 if (age >= 18 && has_license) {
-    print("Can drive");
-}</code></pre>
+    print("Can drive")}</code></pre>
 
                 <p class="text-gray-400 mb-3">At least one condition must be true.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">if (is_weekend || is_holiday) {
-    print("Day off!");
-}</code></pre>
+    print("Day off!")}</code></pre>
 
                 <p class="text-gray-400 mb-3">Negates the condition.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">if (!is_raining) {
-    print("No umbrella needed");
-}</code></pre>
+    print("No umbrella needed")}</code></pre>
 
                 <p class="text-gray-400 mb-3">String Concatenation.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Concatenation
@@ -144,7 +141,7 @@ let greeting = "Hello, " + "World!";    # "Hello, World!"
 let message = "Value: " + 42;           # "Value: 42" (auto-conversion)</code></pre>
 
                 <pre data-filename="Example"><code class="language-soli text-sm"># String methods
-let text = "  Hello, World!  ";
+let text = "  Hello, World!  "
 print(text.trim());           # "Hello, World!"
 print(text.lstrip());         # "Hello, World!  "
 print(text.rstrip());         # "  Hello, World!"
@@ -153,7 +150,7 @@ print(text.lower());          # "  hello, world!  "
 print(text.len());            # 18
 
 # Substring operations
-let s = "Hello, World!";
+let s = "Hello, World!"
 print(s.sub(0, 5));           # "Hello" (from index 0, length 5)
 print(s.find("World"));       # 7 (index of first occurrence)
 print(s.contains("Hello"));   # true
@@ -164,7 +161,7 @@ print(s.ends_with("!"));      # true
 print(s.replace("World", "Soli"));  # "Hello, Soli!"
 print(s.split(", "));              # ["Hello", "World!"]
 print(s.chomp());                 # "Hello, World!" (removes trailing newline)
-print(s.reverse());               # "!dlroW ,olleH"
+print(s.reverse);               # "!dlroW ,olleH"
 print(s.capitalize());            # "Hello, world!"
 print(s.swapcase());              # "hELLO, wORLD!"
 
@@ -199,24 +196,24 @@ print("hello".bytesize());        # 5
 print("hello world".truncate(5)); # "he..."</code></pre>
 
                 <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">??</code> to provide default values for null.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let user = {"name": "Alice", "email": null};
+                <pre data-filename="Example"><code class="language-soli text-sm">let user = {"name": "Alice", "email": null}
 
 # Traditional null check
-let email = user["email"];
+let email = user["email"]
 if (email == null) {
-    email = "unknown";
+    email = "unknown"
 }
 
 # Null coalescing operator
-let display_email = user["email"] ?? "unknown";
+let display_email = user["email"] ?? "unknown"
 
 # Chaining with null values
-let city = user["address"]["city"] ?? "Unknown City";
+let city = user["address"]["city"] ?? "Unknown City"
 # If any key in the chain is null/missing, returns "Unknown City"</code></pre>
 
                 <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">&amp;.</code> for safe navigation — access properties or call methods on values that might be null without raising an error.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Safe navigation operator
-let user = get_user()  # might return null
+let user = get_user  # might return null
 
 # Returns null if user is null, otherwise returns user.name
 let name = user&.name
@@ -225,7 +222,7 @@ let name = user&.name
 let city = user&.address&.city
 
 # Call methods safely — returns null if user is null
-let greeting = user&.greet()
+let greeting = user&.greet
 
 # Combine with ?? for default values
 let display_name = user&.name ?? "Anonymous"</code></pre>

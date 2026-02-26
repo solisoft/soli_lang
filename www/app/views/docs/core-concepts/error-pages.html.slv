@@ -223,14 +223,14 @@
         <h3 class="text-xl font-semibold text-white mb-4">Example: Custom 404 Page</h3>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl mb-8">
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #f8f9fa;"&gt;
-    &lt;div style="text-align: center;"&gt;
-        &lt;h1 style="font-size: 6rem; font-weight: bold; color: #343a40; margin-bottom: 1rem;"&gt;&lt;%= status %&gt;&lt;/h1&gt;
-        &lt;h2 style="font-size: 1.5rem; font-weight: 600; color: #6c757d; margin-bottom: 1rem;"&gt;Page Not Found&lt;/h2&gt;
-        &lt;p style="color: #6c757d; margin-bottom: 2rem;"&gt;&lt;%= message %&gt;&lt;/p&gt;
-        &lt;a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #007bff; color: white; border-radius: 0.375rem;"&gt;Go Home&lt;/a&gt;
-        &lt;p style="margin-top: 2rem; font-size: 0.75rem; color: #adb5bd;"&gt;Error ID: &lt;%= request_id %&gt;&lt;/p&gt;
-    &lt;/div&gt;
+<pre><code class="language-erb text-sm">&lt;div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #f8f9fa;"&gt
+    &lt;div style="text-align: center;"&gt
+        &lt;h1 style="font-size: 6rem; font-weight: bold; color: #343a40; margin-bottom: 1rem;"&gt;&lt;%= status %&gt;&lt;/h1&gt
+        &lt;h2 style="font-size: 1.5rem; font-weight: 600; color: #6c757d; margin-bottom: 1rem;"&gt;Page Not Found&lt;/h2&gt
+        &lt;p style="color: #6c757d; margin-bottom: 2rem;"&gt;&lt;%= message %&gt;&lt;/p&gt
+        &lt;a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #007bff; color: white; border-radius: 0.375rem;"&gt;Go Home&lt;/a&gt
+        &lt;p style="margin-top: 2rem; font-size: 0.75rem; color: #adb5bd;"&gt;Error ID: &lt;%= request_id %&gt;&lt;/p&gt
+    &lt;/div&gt
 &lt;/div&gt;</code></pre>
             </div>
         </div>
@@ -239,14 +239,14 @@
         <h3 class="text-xl font-semibold text-white mb-4">Example: Custom 500 Page</h3>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #fff5f5;"&gt;
-    &lt;div style="text-align: center; max-width: 400px;"&gt;
-        &lt;h1 style="font-size: 3rem; font-weight: bold; color: #c53030; margin-bottom: 1rem;"&gt;&lt;%= status %&gt;&lt;/h1&gt;
-        &lt;h2 style="font-size: 1.25rem; font-weight: 600; color: #1a202c; margin-bottom: 1rem;"&gt;Something went wrong&lt;/h2&gt;
-        &lt;p style="color: #4a5568; margin-bottom: 2rem;"&gt;We're sorry, but something unexpected happened.&lt;/p&gt;
-        &lt;a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #c53030; color: white; border-radius: 0.375rem;"&gt;Return to Homepage&lt;/a&gt;
-        &lt;p style="margin-top: 2rem; font-size: 0.75rem; color: #718096;"&gt;Reference ID: &lt;%= request_id %&gt;&lt;/p&gt;
-    &lt;/div&gt;
+<pre><code class="language-erb text-sm">&lt;div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #fff5f5;"&gt
+    &lt;div style="text-align: center; max-width: 400px;"&gt
+        &lt;h1 style="font-size: 3rem; font-weight: bold; color: #c53030; margin-bottom: 1rem;"&gt;&lt;%= status %&gt;&lt;/h1&gt
+        &lt;h2 style="font-size: 1.25rem; font-weight: 600; color: #1a202c; margin-bottom: 1rem;"&gt;Something went wrong&lt;/h2&gt
+        &lt;p style="color: #4a5568; margin-bottom: 2rem;"&gt;We're sorry, but something unexpected happened.&lt;/p&gt
+        &lt;a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #c53030; color: white; border-radius: 0.375rem;"&gt;Return to Homepage&lt;/a&gt
+        &lt;p style="margin-top: 2rem; font-size: 0.75rem; color: #718096;"&gt;Reference ID: &lt;%= request_id %&gt;&lt;/p&gt
+    &lt;/div&gt
 &lt;/div&gt;</code></pre>
             </div>
         </div>

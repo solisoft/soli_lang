@@ -1,0 +1,9 @@
+name = "soli.solisoft.net"
+domain = "soli.solisoft.net"
+start_script = "soli serve . --port $PORT --workers $WORKERS"
+workers = 2
+stop_script = ""
+health_check = "/health"
+graceful_timeout = 30
+port_range_start = 9000
+port_range_end = 9999

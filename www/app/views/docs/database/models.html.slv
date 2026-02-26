@@ -21,14 +21,15 @@
 
     <div class="my-6 p-4 rounded-lg bg-green-500/10 border border-green-500/20 mb-6">
         <p class="text-green-300 text-sm">
-            <strong>Automatic Collection Creation:</strong> When you call a Model method (like <code>create()</code>, <code>all()</code>, <code>find()</code>, etc.) on a collection that doesn't exist yet, SoliLang will automatically create the collection for you. This means you can start using your models immediately without running migrations first.
+            <strong>Automatic Collection Creation:</strong> When you call a Model method (like <code>create()</code>, <code>all()</code>, <code>find()</code>, etc.)
+on a collection that doesn't exist yet, SoliLang will automatically create the collection for you. This means you can start using your models immediately without running migrations first.
         </p>
     </div>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class User extends Model end</code></pre>
+<pre><code class="language-soli text-sm">class User < Model end</code></pre>
         </div>
     </div>
 
@@ -56,7 +57,7 @@
     "email": "alice@example.com",
     "name": "Alice",
     "age": 30
-});
+})
 # Returns: { "valid": true, "record": { "id": "...", ... } }
 # Or: { "valid": false, "errors": [...] }</code></pre>
         </div>
@@ -67,20 +68,18 @@
                 Finding Records
             </h3>
             <pre><code class="language-soli text-sm"># Find by ID
-let user = User.find("user123");
-
+let user = User.find("user123")
 # Find all
-let users = User.all();
-
+let users = User.all
 # Find with SDBQL filter
-# Note: where() returns a QueryBuilder - call .all() to get results
-let adults = User.where("doc.age >= @age", { "age": 18 }).all();
-
+# Note: where()
+returns a QueryBuilder - call .all to get results
+let adults = User.where("doc.age >= @age", { "age": 18 }).all
 # Complex conditions
 let results = User.where("doc.age >= @min AND doc.role == @role", {
     "min": 21,
     "role": "admin"
-}).all();</code></pre>
+}).all</code></pre>
         </div>
 
         <div>
@@ -107,7 +106,7 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
                 <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">COUNT</span>
                 Counting Records
             </h3>
-            <pre><code class="language-soli text-sm">let total = User.count();</code></pre>
+            <pre><code class="language-soli text-sm">let total = User.count</code></pre>
         </div>
     </div>
 
@@ -120,13 +119,11 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
     .order("created_at", "desc")
     .limit(10)
     .offset(20)
-    .all();
-
+    .all
 # Get first result only
-let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
-
+let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first
 # Count with conditions
-let count = User.where("doc.role == @role", { "role": "admin" }).count();</code></pre>
+let count = User.where("doc.role == @role", { "role": "admin" }).count</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Static Methods Reference</h2>
     <div class="overflow-x-auto mb-12">
@@ -151,7 +148,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
                     <td class="py-3 px-4 text-gray-400">Query with SDBQL filter</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.all()</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.all</code></td>
                     <td class="py-3 px-4 text-gray-400">Get all documents</td>
                 </tr>
                 <tr>
@@ -163,7 +160,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
                     <td class="py-3 px-4 text-gray-400">Delete a document</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.count()</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.count</code></td>
                     <td class="py-3 px-4 text-gray-400">Count all documents</td>
                 </tr>
             </tbody>
@@ -197,15 +194,15 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
                     <td class="py-3 px-4 text-gray-400">Skip first n documents</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">.all()</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.all</code></td>
                     <td class="py-3 px-4 text-gray-400">Execute, return all results</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">.first()</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.first</code></td>
                     <td class="py-3 px-4 text-gray-400">Execute, return first result</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">.count()</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.count</code></td>
                     <td class="py-3 px-4 text-gray-400">Execute, return count</td>
                 </tr>
             </tbody>
@@ -217,7 +214,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class User extends Model
+<pre><code class="language-soli text-sm">class User < Model
     def is_admin -> Bool
         this.role == "admin"
     end
@@ -228,9 +225,9 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();</code>
 end
 
 # Usage
-let user = User.find("user123");
-if user.is_admin()
-    print("Welcome, admin " + user.full_name());
+let user = User.find("user123")
+if user.is_admin
+    print("Welcome, admin " + user.full_name())
 end</code></pre>
         </div>
     </div>
@@ -288,15 +285,13 @@ end</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">Validation Results</h3>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let result = User.create({ "email": "" });
-
+<pre><code class="language-soli text-sm">let result = User.create({ "email": "" })
 if result["valid"]
-    let user = result["record"];
-    print("Created user: " + user["id"]);
-else
+    let user = result["record"]
+    print("Created user: " + user["id"])else
     for error in result["errors"]
-        print(error["field"] + ": " + error["message"]);
-    end
+        print(error["field"] + ": " + error["message"])
+end
 end</code></pre>
         </div>
     </div>
@@ -306,15 +301,15 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class User extends Model
+<pre><code class="language-soli text-sm">class User < Model
     before_save("normalize_email")
     after_create("send_welcome_email")
     before_update("log_changes")
     after_delete("cleanup_related")
 
     def normalize_email
-        this.email = this.email.downcase();
-    end
+        this.email = this.email.downcase()
+end
 
     def send_welcome_email
         # Send email logic
@@ -364,13 +359,13 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class Post extends Model
+<pre><code class="language-soli text-sm">class Post < Model
     def author
         User.find(this.author_id)
     end
 end
 
-class User extends Model
+class User < Model
     # Returns a QueryBuilder for chaining
     def posts
         Post.where("doc.author_id == @id", { "id": this.id })
@@ -380,7 +375,8 @@ end</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Query Generation (SDBQL)</h2>
-    <p class="text-gray-400 mb-6">Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:</p>
+    <p class="text-gray-400 mb-6">Under the hood, Model methods generate SDBQL (SoliDB Query Language)
+queries:</p>
 
     <div class="overflow-x-auto mb-8">
         <table class="w-full text-sm">
@@ -392,7 +388,7 @@ end</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">User.all()</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.all</code></td>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users RETURN doc</code></td>
                 </tr>
                 <tr>
@@ -408,7 +404,7 @@ end</code></pre>
                     <td class="py-3 px-4"><code class="text-green-300">... LIMIT 20, 10 RETURN doc</code></td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">User.count()</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.count</code></td>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users COLLECT WITH COUNT INTO count RETURN count</code></td>
                 </tr>
             </tbody>
@@ -430,15 +426,15 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># app/models/user.sl
-class User extends Model
+class User < Model
     validates("email", { "presence": true, "uniqueness": true })
     validates("name", { "presence": true, "min_length": 2 })
 
     before_save("normalize_email")
 
     def normalize_email
-        this.email = this.email.downcase();
-    end
+        this.email = this.email.downcase()
+end
 
     def posts
         Post.where("doc.user_id == @id", { "id": this.id })
@@ -450,25 +446,27 @@ class User extends Model
 end
 
 # Usage in controller
-class UsersController extends Controller
-    def index(req: Any)        let users = User.all();
+class UsersController < Controller
+    def index(req: Any)
+        let users = User.all
         render("users/index", { "users": users })
     end
 
-    def show(req: Any)        let id = req["params"]["id"];
-        let user = User.find(id);
-        let posts = user.posts().order("created_at", "desc").limit(5).all();
+    def show(req: Any)
+        let id = req["params"]["id"]
+        let user = User.find(id)
+        let posts = user.posts().order("created_at", "desc").limit(5).all
         render("users/show", { "user": user, "posts": posts })
     end
 
-    def create(req: Any)        let result = User.create({
+    def create(req: Any)
+let result = User.create({
             "name": req["params"]["name"],
             "email": req["params"]["email"]
-        });
-
+        })
         if result["valid"]
-            return redirect("/users/" + result["record"]["id"]);
-        else
+            return redirect("/users/" + result["record"]["id"])
+else
             render("users/new", { "errors": result["errors"] })
         end
     end

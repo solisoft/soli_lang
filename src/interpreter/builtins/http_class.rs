@@ -99,11 +99,14 @@ fn is_blocked_host(_host: &str) -> bool {
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
-/// Get the shared async HTTP client (used by HTTP class and Model queries)
+/// Get the shared async HTTP client (used by HTTP class, Model queries, and SoliDB)
 pub fn get_http_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
         Client::builder()
-            .pool_max_idle_per_host(32)
+            .timeout(std::time::Duration::from_secs(30))
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .pool_max_idle_per_host(64)
+            .tcp_keepalive(std::time::Duration::from_secs(60))
             .build()
             .expect("Failed to create HTTP client")
     })

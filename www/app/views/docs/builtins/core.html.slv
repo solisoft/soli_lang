@@ -148,7 +148,9 @@ float(42)     # 42.0</code></pre>
                     <pre data-filename="Example"><code class="language-soli text-sm">len("hello")      # 5
 len([1, 2, 3])    # 3
 len({"a": 1})     # 1
-let arr = Array.new(); arr.push(1); len(arr)  # 1</code></pre>
+let arr = Array.new
+arr.push(1)
+len(arr)  # 1</code></pre>
                 </div>
             </section>
         </div>
@@ -187,7 +189,7 @@ arr2.push(3)     # arr2 is now [1, 2, 3]</code></pre>
             <section id="def-pop" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-pop" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">pop(array)</code> / <code class="text-lg font-mono text-indigo-400">array.pop()</code>
+                        <code class="text-lg font-mono text-indigo-400">pop(array)</code> / <code class="text-lg font-mono text-indigo-400">array.pop</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -198,7 +200,7 @@ let last = pop(arr)  # last is 3, arr is [1, 2]
 
 # Or use class method style:
 let arr2 = [1, 2, 3]
-let last2 = arr2.pop()  # last2 is 3, arr2 is [1, 2]</code></pre>
+let last2 = arr2.pop  # last2 is 3, arr2 is [1, 2]</code></pre>
                 </div>
             </section>
 
@@ -220,7 +222,7 @@ range(5, 0, -1)  # [5, 4, 3, 2, 1]</code></pre>
             <section id="def-clear" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-clear" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">clear(array | hash)</code> / <code class="text-lg font-mono text-indigo-400">array.clear()</code> / <code class="text-lg font-mono text-indigo-400">hash.clear()</code>
+                        <code class="text-lg font-mono text-indigo-400">clear(array | hash)</code> / <code class="text-lg font-mono text-indigo-400">array.clear</code> / <code class="text-lg font-mono text-indigo-400">hash.clear</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -230,7 +232,7 @@ range(5, 0, -1)  # [5, 4, 3, 2, 1]</code></pre>
 clear(arr)  # arr is now []
 
 let h = {"a": 1, "b": 2}
-h.clear()   # h is now {}</code></pre>
+h.clear   # h is now {}</code></pre>
                 </div>
             </section>
         </div>
@@ -243,7 +245,7 @@ h.clear()   # h is now {}</code></pre>
         <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mb-6">
             <p class="text-yellow-300 text-sm">
                 <strong>Tip:</strong> Most hash functions are also available as <a href="/docs/language/hashes" class="underline hover:text-yellow-200">Hash class methods</a>.
-                Use <code class="text-yellow-300">h.keys()</code> instead of <code class="text-yellow-300">keys(h)</code> for a more object-oriented style.
+                Use <code class="text-yellow-300">h.keys</code> instead of <code class="text-yellow-300">keys(h)</code> for a more object-oriented style.
             </p>
         </div>
 
@@ -251,7 +253,7 @@ h.clear()   # h is now {}</code></pre>
             <section id="def-keys" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-keys" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">keys(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.keys()</code>
+                        <code class="text-lg font-mono text-indigo-400">keys(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.keys</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -259,14 +261,14 @@ h.clear()   # h is now {}</code></pre>
                     <p class="text-gray-400 mb-3">Returns an array of all keys in a hash.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
 keys(h)       # ["name", "age"]
-h.keys()      # ["name", "age"]</code></pre>
+h.keys      # ["name", "age"]</code></pre>
                 </div>
             </section>
 
             <section id="def-values" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-values" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">values(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.values()</code>
+                        <code class="text-lg font-mono text-indigo-400">values(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.values</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -274,7 +276,7 @@ h.keys()      # ["name", "age"]</code></pre>
                     <p class="text-gray-400 mb-3">Returns an array of all values in a hash.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
 values(h)     # ["Alice", 30]
-h.values()    # ["Alice", 30]</code></pre>
+h.values    # ["Alice", 30]</code></pre>
                 </div>
             </section>
 
@@ -289,7 +291,7 @@ h.values()    # ["Alice", 30]</code></pre>
                     <p class="text-gray-400 mb-3">Returns an array of [key, value] pairs.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
 entries(h)    # [["name", "Alice"], ["age", 30]]
-h.entries()   # [["name", "Alice"], ["age", 30]]</code></pre>
+h.entries   # [["name", "Alice"], ["age", 30]]</code></pre>
                 </div>
             </section>
 
@@ -441,9 +443,9 @@ let h1 = {"a": 1}; let h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Transform string case and remove whitespace.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">"hello".upcase()      # "HELLO"
-"HELLO".downcase()    # "hello"
-"  hi  ".trim()       # "hi"</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"hello".upcase      # "HELLO"
+"HELLO".downcase    # "hello"
+"  hi  ".trim       # "hi"</code></pre>
                 </div>
             </section>
 
@@ -535,7 +537,7 @@ pow(2, 3)     # 8.0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the current Unix timestamp as a float with sub-second precision.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let start = clock()
+                    <pre data-filename="Example"><code class="language-soli text-sm">let start = clock
 # ... do work ...
 let elapsed = clock() - start</code></pre>
                 </div>

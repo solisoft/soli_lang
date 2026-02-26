@@ -101,30 +101,30 @@ end</code></pre>
 
 # Private helper class (not exported)
 class ValidationResult
-    is_valid: Bool;
-    errors: String[];
+    is_valid: Bool
+    errors: String[]
 
     new
-        this.is_valid = true;
-        this.errors = [];
+        this.is_valid = true
+        this.errors = []
     end
 
     def add_error(msg: String)
-        this.is_valid = false;
-        this.errors.push(msg);
-    end
+        this.is_valid = false
+        this.errors.push(msg)
+end
 end
 
 # Exported classes
 export class User
-    id: Int;
-    username: String;
-    email: String;
+    id: Int
+    username: String
+    email: String
 
     new(id: Int, username: String, email: String)
-        this.id = id;
-        this.username = username;
-        this.email = email;
+        this.id = id
+        this.username = username
+        this.email = email
     end
 
     def get_display_name -> String
@@ -133,21 +133,21 @@ export class User
 end
 
 export class Post
-    id: Int;
-    title: String;
-    content: String;
-    author: User;
+    id: Int
+    title: String
+    content: String
+    author: User
 
     new(id: Int, title: String, content: String, author: User)
-        this.id = id;
-        this.title = title;
-        this.content = content;
-        this.author = author;
+        this.id = id
+        this.title = title
+        this.content = content
+        this.author = author
     end
 
     def get_summary -> String
-        let preview = this.content.slice(0, 100);
-        this.title + " by " + this.author.username
+        let preview = this.content.slice(0, 100)
+this.title + " by " + this.author.username
     end
 end</code></pre>
             </div>
@@ -223,21 +223,18 @@ end</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Import classes from modules using named imports or module namespace.</p>
 <pre data-filename="main.sl"><code class="language-soli text-sm"># Import classes by name
-import { User, Post } from "./models.sl";
+import { User, Post } from "./models.sl"
 
-let user = new User(1, "alice", "alice@example.com");
-let post = new Post(1, "Hello World", "Content here", user);
-
+let user = new User(1, "alice", "alice@example.com")
+let post = new Post(1, "Hello World", "Content here", user)
 # Import with namespace
-import "./controllers.sl" as controllers;
+import "./controllers.sl" as controllers
 
-let action = new controllers.Posts.Action();
-action.create("My Post", "Post content");
-
+let action = new controllers.Posts.Action()action.create("My Post", "Post content")
 # Import nested classes directly
-import { Posts::Action, Posts::View } from "./controllers.sl";
+import { Posts::Action, Posts::View } from "./controllers.sl"
 
-let view = new Posts::View();
+let view = new Posts::View()
 let posts = view.list(1, 10);</code></pre>
             </div>
         </section>
@@ -257,22 +254,22 @@ let posts = view.list(1, 10);</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Import functions and classes from other modules.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Import all exports
-import "./math.sl";
+import "./math.sl"
 print(add(2, 3));        # 5
 print(factorial(5));     # 120
 
 # Named imports
-import { add, multiply } from "./math.sl";
+import { add, multiply } from "./math.sl"
 let sum = add(1, 2);          # 3
 let product = multiply(3, 4); # 12
 
 # Aliased imports
-import { add as sum, multiply as times } from "./math.sl";
+import { add as sum, multiply as times } from "./math.sl"
 let result = sum(10, 20);  # 30
 let doubled = times(5, 6); # 30
 
 # Import everything with a namespace
-import "./utils.sl" as utils;
+import "./utils.sl" as utils
 let formatted = utils.format_date(DateTime.utc());</code></pre>
             </div>
         </section>
@@ -342,8 +339,8 @@ test = "soli test"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Alternative syntax for importing (alias for import).</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">use "./math.sl";
-use { add, multiply } from "./math.sl";
+                <pre data-filename="Example"><code class="language-soli text-sm">use "./math.sl"
+use { add, multiply } from "./math.sl"
 use "./utils.sl" as utils;</code></pre>
             </div>
         </section>

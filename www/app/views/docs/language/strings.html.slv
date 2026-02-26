@@ -38,15 +38,15 @@
                     </a>
                     <p class="text-gray-400 mb-3">Create strings using double quotes. Supports escape sequences for special characters.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic string literals
-let greeting = "Hello, World!";
-let name = "Alice";
-let empty = "";
+let greeting = "Hello, World!"
+let name = "Alice"
+let empty = ""
 
 # Escape sequences
-let newline = "Line 1\nLine 2";
-let tab = "Column1\tColumn2";
-let quote = "She said \"Hello\"";
-let backslash = "Path: C:\\Users\\name";
+let newline = "Line 1\nLine 2"
+let tab = "Column1\tColumn2"
+let quote = "She said \"Hello\""
+let backslash = "Path: C:\\Users\\name"
 
 # Unicode characters
 let emoji = "Hello \u{1F44B}";  # Hello with wave emoji
@@ -64,8 +64,8 @@ let unicode = "\u{00E9}";       # e with accent</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Raw strings don't process escape sequences - useful for paths and regex patterns.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Raw strings - no escape processing
-let path = r"C:\Users\name\Documents";
-let regex = r"\d+\.\d+";
+let path = r"C:\Users\name\Documents"
+let regex = r"\d+\.\d+"
 
 # Compare with regular strings
 let regular = "C:\\Users\\name";  # Need double backslashes
@@ -86,18 +86,18 @@ let raw = r"C:\Users\name";       # Single backslashes work</code></pre>
 let poem = """The fog comes
 on little cat feet.
 It sits looking
-over harbor and city.""";
+over harbor and city."""
 
 # Bracket syntax [[ ]]
 let story = [[Once upon
 a time in
-the wild west.]];
+the wild west.]]
 
 # HTML template example
 let html = """<div class="container">
     <h1>Welcome</h1>
     <p>This is a paragraph.</p>
-</div>""";
+</div>"""
 
 # SQL query example
 let query = """SELECT id, name, email
@@ -128,8 +128,8 @@ let result = "Pi is " + 3.14159;      # "Pi is 3.14159"
 let status = "Active: " + true;       # "Active: true"
 
 # Building strings
-let name = "Alice";
-let age = 30;
+let name = "Alice"
+let age = 30
 let intro = "My name is " + name + " and I am " + str(age) + " years old.";</code></pre>
                 </div>
             </section>
@@ -144,29 +144,29 @@ let intro = "My name is " + name + " and I am " + str(age) + " years old.";</cod
                     </a>
                     <p class="text-gray-400 mb-3">Embed expressions directly in strings using <code class="text-indigo-400">#{expression}</code> syntax.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic variable interpolation
-let name = "World";
+let name = "World"
 let greeting = "Hello #{name}!";           # "Hello World!"
 
 # Arithmetic expressions
-let a = 2;
-let b = 3;
+let a = 2
+let b = 3
 let result = "Sum is #{a + b}";             # "Sum is 5"
 
 # Multiple interpolations
-let first = "John";
-let last = "Doe";
+let first = "John"
+let last = "Doe"
 let full = "#{first} #{last}";              # "John Doe"
 
 # Method calls
-let text = "hello";
+let text = "hello"
 let upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
 
 # Array access
-let items = ["Alice", "Bob"];
+let items = ["Alice", "Bob"]
 let first_item = "First: #{items[0]}";       # "First: Alice"
 
 # Hash access
-let person = {"name": "Charlie"};
+let person = {"name": "Charlie"}
 let person_name = "Name: #{person["name"]}"; # "Name: Charlie"</code></pre>
                 </div>
             </section>
@@ -181,11 +181,11 @@ let person_name = "Name: #{person["name"]}"; # "Name: Charlie"</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Optionally specify string types for clarity and type safety.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Typed strings
-let name: String = "Alice";
-let message: String = "";
+let name: String = "Alice"
+let message: String = ""
 
 # String arrays
-let names: String[] = ["Alice", "Bob", "Charlie"];
+let names: String[] = ["Alice", "Bob", "Charlie"]
 
 # Function parameters
 def greet(name: String) -> String
@@ -218,7 +218,7 @@ end</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Access individual characters using zero-based indexing. Negative indices count from the end.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let str = "Hello, World!";
+<pre data-filename="Example"><code class="language-soli text-sm">let str = "Hello, World!"
 
 # Zero-based indexing
 print(str[0]);    # "H" (first character)
@@ -242,15 +242,14 @@ print(str[100]);  # null</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Strings are immutable - methods return new strings rather than modifying the original.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let original = "hello";
-let upper = upcase(original);
-
+<pre data-filename="Example"><code class="language-soli text-sm">let original = "hello"
+let upper = upcase(original)
 print(original);  # "hello" (unchanged)
 print(upper);     # "HELLO" (new string)
 
 # To "modify", reassign the variable
-let text = "hello";
-text = upcase(text);
+let text = "hello"
+text = upcase(text)
 print(text);  # "HELLO"</code></pre>
                 </div>
             </section>
@@ -454,7 +453,7 @@ replace("hello", "x", "y")                # "hello" (no match)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if a string starts or ends with a given substring.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let url = "https://example.com/page";
+<pre data-filename="Example"><code class="language-soli text-sm">let url = "https://example.com/page"
 
 url.starts_with("https://")  # true
 url.starts_with("http://")   # false
@@ -463,9 +462,9 @@ url.ends_with("/page")       # true
 url.ends_with(".html")       # false
 
 # Practical use
-let filename = "report.pdf";
+let filename = "report.pdf"
 if (filename.ends_with(".pdf"))
-    print("PDF file detected");
+    print("PDF file detected")
 end</code></pre>
                 </div>
             </section>
@@ -479,13 +478,13 @@ end</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Convert string to an array of individual characters.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let str = "hello";
-let chars = str.chars();
+<pre data-filename="Example"><code class="language-soli text-sm">let str = "hello"
+let chars = str.chars()
 print(chars);  # ["h", "e", "l", "l", "o"]
 
 # Iterate over characters
 for (c in "Soli".chars())
-    print(c);
+    print(c)
 end
 # Output: S, o, l, i</code></pre>
                 </div>
@@ -494,20 +493,20 @@ end
             <section id="method-reverse" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-reverse" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.reverse()</code>
+                        <code class="text-lg font-mono text-indigo-400">.reverse</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Return a new string with characters in reverse order.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"hello".reverse()   # "olleh"
-"Soli".reverse()    # "iloS"
-"12345".reverse()   # "54321"
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".reverse   # "olleh"
+"Soli".reverse    # "iloS"
+"12345".reverse   # "54321"
 
 # Check palindrome
 def is_palindrome(s: String) -> Bool
-    let cleaned = downcase(s);
-    cleaned == cleaned.reverse()
+    let cleaned = downcase(s)
+cleaned == cleaned.reverse
 end
 print(is_palindrome("racecar"));  # true</code></pre>
                 </div>
@@ -527,7 +526,7 @@ print(is_palindrome("racecar"));  # true</code></pre>
 "ha".repeat(0)      # ""
 
 # Create separator line
-let separator = "=".repeat(40);
+let separator = "=".repeat(40)
 print(separator);  # ========================================</code></pre>
                 </div>
             </section>
@@ -548,7 +547,7 @@ print(separator);  # ========================================</code></pre>
 "test".pad_end(8)          # "test    "
 
 # Format numbers
-let price = str(9.99);
+let price = str(9.99)
 print(price.pad_start(10));  # "      9.99"</code></pre>
                 </div>
             </section>
@@ -664,31 +663,30 @@ sanitize_html("&lt;p&gt;Hello&lt;/p&gt;&lt;object data='file.swf'&gt;&lt;/object
                         </svg>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Parse CSV line
-let csv_line = "Alice,30,Engineer";
-let fields = split(csv_line, ",");
+let csv_line = "Alice,30,Engineer"
+let fields = split(csv_line, ",")
 let name = fields[0];    # "Alice"
 let age = int(fields[1]); # 30
 let job = fields[2];     # "Engineer"
 
 # Format currency
 def format_currency(amount: Float) -> String
-    let formatted = str(amount);
-    "$" + formatted
+    let formatted = str(amount)    "$" + formatted
 end
 
 # Parse URL query string
 def parse_query(query: String) -> Hash
-    let result = {};
-    let pairs = split(query, "&");
-    for (pair in pairs)
-        let parts = split(pair, "=");
-        if (len(parts) == 2)
-            result[parts[0]] = parts[1];
+    let result = {}
+    let pairs = split(query, "&")
+for (pair in pairs)
+        let parts = split(pair, "=")
+if (len(parts) == 2)
+            result[parts[0]] = parts[1]
         end
     end
     result
 end
-let params = parse_query("name=Alice&age=30");
+let params = parse_query("name=Alice&age=30")
 # {"name": "Alice", "age": "30"}</code></pre>
                 </div>
             </section>
@@ -714,11 +712,11 @@ end
 # Check if string is numeric
 def is_numeric(str: String) -> Bool
     if (str.empty?())
-        return false;
+        return false
     end
     for (c in str.chars())
         if (!contains("0123456789", c))
-            return false;
+            return false
         end
     end
     true
@@ -726,8 +724,8 @@ end
 
 # Validate username
 def is_valid_username(username: String) -> Bool
-    let trimmed = trim(username);
-    len(trimmed) >= 3 && len(trimmed) <= 20
+    let trimmed = trim(username)
+len(trimmed) >= 3 && len(trimmed) <= 20
 end</code></pre>
                 </div>
             </section>
@@ -742,17 +740,17 @@ end</code></pre>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Simple template replacement
 def template(str: String, vars: Hash) -> String
-    let result = str;
+    let result = str
     for (pair in entries(vars))
-        let key = pair[0];
-        let value = pair[1];
-        result = replace(result, "{{" + key + "}}", str(value));
-    end
+        let key = pair[0]
+        let value = pair[1]
+        result = replace(result, "{{" + key + "}}", str(value))
+end
     result
 end
 
-let tmpl = "Hello, {{name}}! You have {{count}} messages.";
-let output = template(tmpl, {"name": "Alice", "count": 5});
+let tmpl = "Hello, {{name}}! You have {{count}} messages."
+let output = template(tmpl, {"name": "Alice", "count": 5})
 # "Hello, Alice! You have 5 messages."
 
 # Build HTML safely
@@ -787,7 +785,7 @@ end</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the string value. Called automatically in REPL to display string values.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let greeting = "Hello, World!";
+<pre data-filename="Example"><code class="language-soli text-sm">let greeting = "Hello, World!"
 # In REPL, displays: Hello, World!
 # Equivalent to: greeting.to_string()</code></pre>
                 </div>
@@ -802,8 +800,8 @@ end</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of characters in the string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello");
-let len = s.length();  # 5</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello")
+let len = s.length  # 5</code></pre>
                 </div>
             </section>
 
@@ -816,9 +814,9 @@ let len = s.length();  # 5</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Converts the string to uppercase or lowercase.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("Hello World");
-s.upcase();   # "HELLO WORLD"
-s.downcase(); # "hello world"</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("Hello World")
+s.upcase   # "HELLO WORLD"
+s.downcase # "hello world"</code></pre>
                 </div>
             </section>
 
@@ -831,8 +829,8 @@ s.downcase(); # "hello world"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Removes leading and trailing whitespace.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("  hello  ");
-s.trim();  # "hello"</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("  hello  ")
+s.trim  # "hello"</code></pre>
                 </div>
             </section>
 
@@ -845,8 +843,7 @@ s.trim();  # "hello"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if string contains, starts with, or ends with a substring.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("Hello, World!");
-s.contains("World");    # true
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("Hello, World!")s.contains("World");    # true
 s.starts_with("Hello"); # true
 s.ends_with("!");       # true</code></pre>
                 </div>
@@ -861,7 +858,7 @@ s.ends_with("!");       # true</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Splits the string by delimiter and returns an array of parts.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("a,b,c");
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("a,b,c")
 let parts = s.split(",");  # ["a", "b", "c"]</code></pre>
                 </div>
             </section>
@@ -891,8 +888,7 @@ String.new([1, 2, 3]); # "[1, 2, 3]"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the index of the first occurrence of substring, or -1 if not found.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world");
-s.index_of("world");  # 6
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world")s.index_of("world");  # 6
 s.index_of("hello");  # 0
 s.index_of("foo");    # -1</code></pre>
                 </div>
@@ -907,9 +903,9 @@ s.index_of("foo");    # -1</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Extracts a substring from start to end (exclusive).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world");
-s.substring(0, 5).to_string();   # "hello"
-s.substring(6, 11).to_string();  # "world"</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world")
+s.substring(0, 5).to_string   # "hello"
+s.substring(6, 11).to_string  # "world"</code></pre>
                 </div>
             </section>
 
@@ -922,8 +918,8 @@ s.substring(6, 11).to_string();  # "world"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Replaces all occurrences of 'from' with 'to'.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world");
-s.replace("world", "soli").to_string();  # "hello soli"</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world")
+s.replace("world", "soli").to_string  # "hello soli"</code></pre>
                 </div>
             </section>
 
@@ -936,10 +932,10 @@ s.replace("world", "soli").to_string();  # "hello soli"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Pads the string to reach the specified width.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hi");
-s.lpad(5).to_string();     # "   hi"
-s.rpad(5).to_string();     # "hi   "
-s.lpad(5, "*").to_string(); # "***hi"</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hi")
+s.lpad(5).to_string     # "   hi"
+s.rpad(5).to_string     # "hi   "
+s.lpad(5, "*").to_string # "***hi"</code></pre>
                 </div>
             </section>
         </div>

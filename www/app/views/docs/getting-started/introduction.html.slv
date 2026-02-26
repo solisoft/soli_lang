@@ -106,8 +106,7 @@
                 <span class="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400 text-xs font-bold">1</span>
                 Define a Route
             </h3>
-            <pre data-filename="config/routes.sl"><code class="language-soli text-sm">get("/", "home#index");
-get("/users/:id", "users#show");</code></pre>
+            <pre data-filename="config/routes.sl"><code class="language-soli text-sm">get("/", "home#index")get("/users/:id", "users#show");</code></pre>
         </div>
 
         <div>
@@ -116,7 +115,7 @@ get("/users/:id", "users#show");</code></pre>
                 Create a Controller
             </h3>
             <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">def index(req: Any) {
-    let message = "Welcome to Soli!";
+    let message = "Welcome to Soli!"
 
     render("home/index", {
         "title": "Home",
@@ -130,7 +129,7 @@ get("/users/:id", "users#show");</code></pre>
                 <span class="flex h-6 w-6 items-center justify-center rounded-full bg-pink-500/20 text-pink-400 text-xs font-bold">3</span>
                 Build a View
             </h3>
-            <pre data-filename="app/views/home/index.html.slv"><code class="language-erb text-sm">&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt;
+            <pre data-filename="app/views/home/index.html.slv"><code class="language-erb text-sm">&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt
 &lt;p&gt;Start building something amazing.&lt;/p&gt;</code></pre>
         </div>
     </div>

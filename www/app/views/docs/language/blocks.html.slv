@@ -42,8 +42,7 @@
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">def greet(name: String) {
-    print("Hello, " + name + "!");
-}
+    print("Hello, " + name + "!")}
 
 def add(a: Int, b: Int) -> Int {
     a + b
@@ -54,7 +53,8 @@ def add(a: Int, b: Int) -> Int {
         <section id="def-end" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">def greet(name: String) end
+                <pre data-filename="Example"><code class="language-soli text-sm">def greet(name: String)
+end
 
 def add(a: Int, b: Int) -> Int {
     a + b
@@ -77,35 +77,33 @@ def add(a: Int, b: Int) -> Int {
         <section id="if-braces" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18;
+                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
 
 if (age >= 18) {
-    print("Adult");
-}
+    print("Adult")}
 
 if (age >= 21) {
-    print("Can drink");
-} else {
-    print("Too young");
-}</code></pre>
+    print("Can drink")} else {
+    print("Too young")}</code></pre>
             </div>
         </section>
 
         <section id="if-end" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18;
+                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
 
-if (age >= 18) end
+if (age >= 18)
+end
 
-if (age >= 21) end
+if (age >= 21)
+end
 else {
-    print("Too young");
-}
+    print("Too young")}
 
 if (age >= 18) {
-    print("Adult");
-} elsif (age >= 21) end
+    print("Adult")} elsif (age >= 21)
+end
 else end</code></pre>
             </div>
         </section>
@@ -125,10 +123,10 @@ else end</code></pre>
         <section id="while-braces" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0;
+                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
 while (i < 5) {
-    print(i);
-    i = i + 1;
+    print(i)
+i = i + 1
 }</code></pre>
             </div>
         </section>
@@ -136,13 +134,14 @@ while (i < 5) {
         <section id="while-end" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0;
-while (i < 5) end
+                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
+while (i < 5)
+end
 
-let j = 0;
+let j = 0
 while (j < 5) {
-    print(j);
-    j = j + 1;
+    print(j)
+j = j + 1
 }</code></pre>
             </div>
         </section>
@@ -163,8 +162,7 @@ while (j < 5) {
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">for item in items {
-    print(item);
-}</code></pre>
+    print(item)}</code></pre>
             </div>
         </section>
 
@@ -174,8 +172,7 @@ while (j < 5) {
                 <pre data-filename="Example"><code class="language-soli text-sm">for item in items end
 
 for item in items {
-    print(item);
-}</code></pre>
+    print(item)}</code></pre>
             </div>
         </section>
     </section>
@@ -195,15 +192,14 @@ for item in items {
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Person {
-    name: String;
+    name: String
 
     new(name: String) {
-        this.name = name;
+        this.name = name
     }
 
     def greet {
-        print("Hello, " + this.name);
-    }
+        print("Hello, " + this.name)    }
 }</code></pre>
             </div>
         </section>
@@ -214,9 +210,10 @@ for item in items {
                 <pre data-filename="Example"><code class="language-soli text-sm">class Person end
 
 class Person
-    name: String;
+    name: String
 
-    new(name: String) end
+    new(name: String)
+end
 
     def greet end
 end</code></pre>
@@ -242,10 +239,9 @@ def placeholder end
 
 # Function with body - use braces
 def process_data(data) {
-    validate(data);
-    transform(data);
-    save(data);
-}
+    validate(data)
+transform(data)
+save(data)}
 
 # Empty class - use end
 class EmptyMarker end
@@ -255,16 +251,15 @@ class Service
     def init end
 
     def process {
-        fetch_data();
-    }
+        fetch_data()    }
 end
 
 # Control flow - use end for simple guards
-if user.is_admin() end
+if user.is_admin()
+end
 
 if user.is_valid() {
-    authorize(user);
-}</code></pre>
+    authorize(user)}</code></pre>
         </div>
     </section>
 

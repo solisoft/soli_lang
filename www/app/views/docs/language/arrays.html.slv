@@ -38,12 +38,12 @@
                     </a>
                     <p class="text-gray-400 mb-3">Create arrays using square brackets with comma-separated values.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic array literal
-let numbers = [1, 2, 3, 4, 5];
-let names = ["Alice", "Bob", "Charlie"];
-let mixed = [1, "hello", true, null];
+let numbers = [1, 2, 3, 4, 5]
+let names = ["Alice", "Bob", "Charlie"]
+let mixed = [1, "hello", true, null]
 
 # Empty array
-let empty = [];
+let empty = []
 
 # Nested arrays
 let matrix = [[1, 2], [3, 4], [5, 6]];</code></pre>
@@ -60,9 +60,9 @@ let matrix = [[1, 2], [3, 4], [5, 6]];</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Optionally specify array types for clarity and type safety.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Typed arrays
-let scores: Int[] = [95, 87, 92, 88, 90];
-let names: String[] = ["Alice", "Bob", "Charlie"];
-let flags: Bool[] = [true, false, true];
+let scores: Int[] = [95, 87, 92, 88, 90]
+let names: String[] = ["Alice", "Bob", "Charlie"]
+let flags: Bool[] = [true, false, true]
 
 # Multi-dimensional arrays
 let matrix: Int[][] = [[1, 2], [3, 4], [5, 6]];</code></pre>
@@ -109,7 +109,7 @@ range(5, 0, -1)    # [5, 4, 3, 2, 1] (reverse)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Access elements using zero-based indexing. Negative indices count from the end.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50];
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50]
 
 # Zero-based indexing
 print(arr[0]);    # 10 (first element)
@@ -133,14 +133,14 @@ print(arr[10]);   # null</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Arrays are mutable - you can modify elements by index.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
 
 # Modify existing element
-arr[0] = 100;
+arr[0] = 100
 print(arr);  # [100, 2, 3, 4, 5]
 
 # Add new element (extends array)
-arr[10] = 999;
+arr[10] = 999
 print(arr);  # [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre>
                 </div>
             </section>
@@ -168,14 +168,16 @@ print(arr);  # [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Transform each element using a function. Returns a new array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
 
 # Double each number
-let doubled = numbers.map(def(x) x * 2);
+let doubled = numbers.map(def(x)
+x * 2)
 print(doubled);  # [2, 4, 6, 8, 10]
 
 # Convert to strings
-let strings = numbers.map(def(x) str(x));
+let strings = numbers.map(def(x)
+str(x))
 print(strings);  # ["1", "2", "3", "4", "5"]</code></pre>
                 </div>
             </section>
@@ -189,14 +191,16 @@ print(strings);  # ["1", "2", "3", "4", "5"]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Keep elements matching a condition. Returns a new array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 # Keep only even numbers
-let evens = numbers.filter(def(x) x % 2 == 0);
+let evens = numbers.filter(def(x)
+x % 2 == 0)
 print(evens);  # [2, 4, 6, 8, 10]
 
 # Keep numbers greater than 5
-let large = numbers.filter(def(x) x > 5);
+let large = numbers.filter(def(x)
+x > 5)
 print(large);  # [6, 7, 8, 9, 10]</code></pre>
                 </div>
             </section>
@@ -210,18 +214,22 @@ print(large);  # [6, 7, 8, 9, 10]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Accumulate array elements to a single value.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
 
 # Sum all numbers
-let sum = numbers.reduce(def(acc, x) acc + x, 0);
+let sum = numbers.reduce(def(acc, x)
+acc + x, 0)
 print(sum);  # 15
 
 # Product of all numbers
-let product = numbers.reduce(def(acc, x) acc * x, 1);
+let product = numbers.reduce(def(acc, x)
+acc * x, 1)
 print(product);  # 120
 
 # Find maximum
-let max = numbers.reduce(def(acc, x) if (x > acc) x else acc, numbers[0]);
+let max = numbers.reduce(def(acc, x)
+if (x > acc)
+x else acc, numbers[0])
 print(max);  # 5</code></pre>
                 </div>
             </section>
@@ -235,17 +243,19 @@ print(max);  # 5</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Iterate over elements for side effects. Returns the original array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3]
 
 # Print each number
-numbers.each(def(x) print(x));
+numbers.each(def(x)
+print(x))
 # Output: 1
 #         2
 #         3
 
 # Modify external state
-let sum = 0;
-numbers.each(def(x) sum = sum + x);
+let sum = 0
+numbers.each(def(x)
+sum = sum + x)
 print(sum);  # 6</code></pre>
                 </div>
             </section>
@@ -259,44 +269,48 @@ print(sum);  # 6</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Search and check array elements.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
 
 # find - returns first matching element
-let first_even = numbers.find(def(x) x % 2 == 0);
-print(first_even);  # 2
+let first_even = numbers.find(def(x)
+x % 2 == 0)
+print(first_even)  # 2
 
 # any? - returns true if any element matches
-let has_large = numbers.any?(def(x) x > 4);
-print(has_large);  # true
+let has_large = numbers.any?(def(x)
+x > 4)
+print(has_large)  # true
 
 # all? - returns true if all elements match
-let all_positive = numbers.all?(def(x) x > 0);
-print(all_positive);  # true</code></pre>
+let all_positive = numbers.all?(def(x)
+x > 0)
+print(all_positive)  # true</code></pre>
                 </div>
             </section>
 
             <section id="method-sort" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sort" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.sort()</code> / <code class="text-lg font-mono text-indigo-400">.sort(def)</code>
+                        <code class="text-lg font-mono text-indigo-400">.sort</code> / <code class="text-lg font-mono text-indigo-400">.sort(def)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Sort elements. Default is ascending order, or provide a custom comparator.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [3, 1, 4, 1, 5, 9, 2, 6];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [3, 1, 4, 1, 5, 9, 2, 6]
 
 # Default sort (ascending)
-let sorted = numbers.sort();
-print(sorted);  # [1, 1, 2, 3, 4, 5, 6, 9]
+let sorted = numbers.sortprint(sorted);  # [1, 1, 2, 3, 4, 5, 6, 9]
 
 # Custom comparator (descending)
-let desc = numbers.sort(def(a, b) b - a);
+let desc = numbers.sort(def(a, b)
+b - a)
 print(desc);  # [9, 6, 5, 4, 3, 2, 1, 1]
 
 # Sort by string length
-let words = ["cherry", "pie", "apple"];
-let by_length = words.sort(def(a, b) len(a) - len(b));
+let words = ["cherry", "pie", "apple"]
+let by_length = words.sort(def(a, b)
+len(a) - len(b))
 print(by_length);  # ["pie", "apple", "cherry"]</code></pre>
                 </div>
             </section>
@@ -314,18 +328,21 @@ print(by_length);  # ["pie", "apple", "cherry"]</code></pre>
   { "name": "Charlie", "age": 30 },
   { "name": "Alice", "age": 25 },
   { "name": "Bob", "age": 20 }
-];
+]
 
 # Sort by hash key (string argument)
-let by_name = people.sort_by("name");
-print(by_name.map(def(p) p.get("name")));  # [Alice, Bob, Charlie]
+let by_name = people.sort_by("name")
+print(by_name.map(def(p)
+p.get("name")));  # [Alice, Bob, Charlie]
 
-let by_age = people.sort_by("age");
-print(by_age.map(def(p) p.get("age")));  # [20, 25, 30]
+let by_age = people.sort_by("age")
+print(by_age.map(def(p)
+p.get("age")));  # [20, 25, 30]
 
 # Sort by function (for computed values)
-let words = ["cherry", "pie", "apple"];
-let by_length = words.sort_by(def(w) len(w));
+let words = ["cherry", "pie", "apple"]
+let by_length = words.sort_by(def(w)
+len(w))
 print(by_length);  # [pie, apple, cherry]</code></pre>
                 </div>
             </section>
@@ -333,15 +350,14 @@ print(by_length);  # [pie, apple, cherry]</code></pre>
             <section id="method-reverse" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-reverse" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.reverse()</code>
+                        <code class="text-lg font-mono text-indigo-400">.reverse</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Return a new array with elements in reverse order.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
-let reversed = arr.reverse();
-print(reversed);  # [5, 4, 3, 2, 1]
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
+let reversed = arr.reverseprint(reversed);  # [5, 4, 3, 2, 1]
 print(arr);       # [1, 2, 3, 4, 5] (original unchanged)</code></pre>
                 </div>
             </section>
@@ -349,49 +365,46 @@ print(arr);       # [1, 2, 3, 4, 5] (original unchanged)</code></pre>
             <section id="method-uniq" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-uniq" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.uniq()</code>
+                        <code class="text-lg font-mono text-indigo-400">.uniq</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove duplicate elements. Returns a new array with unique values.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 2, 3, 3, 3, 4];
-let unique = arr.uniq();
-print(unique);  # [1, 2, 3, 4]</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 2, 3, 3, 3, 4]
+let unique = arr.uniqprint(unique);  # [1, 2, 3, 4]</code></pre>
                 </div>
             </section>
 
             <section id="method-compact" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-compact" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.compact()</code>
+                        <code class="text-lg font-mono text-indigo-400">.compact</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove null values from the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, 2, null, 3, null];
-let cleaned = arr.compact();
-print(cleaned);  # [1, 2, 3]</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, 2, null, 3, null]
+let cleaned = arr.compactprint(cleaned);  # [1, 2, 3]</code></pre>
                 </div>
             </section>
 
             <section id="method-flatten" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-flatten" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.flatten()</code> / <code class="text-lg font-mono text-indigo-400">.flatten(n)</code>
+                        <code class="text-lg font-mono text-indigo-400">.flatten</code> / <code class="text-lg font-mono text-indigo-400">.flatten(n)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Flatten nested arrays. Optionally specify depth.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let nested = [[1, 2], [3, 4], [5, 6]];
-let flat = nested.flatten();
-print(flat);  # [1, 2, 3, 4, 5, 6]
+<pre data-filename="Example"><code class="language-soli text-sm">let nested = [[1, 2], [3, 4], [5, 6]]
+let flat = nested.flattenprint(flat);  # [1, 2, 3, 4, 5, 6]
 
 # Flatten only 1 level deep
-let deep = [[1, 2], [[3, 4]]];
-let partial = deep.flatten(1);
+let deep = [[1, 2], [[3, 4]]]
+let partial = deep.flatten(1)
 print(partial);  # [1, 2, [3, 4]]</code></pre>
                 </div>
             </section>
@@ -399,20 +412,20 @@ print(partial);  # [1, 2, [3, 4]]</code></pre>
             <section id="method-first-last" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-first-last" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.first()</code> / <code class="text-lg font-mono text-indigo-400">.last()</code>
+                        <code class="text-lg font-mono text-indigo-400">.first</code> / <code class="text-lg font-mono text-indigo-400">.last</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Get the first or last element.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50];
-print(arr.first());  # 10
-print(arr.last());   # 50
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50]
+print(arr.first);  # 10
+print(arr.last);   # 50
 
 # Returns null for empty arrays
-let empty = [];
-print(empty.first());  # null
-print(empty.last());   # null</code></pre>
+let empty = []
+print(empty.first);  # null
+print(empty.last);   # null</code></pre>
                 </div>
             </section>
 
@@ -425,13 +438,13 @@ print(empty.last());   # null</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if array is empty or contains a value.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
 
 print(arr.empty?());      # false
 print(arr.include?(2));   # true
 print(arr.include?(99));  # false
 
-let empty = [];
+let empty = []
 print(empty.empty?());    # true</code></pre>
                 </div>
             </section>
@@ -439,21 +452,19 @@ print(empty.empty?());    # true</code></pre>
             <section id="method-sample-shuffle" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sample-shuffle" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.sample()</code> / <code class="text-lg font-mono text-indigo-400">.shuffle()</code>
+                        <code class="text-lg font-mono text-indigo-400">.sample</code> / <code class="text-lg font-mono text-indigo-400">.shuffle</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Random element selection and shuffling.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
 
 # Get random element
-let random = arr.sample();
-print(random);  # Random element (e.g., 3)
+let random = arr.sampleprint(random);  # Random element (e.g., 3)
 
 # Shuffle array
-let shuffled = arr.shuffle();
-print(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
+let shuffled = arr.shuffleprint(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
                 </div>
             </section>
 
@@ -466,14 +477,14 @@ print(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Take or skip the first n elements.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5];
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
 
 # Take first n elements
-let first_three = arr.take(3);
+let first_three = arr.take(3)
 print(first_three);  # [1, 2, 3]
 
 # Skip first n elements
-let rest = arr.drop(3);
+let rest = arr.drop(3)
 print(rest);  # [4, 5]</code></pre>
                 </div>
             </section>
@@ -487,10 +498,10 @@ print(rest);  # [4, 5]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Combine two arrays into pairs.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let names = ["Alice", "Bob", "Charlie"];
-let scores = [95, 87, 92];
+<pre data-filename="Example"><code class="language-soli text-sm">let names = ["Alice", "Bob", "Charlie"]
+let scores = [95, 87, 92]
 
-let pairs = names.zip(scores);
+let pairs = names.zip(scores)
 # [["Alice", 95], ["Bob", 87], ["Charlie", 92]]</code></pre>
                 </div>
             </section>
@@ -498,17 +509,17 @@ let pairs = names.zip(scores);
             <section id="method-sum-min-max" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sum-min-max" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.sum()</code> / <code class="text-lg font-mono text-indigo-400">.min()</code> / <code class="text-lg font-mono text-indigo-400">.max()</code>
+                        <code class="text-lg font-mono text-indigo-400">.sum</code> / <code class="text-lg font-mono text-indigo-400">.min</code> / <code class="text-lg font-mono text-indigo-400">.max</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Numeric aggregation methods.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [10, 5, 8, 3, 12];
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [10, 5, 8, 3, 12]
 
-print(numbers.sum());   # 38.0
-print(numbers.min());   # 3
-print(numbers.max());   # 12</code></pre>
+print(numbers.sum);   # 38.0
+print(numbers.min);   # 3
+print(numbers.max);   # 12</code></pre>
                 </div>
             </section>
 
@@ -521,13 +532,13 @@ print(numbers.max());   # 12</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Joins array elements into a string using the specified delimiter.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let words = ["Hello", "World"];
+<pre data-filename="Example"><code class="language-soli text-sm">let words = ["Hello", "World"]
 print(words.join(" "));   # "Hello World"
 
-let numbers = [1, 2, 3, 4, 5];
+let numbers = [1, 2, 3, 4, 5]
 print(numbers.join("-")); # "1-2-3-4-5"
 
-let paths = ["usr", "local", "bin"];
+let paths = ["usr", "local", "bin"]
 print(paths.join("/"));   # "usr/local/bin"</code></pre>
                 </div>
             </section>
@@ -548,22 +559,26 @@ print(paths.join("/"));   # "usr/local/bin"</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Chaining Example</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 # Chain multiple methods together
 let result = numbers
-    .filter(def(x) x % 2 == 0)   # Keep evens: [2, 4, 6, 8, 10]
-    .map(def(x) x * x)           # Square them: [4, 16, 36, 64, 100]
-    .filter(def(x) x < 50);      # Keep less than 50: [4, 16, 36]
+    .filter(def(x)
+x % 2 == 0)   # Keep evens: [2, 4, 6, 8, 10]
+    .map(def(x)
+x * x)           # Square them: [4, 16, 36, 64, 100]
+    .filter(def(x)
+x < 50);      # Keep less than 50: [4, 16, 36]
 
 print(result);  # [4, 16, 36]
 
 # With pipeline operator
 let result2 = numbers
-    |> filter(def(x) x > 5)
-    |> map(def(x) x * 2)
-    |> sum();
-
+    |> filter(def(x)
+x > 5)
+    |> map(def(x)
+x * 2)
+    |> sum
 print(result2);  # 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
             </div>
         </div>
@@ -592,7 +607,7 @@ print(result2);  # 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns a formatted string representation of the array. Called automatically in REPL.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
 # In REPL, displays: [1, 2, 3]
 # Equivalent to: arr.to_string()</code></pre>
                 </div>
@@ -607,8 +622,8 @@ print(result2);  # 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of elements in the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
-arr.length();  # 3</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+arr.length  # 3</code></pre>
                 </div>
             </section>
 
@@ -621,10 +636,10 @@ arr.length();  # 3</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Adds an element to the end or removes and returns the last element.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [];
-arr.push(1);  # [1]
-arr.push(2);  # [1, 2]
-let last = arr.pop();  # 2, arr is now [1]</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = []
+arr.push(1)  # [1]
+arr.push(2)  # [1, 2]
+let last = arr.pop  # 2, arr is now [1]</code></pre>
                 </div>
             </section>
 
@@ -637,7 +652,7 @@ let last = arr.pop();  # 2, arr is now [1]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the element at the specified index. Supports negative indices for backward access.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = ["first", "second", "third"];
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = ["first", "second", "third"]
 arr.get(0);      # "first"
 arr.get(2);      # "third"
 arr.get(-1);     # "third" (last)
@@ -654,9 +669,9 @@ arr.get(-2);     # "second"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Removes all elements from the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3];
-arr.clear();
-arr.length();  # 0</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+arr.clear
+arr.length  # 0</code></pre>
                 </div>
             </section>
         </div>

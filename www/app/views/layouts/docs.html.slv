@@ -248,8 +248,8 @@
     <div id="mobileMenuOverlay" class="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40 hidden" onclick="toggleMobileMenu()"></div>
 
     <!-- Mobile Sidebar -->
-    <aside id="mobileSidebar" class="mobile-menu lg:hidden fixed top-0 left-0 bottom-0 w-72 z-50 bg-gray-950 border-r border-white/5 overflow-y-auto">
-        <div class="p-6 pt-20">
+    <aside id="mobileSidebar" class="mobile-menu lg:hidden fixed top-16 left-0 bottom-0 w-72 z-40 bg-gray-950 border-r border-white/5 overflow-y-auto">
+        <div class="p-6">
             <nav class="space-y-6">
                 <%- render_partial("layouts/docs_nav") %>
             </nav>

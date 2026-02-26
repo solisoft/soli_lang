@@ -9,7 +9,7 @@ use crate::interpreter::builtins::http_class::get_http_client;
 use crate::interpreter::value::{HashKey, Value};
 use crate::serve::get_tokio_handle;
 
-use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name, DB_RUNTIME};
+use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name};
 
 /// Apply DB authentication headers (API key or basic auth) to a request.
 fn apply_db_auth(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -22,8 +22,18 @@ fn apply_db_auth(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     }
 }
 
+// Fallback tokio runtime for DB operations outside of a server context
+// (e.g., REPL, scripts). Uses a lightweight current-thread runtime instead
+// of a full multi-thread runtime to save ~1-2MB of RSS.
+thread_local! {
+    static FALLBACK_RT: tokio::runtime::Runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create fallback tokio runtime");
+}
+
 /// Run a future using the worker's thread-local tokio handle,
-/// falling back to the dedicated DB runtime (e.g. from the REPL).
+/// falling back to a lightweight per-thread runtime (e.g. from the REPL).
 fn run_db_future<F, T>(future: F) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, String>>,
@@ -31,7 +41,7 @@ where
     if let Some(rt) = get_tokio_handle() {
         rt.block_on(future)
     } else {
-        DB_RUNTIME.block_on(future)
+        FALLBACK_RT.with(|rt| rt.block_on(future))
     }
 }
 

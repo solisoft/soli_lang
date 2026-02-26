@@ -30,14 +30,14 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.slv</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Basic variable output --&gt;
-&lt;h1&gt;&lt;%= title %&gt;&lt;/h1&gt;
-&lt;p&gt;Hello, &lt;%= name %&gt;!&lt;/p&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Basic variable output --&gt
+&lt;h1&gt;&lt;%= title %&gt;&lt;/h1&gt
+&lt;p&gt;Hello, &lt;%= name %&gt;!&lt;/p&gt
 
-&lt;!-- Accessing hash data --&gt;
-&lt;p&gt;User: &lt;%= user["name"] %&gt;&lt;/p&gt;
+&lt;!-- Accessing hash data --&gt
+&lt;p&gt;User: &lt;%= user["name"] %&gt;&lt;/p&gt
 
-&lt;!-- Expressions --&gt;
+&lt;!-- Expressions --&gt
 &lt;p&gt;Total: $&lt;%= price * quantity %&gt;&lt;/p&gt;</code></pre>
         </div>
     </div>
@@ -46,18 +46,18 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.slv</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Conditionals --&gt;
-&lt;% if user_logged_in %&gt;
-    &lt;span&gt;Welcome back!&lt;/span&gt;
-&lt;% else %&gt;
-    &lt;a href="/login"&gt;Login&lt;/a&gt;
-&lt;% end %&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Conditionals --&gt
+&lt;% if user_logged_in %&gt
+    &lt;span&gt;Welcome back!&lt;/span&gt
+&lt;% else %&gt
+    &lt;a href="/login"&gt;Login&lt;/a&gt
+&lt;% end %&gt
 
-&lt;!-- Loops --&gt;
-&lt;ul&gt;
-    &lt;% for post in posts %&gt;
-        &lt;li&gt;&lt;%= post["title"] %&gt;&lt;/li&gt;
-    &lt;% end %&gt;
+&lt;!-- Loops --&gt
+&lt;ul&gt
+    &lt;% for post in posts %&gt
+        &lt;li&gt;&lt;%= post["title"] %&gt;&lt;/li&gt
+    &lt;% end %&gt
 &lt;/ul&gt;</code></pre>
         </div>
     </div>
@@ -69,35 +69,35 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">DateTime helpers</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Get current timestamp --&gt;
-&lt;%= datetime_now() %&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Get current timestamp --&gt
+&lt;%= datetime_now() %&gt
 
-&lt;!-- Format a timestamp with strftime --&gt;
-&lt;%= datetime_format(post["created_at"], "%Y-%m-%d") %&gt;
-&lt;%= datetime_format(post["created_at"], "%B %d, %Y") %&gt;
-&lt;%= datetime_format(datetime_now(), "%A, %B %d, %Y at %H:%M") %&gt;
+&lt;!-- Format a timestamp with strftime --&gt
+&lt;%= datetime_format(post["created_at"], "%Y-%m-%d") %&gt
+&lt;%= datetime_format(post["created_at"], "%B %d, %Y") %&gt
+&lt;%= datetime_format(datetime_now(), "%A, %B %d, %Y at %H:%M") %&gt
 
-&lt;!-- Parse a date string to timestamp --&gt;
-&lt;%= datetime_parse("2024-01-15") %&gt;
+&lt;!-- Parse a date string to timestamp --&gt
+&lt;%= datetime_parse("2024-01-15") %&gt
 
-&lt;!-- Add/subtract time --&gt;
-&lt;%= datetime_add_days(datetime_now(), 7) %&gt;   &lt;!-- 7 days from now --&gt;
-&lt;%= datetime_add_days(datetime_now(), -30) %&gt; &lt;!-- 30 days ago --&gt;
-&lt;%= datetime_add_hours(datetime_now(), 2) %&gt;  &lt;!-- 2 hours from now --&gt;
+&lt;!-- Add/subtract time --&gt
+&lt;%= datetime_add_days(datetime_now(), 7) %&gt;   &lt;!-- 7 days from now --&gt
+&lt;%= datetime_add_days(datetime_now(), -30) %&gt; &lt;!-- 30 days ago --&gt
+&lt;%= datetime_add_hours(datetime_now(), 2) %&gt;  &lt;!-- 2 hours from now --&gt
 
-&lt;!-- Human-readable relative time --&gt;
-&lt;%= time_ago(post["created_at"]) %&gt;  &lt;!-- "5 minutes ago", "2 hours ago", etc. --&gt;
-&lt;%= time_ago(post["updated_at"]) %&gt;
+&lt;!-- Human-readable relative time --&gt
+&lt;%= time_ago(post["created_at"]) %&gt;  &lt;!-- "5 minutes ago", "2 hours ago", etc. --&gt
+&lt;%= time_ago(post["updated_at"]) %&gt
 
-&lt;!-- Difference in seconds --&gt;
-&lt;%= datetime_diff(start_time, end_time) %&gt;
+&lt;!-- Difference in seconds --&gt
+&lt;%= datetime_diff(start_time, end_time) %&gt
 
-&lt;!-- Localized date formatting (uses current I18n locale) --&gt;
-&lt;%= l(post["created_at"]) %&gt;                 &lt;!-- short format: "01/15/2024" --&gt;
-&lt;%= l(post["created_at"], "long") %&gt;         &lt;!-- "January 15, 2024" --&gt;
-&lt;%= l(post["created_at"], "full") %&gt;         &lt;!-- "Monday, January 15, 2024" --&gt;
-&lt;%= l(post["created_at"], "time") %&gt;         &lt;!-- "10:30 AM" --&gt;
-&lt;%= l(post["created_at"], "datetime") %&gt;     &lt;!-- "01/15/2024 10:30 AM" --&gt;
+&lt;!-- Localized date formatting (uses current I18n locale) --&gt
+&lt;%= l(post["created_at"]) %&gt;                 &lt;!-- short format: "01/15/2024" --&gt
+&lt;%= l(post["created_at"], "long") %&gt;         &lt;!-- "January 15, 2024" --&gt
+&lt;%= l(post["created_at"], "full") %&gt;         &lt;!-- "Monday, January 15, 2024" --&gt
+&lt;%= l(post["created_at"], "time") %&gt;         &lt;!-- "10:30 AM" --&gt
+&lt;%= l(post["created_at"], "datetime") %&gt;     &lt;!-- "01/15/2024 10:30 AM" --&gt
 &lt;%= l(post["created_at"], "%Y-%m-%d") %&gt;     &lt;!-- custom strftime --&gt;</code></pre>
         </div>
     </div>
@@ -256,19 +256,19 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Common format examples</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- ISO format --&gt;
-&lt;%= datetime_format(ts, "%Y-%m-%d") %&gt;              &lt;!-- 2024-01-15 --&gt;
-&lt;%= datetime_format(ts, "%Y-%m-%dT%H:%M:%S") %&gt;    &lt;!-- 2024-01-15T14:30:45 --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- ISO format --&gt
+&lt;%= datetime_format(ts, "%Y-%m-%d") %&gt;              &lt;!-- 2024-01-15 --&gt
+&lt;%= datetime_format(ts, "%Y-%m-%dT%H:%M:%S") %&gt;    &lt;!-- 2024-01-15T14:30:45 --&gt
 
-&lt;!-- Human-readable --&gt;
-&lt;%= datetime_format(ts, "%B %d, %Y") %&gt;            &lt;!-- January 15, 2024 --&gt;
-&lt;%= datetime_format(ts, "%A, %B %e, %Y") %&gt;        &lt;!-- Monday, January 15, 2024 --&gt;
+&lt;!-- Human-readable --&gt
+&lt;%= datetime_format(ts, "%B %d, %Y") %&gt;            &lt;!-- January 15, 2024 --&gt
+&lt;%= datetime_format(ts, "%A, %B %e, %Y") %&gt;        &lt;!-- Monday, January 15, 2024 --&gt
 
-&lt;!-- Time formats --&gt;
-&lt;%= datetime_format(ts, "%H:%M") %&gt;                &lt;!-- 14:30 (24h) --&gt;
-&lt;%= datetime_format(ts, "%I:%M %p") %&gt;             &lt;!-- 02:30 PM (12h) --&gt;
+&lt;!-- Time formats --&gt
+&lt;%= datetime_format(ts, "%H:%M") %&gt;                &lt;!-- 14:30 (24h) --&gt
+&lt;%= datetime_format(ts, "%I:%M %p") %&gt;             &lt;!-- 02:30 PM (12h) --&gt
 
-&lt;!-- Combined --&gt;
+&lt;!-- Combined --&gt
 &lt;%= datetime_format(ts, "%b %d at %I:%M %p") %&gt;    &lt;!-- Jan 15 at 02:30 PM --&gt;</code></pre>
         </div>
     </div>
@@ -277,16 +277,16 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">I18n helpers</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Get current locale --&gt;
-&lt;%= locale() %&gt;  &lt;!-- "en", "fr", etc. --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Get current locale --&gt
+&lt;%= locale() %&gt;  &lt;!-- "en", "fr", etc. --&gt
 
-&lt;!-- Set locale (usually done in controller) --&gt;
-&lt;% set_locale("fr") %&gt;
+&lt;!-- Set locale (usually done in controller) --&gt
+&lt;% set_locale("fr") %&gt
 
-&lt;!-- Translate a key --&gt;
-&lt;%= t("hello") %&gt;
+&lt;!-- Translate a key --&gt
+&lt;%= t("hello") %&gt
 
-&lt;!-- Translate with fallback --&gt;
+&lt;!-- Translate with fallback --&gt
 &lt;%= t("greeting", "Welcome!") %&gt;</code></pre>
         </div>
     </div>
@@ -320,20 +320,20 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML helpers</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- HTML escaping (prevent XSS) --&gt;
-&lt;%= html_escape(user_input) %&gt;
-&lt;%= h(user_input) %&gt;  &lt;!-- shorthand --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- HTML escaping (prevent XSS) --&gt
+&lt;%= html_escape(user_input) %&gt
+&lt;%= h(user_input) %&gt;  &lt;!-- shorthand --&gt
 
-&lt;!-- Strip HTML tags --&gt;
-&lt;%= strip_html(post["content"]) %&gt;
+&lt;!-- Strip HTML tags --&gt
+&lt;%= strip_html(post["content"]) %&gt
 
-&lt;!-- Sanitize HTML (remove dangerous tags/attributes) --&gt;
-&lt;%= sanitize_html(user_content) %&gt;
+&lt;!-- Sanitize HTML (remove dangerous tags/attributes) --&gt
+&lt;%= sanitize_html(user_content) %&gt
 
-&lt;!-- Unescape HTML entities --&gt;
-&lt;%= html_unescape("&amp;lt;p&amp;gt;") %&gt;
+&lt;!-- Unescape HTML entities --&gt
+&lt;%= html_unescape("&amp;lt;p&amp;gt;") %&gt
 
-&lt;!-- Substring (useful for truncating) --&gt;
+&lt;!-- Substring (useful for truncating) --&gt
 &lt;%= substring(post["content"], 0, 100) %&gt;...</code></pre>
         </div>
     </div>
@@ -342,18 +342,18 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Utility helpers</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Generate a range for loops --&gt;
-&lt;% for i in range(1, 5) %&gt;
-    &lt;p&gt;Item &lt;%= i %&gt;&lt;/p&gt;
-&lt;% end %&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Generate a range for loops --&gt
+&lt;% for i in range(1, 5) %&gt
+    &lt;p&gt;Item &lt;%= i %&gt;&lt;/p&gt
+&lt;% end %&gt
 
-&lt;!-- Asset paths with cache busting --&gt;
-&lt;link href="&lt;%= public_path("css/app.css") %&gt;" rel="stylesheet"&gt;
-&lt;script src="&lt;%= public_path("js/app.js") %&gt;"&gt;&lt;/script&gt;
-&lt;!-- Output: /css/app.css?v=a1b2c3... --&gt;
+&lt;!-- Asset paths with cache busting --&gt
+&lt;link href="&lt;%= public_path("css/app.css") %&gt;" rel="stylesheet"&gt
+&lt;script src="&lt;%= public_path("js/app.js") %&gt;"&gt;&lt;/script&gt
+&lt;!-- Output: /css/app.css?v=a1b2c3... --&gt
 
-&lt;!-- String concatenation --&gt;
-&lt;%= "Hello, " + name + "!" %&gt;
+&lt;!-- String concatenation --&gt
+&lt;%= "Hello, " + name + "!" %&gt
 &lt;%= "Total: $" + price * quantity %&gt;</code></pre>
         </div>
     </div>
@@ -365,28 +365,28 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Text helpers</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Truncate text with ellipsis --&gt;
-&lt;%= truncate(post["content"], 100) %&gt;
-&lt;!-- "This is a very long article that..." --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Truncate text with ellipsis --&gt
+&lt;%= truncate(post["content"], 100) %&gt
+&lt;!-- "This is a very long article that..." --&gt
 
-&lt;%= truncate(title, 50, " [more]") %&gt;
-&lt;!-- "This is a long title that gets cut [more]" --&gt;
+&lt;%= truncate(title, 50, " [more]") %&gt
+&lt;!-- "This is a long title that gets cut [more]" --&gt
 
-&lt;!-- Capitalize first letter --&gt;
-&lt;%= capitalize("hello world") %&gt;
-&lt;!-- "Hello world" --&gt;
+&lt;!-- Capitalize first letter --&gt
+&lt;%= capitalize("hello world") %&gt
+&lt;!-- "Hello world" --&gt
 
-&lt;%= capitalize(user["status"]) %&gt;
-&lt;!-- "Active" (if status was "active") --&gt;
+&lt;%= capitalize(user["status"]) %&gt
+&lt;!-- "Active" (if status was "active") --&gt
 
-&lt;!-- Pluralize based on count --&gt;
-&lt;%= pluralize(1, "item") %&gt;
-&lt;!-- "1 item" --&gt;
+&lt;!-- Pluralize based on count --&gt
+&lt;%= pluralize(1, "item") %&gt
+&lt;!-- "1 item" --&gt
 
-&lt;%= pluralize(5, "item") %&gt;
-&lt;!-- "5 items" --&gt;
+&lt;%= pluralize(5, "item") %&gt
+&lt;!-- "5 items" --&gt
 
-&lt;%= pluralize(count, "person", "people") %&gt;
+&lt;%= pluralize(count, "person", "people") %&gt
 &lt;!-- "1 person" or "3 people" --&gt;</code></pre>
         </div>
     </div>
@@ -395,22 +395,22 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Number helpers (locale-aware)</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Format numbers with thousands separator (auto-detects from locale) --&gt;
-&lt;%= number_with_delimiter(1234567) %&gt;
-&lt;!-- en: "1,234,567" | fr: "1 234 567" | de: "1.234.567" --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Format numbers with thousands separator (auto-detects from locale) --&gt
+&lt;%= number_with_delimiter(1234567) %&gt
+&lt;!-- en: "1,234,567" | fr: "1 234 567" | de: "1.234.567" --&gt
 
-&lt;!-- Override delimiter manually --&gt;
-&lt;%= number_with_delimiter(1234567, "'") %&gt;
-&lt;!-- "1'234'567" --&gt;
+&lt;!-- Override delimiter manually --&gt
+&lt;%= number_with_delimiter(1234567, "'") %&gt
+&lt;!-- "1'234'567" --&gt
 
-&lt;!-- Format as currency (locale-aware: symbol, delimiter, position) --&gt;
-&lt;%= currency(1000) %&gt;
-&lt;!-- en: "$1,000" | fr: "1 000 €" | de: "1.000 €" | ja: "¥1,000" --&gt;
+&lt;!-- Format as currency (locale-aware: symbol, delimiter, position) --&gt
+&lt;%= currency(1000) %&gt
+&lt;!-- en: "$1,000" | fr: "1 000 €" | de: "1.000 €" | ja: "¥1,000" --&gt
 
-&lt;%= currency(order["total"]) %&gt;
+&lt;%= currency(order["total"]) %&gt
 
-&lt;!-- Override symbol manually --&gt;
-&lt;%= currency(1234, "£") %&gt;
+&lt;!-- Override symbol manually --&gt
+&lt;%= currency(1234, "£") %&gt
 &lt;!-- "£1,234" --&gt;</code></pre>
         </div>
     </div>
@@ -437,14 +437,14 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Link helper</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Generate safe HTML links (XSS protected) --&gt;
-&lt;%= link_to("Home", "/") %&gt;
-&lt;!-- &lt;a href="/"&gt;Home&lt;/a&gt; --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Generate safe HTML links (XSS protected) --&gt
+&lt;%= link_to("Home", "/") %&gt
+&lt;!-- &lt;a href="/"&gt;Home&lt;/a&gt; --&gt
 
-&lt;%= link_to("View Profile", "/users/" + user["id"]) %&gt;
-&lt;!-- &lt;a href="/users/123"&gt;View Profile&lt;/a&gt; --&gt;
+&lt;%= link_to("View Profile", "/users/" + user["id"]) %&gt
+&lt;!-- &lt;a href="/users/123"&gt;View Profile&lt;/a&gt; --&gt
 
-&lt;%= link_to("Edit", "/posts/" + post["id"] + "/edit", "btn btn-primary") %&gt;
+&lt;%= link_to("Edit", "/posts/" + post["id"] + "/edit", "btn btn-primary") %&gt
 &lt;!-- &lt;a href="/posts/456/edit" class="btn btn-primary"&gt;Edit&lt;/a&gt; --&gt;</code></pre>
         </div>
     </div>
@@ -453,19 +453,19 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Slugify helper</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Convert text to URL-friendly slug --&gt;
-&lt;%= slugify("Hello World!") %&gt;
-&lt;!-- "hello-world" --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Convert text to URL-friendly slug --&gt
+&lt;%= slugify("Hello World!") %&gt
+&lt;!-- "hello-world" --&gt
 
-&lt;%= slugify("My Blog Post Title") %&gt;
-&lt;!-- "my-blog-post-title" --&gt;
+&lt;%= slugify("My Blog Post Title") %&gt
+&lt;!-- "my-blog-post-title" --&gt
 
-&lt;%= slugify("Café & Restaurant") %&gt;
-&lt;!-- "cafe-restaurant" --&gt;
+&lt;%= slugify("Café & Restaurant") %&gt
+&lt;!-- "cafe-restaurant" --&gt
 
-&lt;!-- Use in URLs --&gt;
-&lt;a href="/posts/&lt;%= slugify(post["title"]) %&gt;"&gt;
-    &lt;%= post["title"] %&gt;
+&lt;!-- Use in URLs --&gt
+&lt;a href="/posts/&lt;%= slugify(post["title"]) %&gt;"&gt
+    &lt;%= post["title"] %&gt
 &lt;/a&gt;</code></pre>
         </div>
     </div>
@@ -515,36 +515,36 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/posts/show.html.slv</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;article class="post"&gt;
-    &lt;h1&gt;&lt;%= post["title"] %&gt;&lt;/h1&gt;
+<pre><code class="language-erb text-sm">&lt;article class="post"&gt
+    &lt;h1&gt;&lt;%= post["title"] %&gt;&lt;/h1&gt
 
-    &lt;div class="meta"&gt;
-        &lt;!-- Localized date (respects I18n.set_locale) --&gt;
-        &lt;span&gt;Published: &lt;%= l(post["created_at"], "long") %&gt;&lt;/span&gt;
-        &lt;span&gt;(&lt;%= time_ago(post["created_at"]) %&gt;)&lt;/span&gt;
-    &lt;/div&gt;
+    &lt;div class="meta"&gt
+        &lt;!-- Localized date (respects I18n.set_locale) --&gt
+        &lt;span&gt;Published: &lt;%= l(post["created_at"], "long") %&gt;&lt;/span&gt
+        &lt;span&gt;(&lt;%= time_ago(post["created_at"]) %&gt;)&lt;/span&gt
+    &lt;/div&gt
 
-    &lt;% if post["updated_at"] != post["created_at"] %&gt;
-        &lt;p class="updated"&gt;Last updated: &lt;%= time_ago(post["updated_at"]) %&gt;&lt;/p&gt;
-    &lt;% end %&gt;
+    &lt;% if post["updated_at"] != post["created_at"] %&gt
+        &lt;p class="updated"&gt;Last updated: &lt;%= time_ago(post["updated_at"]) %&gt;&lt;/p&gt
+    &lt;% end %&gt
 
-    &lt;div class="content"&gt;
-        &lt;%= truncate(post["content"], 500) %&gt;
-    &lt;/div&gt;
+    &lt;div class="content"&gt
+        &lt;%= truncate(post["content"], 500) %&gt
+    &lt;/div&gt
 
-    &lt;div class="stats"&gt;
-        &lt;span&gt;&lt;%= number_with_delimiter(post["views"]) %&gt; views&lt;/span&gt;
-        &lt;span&gt;&lt;%= pluralize(post["comment_count"], "comment") %&gt;&lt;/span&gt;
-    &lt;/div&gt;
+    &lt;div class="stats"&gt
+        &lt;span&gt;&lt;%= number_with_delimiter(post["views"]) %&gt; views&lt;/span&gt
+        &lt;span&gt;&lt;%= pluralize(post["comment_count"], "comment") %&gt;&lt;/span&gt
+    &lt;/div&gt
 
-    &lt;div class="actions"&gt;
-        &lt;%= link_to("Edit", "/posts/" + post["id"] + "/edit", "btn btn-secondary") %&gt;
-        &lt;%= link_to("Back to Posts", "/posts", "btn btn-link") %&gt;
-    &lt;/div&gt;
+    &lt;div class="actions"&gt
+        &lt;%= link_to("Edit", "/posts/" + post["id"] + "/edit", "btn btn-secondary") %&gt
+        &lt;%= link_to("Back to Posts", "/posts", "btn btn-link") %&gt
+    &lt;/div&gt
 
-    &lt;footer&gt;
-        &lt;p&gt;&amp;copy; &lt;%= datetime_format(datetime_now(), "%Y") %&gt; My Blog&lt;/p&gt;
-    &lt;/footer&gt;
+    &lt;footer&gt
+        &lt;p&gt;&amp;copy; &lt;%= datetime_format(datetime_now(), "%Y") %&gt; My Blog&lt;/p&gt
+    &lt;/footer&gt
 &lt;/article&gt;</code></pre>
         </div>
     </div>
@@ -555,18 +555,18 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/layouts/application.html.slv</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!DOCTYPE html&gt;
-&lt;html&gt;
-&lt;head&gt;
-    &lt;title&gt;&lt;%= title %&gt;&lt;/title&gt;
-&lt;/head&gt;
-&lt;body&gt;
-    &lt;nav&gt;...&lt;/nav&gt;
+<pre><code class="language-erb text-sm">&lt;!DOCTYPE html&gt
+&lt;html&gt
+&lt;head&gt
+    &lt;title&gt;&lt;%= title %&gt;&lt;/title&gt
+&lt;/head&gt
+&lt;body&gt
+    &lt;nav&gt;...&lt;/nav&gt
     
-    &lt;main&gt;
-        &lt;%= yield %&gt;
-    &lt;/main&gt;
-&lt;/body&gt;
+    &lt;main&gt
+        &lt;%= yield %&gt
+    &lt;/main&gt
+&lt;/body&gt
 &lt;/html&gt;</code></pre>
         </div>
     </div>
@@ -577,7 +577,7 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Usage</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Render _user_card.html.slv --&gt;
+<pre><code class="language-erb text-sm">&lt;!-- Render _user_card.html.slv --&gt
 &lt;%= render_partial("partials/user_card", { "user": user }) %&gt;</code></pre>
         </div>
     </div>
@@ -633,7 +633,7 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/docs/getting-started.html.md</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-markdown text-sm"># Getting Started with &lt;%= app_name %&gt;
+<pre><code class="language-markdown text-sm"># Getting Started with &lt;%= app_name %&gt
 
 Welcome! This guide will help you set up your project.
 
@@ -653,7 +653,7 @@ soli serve
 - **ERB-style tags** &mdash; use `&lt;%= %&gt;` for dynamic content
 - **Layouts** &mdash; Markdown views are wrapped in your layout
 
-&lt;% if show_advanced %&gt;
+&lt;% if show_advanced %&gt
 ## Advanced Configuration
 
 | Option | Default | Description |
@@ -710,8 +710,8 @@ soli serve
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Rendering a markdown partial</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- In an .slv template, include a markdown partial --&gt;
-&lt;%= render_partial("docs/intro") %&gt;
+<pre><code class="language-erb text-sm">&lt;!-- In an .slv template, include a markdown partial --&gt
+&lt;%= render_partial("docs/intro") %&gt
 
 &lt;!-- This renders app/views/docs/_intro.md (or _intro.html.md) --&gt;</code></pre>
         </div>
@@ -724,8 +724,7 @@ soli serve
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/posts_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def show(req)
-    let post = Post.find(req.params["id"]);
-    
+    let post = Post.find(req.params["id"])    
     render("posts/show", {
         "title": post["title"],
         "post": post

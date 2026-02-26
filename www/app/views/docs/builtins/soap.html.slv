@@ -193,7 +193,8 @@ let parsed = SOAP.parse(xml)
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Converts a Hash (including nested hashes and arrays) to XML string. Supports attributes with @ prefix and text content with _text key.</p>
+                <p class="text-gray-400 mb-3">Converts a Hash (including nested hashes and arrays)
+to XML string. Supports attributes with @ prefix and text content with _text key.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">hash</code> : <code class="text-purple-400">Hash</code> - The hash to convert to XML</div>
@@ -222,16 +223,16 @@ let parsed = SOAP.parse(xml)
 
 let xml = SOAP.to_xml(data, "users")
 # Returns XML:
-# &lt;users&gt;
-#   &lt;user id="123"&gt;
-#     &lt;name&gt;John&lt;/name&gt;
-#     &lt;address&gt;
-#       &lt;street&gt;123 Main St&lt;/street&gt;
-#       &lt;city&gt;Boston&lt;/city&gt;
-#     &lt;/address&gt;
-#     &lt;tags_0&gt;admin&lt;/tags_0&gt;
-#     &lt;tags_1&gt;user&lt;/tags_1&gt;
-#   &lt;/user&gt;
+# &lt;users&gt
+#   &lt;user id="123"&gt
+#     &lt;name&gt;John&lt;/name&gt
+#     &lt;address&gt
+#       &lt;street&gt;123 Main St&lt;/street&gt
+#       &lt;city&gt;Boston&lt;/city&gt
+#     &lt;/address&gt
+#     &lt;tags_0&gt;admin&lt;/tags_0&gt
+#     &lt;tags_1&gt;user&lt;/tags_1&gt
+#   &lt;/user&gt
 # &lt;/users&gt;</code></pre>
 
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">With _text for Element Content</h4>
@@ -247,12 +248,12 @@ let xml = SOAP.to_xml(data, "users")
 
 let xml = SOAP.to_xml(data, "catalog")
 # Returns:
-# &lt;catalog&gt;
-#   &lt;product&gt;
-#     &lt;name&gt;Laptop&lt;/name&gt;
-#     &lt;description&gt;A high-performance laptop with 16GB RAM&lt;/description&gt;
-#     &lt;price&gt;999.99&lt;/price&gt;
-#   &lt;/product&gt;
+# &lt;catalog&gt
+#   &lt;product&gt
+#     &lt;name&gt;Laptop&lt;/name&gt
+#     &lt;description&gt;A high-performance laptop with 16GB RAM&lt;/description&gt
+#     &lt;price&gt;999.99&lt;/price&gt
+#   &lt;/product&gt
 # &lt;/catalog&gt;</code></pre>
             </div>
         </section>

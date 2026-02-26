@@ -17,10 +17,10 @@
                 <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Note</span>
             </div>
             <p class="text-gray-400 mb-4">Security headers are automatically added to all responses via middleware when enabled.</p>
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>enable_security_headers()
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>enable_security_headers
 # All subsequent responses will include configured security headers
 
-disable_security_headers()
+disable_security_headers
 # Disable automatic injection</code></pre>
         </div>
     </section>
@@ -64,8 +64,8 @@ set_csp("script-src 'self' https://cdn.example.com", true)  # Report only</code>
         <h2 class="text-2xl font-bold text-white mb-6">prevent_clickjacking() / allow_same_origin_frames()</h2>
         <p class="text-gray-400 mb-4">Control framing of your site to prevent clickjacking attacks.</p>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>prevent_clickjacking()   # X-Frame-Options: DENY
-allow_same_origin_frames()  # X-Frame-Options: SAMEORIGIN</code></pre>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>prevent_clickjacking   # X-Frame-Options: DENY
+allow_same_origin_frames  # X-Frame-Options: SAMEORIGIN</code></pre>
         </div>
     </section>
 
@@ -74,7 +74,7 @@ allow_same_origin_frames()  # X-Frame-Options: SAMEORIGIN</code></pre>
         <h2 class="text-2xl font-bold text-white mb-6">set_content_type_options()</h2>
         <p class="text-gray-400 mb-4">Sets X-Content-Type-Options: nosniff to prevent MIME type sniffing.</p>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>set_content_type_options()  # Prevents browsers from interpreting files as a different MIME type</code></pre>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>set_content_type_options  # Prevents browsers from interpreting files as a different MIME type</code></pre>
         </div>
     </section>
 
@@ -167,14 +167,14 @@ allow_same_origin_frames()  # X-Frame-Options: SAMEORIGIN</code></pre>
         <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
             <pre class="text-sm text-gray-300 overflow-x-auto"><code># In your app initialization or bootstrap file
-enable_security_headers()
-secure_headers_strict()
+enable_security_headers
+secure_headers_strict
 
 # Or customize specific headers
 set_csp("default-src 'self'; script-src 'self' https://cdn.example.com")
 set_hsts(31536000, true, true)  # 1 year with preload
-prevent_clickjacking()
-set_content_type_options()
+prevent_clickjacking
+set_content_type_options
 set_referrer_policy("strict-origin-when-cross-origin")</code></pre>
         </div>
     </section>

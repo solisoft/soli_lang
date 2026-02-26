@@ -50,23 +50,17 @@
             </div>
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm"># 1. Write data to the session
-session_set("user_id", 42);
-session_set("username", "alice_w");
-session_set("role", "admin");
-
+session_set("user_id", 42)session_set("username", "alice_w")session_set("role", "admin")
 # 2. Read data (returns null if not found)
-let current_user = session_get("username");
-
+let current_user = session_get("username")
 # 3. Check if key exists
 if session_has("user_id") {
-    print("User is authenticated!");
-}
+    print("User is authenticated!")}
 
 # 4. Remove specific data
-session_delete("flash_message");
-
+session_delete("flash_message")
 # 5. Clear everything (logout)
-session_destroy();</code></pre>
+session_destroy()</code></pre>
             </div>
         </div>
     </section>
@@ -98,17 +92,16 @@ session_destroy();</code></pre>
                 <span class="ml-2 text-xs text-gray-500 font-mono">controllers/auth_controller.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">def login(req: Any)    let credentials = req["body"];
+<pre><code class="language-soli text-sm">def login(req: Any)
+let credentials = req["body"]
     
     if verify_user(credentials)
         # CRITICAL: Regenerate session ID before setting sensitive data
-        session_regenerate();
-        
-        session_set("authenticated", true);
-        session_set("user_id", credentials["id"]);
-        
-        return redirect("/dashboard");
-    end
+        session_regenerate        
+        session_set("authenticated", true)
+session_set("user_id", credentials["id"])        
+        return redirect("/dashboard")
+end
 
     render("login", { "error": "Invalid credentials" })
 end</code></pre></code></pre>

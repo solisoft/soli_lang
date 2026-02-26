@@ -1,5 +1,10 @@
 //! Soli CLI: Execute files or run the REPL.
 
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};

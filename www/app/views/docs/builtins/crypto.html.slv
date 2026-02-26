@@ -207,7 +207,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair()
+                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair
 println(keypair["public"])   # Hex-encoded public key
 println(keypair["private"])  # Hex-encoded private key</code></pre>
             </div>
@@ -231,8 +231,8 @@ println(keypair["private"])  # Hex-encoded private key</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - Hex-encoded shared secret
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let alice = Crypto.x25519_keypair()
-let bob = Crypto.x25519_keypair()
+                <pre data-filename="Example"><code class="language-soli text-sm">let alice = Crypto.x25519_keypair
+let bob = Crypto.x25519_keypair
 
 # Both compute the same shared secret
 let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
@@ -258,7 +258,7 @@ let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - Hex-encoded public key
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair()
+                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair
 let derived_public = Crypto.x25519_public_key(keypair["private"])
 # derived_public == keypair["public"]</code></pre>
             </div>
@@ -282,7 +282,7 @@ let derived_public = Crypto.x25519_public_key(keypair["private"])
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.ed25519_keypair()
+                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.ed25519_keypair
 # Use keypair["private"] to sign messages
 # Share keypair["public"] for verification</code></pre>
             </div>

@@ -168,9 +168,7 @@
                 </a>
                 <p class="text-gray-400 mb-3">Asserts that two values are equal.</p>
                 <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42");
-assert_equal("hello", str, "string should match");
-assert_equal(true, is_valid, "should be valid");</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42")assert_equal("hello", str, "string should match")assert_equal(true, is_valid, "should be valid");</code></pre>
                 </div>
             </div>
         </section>
@@ -185,8 +183,7 @@ assert_equal(true, is_valid, "should be valid");</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-indigo-400">true</code>.</p>
                 <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_true(user.is_active, "user should be active");
-assert_true(contains(items, "test"), "should contain test item");</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_true(user.is_active, "user should be active")assert_true(contains(items, "test"), "should contain test item");</code></pre>
                 </div>
             </div>
         </section>
@@ -201,8 +198,7 @@ assert_true(contains(items, "test"), "should contain test item");</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-indigo-400">false</code>.</p>
                 <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_false(user.is_blocked, "user should not be blocked");
-assert_false(is_empty(items), "items should not be empty");</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_false(user.is_blocked, "user should not be blocked")assert_false(is_empty(items), "items should not be empty");</code></pre>
                 </div>
             </div>
         </section>
@@ -217,8 +213,7 @@ assert_false(is_empty(items), "items should not be empty");</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Asserts that a collection contains a specific value.</p>
                 <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_contains(users, "admin", "should contain admin user");
-assert_contains([1, 2, 3], 2, "should contain 2");</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_contains(users, "admin", "should contain admin user")assert_contains([1, 2, 3], 2, "should contain 2");</code></pre>
                 </div>
             </div>
         </section>
@@ -233,8 +228,7 @@ assert_contains([1, 2, 3], 2, "should contain 2");</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Asserts that a value is <code class="text-indigo-400">nil</code> (null).</p>
                 <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_nil(result.error, "should have no error");
-assert_nil(user.deleted_at, "should not be deleted");</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_nil(result.error, "should have no error")assert_nil(user.deleted_at, "should not be deleted");</code></pre>
                 </div>
             </div>
         </section>
@@ -249,8 +243,7 @@ assert_nil(user.deleted_at, "should not be deleted");</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Asserts that a value is not <code class="text-indigo-400">nil</code>.</p>
                 <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">assert_not_nil(user.id, "user should have an id");
-assert_not_nil(response.body, "response should have body");</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">assert_not_nil(user.id, "user should have an id")assert_not_nil(response.body, "response should have body");</code></pre>
                 </div>
             </div>
         </section>
@@ -431,7 +424,7 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
 
                 <section id="def-factory-clear" class="scroll-mt-20">
                     <a href="#def-factory-clear" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">Factory.clear()</code>
+                        <code class="font-mono text-indigo-400">Factory.clear</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Clear all factories</p>
                 </section>

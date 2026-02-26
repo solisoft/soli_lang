@@ -79,7 +79,7 @@
             width: 100%;
             height: 100%;
             pointer-events: none;
-            z-index: 50;
+            z-index: 1;
             opacity: 0.05;
             background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
         }
@@ -97,11 +97,10 @@
 
         /* Mobile menu animation */
         .mobile-nav {
-            transform: translateY(-100%);
-            transition: transform 0.3s ease;
+            display: none;
         }
         .mobile-nav.open {
-            transform: translateY(0);
+            display: block;
         }
         /* Blob animation */
         @keyframes blob {
@@ -147,7 +146,7 @@
                 </div>
 
                 <!-- Desktop Navigation -->
-                <div class="hidden md:flex items-center gap-1">
+                <div class="hidden lg:flex items-center gap-1">
                     <a href="/" class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white rounded-lg hover:bg-white/5 transition-all">
                         Home
                     </a>
@@ -168,7 +167,7 @@
                 </div>
 
                 <!-- Mobile menu button -->
-                <div class="md:hidden flex items-center">
+                <div class="lg:hidden flex items-center">
                     <button onclick="toggleMobileNav()" class="p-2 text-gray-400 hover:text-white transition-colors">
                         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -179,7 +178,7 @@
         </div>
 
         <!-- Mobile Navigation -->
-        <div id="mobileNav" class="mobile-nav md:hidden absolute top-full left-0 right-0 bg-gray-950/95 backdrop-blur-xl border-b border-white/5">
+        <div id="mobileNav" class="mobile-nav lg:hidden absolute top-full left-0 right-0 bg-gray-950/95 backdrop-blur-xl border-b border-white/5">
             <div class="px-4 py-4 space-y-1">
                 <a href="/" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Home</a>
                 <a href="/docs" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Documentation</a>

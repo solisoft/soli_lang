@@ -31,8 +31,7 @@
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Map path to handler function
-router_websocket("/ws/chat", "websocket#chat_handler");
-
+router_websocket("/ws/chat", "websocket#chat_handler")
 # With dynamic segments
 router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
         </div>
@@ -44,16 +43,17 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/websocket_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def chat_handler(event: Any)    let type = event["type"];
-    let id = event["connection_id"];
+<pre><code class="language-soli text-sm">def chat_handler(event: Any)
+let type = event["type"]
+    let id = event["connection_id"]
 
     if (type == "connect")
-        return { "broadcast": json_encode({ "type": "join", "user": id }) };
+        return { "broadcast": json_encode({ "type": "join", "user": id }) }
     end
 
     if (type == "message")
-        let msg = event["message"];
-        return { "broadcast": msg };
+        let msg = event["message"]
+        return { "broadcast": msg }
     end
 
     {}
@@ -112,17 +112,17 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Room-based Chat Handler</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def room_handler(event: Any)    let room = "room:" + event["params"]["room_id"];
+<pre><code class="language-soli text-sm">def room_handler(event: Any)
+let room = "room:" + event["params"]["room_id"]
 
     if (event["type"] == "connect")
         # Join the room channel on connect
-        return { "join": room };
+        return { "join": room }
     end
 
     if (event["type"] == "message")
-        let data = JSON.parse(event["message"]);
-        # Broadcast only to users in this room
-        return { "broadcast_room": json_encode(data) };
+        let data = JSON.parse(event["message"])        # Broadcast only to users in this room
+        return { "broadcast_room": json_encode(data) }
     end
 
     # Leave is automatic on disconnect
@@ -173,10 +173,10 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Presence-Enabled Chat Handler</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def chat_handler(event: Any)    let room = "room:general";
+<pre><code class="language-soli text-sm">def chat_handler(event: Any)
+let room = "room:general"
     # Get user from session/auth (example)
-    let user = get_current_user();
-
+    let user = get_current_user
     if (event["type"] == "connect")
         return {
             "join": room,
@@ -186,22 +186,21 @@ end</code></pre>
                 "name": user["name"],       # Extra metadata
                 "avatar": user["avatar"]
             }
-        };
+        }
     end
 
     if (event["type"] == "message")
-        let data = JSON.parse(event["message"]);
-
+        let data = JSON.parse(event["message"])
         # Handle typing indicators
         if (data["event"] == "typing")
-            return { "set_presence": { "channel": room, "state": "typing" } };
+            return { "set_presence": { "channel": room, "state": "typing" } }
         end
         if (data["event"] == "stop_typing")
-            return { "set_presence": { "channel": room, "state": "online" } };
+            return { "set_presence": { "channel": room, "state": "online" } }
         end
 
         # Regular messages
-        return { "broadcast_room": json_encode(data) };
+        return { "broadcast_room": json_encode(data) }
     end
 
     # Disconnect auto-untracks and broadcasts leave diff
@@ -272,35 +271,31 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">JavaScript - Handling Presence</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-javascript text-sm">let presences = {};
+<pre><code class="language-javascript text-sm">let presences = {}
 
 ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-
+    const data = JSON.parse(event.data)
     if (data.event === 'presence_state') {
         // Initial state - replace all
-        presences = data.payload;
-        renderUserList();
-    }
+        presences = data.payload
+        renderUserList()    }
     else if (data.event === 'presence_diff') {
         // Apply diff
         Object.entries(data.payload.joins).forEach(([userId, presence]) => {
-            presences[userId] = presence;
-        });
-        Object.entries(data.payload.leaves).forEach(([userId]) => {
-            delete presences[userId];
-        });
-        renderUserList();
-    }
-};
+            presences[userId] = presence
+        })
+Object.entries(data.payload.leaves).forEach(([userId]) => {
+            delete presences[userId]
+        })
+renderUserList()    }
+}
 
 function renderUserList() {
     const users = Object.entries(presences).map(([userId, { metas }]) => ({
         userId,
         ...metas[0],  // Use first meta for display
         connectionCount: metas.length
-    }));
-    // Render users...
+    }))    // Render users...
 }</code></pre>
         </div>
     </div>
@@ -311,15 +306,15 @@ function renderUserList() {
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Get all users in a room
-let users = ws_list_presence("room:lobby");
+let users = ws_list_presence("room:lobby")
 # Returns: [{ user_id: "123", metas: [...] }, ...]
 
 # Get user count (unique users, not connections)
-let count = ws_presence_count("room:lobby");
+let count = ws_presence_count("room:lobby")
 # Returns: 5
 
 # Get a specific user's presence
-let user = ws_get_presence("room:lobby", "user_123");
+let user = ws_get_presence("room:lobby", "user_123")
 # Returns: { user_id: "123", metas: [...] } or null</code></pre>
         </div>
     </div>
@@ -330,19 +325,15 @@ let user = ws_get_presence("room:lobby", "user_123");
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">JavaScript</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-javascript text-sm">// Connect to WebSocket
-const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(`${protocol}//${location.host}/ws/chat`);
-
+const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+const ws = new WebSocket(`${protocol}//${location.host}/ws/chat`)
 ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    console.log('Received:', data);
-};
+    const data = JSON.parse(event.data)
+console.log('Received:', data)}
 
-ws.send(JSON.stringify({ text: 'Hello!' }));
-
+ws.send(JSON.stringify({ text: 'Hello!' }))
 // Send typing indicator
-ws.send(JSON.stringify({ event: 'typing' }));
-
+ws.send(JSON.stringify({ event: 'typing' }))
 // Stop typing
 ws.send(JSON.stringify({ event: 'stop_typing' }));</code></pre>
         </div>
@@ -410,28 +401,28 @@ ws.send(JSON.stringify({ event: 'stop_typing' }));</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_count">ws_count()</h3>
             <p class="text-gray-400 mb-4">Get total number of active connections.</p>
-            <pre><code class="language-soli text-sm">let total = ws_count();</code></pre>
+            <pre><code class="language-soli text-sm">let total = ws_count()</code></pre>
         </div>
 
         <!-- ws_join -->
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_join">ws_join(channel)</h3>
             <p class="text-gray-400 mb-4">Join current connection to a channel.</p>
-            <pre><code class="language-soli text-sm">ws_join("room:lobby");</code></pre>
+            <pre><code class="language-soli text-sm">ws_join("room:lobby")</code></pre>
         </div>
 
         <!-- ws_leave -->
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_leave">ws_leave(channel)</h3>
             <p class="text-gray-400 mb-4">Leave a channel.</p>
-            <pre><code class="language-soli text-sm">ws_leave("room:lobby");</code></pre>
+            <pre><code class="language-soli text-sm">ws_leave("room:lobby")</code></pre>
         </div>
 
         <!-- ws_clients -->
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_clients">ws_clients()</h3>
             <p class="text-gray-400 mb-4">Get all connected client IDs.</p>
-            <pre><code class="language-soli text-sm">let clients = ws_clients();</code></pre>
+            <pre><code class="language-soli text-sm">let clients = ws_clients()</code></pre>
         </div>
 
         <!-- ws_clients_in -->

@@ -101,7 +101,7 @@
 # Body: {"status": "urgent", "quantity": "5"}
 
 def update_item(req: Any)    # Unified access to all parameters
-    let all = req["all"];
+    let all = req["all"]
 
     # ID from route params
     print("ID:", all["id"]);           # "42"
@@ -178,19 +178,19 @@ end</code></pre></code></pre>
             </div>
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">def handler(req: Any)    # Route parameters only
-    let id = req["params"]["id"];
+    let id = req["params"]["id"]
 
     # Query parameters only
-    let page = req["query"]["page"];
+    let page = req["query"]["page"]
 
     # JSON body only
-    let data = req["json"];
+    let data = req["json"]
 
     # Form data only
-    let form = req["form"];
+    let form = req["form"]
 
     # Or unified access
-    let all = req["all"];
+    let all = req["all"]
 
     {"status": 200, "body": "OK"}
 end</code></pre></code></pre>
@@ -216,12 +216,13 @@ end</code></pre></code></pre>
 <pre><code class="language-soli text-sm"># GET /api/search?q=2
 # orrust&page= POST /api/search with body {"q": "rust", "filters": "recent"}
 
-def search(req: Any)    let all = req["all"];
+def search(req: Any)
+let all = req["all"]
 
     # Unified params allow flexible API design
-    let query = all["q"] or "";
-    let page = all["page"] or "1";
-    let limit = all["limit"] or "20";
+    let query = all["q"] or ""
+    let page = all["page"] or "1"
+    let limit = all["limit"] or "20"
 
     # Use unified params for filtering
     let filters = {
@@ -232,11 +233,10 @@ def search(req: Any)    let all = req["all"];
         "sort": all["sort"] or "relevance",
         "min_price": all["min_price"],    # Optional
         "max_price": all["max_price"]     # Optional
-    };
+    }
 
     # Execute search
-    let results = execute_search(filters);
-
+    let results = execute_search(filters)
     {
         "status": 200,
         "body": json_stringify({
@@ -328,7 +328,8 @@ end</code></pre></code></pre>
             </div>
             <div class="bg-white/5 rounded-xl p-6 border border-white/5">
                 <h3 class="font-semibold text-white mb-2">Backward Compatible</h3>
-                <p class="text-gray-400 text-sm">Individual sources (req["params"], req["query"]) still work exactly as before.</p>
+                <p class="text-gray-400 text-sm">Individual sources (req["params"], req["query"])
+still work exactly as before.</p>
             </div>
             <div class="bg-white/5 rounded-xl p-6 border border-white/5">
                 <h3 class="font-semibold text-white mb-2">Intuitive Priority</h3>

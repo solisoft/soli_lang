@@ -394,7 +394,7 @@ use app_loader::{
 /// Run the MVC HTTP server with a worker pool for parallel request processing.
 #[allow(clippy::too_many_arguments)]
 fn run_hyper_server_worker_pool(
-    _folder: &Path,
+    folder: &Path,
     port: u16,
     controllers_dir: PathBuf,
     models_dir: PathBuf,
@@ -542,6 +542,8 @@ fn run_hyper_server_worker_pool(
         let watch_helpers_dir = helpers_dir.clone();
         let watch_public_dir = public_dir.clone();
         let watch_routes_file = routes_file.clone();
+        let watch_assets_css_dir = folder.join("app/assets/css");
+        let watch_folder = folder.to_path_buf();
         let browser_reload_tx = reload_tx.clone();
         thread::spawn(move || {
             use notify::{RecursiveMode, Watcher};
@@ -600,6 +602,13 @@ fn run_hyper_server_worker_pool(
                 {
                     watch_count += 1;
                 }
+            }
+            if watch_assets_css_dir.exists()
+                && watcher
+                    .watch(&watch_assets_css_dir, RecursiveMode::NonRecursive)
+                    .is_ok()
+            {
+                watch_count += 1;
             }
 
             println!(
@@ -672,14 +681,31 @@ fn run_hyper_server_worker_pool(
                 let mut helpers_changed = false;
                 let mut static_files_changed = false;
                 let mut routes_changed = false;
+                let mut asset_css_changed = false;
+
+                // Track the public/css output directory to distinguish
+                // Tailwind output changes from source changes
+                let public_css_dir = watch_public_dir.join("css");
 
                 for path in &changed {
                     println!("   {}", path.display());
 
+                    // Check if it's a source CSS file in app/assets/css/
+                    if path.starts_with(&watch_assets_css_dir) {
+                        if path.extension().and_then(|e| e.to_str()) == Some("css") {
+                            asset_css_changed = true;
+                        }
+                        continue; // Don't also count as static file
+                    }
+
                     // Check if it's a static file (CSS, JS, images)
                     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                         if server_constants::is_tracked_static_extension(ext) {
-                            static_files_changed = true;
+                            // Ignore public/css/ changes caused by Tailwind output
+                            // to avoid recompilation loops
+                            if !(ext == "css" && path.starts_with(&public_css_dir)) {
+                                static_files_changed = true;
+                            }
                         }
                     }
 
@@ -727,10 +753,16 @@ fn run_hyper_server_worker_pool(
                     println!("   ✓ Signaled template cache clear to all workers");
                 }
 
-                if static_files_changed && !views_changed {
-                    // Only signal static file reload when no views changed.
-                    // When views change, Tailwind rebuilds CSS into public/ which
-                    // would trigger a redundant reload — the view reload already
+                // Recompile Tailwind CSS when source files change
+                // (views may introduce new classes, asset CSS may have new directives)
+                if views_changed || asset_css_changed || controllers_changed || helpers_changed {
+                    tailwind::compile_tailwind_css_once(&watch_folder);
+                }
+
+                if static_files_changed && !views_changed && !asset_css_changed {
+                    // Only signal static file reload when no views/asset CSS changed.
+                    // When views or asset CSS change, Tailwind rebuilds CSS into public/
+                    // which would trigger a redundant reload — the view reload already
                     // causes the browser to fetch updated CSS.
                     hot_reload_versions_for_watcher
                         .static_files
@@ -918,6 +950,10 @@ fn worker_loop(
 
     // Create VM for production mode (bytecode execution for handler calls)
     let mut vm: Option<crate::vm::Vm> = if !dev_mode {
+        // Ensure all builtins are loaded before copying globals into VM
+        crate::interpreter::builtins::register_builtins(
+            &mut interpreter.environment.borrow_mut(),
+        );
         let mut vm = crate::vm::Vm::new();
         // Copy all globals from interpreter environment into VM
         // This includes all native builtins, classes, and user-defined functions
@@ -930,7 +966,6 @@ fn worker_loop(
         None
     };
 
-    let check_interval = Duration::from_millis(server_constants::WORKER_POLL_INTERVAL_MS);
     let mut ws_event_rx_inner = Some(ws_event_rx);
     let ws_registry_inner = Some(ws_registry);
     let mut lv_event_rx_inner = Some(lv_event_rx);
@@ -1017,11 +1052,12 @@ fn worker_loop(
             );
         }
 
-        // Process WebSocket events first (quick non-blocking check)
+        // Drain all pending events non-blockingly before sleeping
+
+        // Process WebSocket events (quick non-blocking check)
         if let (Some(ref mut rx), Some(_registry)) =
             (ws_event_rx_inner.as_mut(), ws_registry_inner.as_ref())
         {
-            // Use try_recv for non-blocking check instead of recv_timeout(ZERO)
             match rx.try_recv() {
                 Ok(data) => {
                     handle_websocket_event(interpreter, &data, &runtime_handle);
@@ -1074,18 +1110,67 @@ fn worker_loop(
             }
         }
 
-        // Block waiting for more requests (proper blocking, not busy-wait)
-        if let Ok(data) = work_rx.recv_timeout(check_interval) {
-            // Check hot reload again before handling this request
-            // (version may have changed while we were blocked)
-            let current_views = hot_reload_versions.views.load(Ordering::Acquire);
-            if current_views != last_views_version {
-                last_views_version = current_views;
-                clear_template_cache();
-            }
+        // Block waiting for events on any channel using crossbeam select.
+        // This avoids busy-waiting: the thread sleeps until an event arrives
+        // on any channel (or timeout fires for dev-mode hot reload checks).
+        {
+            let mut sel = channel::Select::new();
+            let work_idx = sel.recv(&work_rx);
+            let ws_idx = ws_event_rx_inner
+                .as_ref()
+                .filter(|_| ws_registry_inner.is_some())
+                .map(|rx| sel.recv(rx));
+            let lv_idx = lv_event_rx_inner.as_ref().map(|rx| sel.recv(rx));
 
-            let resp_data = handle_request(interpreter, &mut vm, &data, dev_mode);
-            let _ = data.response_tx.send(resp_data);
+            let result = if dev_mode {
+                // Dev mode: use timeout so we periodically check hot reload versions
+                sel.select_timeout(Duration::from_millis(200))
+            } else {
+                // Production: block indefinitely - no hot reload to check
+                Ok(sel.select())
+            };
+
+            if let Ok(oper) = result {
+                let idx = oper.index();
+                if idx == work_idx {
+                    if let Ok(data) = oper.recv(&work_rx) {
+                        // Check hot reload before handling
+                        if dev_mode {
+                            let current_views = hot_reload_versions.views.load(Ordering::Acquire);
+                            if current_views != last_views_version {
+                                last_views_version = current_views;
+                                clear_template_cache();
+                            }
+                        }
+                        let resp_data = handle_request(interpreter, &mut vm, &data, dev_mode);
+                        let _ = data.response_tx.send(resp_data);
+                    }
+                } else if Some(idx) == ws_idx {
+                    if let Some(ref rx) = ws_event_rx_inner {
+                        if let Ok(data) = oper.recv(rx) {
+                            handle_websocket_event(interpreter, &data, &runtime_handle);
+                            let _ = data.response_tx.send(WebSocketActionData {
+                                join: None,
+                                leave: None,
+                                send: None,
+                                broadcast: None,
+                                broadcast_room: None,
+                                close: None,
+                                track: None,
+                                untrack: None,
+                                set_presence: None,
+                            });
+                        }
+                    }
+                } else if Some(idx) == lv_idx {
+                    if let Some(ref rx) = lv_event_rx_inner {
+                        if let Ok(data) = oper.recv(rx) {
+                            let result = handle_liveview_event(interpreter, &data);
+                            let _ = data.response_tx.send(result);
+                        }
+                    }
+                }
+            }
         }
     }
 }

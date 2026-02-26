@@ -131,7 +131,7 @@ session_destroy()</code></pre>
                 <p class="text-gray-400 mb-3">Generate a new session ID while preserving data. <span class="text-yellow-400">Important:</span> Call this after login to prevent session fixation attacks.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># After successful login
 session_set("user_id", user["id"])
-session_regenerate()  # Security: generate new session ID</code></pre>
+session_regenerate  # Security: generate new session ID</code></pre>
             </div>
         </section>
 
@@ -166,7 +166,7 @@ def login(email: String, password: String) -> Bool
     }
 
     session_set("user_id", user["id"])
-    session_regenerate()  # Prevent session fixation
+    session_regenerate  # Prevent session fixation
     true
 end
 
@@ -181,7 +181,7 @@ end
 
 # Logout
 def logout
-    session_destroy()
+    session_destroy
 end</code></pre>
         </div>
 

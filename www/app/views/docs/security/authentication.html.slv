@@ -55,15 +55,13 @@ let payload = {
     "sub": "user_12345",
     "name": "Alice Wonderland",
     "role": "admin",
-    "iat": now()
-};
+    "iat": now
+}
 
 # 2. Get your secret key securely
-let secret = getenv("JWT_SECRET");
-
+let secret = getenv("JWT_SECRET")
 # 3. Sign the token (default algorithm: HS256)
-let token = jwt_sign(payload, secret);
-
+let token = jwt_sign(payload, secret)
 # Option: Set expiration (e.g., 1 hour from now)
 let token_with_exp = jwt_sign(
     payload, 
@@ -92,17 +90,14 @@ let token_with_exp = jwt_sign(
                 <span class="ml-2 text-xs text-gray-500 font-mono">middleware/auth.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">let result = jwt_verify(token, secret);
-
+<pre><code class="language-soli text-sm">let result = jwt_verify(token, secret)
 if result["error"] == true {
     # Handle invalid token
-    print("Auth Error:", result["message"]);
-    { "error": "Unauthorized" }
+    print("Auth Error:", result["message"])    { "error": "Unauthorized" }
 } else {
     # Token is valid, access claims
-    let user_id = result["sub"];
-    print("Authenticated User:", user_id);
-}</code></pre>
+    let user_id = result["sub"]
+    print("Authenticated User:", user_id)}</code></pre>
             </div>
         </div>
     </section>
@@ -116,7 +111,8 @@ if result["error"] == true {
             Security Warning
         </h4>
         <p class="text-yellow-200/80 text-sm">
-            Never hardcode your <code>JWT_SECRET</code> in your source code. Always use environment variables (<code>.env</code>) or a secure secrets manager. If your secret is compromised, all issued tokens become insecure.
+            Never hardcode your <code>JWT_SECRET</code> in your source code. Always use environment variables (<code>.env</code>)
+or a secure secrets manager. If your secret is compromised, all issued tokens become insecure.
         </p>
     </div>
 

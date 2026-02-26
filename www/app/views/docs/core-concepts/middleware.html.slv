@@ -84,11 +84,12 @@ end</code></pre>
 <pre><code class="language-soli text-sm"># order: 20
 # scope_only: true
 
-def authenticate(req: Any)    let headers = req["headers"];
-    let api_key = "";
+def authenticate(req: Any)
+let headers = req["headers"]
+    let api_key = ""
 
     if has_key(headers, "X-Api-Key")
-        api_key = headers["X-Api-Key"];
+        api_key = headers["X-Api-Key"]
     end
 
     if api_key == ""
@@ -103,7 +104,7 @@ def authenticate(req: Any)    let headers = req["headers"];
                     "message": "API key required"
                 })
             }
-        };
+        }
     end
 
     # Continue to handler
@@ -206,20 +207,17 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Public routes (no auth required)
-get("/", "home#index");
-get("/login", "auth#login");
-
+get("/", "home#index")get("/login", "auth#login")
 # Protected routes (auth middleware applied)
 middleware("authenticate", ->
-    get("/dashboard", "dashboard#index");
-    get("/profile", "users#profile");
-    post("/settings", "users#update_settings");
-end);
-
+    get("/dashboard", "dashboard#index")
+get("/profile", "users#profile")
+post("/settings", "users#update_settings")
+end)
 # Multiple middleware
 middleware(["authenticate", "admin_only"], ->
-    get("/admin", "admin#index");
-    get("/admin/users", "admin#users");
+    get("/admin", "admin#index")
+get("/admin/users", "admin#users")
 end);</code></pre>
         </div>
     </div>

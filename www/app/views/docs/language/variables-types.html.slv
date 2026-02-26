@@ -55,11 +55,11 @@ let is_active = true</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Explicit type annotations
-let name: String = "Alice";
-let age: Int = 30;
-let temperature: Float = 98.6;
-let is_active: Bool = true;
-let scores: Int[] = [95, 87, 92];
+let name: String = "Alice"
+let age: Int = 30
+let temperature: Float = 98.6
+let is_active: Bool = true
+let scores: Int[] = [95, 87, 92]
 let user: Hash = {"name": "Alice", "age": 30};</code></pre>
             </div>
         </div>
@@ -147,9 +147,9 @@ let user: Hash = {"name": "Alice", "age": 30};</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">const</code> for values that should never change.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">const MAX_CONNECTIONS = 100;
-const DEFAULT_TIMEOUT = 30;
-const PI = 3.14159265359;
+                <pre data-filename="Example"><code class="language-soli text-sm">const MAX_CONNECTIONS = 100
+const DEFAULT_TIMEOUT = 30
+const PI = 3.14159265359
 
 # const values cannot be reassigned
 # MAX_CONNECTIONS = 200;  # This would cause an error</code></pre>
@@ -163,7 +163,7 @@ const PI = 3.14159265359;
         <p class="text-gray-400 mb-4">Variables in Soli are block-scoped:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let x = 1;
+<pre><code class="language-soli text-sm">let x = 1
 
 if (true) {
     let y = 2;      # y only visible in this block

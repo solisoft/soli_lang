@@ -1,6 +1,6 @@
 [package]
 name = "solilang"
-version = "0.32.0"
+version = "0.33.0"
 edition = "2021"
 description = "A dynamically-typed, class-based OOP language with optional type annotations and pipeline operators"
 authors = ["Solilang Team"]
@@ -22,6 +22,9 @@ full = ["coverage"]
 thiserror = "1.0"
 colored = "2.1"
 dirs = "5.0"
+
+# Memory allocator - much better RSS behavior than glibc for multi-threaded apps
+mimalloc = { version = "0.1", default-features = false }
 
 # Decimal type for financial calculations
 rust_decimal = { version = "1.34", features = ["std", "serde"] }

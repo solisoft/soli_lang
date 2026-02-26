@@ -55,7 +55,8 @@ soli lint app/main.sl</code></pre>
 <pre><code class="language-text text-sm">app/main.sl:12:5 - [naming/snake-case] variable 'myVar' should use snake_case
 app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statement
 
-2 issue(s) found in 1 file(s)</code></pre>
+2 issue(s)
+found in 1 file(s)</code></pre>
             </div>
         </div>
     </section>
@@ -78,11 +79,11 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
                 <code class="text-indigo-400 font-mono text-sm">naming/snake-case</code>
                 <p class="text-gray-400 mt-2">Variables, functions, methods, and parameters should use <code class="text-indigo-400">snake_case</code>.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad
-let myVar = 10;
+let myVar = 10
 def processData end
 
 # Good
-let my_var = 10;
+let my_var = 10
 def process_data end</code></pre>
             </div>
 
@@ -120,7 +121,7 @@ interface DataStore end</code></pre>
                 <code class="text-indigo-400 font-mono text-sm">smell/unreachable-code</code>
                 <p class="text-gray-400 mt-2">Code after a <code class="text-indigo-400">return</code> statement is unreachable and will never execute.</p>
                 <pre class="mt-3"><code class="language-soli text-sm">def example
-    return 42;
+    return 42
     print("never reached");  # Warning: unreachable code
 end</code></pre>
             </div>
@@ -130,15 +131,13 @@ end</code></pre>
                 <p class="text-gray-400 mt-2">Catch blocks should not be empty. Silently swallowing errors hides bugs.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad - error silently ignored
 try
-    risky();
-catch e
+    risky()catch e
 end
 
 # Good - at least log the error
 try
-    risky();
-catch e
-    print("Error: " + str(e));
+    risky()catch e
+    print("Error: " + str(e))
 end</code></pre>
             </div>
 

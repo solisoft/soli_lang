@@ -71,7 +71,7 @@ if !limiter.allowed() {
                 <span class="text-gray-300">Hash with keys: <code class="text-purple-400">allowed</code>, <code class="text-purple-400">remaining</code>, <code class="text-purple-400">reset_in</code>, <code class="text-purple-400">limit</code>, <code class="text-purple-400">window</code></span>
             </div>
             <pre class="text-sm text-gray-300 overflow-x-auto"><code>let limiter = RateLimiter("api:" + api_key, 1000, 3600)
-let status = limiter.status()
+let status = limiter.status
 println("Remaining: " + str(status["remaining"]) + "/" + str(status["limit"]))</code></pre>
         </div>
     </section>
@@ -137,8 +137,8 @@ def rate_limit_middleware(req)
     
     # Check rate limit (100 requests per minute)
     if !limiter.allowed() {
-        let status = limiter.status()
-        let headers = limiter.headers()
+        let status = limiter.status
+        let headers = limiter.headers
         
         return {
             "continue": false,

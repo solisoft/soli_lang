@@ -49,17 +49,16 @@
                 <span class="ml-2 text-xs text-gray-500 font-mono">basic_workflow.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+<pre><code class="language-soli text-sm">let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
 let transitions = [
     {"event": "confirm", "from": "pending", "to": "confirmed"},
     {"event": "process", "from": "confirmed", "to": "processing"},
     {"event": "ship", "from": "processing", "to": "shipped"},
     {"event": "deliver", "from": "shipped", "to": "delivered"},
     {"event": "cancel", "from": "pending", "to": "cancelled"}
-];
+]
 
-let order = create_state_machine("pending", states, transitions);
-
+let order = create_state_machine("pending", states, transitions)
 print(order.current_state());  # "pending"</code></pre>
             </div>
         </div>
@@ -150,8 +149,7 @@ print(order.current_state());  # "pending"</code></pre>
                 <p class="text-gray-400 text-sm mb-3">Check if the state machine is in a specific state.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
 <pre><code class="language-soli text-sm">if (order.is("pending")) {
-    print("Order is waiting for confirmation");
-}</code></pre>
+    print("Order is waiting for confirmation")}</code></pre>
                 </div>
             </div>
 
@@ -161,8 +159,7 @@ print(order.current_state());  # "pending"</code></pre>
                 <p class="text-gray-400 text-sm mb-3">Check if the state machine is in any of the given states.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
 <pre><code class="language-soli text-sm">if (order.is_in(["shipped", "delivered"])) {
-    print("Order is on its way or delivered");
-}</code></pre>
+    print("Order is on its way or delivered")}</code></pre>
                 </div>
             </div>
 
@@ -171,11 +168,8 @@ print(order.current_state());  # "pending"</code></pre>
                 <h3 class="font-semibold text-white mb-2"><code class="text-lime-300">set(key, value)</code> &amp; <code class="text-lime-300">get(key)</code></h3>
                 <p class="text-gray-400 text-sm mb-3">Store and retrieve custom data in the state machine context.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
-<pre><code class="language-soli text-sm">order.set("customer_id", 12345);
-order.set("total", 99.99);
-order.set("items", ["Product A", "Product B"]);
-
-let customer_id = order.get("customer_id");
+<pre><code class="language-soli text-sm">order.set("customer_id", 12345)order.set("total", 99.99)order.set("items", ["Product A", "Product B"])
+let customer_id = order.get("customer_id")
 let total = order.get("total");</code></pre>
                 </div>
             </div>
@@ -185,7 +179,7 @@ let total = order.get("total");</code></pre>
                 <h3 class="font-semibold text-white mb-2"><code class="text-lime-300">history()</code></h3>
                 <p class="text-gray-400 text-sm mb-3">Get the state transition history.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
-<pre><code class="language-soli text-sm">let hist = order.history();
+<pre><code class="language-soli text-sm">let hist = order.history()
 print(hist);</code></pre>
                 </div>
             </div>
@@ -195,9 +189,8 @@ print(hist);</code></pre>
                 <h3 class="font-semibold text-white mb-2"><code class="text-lime-300">last_transition()</code></h3>
                 <p class="text-gray-400 text-sm mb-3">Returns information about the last transition as a hash.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
-<pre><code class="language-soli text-sm">order.confirm();
-let last = order.last_transition();
-# {from => pending, to => confirmed, event => confirm}
+<pre><code class="language-soli text-sm">order.confirm()
+let last = order.last_transition# {from => pending, to => confirmed, event => confirm}
 
 print(last["from"]);   # "pending"
 print(last["to"]);     # "confirmed"
@@ -211,8 +204,7 @@ print(last["event"]);  # "confirm"</code></pre>
                 <p class="text-gray-400 text-sm mb-3">Checks if an event is available from the current state.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
 <pre><code class="language-soli text-sm">if (order.can("ship")) {
-    print("Order can be shipped");
-}
+    print("Order can be shipped")}
 # Returns: true or false</code></pre>
                 </div>
             </div>
@@ -222,8 +214,7 @@ print(last["event"]);  # "confirm"</code></pre>
                 <h3 class="font-semibold text-white mb-2"><code class="text-lime-300">available_events()</code></h3>
                 <p class="text-gray-400 text-sm mb-3">Returns an array of events available from the current state.</p>
                 <div class="bg-[#1e1e1e] rounded-lg p-4">
-<pre><code class="language-soli text-sm">let events = order.available_events();
-# ["confirm", "cancel"] from pending state</code></pre>
+<pre><code class="language-soli text-sm">let events = order.available_events# ["confirm", "cancel"] from pending state</code></pre>
                 </div>
             </div>
         </div>
@@ -243,11 +234,11 @@ print(last["event"]);  # "confirm"</code></pre>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm"># From the transitions array above
-order.confirm();   # Transitions from "pending" to "confirmed"
-order.process();   # Transitions from "confirmed" to "processing"
-order.ship();      # Transitions from "processing" to "shipped"
-order.deliver();   # Transitions from "shipped" to "delivered"
-order.cancel();    # Transitions from "pending" to "cancelled"</code></pre>
+order.confirm   # Transitions from "pending" to "confirmed"
+order.process   # Transitions from "confirmed" to "processing"
+order.ship      # Transitions from "processing" to "shipped"
+order.deliver   # Transitions from "shipped" to "delivered"
+order.cancel    # Transitions from "pending" to "cancelled"</code></pre>
             </div>
         </div>
 
@@ -264,8 +255,7 @@ order.cancel();    # Transitions from "pending" to "cancelled"</code></pre>
                 </div>
             </div>
             <div class="mt-4 bg-[#1e1e1e] rounded-lg p-4">
-<pre><code class="language-soli text-sm">order.ship();
-# Error: Cannot transition 'ship' from state 'pending'. Valid states: processing</code></pre>
+<pre><code class="language-soli text-sm">order.ship# Error: Cannot transition 'ship' from state 'pending'. Valid states: processing</code></pre>
             </div>
         </div>
     </section>
@@ -294,18 +284,13 @@ order.cancel();    # Transitions from "pending" to "cancelled"</code></pre>
     {"event": "ship", "from": "processing", "to": "shipped", "if": "can_ship"},
     {"event": "deliver", "from": "shipped", "to": "delivered", "guard": "is_deliverable"},
     {"event": "cancel", "from": "pending", "to": "cancelled"}
-];
+]
 
-let order = create_state_machine("pending", states, transitions);
-
+let order = create_state_machine("pending", states, transitions)
 # Set guard conditions
-order.set("can_ship", true);
-order.set("is_deliverable", true);
-
+order.set("can_ship", true)order.set("is_deliverable", true)
 # Transitions will fail if guard is false
-order.set("can_ship", false);
-order.ship();
-# Error: Guard condition 'can_ship' is false</code></pre>
+order.set("can_ship", false)order.ship# Error: Guard condition 'can_ship' is false</code></pre>
             </div>
         </div>
 
@@ -317,7 +302,8 @@ order.ship();
                 <div>
                     <span class="font-semibold text-blue-300">Note</span>
                     <p class="text-blue-200/80 text-sm mt-1">
-                        The <code class="text-cyan-300">if</code> and <code class="text-cyan-300">guard</code> keys are aliases and work identically. They specify a context field that must be <code class="text-cyan-300">true</code> (or undefined) for the transition to proceed.
+                        The <code class="text-cyan-300">if</code> and <code class="text-cyan-300">guard</code> keys are aliases and work identically. They specify a context field that must be <code class="text-cyan-300">true</code> (or undefined)
+for the transition to proceed.
                     </p>
                 </div>
             </div>
@@ -335,40 +321,38 @@ order.ship();
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">class OrderWorkflow
     def create_order(items: Array, total: Float)
-        let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+        let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
         let transitions = [
             {"event": "confirm", "from": "pending", "to": "confirmed"},
             {"event": "process", "from": "confirmed", "to": "processing"},
             {"event": "ship", "from": "processing", "to": "shipped"},
             {"event": "deliver", "from": "shipped", "to": "delivered"},
             {"event": "cancel", "from": "pending", "to": "cancelled"}
-        ];
+        ]
 
-        let order = create_state_machine("pending", states, transitions);
-        order.set("items", items);
-        order.set("total", total);
-        order.set("created_at", clock());
-
+        let order = create_state_machine("pending", states, transitions)
+order.set("items", items)
+order.set("total", total)
+order.set("created_at", clock())
         order
     end
 
     def process_order(order: Any)
         if (order.is("pending"))
-            order.confirm();
-        end
+            order.confirm()
+end
 
         if (order.is("confirmed"))
-            order.process();
-        end
+            order.process()
+end
 
         order
     end
 end
 
 # Usage
-let workflow = new OrderWorkflow();
-let order = workflow.create_order(["Widget A", "Widget B"], 149.99);
-workflow.process_order(order);</code></pre></code></pre>
+let workflow = new OrderWorkflow()
+let order = workflow.create_order(["Widget A", "Widget B"], 149.99)workflow.process_order(order);</code></pre></code></pre>
             </div>
         </div>
     </section>
@@ -382,23 +366,20 @@ workflow.process_order(order);</code></pre></code></pre>
 
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">let payment_states = ["pending", "authorized", "captured", "failed", "refunded"];
+<pre><code class="language-soli text-sm">let payment_states = ["pending", "authorized", "captured", "failed", "refunded"]
 let payment_transitions = [
     {"event": "authorize", "from": "pending", "to": "authorized"},
     {"event": "capture", "from": "authorized", "to": "captured"},
     {"event": "fail", "from": ["pending", "authorized"], "to": "failed"},
     {"event": "refund", "from": ["captured", "failed"], "to": "refunded"},
     {"event": "retry", "from": "failed", "to": "pending"}
-];
+]
 
-let payment = create_state_machine("pending", payment_states, payment_transitions);
-payment.set("amount", 99.99);
-payment.set("currency", "USD");
-
-payment.authorize();
+let payment = create_state_machine("pending", payment_states, payment_transitions)payment.set("amount", 99.99)payment.set("currency", "USD")
+payment.authorize()
 print("Payment status: " + payment.current_state());  # "authorized"
 
-payment.capture();
+payment.capture()
 print("Payment status: " + payment.current_state());  # "captured"</code></pre>
             </div>
         </div>
@@ -426,18 +407,15 @@ let state_data = {
         "total": order.get("total"),
         "items": order.get("items")
     }
-};
-Order.update(order.get("id"), state_data);
-
+}
+Order.update(order.get("id"), state_data)
 # Load state from database
-let saved_data = Order.find(order.get("id"));
+let saved_data = Order.find(order.get("id"))
 let loaded_order = create_state_machine(
     saved_data["current_state"],
     ["pending", "confirmed", "processing", "shipped", "delivered"],
     [...]
-);
-loaded_order.set("total", saved_data["context"]["total"]);
-loaded_order.set("items", saved_data["context"]["items"]);</code></pre>
+)loaded_order.set("total", saved_data["context"]["total"])loaded_order.set("items", saved_data["context"]["items"]);</code></pre>
             </div>
         </div>
     </section>

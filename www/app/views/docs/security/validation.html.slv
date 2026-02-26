@@ -23,7 +23,8 @@
                 <div>
                     <h2 class="text-2xl font-semibold text-white mb-3 mt-0 border-none">Trust, but Verify</h2>
                     <p class="text-gray-300 leading-relaxed mb-0">
-                        SoliLang's validation library is built around the <code class="text-amber-400">V</code> class. It allows you to define declarative schemas for your data. It handles not just checking values, but also safely converting types (coercion) and sanitizing input.
+                        SoliLang's validation library is built around the <code class="text-amber-400">V</code> class. It allows you to define declarative schemas for your data. It handles not just checking values, but also safely converting types (coercion)
+and sanitizing input.
                     </p>
                 </div>
             </div>
@@ -49,10 +50,10 @@
                 <span class="ml-2 text-xs text-gray-500 font-mono">Primitives</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">V.string()        # Matches text
-V.int()           # Matches integers (e.g., "123" -> 123)
-V.float()         # Matches decimals
-V.bool()          # Matches true/false (and "true"/"false")
+<pre><code class="language-soli text-sm">V.string        # Matches text
+V.int           # Matches integers (e.g., "123" -> 123)
+V.float         # Matches decimals
+V.bool          # Matches true/false (and "true"/"false")
 V.array(schema)   # Matches a list of items
 V.hash(schema)    # Matches a nested object</code></pre>
             </div>
@@ -83,16 +84,14 @@ let user_schema = {
     "password": V.string().required().min_length(8),
     "age": V.int().optional().min(18).max(120),
     "newsletter": V.bool().default(false)
-};
+}
 
 # 2. Validate input data (e.g., from a POST request)
-let result = validate(req["body"], user_schema);
-
+let result = validate(req["body"], user_schema)
 # 3. Handle results
 if result["valid"] {
     # result["data"] contains the clean, coerced data
-    create_user(result["data"]);
-} else {
+    create_user(result["data"])} else {
     # result["errors"] contains validation messages
     render("register", { "errors": result["errors"] })
 }</code></pre>

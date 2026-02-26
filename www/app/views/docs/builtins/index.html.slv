@@ -111,7 +111,8 @@
                 <a href="/docs/builtins/system" class="group">
                     <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">System Functions</h3>
                 </a>
-                <p class="text-gray-400 mt-2">Execute shell commands with System.run() and backtick syntax. Returns async results with stdout, stderr, and exit_code.</p>
+                <p class="text-gray-400 mt-2">Execute shell commands with System.run()
+and backtick syntax. Returns async results with stdout, stderr, and exit_code.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/http" class="group">

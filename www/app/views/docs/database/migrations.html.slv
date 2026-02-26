@@ -25,12 +25,14 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260122143052_create_users.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def up(db: Any)    db.create_collection("users");
-    db.create_index("users", "idx_email", ["email"], { "unique": true });
+<pre><code class="language-soli text-sm">def up(db: Any)
+db.create_collection("users")
+db.create_index("users", "idx_email", ["email"], { "unique": true })
 end
 
-def down(db: Any)    db.drop_index("users", "idx_email");
-    db.drop_collection("users");
+def down(db: Any)
+db.drop_index("users", "idx_email")
+db.drop_collection("users")
 end</code></pre></code></pre>
         </div>
     </div>
@@ -119,14 +121,16 @@ soli db:migrate down</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Collection Examples</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def up(db: Any)    db.create_collection("users");
-    db.create_collection("posts");
-    db.create_collection("comments");
+<pre><code class="language-soli text-sm">def up(db: Any)
+db.create_collection("users")
+db.create_collection("posts")
+db.create_collection("comments")
 end
 
-def down(db: Any)    db.drop_collection("comments");
-    db.drop_collection("posts");
-    db.drop_collection("users");
+def down(db: Any)
+db.drop_collection("comments")
+db.drop_collection("posts")
+db.drop_collection("users")
 end</code></pre></code></pre>
         </div>
     </div>
@@ -155,26 +159,23 @@ end</code></pre></code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Index Examples</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def up(db: Any)    # Simple index
-    db.create_index("users", "idx_email", ["email"], {});
-
+    db.create_index("users", "idx_email", ["email"], {})
     # Unique index
-    db.create_index("users", "idx_username", ["username"], { "unique": true });
-
+    db.create_index("users", "idx_username", ["username"], { "unique": true })
     # Sparse index (only indexes documents with the field)
-    db.create_index("users", "idx_phone", ["phone"], { "sparse": true });
-
+    db.create_index("users", "idx_phone", ["phone"], { "sparse": true })
     # Compound index on multiple fields
-    db.create_index("users", "idx_name", ["first_name", "last_name"], {});
-
+    db.create_index("users", "idx_name", ["first_name", "last_name"], {})
     # Unique compound index
-    db.create_index("posts", "idx_user_slug", ["user_id", "slug"], { "unique": true });
+    db.create_index("posts", "idx_user_slug", ["user_id", "slug"], { "unique": true })
 end
 
-def down(db: Any)    db.drop_index("posts", "idx_user_slug");
-    db.drop_index("users", "idx_name");
-    db.drop_index("users", "idx_phone");
-    db.drop_index("users", "idx_username");
-    db.drop_index("users", "idx_email");
+def down(db: Any)
+db.drop_index("posts", "idx_user_slug")
+db.drop_index("users", "idx_name")
+db.drop_index("users", "idx_phone")
+db.drop_index("users", "idx_username")
+db.drop_index("users", "idx_email")
 end</code></pre></code></pre>
         </div>
     </div>
@@ -185,10 +186,9 @@ end</code></pre></code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def up(db: Any)    # Insert seed data
-    db.query("INSERT { name: 'Admin', role: 'admin' } INTO users");
-
+    db.query("INSERT { name: 'Admin', role: 'admin' } INTO users")
     # Update existing data
-    db.query("FOR u IN users FILTER u.role == 'guest' UPDATE u WITH { role: 'user' } IN users");
+    db.query("FOR u IN users FILTER u.role == 'guest' UPDATE u WITH { role: 'user' } IN users")
 end</code></pre></code></pre>
         </div>
     </div>
@@ -200,43 +200,38 @@ end</code></pre></code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260122143052_create_blog_schema.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def up(db: Any)    # Create collections
-    db.create_collection("users");
-    db.create_collection("posts");
-    db.create_collection("comments");
-    db.create_collection("tags");
-
+    db.create_collection("users")
+db.create_collection("posts")
+db.create_collection("comments")
+db.create_collection("tags")
     # User indexes
-    db.create_index("users", "idx_users_email", ["email"], { "unique": true });
-    db.create_index("users", "idx_users_username", ["username"], { "unique": true });
-
+    db.create_index("users", "idx_users_email", ["email"], { "unique": true })
+db.create_index("users", "idx_users_username", ["username"], { "unique": true })
     # Post indexes
-    db.create_index("posts", "idx_posts_author", ["author_id"], {});
-    db.create_index("posts", "idx_posts_slug", ["slug"], { "unique": true });
-    db.create_index("posts", "idx_posts_published", ["published_at"], { "sparse": true });
-
+    db.create_index("posts", "idx_posts_author", ["author_id"], {})
+db.create_index("posts", "idx_posts_slug", ["slug"], { "unique": true })
+db.create_index("posts", "idx_posts_published", ["published_at"], { "sparse": true })
     # Comment indexes
-    db.create_index("comments", "idx_comments_post", ["post_id"], {});
-    db.create_index("comments", "idx_comments_author", ["author_id"], {});
-
+    db.create_index("comments", "idx_comments_post", ["post_id"], {})
+db.create_index("comments", "idx_comments_author", ["author_id"], {})
     # Tag indexes
-    db.create_index("tags", "idx_tags_name", ["name"], { "unique": true });
+    db.create_index("tags", "idx_tags_name", ["name"], { "unique": true })
 end
 
 def down(db: Any)    # Drop indexes first
-    db.drop_index("tags", "idx_tags_name");
-    db.drop_index("comments", "idx_comments_author");
-    db.drop_index("comments", "idx_comments_post");
-    db.drop_index("posts", "idx_posts_published");
-    db.drop_index("posts", "idx_posts_slug");
-    db.drop_index("posts", "idx_posts_author");
-    db.drop_index("users", "idx_users_username");
-    db.drop_index("users", "idx_users_email");
-
+    db.drop_index("tags", "idx_tags_name")
+db.drop_index("comments", "idx_comments_author")
+db.drop_index("comments", "idx_comments_post")
+db.drop_index("posts", "idx_posts_published")
+db.drop_index("posts", "idx_posts_slug")
+db.drop_index("posts", "idx_posts_author")
+db.drop_index("users", "idx_users_username")
+db.drop_index("users", "idx_users_email")
     # Drop collections
-    db.drop_collection("tags");
-    db.drop_collection("comments");
-    db.drop_collection("posts");
-    db.drop_collection("users");
+    db.drop_collection("tags")
+db.drop_collection("comments")
+db.drop_collection("posts")
+db.drop_collection("users")
 end</code></pre></code></pre>
         </div>
     </div>

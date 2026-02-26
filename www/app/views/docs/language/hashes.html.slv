@@ -12,7 +12,8 @@
             <span class="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Hashes</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Key-value collections (dictionaries/maps) with powerful methods for data manipulation.
+            Key-value collections (dictionaries/maps)
+with powerful methods for data manipulation.
         </p>
     </div>
 
@@ -42,13 +43,13 @@ let person = {
     "name": "Alice",
     "age": 30,
     "city": "New York"
-};
+}
 
 # Ruby-style syntax (=>)
-let scores = {"Alice" => 95, "Bob" => 87, "Charlie" => 92};
+let scores = {"Alice" => 95, "Bob" => 87, "Charlie" => 92}
 
 # Empty hash
-let empty = {};
+let empty = {}
 
 # Mixed values
 let mixed = {
@@ -115,7 +116,7 @@ let mixed = {
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Access values using square brackets with the key. Returns null if key doesn't exist.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30};
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
 
 # Access existing keys
 print(person["name"]);   # "Alice"
@@ -125,7 +126,7 @@ print(person["age"]);    # 30
 print(person["email"]);  # null
 
 # Access nested values
-let user = {"profile": {"email": "alice@example.com"}};
+let user = {"profile": {"email": "alice@example.com"}}
 print(user["profile"]["email"]);  # "alice@example.com"</code></pre>
                 </div>
             </section>
@@ -139,17 +140,16 @@ print(user["profile"]["email"]);  # "alice@example.com"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Hashes are mutable - you can add, update, or remove key-value pairs.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30};
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
 
 # Update existing key
-person["age"] = 31;
+person["age"] = 31
 
 # Add new key
-person["email"] = "alice@example.com";
+person["email"] = "alice@example.com"
 
 # Remove a key (using delete function)
-delete(person, "age");
-
+delete(person, "age")
 print(person);  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
                 </div>
             </section>
@@ -177,10 +177,10 @@ print(person);  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of key-value pairs in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30, "city": "NYC"};
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30, "city": "NYC"}
 print(len(person));  # 3
 
-let empty = {};
+let empty = {}
 print(len(empty));   # 0</code></pre>
                 </div>
             </section>
@@ -194,8 +194,8 @@ print(len(empty));   # 0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of all keys in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30};
-let k = keys(person);
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+let k = keys(person)
 print(k);  # ["name", "age"]</code></pre>
                 </div>
             </section>
@@ -209,8 +209,8 @@ print(k);  # ["name", "age"]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of all values in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30};
-let v = values(person);
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+let v = values(person)
 print(v);  # ["Alice", 30]</code></pre>
                 </div>
             </section>
@@ -224,8 +224,8 @@ print(v);  # ["Alice", 30]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of [key, value] pairs.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30};
-let e = entries(person);
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+let e = entries(person)
 print(e);  # [["name", "Alice"], ["age", 30]]</code></pre>
                 </div>
             </section>
@@ -239,7 +239,7 @@ print(e);  # [["name", "Alice"], ["age", 30]]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if a key exists in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30};
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
 
 print(has_key(person, "name"));   # true
 print(has_key(person, "email"));  # false</code></pre>
@@ -255,8 +255,8 @@ print(has_key(person, "email"));  # false</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove a key-value pair from the hash (modifies in place).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30, "city": "NYC"};
-delete(person, "age");
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30, "city": "NYC"}
+delete(person, "age")
 print(person);  # {"name": "Alice", "city": "NYC"}</code></pre>
                 </div>
             </section>
@@ -270,10 +270,10 @@ print(person);  # {"name": "Alice", "city": "NYC"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Merge two hashes. Values from the second hash take precedence.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let defaults = {"theme": "light", "lang": "en"};
-let user_prefs = {"theme": "dark"};
+<pre data-filename="Example"><code class="language-soli text-sm">let defaults = {"theme": "light", "lang": "en"}
+let user_prefs = {"theme": "dark"}
 
-let merged = merge(defaults, user_prefs);
+let merged = merge(defaults, user_prefs)
 print(merged);  # {"theme": "dark", "lang": "en"}</code></pre>
                 </div>
             </section>
@@ -287,8 +287,8 @@ print(merged);  # {"theme": "dark", "lang": "en"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove all key-value pairs from the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30};
-clear(person);
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+clear(person)
 print(person);  # {}
 print(len(person));  # 0</code></pre>
                 </div>
@@ -317,7 +317,7 @@ print(len(person));  # 0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Get value with optional default. <code>.fetch()</code> raises an error if key not found and no default provided.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85};
+<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85}
 
 # get with default
 print(scores.get("Alice"));        # 90
@@ -340,12 +340,12 @@ print(scores.fetch("Eve", 0));     # 0 (default)
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Retrieve a nested value from a hash or array using a sequence of keys/indices. Returns null if any key is not found. Works with both string keys for hashes and integer indices for arrays.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let data = {"user": {"profile": {"name": "Alice"}}};
+<pre data-filename="Example"><code class="language-soli text-sm">let data = {"user": {"profile": {"name": "Alice"}}}
 
 print(data.dig("user", "profile", "name"));  # "Alice"
 print(data.dig("user", "settings", "theme"));  # null (path not found)
 
-let nested = {"items": [10, 20, {"value": 99}]};
+let nested = {"items": [10, 20, {"value": 99}]}
 print(nested.dig("items", 2, "value"));  # 99
 print(nested.dig("items", 5));  # null (index out of bounds)</code></pre>
                 </div>
@@ -359,19 +359,22 @@ print(nested.dig("items", 5));  # null (index out of bounds)</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Transform, filter, or iterate over hash entries. Functions receive (key, value) parameters.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85, "Charlie": 95};
+                    <p class="text-gray-400 mb-3">Transform, filter, or iterate over hash entries. Functions receive (key, value)
+parameters.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85, "Charlie": 95}
 
 # map - transform entries, return new hash
-let curved = scores.map(def(k, v) [k, v + 5]);
+let curved = scores.map(def(k, v) [k, v + 5])
 # {"Alice": 95, "Bob": 90, "Charlie": 100}
 
 # filter - keep matching entries
-let high = scores.filter(def(k, v) v >= 90);
+let high = scores.filter(def(k, v)
+v >= 90)
 # {"Alice": 90, "Charlie": 95}
 
 # each - iterate for side effects
-scores.each(def(k, v) print(k + ": " + str(v)));
+scores.each(def(k, v)
+print(k + ": " + str(v)))
 # Output: Alice: 90
 #         Bob: 85
 #         Charlie: 95</code></pre>
@@ -387,14 +390,16 @@ scores.each(def(k, v) print(k + ": " + str(v)));
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Transform all values or keys. Returns a new hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85};
+<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85}
 
 # Transform values
-let doubled = scores.transform_values(def(v) v * 2);
+let doubled = scores.transform_values(def(v)
+v * 2)
 # {"Alice": 180, "Bob": 170}
 
 # Transform keys
-let upper_keys = scores.transform_keys(def(k) upcase(k));
+let upper_keys = scores.transform_keys(def(k)
+upcase(k))
 # {"ALICE": 90, "BOB": 85}</code></pre>
                 </div>
             </section>
@@ -407,15 +412,18 @@ let upper_keys = scores.transform_keys(def(k) upcase(k));
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Select or reject entries based on condition. Functions receive (key, value) parameters.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85, "Charlie": 95};
+                    <p class="text-gray-400 mb-3">Select or reject entries based on condition. Functions receive (key, value)
+parameters.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85, "Charlie": 95}
 
 # select - keep where function returns true
-let high = scores.select(def(k, v) v >= 90);
+let high = scores.select(def(k, v)
+v >= 90)
 # {"Alice": 90, "Charlie": 95}
 
 # reject - remove where function returns true
-let not_high = scores.reject(def(k, v) v >= 90);
+let not_high = scores.reject(def(k, v)
+v >= 90)
 # {"Bob": 85}</code></pre>
                 </div>
             </section>
@@ -435,14 +443,14 @@ let not_high = scores.reject(def(k, v) v >= 90);
     "email": "alice@example.com",
     "city": "NYC",
     "password": "secret123"
-};
+}
 
 # slice - only these keys
-let basic = user.slice(["name", "email"]);
+let basic = user.slice(["name", "email"])
 # {"name": "Alice", "email": "alice@example.com"}
 
 # except - exclude these keys (good for removing sensitive data)
-let safe = user.except(["password"]);
+let safe = user.except(["password"])
 # {"name": "Alice", "age": 30, "email": "alice@example.com", "city": "NYC"}</code></pre>
                 </div>
             </section>
@@ -456,12 +464,11 @@ let safe = user.except(["password"]);
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Swap keys and values. Returns a new hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85};
-let inverted = scores.invert();
-# {90: "Alice", 85: "Bob"}
+<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85}
+let inverted = scores.invert# {90: "Alice", 85: "Bob"}
 
 # Note: If values are not unique, later entries overwrite earlier ones
-let dupes = {"a": 1, "b": 1};
+let dupes = {"a": 1, "b": 1}
 print(dupes.invert());  # {1: "b"}</code></pre>
                 </div>
             </section>
@@ -469,7 +476,7 @@ print(dupes.invert());  # {1: "b"}</code></pre>
             <section id="method-compact" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-compact" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.compact()</code>
+                        <code class="text-lg font-mono text-indigo-400">.compact</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -480,9 +487,8 @@ print(dupes.invert());  # {1: "b"}</code></pre>
     "age": null,
     "email": "alice@example.com",
     "phone": null
-};
-let cleaned = user.compact();
-# {"name": "Alice", "email": "alice@example.com"}</code></pre>
+}
+let cleaned = user.compact# {"name": "Alice", "email": "alice@example.com"}</code></pre>
                 </div>
             </section>
 
@@ -502,7 +508,7 @@ let cleaned = user.compact();
             "address": {"city": "NYC"}
         }
     }
-};
+}
 
 # Safe navigation with dig
 print(data.dig("user", "profile", "name"));           # "Alice"
@@ -536,15 +542,14 @@ print(data.dig("user", "nonexistent", "key"));        # null (safe, no error)
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-<pre data-filename="Example"><code class="language-soli text-sm">let words = ["apple", "banana", "apple", "cherry", "banana", "apple"];
+<pre data-filename="Example"><code class="language-soli text-sm">let words = ["apple", "banana", "apple", "cherry", "banana", "apple"]
 
 # Count occurrences
-let counts = {};
+let counts = {}
 words.each(def(word)
-    let current = counts.get(word, 0);
-    counts[word] = current + 1;
-end);
-
+    let current = counts.get(word, 0)
+counts[word] = current + 1
+end)
 print(counts);  # {"apple": 3, "banana": 2, "cherry": 1}</code></pre>
                 </div>
             </section>
@@ -561,19 +566,18 @@ print(counts);  # {"apple": 3, "banana": 2, "cherry": 1}</code></pre>
     {"name": "Alice", "department": "Engineering"},
     {"name": "Bob", "department": "Sales"},
     {"name": "Charlie", "department": "Engineering"}
-];
+]
 
 # Group by department
-let by_dept = {};
+let by_dept = {}
 people.each(def(person)
-    let dept = person["department"];
+    let dept = person["department"]
     if (!has_key(by_dept, dept))
-        by_dept[dept] = [];
+        by_dept[dept] = []
     end
-    push(by_dept[dept], person["name"]);
-end);
-
-print(by_dept);
+    push(by_dept[dept], person["name"])
+end)
+print(by_dept)
 # {"Engineering": ["Alice", "Charlie"], "Sales": ["Bob"]}</code></pre>
                 </div>
             </section>
@@ -592,17 +596,17 @@ let defaults = {
     "port": 3000,
     "debug": false,
     "timeout": 30
-};
+}
 
 # User-provided config (partial)
-let user_config = {"port": 8080, "debug": true};
+let user_config = {"port": 8080, "debug": true}
 
 # Merge with defaults
-let config = merge(defaults, user_config);
+let config = merge(defaults, user_config)
 # {"host": "localhost", "port": 8080, "debug": true, "timeout": 30}
 
 # Safe access with defaults
-let timeout = config.get("timeout", 60);
+let timeout = config.get("timeout", 60)
 let retries = config.get("retries", 3);  # Uses default 3</code></pre>
                 </div>
             </section>
@@ -633,7 +637,7 @@ let retries = config.get("retries", 3);  # Uses default 3</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns a formatted string representation of the hash. Called automatically in REPL.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30};
+<pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
 # In REPL, displays: {"name" => "Alice", "age" => 30}
 # Equivalent to: h.to_string()</code></pre>
                 </div>
@@ -648,10 +652,10 @@ let retries = config.get("retries", 3);  # Uses default 3</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of key-value pairs in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new();
-h.set("a", 1);
-h.set("b", 2);
-h.length();  # 2</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new
+h.set("a", 1)
+h.set("b", 2)
+h.length  # 2</code></pre>
                 </div>
             </section>
 
@@ -664,11 +668,8 @@ h.length();  # 2</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Gets or sets values by key using method calls.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new();
-h.set("name", "Alice");
-h.get("name");           # "Alice"
-h.set("age", 30);
-h.get("age");            # 30</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new()h.set("name", "Alice")h.get("name");           # "Alice"
+h.set("age", 30)h.get("age");            # 30</code></pre>
                 </div>
             </section>
 
@@ -681,9 +682,7 @@ h.get("age");            # 30</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns true if the hash contains the specified key.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new();
-h.set("key", "value");
-h.has_key("key");    # true
+<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new()h.set("key", "value")h.has_key("key");    # true
 h.has_key("missing"); # false</code></pre>
                 </div>
             </section>
@@ -697,11 +696,11 @@ h.has_key("missing"); # false</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns arrays of all keys or all values in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new();
-h.set("a", 1);
-h.set("b", 2);
-let k = h.keys();     # ["a", "b"]
-let v = h.values();   # [1, 2]</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new
+h.set("a", 1)
+h.set("b", 2)
+let k = h.keys     # ["a", "b"]
+let v = h.values   # [1, 2]</code></pre>
                 </div>
             </section>
 
@@ -714,8 +713,8 @@ let v = h.values();   # [1, 2]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Creates a new empty Hash instance.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new();
-h.length();  # 0</code></pre>
+<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new
+h.length  # 0</code></pre>
                 </div>
             </section>
         </div>

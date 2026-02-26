@@ -4,10 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{OnceLock, RwLock};
-use std::time::Duration;
 
 use lazy_static::lazy_static;
-use reqwest;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
@@ -44,22 +42,6 @@ lazy_static! {
     /// Global registry mapping class names to their metadata.
     pub static ref MODEL_REGISTRY: RwLock<HashMap<String, ModelMetadata>> =
         RwLock::new(HashMap::new());
-
-    /// Global async HTTP client with connection pooling for SoliDB queries.
-    pub static ref ASYNC_HTTP_CLIENT: reqwest::Client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .pool_idle_timeout(Duration::from_secs(90))
-        .pool_max_idle_per_host(64)
-        .tcp_keepalive(Duration::from_secs(60))
-        .build()
-        .expect("Failed to create async HTTP client");
-
-    /// Shared tokio runtime for database operations.
-    pub static ref DB_RUNTIME: tokio::runtime::Runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .expect("Failed to create database runtime");
 
     /// Cached DB configuration (for username/password which are less likely to change).
     pub static ref DB_CONFIG: DbConfig = DbConfig::from_env();

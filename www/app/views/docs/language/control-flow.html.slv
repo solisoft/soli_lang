@@ -36,34 +36,33 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Conditional branching statements.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18;
+                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
 
 # Simple if
 if (age >= 18)
-    print("Adult");
+    print("Adult")
 end
 
 # If-else
-let score = 75;
+let score = 75
 if (score >= 60)
-    print("Pass");
-else
-    print("Fail");
+    print("Pass")else
+    print("Fail")
 end
 
 # Else-if chain
-let grade = 85;
-let letter;
+let grade = 85
+let letter
 if (grade >= 90)
-    letter = "A";
+    letter = "A"
 elsif (grade >= 80)
-    letter = "B";
+    letter = "B"
 elsif (grade >= 70)
-    letter = "C";
+    letter = "C"
 elsif (grade >= 60)
-    letter = "D";
+    letter = "D"
 else
-    letter = "F";
+    letter = "F"
 end
 print(letter);  # "B"</code></pre>
             </div>
@@ -83,10 +82,10 @@ print(letter);  # "B"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Repeats while a condition is true.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0;
+                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
 while (i < 5)
-    print("Count: " + str(i));
-    i = i + 1;
+    print("Count: " + str(i))
+i = i + 1
 end
 # Output: Count: 0, 1, 2, 3, 4</code></pre>
             </div>
@@ -107,9 +106,9 @@ end
                 </a>
                 <p class="text-gray-400 mb-3">Iterates over collections or ranges.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Iterate over array
-let fruits = ["apple", "banana", "cherry"];
+let fruits = ["apple", "banana", "cherry"]
 for (fruit in fruits)
-    print(fruit);
+    print(fruit)
 end
 
 # Iterate with range
@@ -125,8 +124,8 @@ end
 # Nested loops
 for (i in range(1, 4))
     for (j in range(1, 4))
-        print(str(i) + " x " + str(j) + " = " + str(i * j));
-    end
+        print(str(i) + " x " + str(j) + " = " + str(i * j))
+end
 end</code></pre>
             </div>
         </section>
@@ -145,15 +144,17 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Ruby-style postfix conditionals for concise one-liners.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let x = 10;
-print("big") if (x > 5);
-
-let y = 3;
-print("small") unless (y > 5);
-
-let status = "active";
-print("Welcome!") if (status == "active");
-print("Account locked") unless (status != "banned");</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">let x = 10
+print("big")
+if (x > 5)
+let y = 3
+print("small")
+unless (y > 5)
+let status = "active"
+print("Welcome!")
+if (status == "active")
+print("Account locked")
+unless (status != "banned");</code></pre>
             </div>
         </section>
     </section>
@@ -171,17 +172,17 @@ print("Account locked") unless (status != "banned");</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Inline conditional expression.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let x = 10;
-let size = x > 5 ? "large" : "small";
+                <pre data-filename="Example"><code class="language-soli text-sm">let x = 10
+let size = x > 5 ? "large" : "small"
 print(size);  # "large"
 
 # Nested ternary
-let grade = 85;
+let grade = 85
 let letter = grade >= 90 ? "A"
              : grade >= 80 ? "B"
              : grade >= 70 ? "C"
              : grade >= 60 ? "D"
-             : "F";
+             : "F"
 print(letter);  # "B"</code></pre>
             </div>
         </section>
@@ -215,8 +216,8 @@ print(letter);  # "B"</code></pre>
             </div>
         </section>
 
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-let sum = 0;
+<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let sum = 0
 for (n in numbers)
     if (n % 2 == 0)
         continue;  # Skip even numbers
@@ -224,7 +225,7 @@ for (n in numbers)
     if (n > 7)
         break;  # Stop at first number > 7
     end
-    sum = sum + n;
+    sum = sum + n
 end
 print("Sum of odd numbers < 7: " + str(sum));  # 1+3+5+7 = 16</code></pre>
     </section>

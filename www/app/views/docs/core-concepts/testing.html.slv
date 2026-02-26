@@ -57,11 +57,9 @@
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">describe("HomeController", def() {
     test("GET /up returns UP status", def() {
-        let response = get("/up");
-        assert_eq(res_status(response), 200);
-        assert_eq(res_body(response), "UP");
-    });
-});</code></pre>
+        let response = get("/up")
+assert_eq(res_status(response), 200)
+assert_eq(res_body(response), "UP")    })});</code></pre>
             </div>
         </div>
 
@@ -111,16 +109,12 @@ soli test tests/builtins</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Example</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let response = get("/posts");
-assert_eq(res_status(response), 200);
-let posts = res_json(response);
-assert_gt(len(posts), 0);
-
+<pre><code class="language-soli text-sm">let response = get("/posts")assert_eq(res_status(response), 200)
+let posts = res_json(response)assert_gt(len(posts), 0)
 let response = post("/posts", {
     "title": "New Post",
     "content": "Hello World"
-});
-assert_eq(res_status(response), 201);</code></pre>
+})assert_eq(res_status(response), 201);</code></pre>
             </div>
         </div>
 
@@ -130,11 +124,10 @@ assert_eq(res_status(response), 201);</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Headers</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">set_header("X-Request-ID", "test-123");
-set_header("X-Custom-Header", "custom-value");
-
-let response = get("/api/data");
-clear_headers();</code></pre>
+<pre><code class="language-soli text-sm">set_header("X-Request-ID", "test-123")
+set_header("X-Custom-Header", "custom-value")
+let response = get("/api/data")
+clear_headers()</code></pre>
             </div>
         </div>
 
@@ -143,9 +136,9 @@ clear_headers();</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Token Auth</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">with_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...");
-let response = get("/api/protected");
-clear_authorization();</code></pre>
+<pre><code class="language-soli text-sm">with_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+let response = get("/api/protected")
+clear_authorization()</code></pre>
             </div>
         </div>
 
@@ -154,9 +147,9 @@ clear_authorization();</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Cookies</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">set_cookie("session_id", "abc123session");
-let response = get("/dashboard");
-clear_cookies();</code></pre>
+<pre><code class="language-soli text-sm">set_cookie("session_id", "abc123session")
+let response = get("/dashboard")
+clear_cookies()</code></pre>
             </div>
         </div>
 
@@ -197,12 +190,9 @@ clear_cookies();</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Response Helpers</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let body = res_body(response);
-assert_contains(body, "expected text");
-
-let response = post("/users", {"name": "John"});
-let user = res_json(response);
-assert_eq(user["name"], "John");</code></pre>
+<pre><code class="language-soli text-sm">let body = res_body(response)assert_contains(body, "expected text")
+let response = post("/users", {"name": "John"})
+let user = res_json(response)assert_eq(user["name"], "John");</code></pre>
             </div>
         </div>
 
@@ -211,11 +201,8 @@ assert_eq(user["name"], "John");</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Headers</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let content_type = res_header(response, "Content-Type");
-assert_contains(content_type, "application/json");
-
-let headers = res_headers(response);
-assert_hash_has_key(headers, "Content-Type");</code></pre>
+<pre><code class="language-soli text-sm">let content_type = res_header(response, "Content-Type")assert_contains(content_type, "application/json")
+let headers = res_headers(response)assert_hash_has_key(headers, "Content-Type");</code></pre>
             </div>
         </div>
 
@@ -224,10 +211,8 @@ assert_hash_has_key(headers, "Content-Type");</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Redirects</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">assert(res_redirect(response));
-
-let location = res_location(response);
-assert_eq(location, "/expected/path");</code></pre>
+<pre><code class="language-soli text-sm">assert(res_redirect(response))
+let location = res_location(response)assert_eq(location, "/expected/path");</code></pre>
             </div>
         </div>
 
@@ -305,44 +290,37 @@ assert_eq(location, "/expected/path");</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">describe("PostsController", def() {
     before_each(def() {
-        as_guest();
-    });
-
+        as_guest()    })
     test("creates post with valid data", def() {
-        login("author@example.com", "password123");
-        
+        login("author@example.com", "password123")        
         let response = post("/posts", {
             "title": "New Post Title",
             "body": "Post content here"
-        });
-        
-        assert_eq(res_status(response), 201);
-        let result = res_json(response);
-        assert_not_null(result["id"]);
-    });
-
+        })        
+        assert_eq(res_status(response), 201)
+let result = res_json(response)
+assert_not_null(result["id"])    })
     test("rejects unauthenticated request", def() {
-        let response = post("/posts", {"title": "Test"});
-        assert_eq(res_status(response), 302);
-    });
-
+        let response = post("/posts", {"title": "Test"})
+assert_eq(res_status(response), 302)    })
     test("shows single post", def() {
-        let response = get("/posts/1");
-        assert_eq(res_status(response), 200);
-        let post = res_json(response);
-        assert_eq(post["title"], "First Post");
-    });
-});</code></pre>
+        let response = get("/posts/1")
+assert_eq(res_status(response), 200)
+let post = res_json(response)
+assert_eq(post["title"], "First Post")    })});</code></pre>
             </div>
         </div>
 
         <h2 class="text-2xl font-bold text-white mb-6">Best Practices</h2>
 
         <h3 class="text-xl font-semibold text-white mb-4">Test Organization</h3>
-        <p class="text-gray-400 mb-4">Structure your tests hierarchically using describe() blocks. Group tests by controller, then by action, then by concern.</p>
+        <p class="text-gray-400 mb-4">Structure your tests hierarchically using describe()
+blocks. Group tests by controller, then by action, then by concern.</p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Before and After Hooks</h3>
-        <p class="text-gray-400 mb-4">Use before_each() and after_each() to set up and clean up test state. Always reset authentication state between tests.</p>
+        <p class="text-gray-400 mb-4">Use before_each()
+and after_each()
+to set up and clean up test state. Always reset authentication state between tests.</p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Test Isolation</h3>
         <p class="text-gray-400 mb-4">Each test should be independent and not rely on the state created by other tests.</p>
@@ -388,8 +366,7 @@ assert_eq(location, "/expected/path");</code></pre>
                     <code class="font-mono text-indigo-400">assert_equal(expected, actual, message)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that two values are equal.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42");
-assert_equal("hello", str, "string should match");</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42")assert_equal("hello", str, "string should match");</code></pre>
             </div>
         </section>
 
@@ -455,12 +432,7 @@ assert_equal("hello", str, "string should match");</code></pre>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Expect Syntax (Alternative)</h3>
-        <pre data-filename="Expectations"><code class="language-soli text-sm">expect(value).to_equal(expected);
-expect(value).to_be(expected);
-expect(value).to_not_equal(other);
-expect(value).to_be_null();
-expect(value).to_not_be_null();
-expect(value).to_contain("substring");</code></pre>
+        <pre data-filename="Expectations"><code class="language-soli text-sm">expect(value).to_equal(expected)expect(value).to_be(expected)expect(value).to_not_equal(other)expect(value).to_be_null()expect(value).to_not_be_null()expect(value).to_contain("substring");</code></pre>
 
         <h2 class="text-2xl font-bold text-white mb-6" id="section-factories">Factory Functions</h2>
 
@@ -507,7 +479,7 @@ expect(value).to_contain("substring");</code></pre>
                 <p class="text-sm text-gray-400 mt-1">Get auto-incrementing number</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">Factory.clear()</code>
+                <code class="text-emerald-300 font-bold">Factory.clear</code>
                 <p class="text-sm text-gray-400 mt-1">Clear all factories</p>
             </div>
         </div>
@@ -520,12 +492,9 @@ expect(value).to_contain("substring");</code></pre>
         <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", def() {
     test("creates user", def() {
         with_transaction(def() {
-            let user = Factory.create("user", hash("name": "Test"));
-            expect(User.count()).to_equal(1);
-            expect(user.name).to_equal("Test");
-        });
-    });
-});</code></pre>
+            let user = Factory.create("user", hash("name": "Test"))
+expect(User.count).to_equal(1)
+expect(user.name).to_equal("Test")        })    })});</code></pre>
 
         <h3 class="text-xl font-semibold text-white mb-4">Factory Pattern</h3>
 
@@ -533,16 +502,14 @@ expect(value).to_contain("substring");</code></pre>
 Factory.define("user", hash(
     "email": "user@example.com",
     "name": "Test User"
-));
-
+))
 Factory.define("post", hash(
     "title": "Test Post",
     "content": "Content here"
-));
-
+))
 # Use factories
-let user = Factory.create("user");
-let post = Factory.create("post", hash("title": "Custom Title"));
+let user = Factory.create("user")
+let post = Factory.create("post", hash("title": "Custom Title"))
 let users = Factory.create_list("user", 5);</code></pre>
 
         <h2 class="text-2xl font-bold text-white mb-6">Parallel Execution</h2>

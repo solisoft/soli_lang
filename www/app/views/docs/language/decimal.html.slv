@@ -30,11 +30,11 @@
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Float - imprecise (binary floating point)
-let a = 0.1 + 0.2;
+let a = 0.1 + 0.2
 print(a);  # 0.30000000000000004 ❌
 
 # Decimal - exact (base-10)
-let a: Decimal(2) = 0.10D + 0.20D;
+let a: Decimal(2) = 0.10D + 0.20D
 print(a);  # 0.30 ✓</code></pre>
             </div>
         </div>
@@ -145,7 +145,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
         </h2>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let rate: Decimal(4) = 0.0675D;
+<pre><code class="language-soli text-sm">let rate: Decimal(4) = 0.0675D
 let rounded: Decimal(2) = rate.prec(2);  # → 0.07D
 
 # Standard library functions
@@ -193,13 +193,13 @@ max(19.99D, 20.00D)         # → 20.00D</code></pre>
         </h2>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let price: Decimal(2) = 99.99D;
-let tax_rate: Decimal(4) = 0.0800D;
-let quantity: Int = 3;
+<pre><code class="language-soli text-sm">let price: Decimal(2) = 99.99D
+let tax_rate: Decimal(4) = 0.0800D
+let quantity: Int = 3
 
-let subtotal: Decimal(2) = price * quantity;
-let tax: Decimal(2) = round(subtotal * tax_rate, 2);
-let total: Decimal(2) = subtotal + tax;
+let subtotal: Decimal(2) = price * quantity
+let tax: Decimal(2) = round(subtotal * tax_rate, 2)
+let total: Decimal(2) = subtotal + tax
 
 print("Subtotal: $" + str(subtotal));   # $299.97
 print("Tax: $" + str(tax));            # $24.00
@@ -220,7 +220,7 @@ print("Total: $" + str(total));        # $323.97</code></pre>
         </h2>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class Product extends Model
+<pre><code class="language-soli text-sm">class Product < Model
     price: Decimal(2),
     cost: Decimal(2),
     tax_rate: Decimal(4),
@@ -230,7 +230,7 @@ print("Total: $" + str(total));        # $323.97</code></pre>
     end
 end
 
-class Order extends Model
+class Order < Model
     subtotal: Decimal(2),
     tax: Decimal(2),
     total: Decimal(2),

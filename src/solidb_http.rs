@@ -1,8 +1,9 @@
 use reqwest;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::OnceLock;
-use std::time::Duration;
+
+use crate::interpreter::builtins::http_class::get_http_client;
+use crate::serve::get_tokio_handle;
 
 fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
     rmp_serde::from_slice(bytes).map_err(|e| SoliDBError {
@@ -11,19 +12,23 @@ fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
     })
 }
 
-// Global shared HTTP client for connection pooling
-static SHARED_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+// Fallback tokio runtime for SoliDB operations outside of a server context
+// (e.g., migrations, REPL). Uses a lightweight current-thread runtime.
+thread_local! {
+    static FALLBACK_RT: tokio::runtime::Runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create fallback tokio runtime");
+}
 
-fn get_shared_client() -> &'static reqwest::blocking::Client {
-    SHARED_CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .pool_idle_timeout(Duration::from_secs(300))
-            .pool_max_idle_per_host(100)
-            .tcp_keepalive(Duration::from_secs(60))
-            .build()
-            .expect("Failed to create HTTP client")
-    })
+/// Run an async future synchronously, using the server's tokio handle if available,
+/// otherwise falling back to a lightweight per-thread runtime.
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    if let Some(rt) = get_tokio_handle() {
+        rt.block_on(future)
+    } else {
+        FALLBACK_RT.with(|rt| rt.block_on(future))
+    }
 }
 
 pub struct SoliDBClient {
@@ -32,7 +37,6 @@ pub struct SoliDBClient {
     api_key: Option<String>,
     username: Option<String>,
     password: Option<String>,
-    client: &'static reqwest::blocking::Client,
 }
 
 #[derive(Debug)]
@@ -74,7 +78,6 @@ impl SoliDBClient {
             api_key: None,
             username: None,
             password: None,
-            client: get_shared_client(),
         })
     }
 
@@ -107,7 +110,8 @@ impl SoliDBClient {
         body: Option<&Value>,
     ) -> Result<Value, SoliDBError> {
         let url = format!("{}{}", self.base_url, path);
-        let mut request = self.client.request(method.clone(), &url);
+        let client = get_http_client();
+        let mut request = client.request(method.clone(), &url);
 
         if let Some(api_key) = &self.api_key {
             request = request.header("x-api-key", api_key);
@@ -129,7 +133,7 @@ impl SoliDBClient {
                 .body(json_bytes);
         }
 
-        let response = request.send().map_err(|e| SoliDBError {
+        let response = block_on(request.send()).map_err(|e| SoliDBError {
             message: format!("HTTP request failed: {}", e),
             code: None,
         })?;
@@ -137,9 +141,8 @@ impl SoliDBClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response
-                .text()
-                .unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text =
+                block_on(response.text()).unwrap_or_else(|_| "Unknown error".to_string());
             return Err(SoliDBError {
                 message: format!("HTTP {} {}: {}", status, path, error_text),
                 code: Some(status.as_u16() as i32),
@@ -153,7 +156,7 @@ impl SoliDBClient {
             .unwrap_or("")
             .to_string();
 
-        let bytes = response.bytes().map_err(|e| SoliDBError {
+        let bytes = block_on(response.bytes()).map_err(|e| SoliDBError {
             message: format!("Failed to read response: {}", e),
             code: None,
         })?;

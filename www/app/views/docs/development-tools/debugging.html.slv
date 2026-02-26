@@ -56,20 +56,16 @@
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def process_user(user_id: Int) -> Hash
-    let user = database.find(user_id);
-
+    let user = database.find(user_id)
     # Set a breakpoint to inspect the user object
-    break();
-
+    break
     if (user == null)
-        return {"error": "User not found"};
+        return {"error": "User not found"}
     end
 
-    let profile = enrich_profile(user);
-
+    let profile = enrich_profile(user)
     # Another breakpoint to see enriched data
-    break();
-
+    break
     profile
 end</code></pre></code></pre>
             </div>
@@ -207,8 +203,7 @@ req["params"]["id"]  # Returns: "123"
 # Up/Down: Browse command history
 
 # Execute any valid soli code
-print("Debug output");
-user["name"];        # Inspect variable
+print("Debug output")user["name"];        # Inspect variable
 config["database"];  # View configuration</code></pre>
             </div>
         </div>

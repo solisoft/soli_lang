@@ -14,13 +14,13 @@
         Recommended for most applications. They provide structure, inheritance, and powerful hooks like <code>before_action</code>.
     </p>
 
-    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < ApplicationController
     static
-        this.layout = "layouts/posts";
+        this.layout = "layouts/posts"
     end
 
     def index(req)
-        let posts = Post.all();
+        let posts = Post.all
         render("posts/index", {
             "title": "All Posts",
             "posts": posts
@@ -28,12 +28,11 @@
     end
 
     def show(req)
-        let id = req.params["id"];
-        let post = Post.find(id);
-
+        let id = req.params["id"]
+        let post = Post.find(id)
         if post == null
-            return error(404, "Post not found");
-        end
+            return error(404, "Post not found")
+end
 
         render("posts/show", {
             "title": post["title"],
@@ -62,21 +61,21 @@ end</code></pre>
         </div>
     </div>
 
-    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < ApplicationController
     static
         # Set layout for all actions
-        this.layout = "layouts/posts";
+        this.layout = "layouts/posts"
 
         # Run before ALL actions
         this.before_action = def(req)
-            print("Processing: " + req.path);
-            req
+            print("Processing: " + req.path)
+req
         end
 
         # Run before SPECIFIC actions only
         this.before_action(:show, :edit) = def(req)
-            let post = Post.find(req.params["id"]);
-            if post == null return error(404, "Not Found"); end
+            let post = Post.find(req.params["id"])
+if post == null return error(404, "Not Found"); end
             req["post"] = post; # Pass to action
             req
         end
@@ -84,8 +83,8 @@ end</code></pre>
         # Run after SPECIFIC actions
         this.after_action(:create, :update) = def(req, response)
             # Log activity after create/update
-            print("Action completed");
-            response
+            print("Action completed")
+response
         end
     end
     

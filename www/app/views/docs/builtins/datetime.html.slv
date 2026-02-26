@@ -48,7 +48,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A DateTime instance representing the current local time
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now()
+                <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now
 println(now.to_iso())  # "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
@@ -66,7 +66,7 @@ println(now.to_iso())  # "2024-01-15T10:30:00"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A DateTime instance representing the current UTC time
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let utc = DateTime.utc()
+                <pre data-filename="Example"><code class="language-soli text-sm">let utc = DateTime.utc
 println(utc.to_iso())  # "2024-01-15T15:30:00Z"</code></pre>
             </div>
         </section>
@@ -230,7 +230,7 @@ println(dt.weekday())  # "monday"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Int</code> - Unix timestamp in seconds
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now()
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now
 println(dt.to_unix())  # 1705315800</code></pre>
             </div>
         </section>
@@ -248,7 +248,7 @@ println(dt.to_unix())  # 1705315800</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - ISO 8601 formatted string
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now()
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now
 println(dt.to_iso())  # "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
@@ -306,7 +306,7 @@ dt.format("%A")                  # "Monday"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now()
+                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now
 let tomorrow = today.add_days(1)
 let yesterday = today.add_days(-1)</code></pre>
             </div>
@@ -329,7 +329,7 @@ let yesterday = today.add_days(-1)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now()
+                <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now
 let in_two_hours = now.add_hours(2)</code></pre>
             </div>
         </section>
@@ -351,7 +351,7 @@ let in_two_hours = now.add_hours(2)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now()
+                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now
 let next_week = today.add_weeks(1)</code></pre>
             </div>
         </section>
@@ -373,7 +373,7 @@ let next_week = today.add_weeks(1)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now()
+                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now
 let next_month = today.add_months(1)
 let last_quarter = today.add_months(-3)</code></pre>
             </div>
@@ -396,7 +396,7 @@ let last_quarter = today.add_months(-3)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now()
+                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now
 let next_year = today.add_years(1)</code></pre>
             </div>
         </section>
@@ -408,7 +408,7 @@ let next_year = today.add_years(1)</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <pre data-filename="DateTime Example"><code class="language-soli text-sm"># Get current date/time
-let now = DateTime.now()
+let now = DateTime.now
 println("Current time: " + now.to_iso())
 
 # Extract components

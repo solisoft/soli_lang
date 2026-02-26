@@ -36,7 +36,7 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Match a value against patterns and execute corresponding code.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let x = 42;
+                <pre data-filename="Example"><code class="language-soli text-sm">let x = 42
 let result = match x
     42 => "the answer",
     0 => "zero",
@@ -53,7 +53,7 @@ print(result);  # "the answer"</code></pre>
         <p class="text-gray-400 mb-4">Add conditions to patterns using <code class="text-indigo-400">if</code> guards:</p>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let n = 5;
+<pre><code class="language-soli text-sm">let n = 5
 let category = match n
     n if n < 0 => "negative",
     0 => "zero",
@@ -86,7 +86,7 @@ print(handle_status(404));  # "Not Found"</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Array Patterns</h2>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3];
+<pre><code class="language-soli text-sm">let numbers = [1, 2, 3]
 
 # Match array length
 let description = match numbers
@@ -106,11 +106,11 @@ let result = match numbers
 end
 
 # Rest pattern
-let arr = [1, 2, 3, 4, 5];
+let arr = [1, 2, 3, 4, 5]
 match arr
     [first, second, ...rest]
-        print("First two: " + str(first) + ", " + str(second));
-        print("Remaining: " + str(rest));  # [3, 4, 5]
+        print("First two: " + str(first) + ", " + str(second))
+print("Remaining: " + str(rest));  # [3, 4, 5]
     end
 end</code></pre>
             </div>
@@ -122,7 +122,7 @@ end</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Hash Patterns</h2>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let user = {"name": "Alice", "age": 30, "city": "Paris"};
+<pre><code class="language-soli text-sm">let user = {"name": "Alice", "age": 30, "city": "Paris"}
 
 # Match hash structure
 match user
@@ -137,12 +137,12 @@ end
 let data = {
     "user": {"name": "Alice", "email": "alice@example.com"},
     "posts": [{"title": "Post 1"}, {"title": "Post 2"}]
-};
+}
 
 match data
     {user: {name: n}, posts: posts}
-        print(n + " wrote " + str(len(posts)) + " posts");
-    end
+        print(n + " wrote " + str(len(posts)) + " posts")
+end
     _ => "no match",
 end</code></pre>
             </div>
@@ -188,7 +188,7 @@ print(describe_value([1, 2, 3]));   # "Array with 3 elements"</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Matches any value. Use as a default/catch-all case.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let status = "unknown";
+                <pre data-filename="Example"><code class="language-soli text-sm">let status = "unknown"
 let message = match status
     "active" => "User is active",
     "inactive" => "User is inactive",

@@ -50,14 +50,19 @@
 <pre><code class="language-soli text-sm">def add(a: Int, b: Int) -> Int a + b end
 def multiply(a: Int, b: Int) -> Int a * b end
 
-# 5 |> add(3) means add(5, 3)
+# 5 |> add(3)
+means add(5, 3)
 let result = 5 |> add(3) |> multiply(2);  # (5 + 3) * 2 = 16
 
 # More complex chaining
 let calc = 100
-    |> def(x) x - 10 end()
-    |> def(x) int(x / 3) end()
-    |> def(x) x * 4 end();
+    |> def(x)
+x - 10 end
+    |> def(x)
+int(x / 3)
+end
+    |> def(x)
+x * 4 end()
 print(calc);  # ((100 - 10) / 3) * 4 = 120</code></pre>
             </div>
         </div>
@@ -68,19 +73,24 @@ print(calc);  # ((100 - 10) / 3) * 4 = 120</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">With Collection Methods</h2>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 # Method chaining with pipeline
 let result = numbers
-    .filter(def(x) x % 2 == 0)
-    .map(def(x) x * x)
-    .each(def(x) print(x));
-
+    .filter(def(x)
+x % 2 == 0)
+    .map(def(x)
+x * x)
+    .each(def(x)
+print(x))
 # Pipeline style
 let processed = numbers
-    |> filter(def(x) x > 5)
-    |> map(def(x) x * 2)
-    |> reduce(def(acc, x) acc + x, 0);
+    |> filter(def(x)
+x > 5)
+    |> map(def(x)
+x * 2)
+    |> reduce(def(acc, x)
+acc + x, 0)
 print(processed);  # (6+7+8+9+10) * 2 = 80</code></pre>
             </div>
         </div>
@@ -94,19 +104,21 @@ print(processed);  # (6+7+8+9+10) * 2 = 80</code></pre>
 <pre><code class="language-soli text-sm"># Data processing pipeline
 def process_user_data(raw_data: Hash) -> Hash
     raw_data
-        |> def(d) d["sanitized_email"] = d["email"].lower().trim(); d end()
-        |> validate_user()
-        |> enrich_profile()
-        |> calculate_metrics()
+        |> def(d)
+d["sanitized_email"] = d["email"].lower().trim(); d end
+        |> validate_user
+        |> enrich_profile
+        |> calculate_metrics
 end
 
 # HTTP request pipeline
 def fetch_and_process -> Hash
     url
-        |>(url: String) http_get_json()
-        |> transform_response()
-        |> validate_data()
-        |> format_output()
+        |>(url: String)
+http_get_json
+        |> transform_response
+        |> validate_data
+        |> format_output
 end</code></pre>
 
 # Complex data pipeline
@@ -114,12 +126,13 @@ let sales_data = [
     {"product": "A", "quantity": 10, "price": 100},
     {"product": "B", "quantity": 5, "price": 200},
     {"product": "C", "quantity": 15, "price": 50},
-];
+]
 
 let total_revenue = sales_data
-    |> map(def(sale) sale["quantity"] * sale["price"])
-    |> reduce(def(acc, rev) acc + rev, 0);
-
+    |> map(def(sale)
+sale["quantity"] * sale["price"])
+    |> reduce(def(acc, rev)
+acc + rev, 0)
 print("Total Revenue: $" + str(total_revenue));  # $2750</code></pre>
             </div>
         </div>

@@ -38,26 +38,23 @@
                 <p class="text-gray-400 mb-3">Handles exceptions with try/catch blocks, using <code class="text-indigo-400">end</code>-delimited syntax just like <code class="text-indigo-400">if</code>, <code class="text-indigo-400">while</code>, and <code class="text-indigo-400">for</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Basic try/catch
 try
-    let result = 10 / 0;
+    let result = 10 / 0
 catch e
-    print("Error: " + str(e));
+    print("Error: " + str(e))
 end
 
 # With finally (always runs)
 try
-    let data = read_file("config.sl");
-    print(data);
-catch e
-    print("Failed: " + str(e));
-finally
-    print("Cleanup done");
+    let data = read_file("config.sl")
+print(data)catch e
+    print("Failed: " + str(e))finally
+    print("Cleanup done")
 end
 
 # Try/finally without catch
 try
-    process_data();
-finally
-    close_connection();
+    process_data()finally
+    close_connection()
 end</code></pre>
             </div>
         </section>
@@ -71,16 +68,14 @@ end</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Without parentheses
 try
-    risky();
-catch e
-    print(e);
+    risky()catch e
+    print(e)
 end
 
 # With parentheses
 try
-    risky();
-catch (e)
-    print(e);
+    risky()catch (e)
+    print(e)
 end</code></pre>
             </div>
         </div>
@@ -108,14 +103,13 @@ end</code></pre>
                 <p class="text-gray-400 mb-3">Raises an exception that can be caught by a surrounding <code class="text-indigo-400">try/catch</code> block.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">def divide(a: Int, b: Int) -> Int
     if b == 0
-        throw "Division by zero";
+        throw "Division by zero"
     end
     a / b
 end
 
 try
-    let result = divide(10, 0);
-catch e
+    let result = divide(10, 0)catch e
     print("Caught: " + str(e));  # "Caught: Division by zero"
 end</code></pre>
             </div>
@@ -129,12 +123,9 @@ end</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try {
-    let result = risky_operation();
-} catch (e) {
-    print("Error: " + str(e));
-} finally {
-    cleanup();
-}</code></pre>
+    let result = risky_operation()} catch (e) {
+    print("Error: " + str(e))} finally {
+    cleanup()}</code></pre>
             </div>
         </div>
     </section>
@@ -146,15 +137,14 @@ end</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try
-    print("Outer try");
-    try
-        throw "inner error";
+    print("Outer try")
+try
+        throw "inner error"
     catch e
-        print("Inner catch: " + str(e));
-    end
-    print("After inner try");
-catch e
-    print("Outer catch: " + str(e));
+        print("Inner catch: " + str(e))
+end
+    print("After inner try")catch e
+    print("Outer catch: " + str(e))
 end</code></pre>
             </div>
         </div>

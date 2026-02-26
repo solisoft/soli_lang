@@ -59,7 +59,7 @@
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Encodes a string to Base64 format using standard encoding (with + and / characters).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let encoded = Base64.encode("Hello, World!");
+<pre data-filename="Example"><code class="language-soli text-sm">let encoded = Base64.encode("Hello, World!")
 # "SGVsbG8sIFdvcmxkIQ=="
 
 # Encoding numbers and special characters
@@ -77,13 +77,12 @@ Base64.encode("\n\t");     # "CQo="</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Decodes a Base64 string back to the original string. Returns an error for invalid Base64.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let decoded = Base64.decode("SGVsbG8sIFdvcmxkIQ==");
+<pre data-filename="Example"><code class="language-soli text-sm">let decoded = Base64.decode("SGVsbG8sIFdvcmxkIQ==")
 # "Hello, World!"
 
 # Decoding preserves original content
-let original = "Hello, World!";
-let round_trip = Base64.decode(Base64.encode(original));
-assert_eq(round_trip, original);</code></pre>
+let original = "Hello, World!"
+let round_trip = Base64.decode(Base64.encode(original))assert_eq(round_trip, original);</code></pre>
                 </div>
             </section>
         </div>
@@ -110,9 +109,8 @@ assert_eq(round_trip, original);</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Encode binary data like images or files to include in JSON payloads.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let image_data = slurp("avatar.png");
-let base64_image = Base64.encode(image_data);
-
+<pre data-filename="Example"><code class="language-soli text-sm">let image_data = slurp("avatar.png")
+let base64_image = Base64.encode(image_data)
 let json_response = json_stringify({
     "avatar": base64_image,
     "filename": "avatar.png"
@@ -130,13 +128,12 @@ let json_response = json_stringify({
                     </a>
                     <p class="text-gray-400 mb-3">Create Basic Auth credentials for HTTP requests.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">def basic_auth_header(username: String, password: String) -> String
-    let credentials = username + ":" + password;
-    let encoded = Base64.encode(credentials);
-    "Basic " + encoded
+    let credentials = username + ":" + password
+    let encoded = Base64.encode(credentials)    "Basic " + encoded
 end
 
 # Usage
-let header = basic_auth_header("user", "secret123");
+let header = basic_auth_header("user", "secret123")
 # "Basic dXNlcjpzZWNyZXQxMjM="</code></pre>
                 </div>
             </section>
@@ -150,9 +147,9 @@ let header = basic_auth_header("user", "secret123");
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Create data URLs for embedding small files directly in HTML.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let svg_content = slurp("icon.svg");
-let base64_svg = Base64.encode(svg_content);
-let data_url = "data:image/svg+xml;base64," + base64_svg;
+<pre data-filename="Example"><code class="language-soli text-sm">let svg_content = slurp("icon.svg")
+let base64_svg = Base64.encode(svg_content)
+let data_url = "data:image/svg+xml;base64," + base64_svg
 # "data:image/svg+xml;base64,PHN2Zz4="</code></pre>
                 </div>
             </section>
@@ -171,7 +168,8 @@ let data_url = "data:image/svg+xml;base64," + base64_svg;
         </h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">Base64.decode() will return an error if:</p>
+            <p class="text-gray-400 mb-3">Base64.decode()
+will return an error if:</p>
             <ul class="list-disc list-inside text-gray-300 space-y-2 mb-4">
                 <li>The input contains invalid Base64 characters</li>
                 <li>The input has incorrect padding</li>
@@ -179,18 +177,15 @@ let data_url = "data:image/svg+xml;base64," + base64_svg;
             </ul>
 <pre data-filename="Example"><code class="language-soli text-sm"># Invalid Base64 (wrong padding)
 try {
-    Base64.decode("invalid==");
-} catch e {
+    Base64.decode("invalid==")} catch e {
     print("Error: " + e);  # "Error: Invalid Base64: ..."
 }
 
 # Valid Base64 with proper error handling
 def safe_decode(input: String) -> String
     try {
-        return Base64.decode(input);
-    } catch e {
-        print("Failed to decode: " + e);
-        ""
+        return Base64.decode(input)    } catch e {
+        print("Failed to decode: " + e)        ""
     }
 end</code></pre>
         </div>

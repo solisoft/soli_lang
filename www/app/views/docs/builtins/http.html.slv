@@ -357,8 +357,7 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
     return {"status": 200, "body": "OK"}
 end
 
-http_server_get("/health", "health");
-http_server_get("/users/:id", "get_user");</code></pre>
+http_server_get("/health", "health")http_server_get("/users/:id", "get_user");</code></pre>
             </div>
         </section>
 
@@ -372,8 +371,8 @@ http_server_get("/users/:id", "get_user");</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Register a POST route handler.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">def create_user(req)
-    let name = req["json"]["name"];
-    return {"status": 201, "body": "Created: " + name};
+    let name = req["json"]["name"]
+    return {"status": 201, "body": "Created: " + name}
 end
 
 http_server_post("/users", "create_user");</code></pre>
@@ -421,10 +420,7 @@ http_server_post("/users", "create_user");</code></pre>
                     <div><code class="text-amber-400">port</code> : <code class="text-purple-400">Int</code> - Port number to listen on</div>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Define routes
-http_server_get("/", "home");
-http_server_get("/health", "health");
-http_server_post("/api/users", "create_user");
-
+http_server_get("/", "home")http_server_get("/health", "health")http_server_post("/api/users", "create_user")
 # Start server (blocks)
 http_server_listen(3000);</code></pre>
             </div>
@@ -435,16 +431,17 @@ http_server_listen(3000);</code></pre>
             <p class="text-gray-400 text-sm mb-4">
                 Handler functions receive a request object and should return a response.
             </p>
-            <pre data-filename="Example"><code class="language-soli text-sm">def my_handler(req)    let id = req["params"]["id"];           # Path parameters
+            <pre data-filename="Example"><code class="language-soli text-sm">def my_handler(req)
+let id = req["params"]["id"];           # Path parameters
     let name = req["query"]["name"];         # Query string
     let data = req["json"]["field"];         # JSON body
     let token = req["headers"]["Authorization"];  # Headers
     
-    return {"status": 200, "body": "Hello"};
+    return {"status": 200, "body": "Hello"}
     
-    return render_json({"message": "Hello"});
-    return render_text("Plain text");
-    return redirect("/other-page");
+    return render_json({"message": "Hello"})
+return render_text("Plain text")
+return redirect("/other-page")
 end</code></pre>
         </div>
     </section>

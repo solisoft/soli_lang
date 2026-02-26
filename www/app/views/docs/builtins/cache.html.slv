@@ -49,7 +49,7 @@ if user != null {
             </div>
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.clear()</h3>
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.clear</h3>
                 <p class="text-gray-400">Removes all entries from the cache.</p>
                 <p class="text-gray-400">Returns: null</p>
             </div>
@@ -61,8 +61,9 @@ if user != null {
             </div>
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.keys()</h3>
-                <p class="text-gray-400">Returns all valid (non-expired) cache keys.</p>
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.keys</h3>
+                <p class="text-gray-400">Returns all valid (non-expired)
+cache keys.</p>
                 <p class="text-gray-400">Returns: Array</p>
             </div>
 
@@ -91,7 +92,7 @@ if user != null {
         <h2 class="text-2xl font-bold text-white mb-6">Cache Instance</h2>
         <p class="text-gray-400 mb-4">Create a Cache instance using <code class="text-purple-400">cache()</code>. All instances share the same underlying store.</p>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let c = cache()
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let c = cache
 c.set("key", "value")
 let value = c.get("key")</code></pre>
         </div>
@@ -152,16 +153,16 @@ if Cache.has("user:123") {
 Cache.touch("user:123", 3600)
 
 # List keys
-let keys = Cache.keys()
+let keys = Cache.keys
 
 # Check size
-let count = Cache.size()
+let count = Cache.size
 
 # Clear cache
-Cache.clear()
+Cache.clear
 
 # Or use a Cache instance
-let c = cache()
+let c = cache
 c.set("instance_key", "value")
 
 # Global functions also work (share the same store)
