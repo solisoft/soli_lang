@@ -951,9 +951,7 @@ fn worker_loop(
     // Create VM for production mode (bytecode execution for handler calls)
     let mut vm: Option<crate::vm::Vm> = if !dev_mode {
         // Ensure all builtins are loaded before copying globals into VM
-        crate::interpreter::builtins::register_builtins(
-            &mut interpreter.environment.borrow_mut(),
-        );
+        crate::interpreter::builtins::register_builtins(&mut interpreter.environment.borrow_mut());
         let mut vm = crate::vm::Vm::new();
         // Copy all globals from interpreter environment into VM
         // This includes all native builtins, classes, and user-defined functions
