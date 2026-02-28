@@ -107,8 +107,11 @@ fn render_inner(
                     else_body,
                     line: _,
                 } => {
-                    let cond_value =
-                        core_eval::evaluate_with_interpreter(condition, interpreter)?;
+                    let cond_value = interpreter
+                        .evaluate(condition)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    // Auto-call methods so `<% if items.empty? %>` works without parens
+                    let cond_value = auto_call_if_callable(interpreter, cond_value)?;
                     if is_truthy(&cond_value) {
                         render_inner(
                             interpreter,
@@ -136,8 +139,9 @@ fn render_inner(
                     body,
                     line: _,
                 } => {
-                    let iterable_value =
-                        core_eval::evaluate_with_interpreter(iterable, interpreter)?;
+                    let iterable_value = interpreter
+                        .evaluate(iterable)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
                     match &iterable_value {
                         Value::Array(arr) => {
                             core_eval::push_scope(interpreter);
@@ -198,7 +202,9 @@ fn render_inner(
                 } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
-                            core_eval::evaluate_with_interpreter(ctx_expr, interpreter)?
+                            interpreter
+                                .evaluate(ctx_expr)
+                                .map_err(|e| format!("Evaluation error: {}", e))?
                         } else {
                             data.clone()
                         };
@@ -207,28 +213,29 @@ fn render_inner(
                         return Err(format!("Partial rendering not available for '{}'", name));
                     }
                 }
-                TemplateNode::CodeBlock { expr, line: _ } => {
-                    match expr {
-                        Expr::Assign(name, value_expr) => {
-                            let value = core_eval::evaluate_with_interpreter(
-                                value_expr,
-                                interpreter,
-                            )?;
-                            core_eval::define_var(interpreter, name, value);
-                        }
-                        _ => {
-                            core_eval::evaluate_with_interpreter(expr, interpreter)?;
-                        }
+                TemplateNode::CodeBlock { expr, line: _ } => match expr {
+                    Expr::Assign(name, value_expr) => {
+                        let value = core_eval::evaluate_with_interpreter(value_expr, interpreter)?;
+                        core_eval::define_var(interpreter, name, value);
                     }
-                }
+                    _ => {
+                        core_eval::evaluate_with_interpreter(expr, interpreter)?;
+                    }
+                },
                 TemplateNode::CoreCodeBlock { stmts, line: _ } => {
                     for stmt in stmts {
-                        interpreter.execute(stmt)
+                        interpreter
+                            .execute(stmt)
                             .map_err(|e| format!("Evaluation error: {}", e))?;
                     }
                 }
-                TemplateNode::CoreOutput { expr, escaped, line: _ } => {
-                    let value = interpreter.evaluate(expr)
+                TemplateNode::CoreOutput {
+                    expr,
+                    escaped,
+                    line: _,
+                } => {
+                    let value = interpreter
+                        .evaluate(expr)
                         .map_err(|e| format!("Evaluation error: {}", e))?;
                     // Auto-call methods/functions with no args (parentheses optional in templates)
                     let value = auto_call_if_callable(interpreter, value)?;
@@ -272,9 +279,15 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
             }
         }
         // Int/Float/Bool never contain HTML special chars — skip html_escape entirely
-        Value::Int(n) => { let _ = write!(output, "{}", n); }
-        Value::Float(n) => { let _ = write!(output, "{}", n); }
-        Value::Bool(b) => { let _ = write!(output, "{}", b); }
+        Value::Int(n) => {
+            let _ = write!(output, "{}", n);
+        }
+        Value::Float(n) => {
+            let _ = write!(output, "{}", n);
+        }
+        Value::Bool(b) => {
+            let _ = write!(output, "{}", b);
+        }
         Value::Null => {}
         Value::Array(arr) => {
             let arr = arr.borrow();
@@ -286,7 +299,9 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
             }
         }
         Value::Hash(_) => output.push_str("[Hash]"),
-        _ => { let _ = write!(output, "{}", value); }
+        _ => {
+            let _ = write!(output, "{}", value);
+        }
     }
 }
 
@@ -294,7 +309,10 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
 /// Returns Cow::Borrowed when no escaping is needed (fast path).
 pub fn html_escape(s: &str) -> Cow<'_, str> {
     // Fast path: scan bytes to check if escaping is needed at all
-    if !s.bytes().any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\'')) {
+    if !s
+        .bytes()
+        .any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\''))
+    {
         return Cow::Borrowed(s);
     }
     let mut result = String::with_capacity(s.len() + 8);
@@ -316,11 +334,9 @@ pub fn html_escape(s: &str) -> Cow<'_, str> {
 #[inline]
 fn auto_call_if_callable(interpreter: &mut Interpreter, value: Value) -> Result<Value, String> {
     match &value {
-        Value::Function(_) | Value::NativeFunction(_) | Value::Method(_) => {
-            interpreter
-                .call_value(value, vec![], Span::default())
-                .map_err(|e| format!("Evaluation error: {}", e))
-        }
+        Value::Function(_) | Value::NativeFunction(_) | Value::Method(_) => interpreter
+            .call_value(value, vec![], Span::default())
+            .map_err(|e| format!("Evaluation error: {}", e)),
         _ => Ok(value),
     }
 }
@@ -343,7 +359,7 @@ fn is_truthy(value: &Value) -> bool {
 mod tests {
     use super::*;
     use crate::interpreter::value::HashKey;
-    use crate::template::parser::compile_expr;
+    use crate::template::parser::parse_template;
     use indexmap::IndexMap;
 
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
@@ -388,12 +404,7 @@ mod tests {
 
     #[test]
     fn test_render_if_true() {
-        let nodes = vec![TemplateNode::If {
-            condition: Expr::Var("show".to_string()),
-            body: vec![TemplateNode::Literal("visible".to_string())],
-            else_body: None,
-            line: 1,
-        }];
+        let nodes = parse_template("<% if show %>visible<% end %>").unwrap();
         let data = make_hash(vec![("show", Value::Bool(true))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "visible");
@@ -401,12 +412,7 @@ mod tests {
 
     #[test]
     fn test_render_if_false() {
-        let nodes = vec![TemplateNode::If {
-            condition: Expr::Var("show".to_string()),
-            body: vec![TemplateNode::Literal("visible".to_string())],
-            else_body: Some(vec![TemplateNode::Literal("hidden".to_string())]),
-            line: 1,
-        }];
+        let nodes = parse_template("<% if show %>visible<% else %>hidden<% end %>").unwrap();
         let data = make_hash(vec![("show", Value::Bool(false))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "hidden");
@@ -414,17 +420,7 @@ mod tests {
 
     #[test]
     fn test_render_for_loop() {
-        let nodes = vec![TemplateNode::For {
-            var: "item".to_string(),
-            index_var: None,
-            iterable: Expr::Var("items".to_string()),
-            body: vec![TemplateNode::Output {
-                expr: Expr::Var("item".to_string()),
-                escaped: true,
-                line: 1,
-            }],
-            line: 1,
-        }];
+        let nodes = parse_template("<% for item in items %><%= item %><% end %>").unwrap();
         let items = Value::Array(Rc::new(RefCell::new(vec![
             Value::String("a".to_string()),
             Value::String("b".to_string()),
@@ -437,11 +433,7 @@ mod tests {
 
     #[test]
     fn test_hash_access() {
-        let nodes = vec![TemplateNode::Output {
-            expr: compile_expr("user[\"name\"]"),
-            escaped: true,
-            line: 1,
-        }];
+        let nodes = parse_template("<%= user[\"name\"] %>").unwrap();
         let user = make_hash(vec![("name", Value::String("Alice".to_string()))]);
         let data = make_hash(vec![("user", user)]);
         let result = render_nodes(&nodes, &data, None).unwrap();
@@ -458,23 +450,8 @@ mod tests {
 
     #[test]
     fn test_code_block_assignment() {
-        let nodes = vec![
-            TemplateNode::CodeBlock {
-                expr: Expr::Assign(
-                    "colors".to_string(),
-                    Box::new(Expr::ArrayLit(vec![
-                        Expr::StringLit("#D3CCFF".to_string()),
-                        Expr::StringLit("#FF8C8C".to_string()),
-                    ])),
-                ),
-                line: 1,
-            },
-            TemplateNode::Output {
-                expr: Expr::Var("colors".to_string()),
-                escaped: true,
-                line: 2,
-            },
-        ];
+        let nodes =
+            parse_template("<% let colors = [\"#D3CCFF\", \"#FF8C8C\"] %><%= colors %>").unwrap();
         let data = make_hash(vec![]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "#D3CCFF, #FF8C8C");
@@ -482,29 +459,7 @@ mod tests {
 
     #[test]
     fn test_code_block_for_loop() {
-        let nodes = vec![
-            TemplateNode::CodeBlock {
-                expr: Expr::Assign(
-                    "colors".to_string(),
-                    Box::new(Expr::ArrayLit(vec![
-                        Expr::StringLit("#D3CCFF".to_string()),
-                        Expr::StringLit("#FF8C8C".to_string()),
-                    ])),
-                ),
-                line: 1,
-            },
-            TemplateNode::For {
-                var: "color".to_string(),
-                index_var: None,
-                iterable: Expr::Var("colors".to_string()),
-                body: vec![TemplateNode::Output {
-                    expr: Expr::Var("color".to_string()),
-                    escaped: true,
-                    line: 3,
-                }],
-                line: 2,
-            },
-        ];
+        let nodes = parse_template("<% let colors = [\"#D3CCFF\", \"#FF8C8C\"] %><% for color in colors %><%= color %><% end %>").unwrap();
         let data = make_hash(vec![]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "#D3CCFF#FF8C8C");
@@ -512,17 +467,7 @@ mod tests {
 
     #[test]
     fn test_render_for_loop_with_index() {
-        let nodes = vec![TemplateNode::For {
-            var: "item".to_string(),
-            index_var: Some("i".to_string()),
-            iterable: Expr::Var("items".to_string()),
-            body: vec![TemplateNode::Output {
-                expr: Expr::Var("i".to_string()),
-                escaped: true,
-                line: 1,
-            }],
-            line: 1,
-        }];
+        let nodes = parse_template("<% for item, i in items %><%= i %><% end %>").unwrap();
         let items = Value::Array(Rc::new(RefCell::new(vec![
             Value::String("a".to_string()),
             Value::String("b".to_string()),

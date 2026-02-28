@@ -141,8 +141,10 @@ fn render_layout_inner(
                     else_body,
                     line: _,
                 } => {
-                    let cond_value =
-                        core_eval::evaluate_with_interpreter(condition, interpreter)?;
+                    let cond_value = interpreter
+                        .evaluate(condition)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    let cond_value = auto_call_if_callable(interpreter, cond_value)?;
                     if is_truthy(&cond_value) {
                         render_layout_inner(
                             interpreter,
@@ -172,8 +174,9 @@ fn render_layout_inner(
                     body,
                     line: _,
                 } => {
-                    let iterable_value =
-                        core_eval::evaluate_with_interpreter(iterable, interpreter)?;
+                    let iterable_value = interpreter
+                        .evaluate(iterable)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
                     match &iterable_value {
                         Value::Array(arr) => {
                             core_eval::push_scope(interpreter);
@@ -236,7 +239,9 @@ fn render_layout_inner(
                 } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
-                            core_eval::evaluate_with_interpreter(ctx_expr, interpreter)?
+                            interpreter
+                                .evaluate(ctx_expr)
+                                .map_err(|e| format!("Evaluation error: {}", e))?
                         } else {
                             data.clone()
                         };
@@ -245,28 +250,29 @@ fn render_layout_inner(
                         return Err(format!("Partial rendering not available for '{}'", name));
                     }
                 }
-                TemplateNode::CodeBlock { expr, line: _ } => {
-                    match expr {
-                        Expr::Assign(name, value_expr) => {
-                            let value = core_eval::evaluate_with_interpreter(
-                                value_expr,
-                                interpreter,
-                            )?;
-                            core_eval::define_var(interpreter, name, value);
-                        }
-                        _ => {
-                            core_eval::evaluate_with_interpreter(expr, interpreter)?;
-                        }
+                TemplateNode::CodeBlock { expr, line: _ } => match expr {
+                    Expr::Assign(name, value_expr) => {
+                        let value = core_eval::evaluate_with_interpreter(value_expr, interpreter)?;
+                        core_eval::define_var(interpreter, name, value);
                     }
-                }
+                    _ => {
+                        core_eval::evaluate_with_interpreter(expr, interpreter)?;
+                    }
+                },
                 TemplateNode::CoreCodeBlock { stmts, line: _ } => {
                     for stmt in stmts {
-                        interpreter.execute(stmt)
+                        interpreter
+                            .execute(stmt)
                             .map_err(|e| format!("Evaluation error: {}", e))?;
                     }
                 }
-                TemplateNode::CoreOutput { expr, escaped, line: _ } => {
-                    let value = interpreter.evaluate(expr)
+                TemplateNode::CoreOutput {
+                    expr,
+                    escaped,
+                    line: _,
+                } => {
+                    let value = interpreter
+                        .evaluate(expr)
                         .map_err(|e| format!("Evaluation error: {}", e))?;
                     // Auto-call methods/functions with no args (parentheses optional in templates)
                     let value = auto_call_if_callable(interpreter, value)?;
@@ -309,9 +315,15 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
                 output.push_str(s);
             }
         }
-        Value::Int(n) => { let _ = write!(output, "{}", n); }
-        Value::Float(n) => { let _ = write!(output, "{}", n); }
-        Value::Bool(b) => { let _ = write!(output, "{}", b); }
+        Value::Int(n) => {
+            let _ = write!(output, "{}", n);
+        }
+        Value::Float(n) => {
+            let _ = write!(output, "{}", n);
+        }
+        Value::Bool(b) => {
+            let _ = write!(output, "{}", b);
+        }
         Value::Null => {}
         Value::Array(arr) => {
             let arr = arr.borrow();
@@ -323,7 +335,9 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
             }
         }
         Value::Hash(_) => output.push_str("[Hash]"),
-        _ => { let _ = write!(output, "{}", value); }
+        _ => {
+            let _ = write!(output, "{}", value);
+        }
     }
 }
 
@@ -332,11 +346,9 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
 #[inline]
 fn auto_call_if_callable(interpreter: &mut Interpreter, value: Value) -> Result<Value, String> {
     match &value {
-        Value::Function(_) | Value::NativeFunction(_) | Value::Method(_) => {
-            interpreter
-                .call_value(value, vec![], Span::default())
-                .map_err(|e| format!("Evaluation error: {}", e))
-        }
+        Value::Function(_) | Value::NativeFunction(_) | Value::Method(_) => interpreter
+            .call_value(value, vec![], Span::default())
+            .map_err(|e| format!("Evaluation error: {}", e)),
         _ => Ok(value),
     }
 }

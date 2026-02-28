@@ -147,7 +147,7 @@ pub enum TemplateNode {
     },
     /// If conditional block
     If {
-        condition: Expr,
+        condition: crate::ast::expr::Expr,
         body: Vec<TemplateNode>,
         else_body: Option<Vec<TemplateNode>>,
         line: usize,
@@ -156,7 +156,7 @@ pub enum TemplateNode {
     For {
         var: String,
         index_var: Option<String>,
-        iterable: Expr,
+        iterable: crate::ast::expr::Expr,
         body: Vec<TemplateNode>,
         line: usize,
     },
@@ -165,7 +165,7 @@ pub enum TemplateNode {
     /// Render a partial template
     Partial {
         name: String,
-        context: Option<Expr>,
+        context: Option<crate::ast::expr::Expr>,
         line: usize,
     },
     /// Code block to execute (for variable assignments, etc.)
@@ -294,66 +294,12 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
 
     while i < tokens.len() {
         match &tokens[i] {
-            Token::Literal(s, _line) => {
-                nodes.push(TemplateNode::Literal(s.clone()));
-                i += 1;
-            }
-            Token::OutputEscaped(expr, line) => {
-                if expr == "yield" {
-                    nodes.push(TemplateNode::Yield);
-                } else if expr.starts_with("render ") || expr.starts_with("render(") {
-                    // Parse partial render
-                    let partial = parse_partial_call(expr, *line)?;
-                    nodes.push(partial);
-                } else {
-                    let core_expr = parse_core_expr(expr, *line)?;
-                    nodes.push(TemplateNode::CoreOutput {
-                        expr: core_expr,
-                        escaped: true,
-                        line: *line,
-                    });
-                }
-                i += 1;
-            }
-            Token::OutputRaw(expr, line) => {
-                if expr == "yield" {
-                    nodes.push(TemplateNode::Yield);
-                } else {
-                    let core_expr = parse_core_expr(expr, *line)?;
-                    nodes.push(TemplateNode::CoreOutput {
-                        expr: core_expr,
-                        escaped: false,
-                        line: *line,
-                    });
-                }
-                i += 1;
-            }
-            Token::OutputUnescape(expr, line) => {
-                // <%== expr %> is shorthand for <%= html_unescape(expr) %>
-                let inner_expr = parse_core_expr(expr, *line)?;
-                let call_expr = crate::ast::expr::Expr::new(
-                    crate::ast::expr::ExprKind::Call {
-                        callee: Box::new(crate::ast::expr::Expr::new(
-                            crate::ast::expr::ExprKind::Variable("html_unescape".to_string()),
-                            crate::span::Span::default(),
-                        )),
-                        arguments: vec![crate::ast::expr::Argument::Positional(inner_expr)],
-                    },
-                    crate::span::Span::default(),
-                );
-                nodes.push(TemplateNode::CoreOutput {
-                    expr: call_expr,
-                    escaped: false, // Don't escape the unescaped output
-                    line: *line,
-                });
-                i += 1;
-            }
             Token::Code(code, line) => {
                 let code = code.trim();
 
                 if let Some(rest) = code.strip_prefix("if ") {
                     // Parse if block
-                    let condition = compile_expr(rest.trim());
+                    let condition = parse_core_expr(rest.trim(), *line)?;
                     let (if_node, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     nodes.push(if_node);
                     i += consumed;
@@ -375,6 +321,10 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                     i += 1;
                 }
             }
+            token => {
+                nodes.push(parse_output_token(token)?);
+                i += 1;
+            }
         }
     }
 
@@ -385,7 +335,7 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
 /// Returns the IfNode and the number of tokens consumed.
 fn parse_if_block(
     tokens: &[Token],
-    condition: Expr,
+    condition: crate::ast::expr::Expr,
     if_line: usize,
 ) -> Result<(TemplateNode, usize), String> {
     let mut body = Vec::new();
@@ -414,7 +364,7 @@ fn parse_if_block(
                     i += 1;
                 } else if let Some(rest) = code.strip_prefix("elsif ") {
                     // Handle elsif as nested if in else
-                    let elsif_condition = compile_expr(rest.trim());
+                    let elsif_condition = parse_core_expr(rest.trim(), *line)?;
                     let (elsif_node, consumed) =
                         parse_if_block(&tokens[i..], elsif_condition, *line)?;
                     else_body = Some(vec![elsif_node]);
@@ -430,7 +380,7 @@ fn parse_if_block(
                     ));
                 } else if let Some(rest) = code.strip_prefix("if ") {
                     // Nested if
-                    let nested_condition = compile_expr(rest.trim());
+                    let nested_condition = parse_core_expr(rest.trim(), *line)?;
                     let (nested_if, consumed) =
                         parse_if_block(&tokens[i..], nested_condition, *line)?;
                     if in_else {
@@ -449,63 +399,19 @@ fn parse_if_block(
                     }
                     i += consumed;
                 } else {
-                    // Other code - skip
+                    // Other code block - parse through core parser
+                    let stmts = parse_core_code(code, *line)?;
+                    let node = TemplateNode::CoreCodeBlock { stmts, line: *line };
+                    if in_else {
+                        else_body.as_mut().unwrap().push(node);
+                    } else {
+                        body.push(node);
+                    }
                     i += 1;
                 }
             }
-            Token::Literal(s, _line) => {
-                let node = TemplateNode::Literal(s.clone());
-                if in_else {
-                    else_body.as_mut().unwrap().push(node);
-                } else {
-                    body.push(node);
-                }
-                i += 1;
-            }
-            Token::OutputEscaped(expr, line) => {
-                let node = if expr == "yield" {
-                    TemplateNode::Yield
-                } else if expr.starts_with("render ") || expr.starts_with("render(") {
-                    parse_partial_call(expr, *line)?
-                } else {
-                    TemplateNode::Output {
-                        expr: compile_expr(expr),
-                        escaped: true,
-                        line: *line,
-                    }
-                };
-                if in_else {
-                    else_body.as_mut().unwrap().push(node);
-                } else {
-                    body.push(node);
-                }
-                i += 1;
-            }
-            Token::OutputRaw(expr, line) => {
-                let node = if expr == "yield" {
-                    TemplateNode::Yield
-                } else {
-                    TemplateNode::Output {
-                        expr: compile_expr(expr),
-                        escaped: false,
-                        line: *line,
-                    }
-                };
-                if in_else {
-                    else_body.as_mut().unwrap().push(node);
-                } else {
-                    body.push(node);
-                }
-                i += 1;
-            }
-            Token::OutputUnescape(expr, line) => {
-                // <%== expr %> is shorthand for <%= html_unescape(expr) %>
-                let inner_expr = compile_expr(expr);
-                let node = TemplateNode::Output {
-                    expr: Expr::Call("html_unescape".to_string(), vec![inner_expr]),
-                    escaped: false,
-                    line: *line,
-                };
+            token => {
+                let node = parse_output_token(token)?;
                 if in_else {
                     else_body.as_mut().unwrap().push(node);
                 } else {
@@ -558,7 +464,7 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                     ));
                 } else if let Some(rest) = code.strip_prefix("if ") {
                     // Nested if
-                    let condition = compile_expr(rest.trim());
+                    let condition = parse_core_expr(rest.trim(), *line)?;
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
                     i += consumed;
@@ -568,51 +474,14 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
                     body.push(nested_for);
                     i += consumed;
                 } else {
-                    // Other code - skip
+                    // Other code block - parse through core parser
+                    let stmts = parse_core_code(code, *line)?;
+                    body.push(TemplateNode::CoreCodeBlock { stmts, line: *line });
                     i += 1;
                 }
             }
-            Token::Literal(s, _line) => {
-                body.push(TemplateNode::Literal(s.clone()));
-                i += 1;
-            }
-            Token::OutputEscaped(expr, line) => {
-                let node = if expr == "yield" {
-                    TemplateNode::Yield
-                } else if expr.starts_with("render ") || expr.starts_with("render(") {
-                    parse_partial_call(expr, *line)?
-                } else {
-                    TemplateNode::Output {
-                        expr: compile_expr(expr),
-                        escaped: true,
-                        line: *line,
-                    }
-                };
-                body.push(node);
-                i += 1;
-            }
-            Token::OutputRaw(expr, line) => {
-                let node = if expr == "yield" {
-                    TemplateNode::Yield
-                } else {
-                    TemplateNode::Output {
-                        expr: compile_expr(expr),
-                        escaped: false,
-                        line: *line,
-                    }
-                };
-                body.push(node);
-                i += 1;
-            }
-            Token::OutputUnescape(expr, line) => {
-                // <%== expr %> is shorthand for <%= html_unescape(expr) %>
-                let inner_expr = compile_expr(expr);
-                let node = TemplateNode::Output {
-                    expr: Expr::Call("html_unescape".to_string(), vec![inner_expr]),
-                    escaped: false,
-                    line: *line,
-                };
-                body.push(node);
+            token => {
+                body.push(parse_output_token(token)?);
                 i += 1;
             }
         }
@@ -626,7 +495,9 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
 
 /// Parse a for statement like "item in items" or "(item, index in items)"
 /// Supports: "x in items" or "x, i in items" where i is the index
-fn parse_for_statement(s: &str) -> Result<(String, Option<String>, Expr), String> {
+fn parse_for_statement(
+    s: &str,
+) -> Result<(String, Option<String>, crate::ast::expr::Expr), String> {
     let s = s.trim();
 
     // Only strip outer parens if the whole expression is wrapped: "(item in items)"
@@ -686,7 +557,7 @@ fn parse_for_statement(s: &str) -> Result<(String, Option<String>, Expr), String
             (var_part, None)
         };
 
-        Ok((var, index_var, compile_expr(iterable_str)))
+        Ok((var, index_var, parse_core_expr(iterable_str, 0)?))
     } else {
         Err(format!(
             "Invalid for statement: expected 'var in iterable', got '{}'",
@@ -720,7 +591,7 @@ fn parse_partial_call(expr: &str, line: usize) -> Result<TemplateNode, String> {
         .to_string();
 
     let context = if parts.len() > 1 {
-        Some(compile_expr(parts[1].trim()))
+        Some(parse_core_expr(parts[1].trim(), line)?)
     } else {
         None
     };
@@ -730,6 +601,60 @@ fn parse_partial_call(expr: &str, line: usize) -> Result<TemplateNode, String> {
         context,
         line,
     })
+}
+
+/// Convert a non-Code token (Literal, OutputEscaped, OutputRaw, OutputUnescape)
+/// into the corresponding TemplateNode. Used to avoid duplicating output handling
+/// across parse_tokens, parse_if_block, and parse_for_block.
+fn parse_output_token(token: &Token) -> Result<TemplateNode, String> {
+    match token {
+        Token::Literal(s, _line) => Ok(TemplateNode::Literal(s.clone())),
+        Token::OutputEscaped(expr, line) => {
+            if expr == "yield" {
+                Ok(TemplateNode::Yield)
+            } else if expr.starts_with("render ") || expr.starts_with("render(") {
+                parse_partial_call(expr, *line)
+            } else {
+                let core_expr = parse_core_expr(expr, *line)?;
+                Ok(TemplateNode::CoreOutput {
+                    expr: core_expr,
+                    escaped: true,
+                    line: *line,
+                })
+            }
+        }
+        Token::OutputRaw(expr, line) => {
+            if expr == "yield" {
+                Ok(TemplateNode::Yield)
+            } else {
+                let core_expr = parse_core_expr(expr, *line)?;
+                Ok(TemplateNode::CoreOutput {
+                    expr: core_expr,
+                    escaped: false,
+                    line: *line,
+                })
+            }
+        }
+        Token::OutputUnescape(expr, line) => {
+            let inner_expr = parse_core_expr(expr, *line)?;
+            let call_expr = crate::ast::expr::Expr::new(
+                crate::ast::expr::ExprKind::Call {
+                    callee: Box::new(crate::ast::expr::Expr::new(
+                        crate::ast::expr::ExprKind::Variable("html_unescape".to_string()),
+                        crate::span::Span::default(),
+                    )),
+                    arguments: vec![crate::ast::expr::Argument::Positional(inner_expr)],
+                },
+                crate::span::Span::default(),
+            );
+            Ok(TemplateNode::CoreOutput {
+                expr: call_expr,
+                escaped: false,
+                line: *line,
+            })
+        }
+        Token::Code(_, _) => unreachable!("Code tokens handled separately"),
+    }
 }
 
 /// Parse a code block through the core language parser for full language support.
@@ -1396,7 +1321,10 @@ mod tests {
         match &nodes[0] {
             TemplateNode::CoreOutput { expr, escaped, .. } => {
                 // Should be a call to html_unescape wrapping the expression
-                assert!(matches!(&expr.kind, crate::ast::expr::ExprKind::Call { .. }));
+                assert!(matches!(
+                    &expr.kind,
+                    crate::ast::expr::ExprKind::Call { .. }
+                ));
                 assert!(!escaped); // Should not escape the unescaped output
             }
             _ => panic!("Expected CoreOutput node"),
@@ -1430,8 +1358,14 @@ mod tests {
         let nodes = parse_template("<%= name %>").unwrap();
         assert_eq!(nodes.len(), 1);
         match &nodes[0] {
-            TemplateNode::CoreOutput { expr, escaped, line } => {
-                assert!(matches!(&expr.kind, crate::ast::expr::ExprKind::Variable(n) if n == "name"));
+            TemplateNode::CoreOutput {
+                expr,
+                escaped,
+                line,
+            } => {
+                assert!(
+                    matches!(&expr.kind, crate::ast::expr::ExprKind::Variable(n) if n == "name")
+                );
                 assert!(escaped);
                 assert_eq!(*line, 1);
             }
@@ -1442,29 +1376,42 @@ mod tests {
     #[test]
     fn test_parse_if() {
         let nodes = parse_template("<% if show %>visible<% end %>").unwrap();
-        assert_eq!(
-            nodes,
-            vec![TemplateNode::If {
-                condition: Expr::Var("show".to_string()),
-                body: vec![TemplateNode::Literal("visible".to_string())],
-                else_body: None,
-                line: 1,
-            }]
-        );
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::If {
+                condition,
+                body,
+                else_body,
+                line,
+            } => {
+                assert!(
+                    matches!(&condition.kind, crate::ast::expr::ExprKind::Variable(n) if n == "show")
+                );
+                assert_eq!(body.len(), 1);
+                assert!(matches!(&body[0], TemplateNode::Literal(s) if s == "visible"));
+                assert!(else_body.is_none());
+                assert_eq!(*line, 1);
+            }
+            _ => panic!("Expected If node"),
+        }
     }
 
     #[test]
     fn test_parse_if_else() {
         let nodes = parse_template("<% if show %>yes<% else %>no<% end %>").unwrap();
-        assert_eq!(
-            nodes,
-            vec![TemplateNode::If {
-                condition: Expr::Var("show".to_string()),
-                body: vec![TemplateNode::Literal("yes".to_string())],
-                else_body: Some(vec![TemplateNode::Literal("no".to_string())]),
-                line: 1,
-            }]
-        );
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::If {
+                body, else_body, ..
+            } => {
+                assert_eq!(body.len(), 1);
+                assert!(matches!(&body[0], TemplateNode::Literal(s) if s == "yes"));
+                let else_nodes = else_body.as_ref().unwrap();
+                assert_eq!(else_nodes.len(), 1);
+                assert!(matches!(&else_nodes[0], TemplateNode::Literal(s) if s == "no"));
+            }
+            _ => panic!("Expected If node"),
+        }
     }
 
     #[test]
@@ -1476,17 +1423,14 @@ mod tests {
             TemplateNode::If { body, .. } => {
                 assert_eq!(body.len(), 1);
                 match &body[0] {
-                    TemplateNode::Output { expr, escaped, .. } => {
-                        match expr {
-                            Expr::Call(name, args) => {
-                                assert_eq!(name, "html_unescape");
-                                assert_eq!(args[0], Expr::Var("encoded".to_string()));
-                            }
-                            _ => panic!("Expected Call expression"),
-                        }
+                    TemplateNode::CoreOutput { expr, escaped, .. } => {
+                        assert!(matches!(
+                            &expr.kind,
+                            crate::ast::expr::ExprKind::Call { .. }
+                        ));
                         assert!(!escaped);
                     }
-                    _ => panic!("Expected Output node"),
+                    _ => panic!("Expected CoreOutput node"),
                 }
             }
             _ => panic!("Expected If node"),
@@ -1496,20 +1440,28 @@ mod tests {
     #[test]
     fn test_parse_for() {
         let nodes = parse_template("<% for item in items %><%= item %><% end %>").unwrap();
-        assert_eq!(
-            nodes,
-            vec![TemplateNode::For {
-                var: "item".to_string(),
-                index_var: None,
-                iterable: Expr::Var("items".to_string()),
-                body: vec![TemplateNode::Output {
-                    expr: Expr::Var("item".to_string()),
-                    escaped: true,
-                    line: 1,
-                }],
-                line: 1,
-            }]
-        );
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::For {
+                var,
+                index_var,
+                iterable,
+                body,
+                ..
+            } => {
+                assert_eq!(var, "item");
+                assert!(index_var.is_none());
+                assert!(
+                    matches!(&iterable.kind, crate::ast::expr::ExprKind::Variable(n) if n == "items")
+                );
+                assert_eq!(body.len(), 1);
+                assert!(matches!(
+                    &body[0],
+                    TemplateNode::CoreOutput { escaped: true, .. }
+                ));
+            }
+            _ => panic!("Expected For node"),
+        }
     }
 
     #[test]
@@ -1524,12 +1476,13 @@ mod tests {
                 index_var,
                 iterable,
                 body,
-                line: _,
+                ..
             } => {
                 assert_eq!(var, "item");
                 assert_eq!(index_var, &Some("i".to_string()));
-                assert_eq!(*iterable, Expr::Var("items".to_string()));
-                // Body has 3 nodes: literal "i: ", output expr, literal ": ", output expr
+                assert!(
+                    matches!(&iterable.kind, crate::ast::expr::ExprKind::Variable(n) if n == "items")
+                );
                 assert_eq!(body.len(), 3);
             }
             _ => panic!("Expected For node"),
@@ -1561,7 +1514,10 @@ mod tests {
         assert_eq!(nodes.len(), 1);
         match &nodes[0] {
             TemplateNode::CoreOutput { expr, escaped, .. } => {
-                assert!(matches!(&expr.kind, crate::ast::expr::ExprKind::Call { .. }));
+                assert!(matches!(
+                    &expr.kind,
+                    crate::ast::expr::ExprKind::Call { .. }
+                ));
                 assert!(escaped);
             }
             _ => panic!("Expected CoreOutput node"),
