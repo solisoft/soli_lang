@@ -72,11 +72,25 @@ pub enum HashKey {
 impl Hash for HashKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            HashKey::Int(n) => { 0u8.hash(state); n.hash(state); }
-            HashKey::Decimal(d) => { 1u8.hash(state); d.hash(state); }
-            HashKey::String(s) => { 2u8.hash(state); s.hash(state); }
-            HashKey::Bool(b) => { 3u8.hash(state); b.hash(state); }
-            HashKey::Null => { 4u8.hash(state); }
+            HashKey::Int(n) => {
+                0u8.hash(state);
+                n.hash(state);
+            }
+            HashKey::Decimal(d) => {
+                1u8.hash(state);
+                d.hash(state);
+            }
+            HashKey::String(s) => {
+                2u8.hash(state);
+                s.hash(state);
+            }
+            HashKey::Bool(b) => {
+                3u8.hash(state);
+                b.hash(state);
+            }
+            HashKey::Null => {
+                4u8.hash(state);
+            }
         }
     }
 }

@@ -69,8 +69,9 @@ impl Interpreter {
                     }
                 }
 
-                // Bypass auto-invoke for Member/SafeMember callees in pipelines
+                // Bypass auto-invoke for callees in pipelines
                 let callee_val = match &callee.kind {
+                    ExprKind::Variable(name) => self.evaluate_variable(name, callee)?,
                     ExprKind::Member { object, name } => {
                         self.evaluate_member(object, name, callee.span)?
                     }
@@ -82,8 +83,11 @@ impl Interpreter {
                 self.call_value(callee_val, new_args, span)
             }
             _ => {
-                // Try evaluating right as a function value
-                let right_val = self.evaluate(right)?;
+                // Try evaluating right as a function value (bypass auto-invoke)
+                let right_val = match &right.kind {
+                    ExprKind::Variable(name) => self.evaluate_variable(name, right)?,
+                    _ => self.evaluate(right)?,
+                };
                 match right_val {
                     Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => {
                         self.call_value(right_val, vec![left_val], span)

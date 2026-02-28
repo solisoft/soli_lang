@@ -128,11 +128,13 @@ impl SimpleRepl {
 
     fn detect_multiline_needed(&self, line: &str) -> bool {
         let trimmed = line.trim();
-        if trimmed.contains("end") {
+        // Single-line block: `if x then print("hi") end` — no multiline needed
+        if trimmed.split_whitespace().any(|w| w == "end") {
             return false;
         }
         trimmed.ends_with('{')
             || (trimmed.starts_with("class ") && !trimmed.ends_with('}'))
+            || trimmed.starts_with("def ")
             || trimmed.starts_with("fn ")
             || trimmed.starts_with("if ")
             || trimmed.starts_with("while ")
@@ -146,7 +148,7 @@ impl SimpleRepl {
         self.is_multiline = true;
         self.multiline_buffer = line.to_string();
         self.multiline_indent = Self::calculate_indent(line);
-        self.brace_balance = Self::count_braces(line);
+        self.brace_balance = Self::count_block_balance(line);
         println!("      (enter .break to cancel)");
     }
 
@@ -160,7 +162,7 @@ impl SimpleRepl {
         self.multiline_buffer.push_str(line);
         self.multiline_indent = Self::calculate_indent(line);
 
-        let line_balance = Self::count_braces(line);
+        let line_balance = Self::count_block_balance(line);
         self.brace_balance += line_balance;
 
         if self.brace_balance <= 0 && !line.trim().is_empty() {
@@ -198,6 +200,9 @@ impl SimpleRepl {
     fn calculate_indent(line: &str) -> usize {
         let trimmed = line.trim_start();
         let leading_spaces = line.len() - trimmed.len();
+        if trimmed == "end" {
+            return leading_spaces.saturating_sub(4);
+        }
         let extra_indent = if trimmed.ends_with('{')
             || trimmed.ends_with("then")
             || trimmed.ends_with("do")
@@ -212,16 +217,30 @@ impl SimpleRepl {
             } else {
                 0
             }
+        } else if Self::is_keyword_block_opener(trimmed) && !trimmed.contains('{') {
+            4
         } else {
             0
         };
         leading_spaces + extra_indent
     }
 
-    fn count_braces(s: &str) -> i32 {
+    fn is_keyword_block_opener(trimmed: &str) -> bool {
+        trimmed.starts_with("def ")
+            || trimmed.starts_with("fn ")
+            || trimmed.starts_with("if ")
+            || trimmed.starts_with("unless ")
+            || trimmed.starts_with("while ")
+            || trimmed.starts_with("for ")
+            || trimmed.starts_with("class ")
+            || trimmed.starts_with("match ")
+    }
+
+    fn count_block_balance(s: &str) -> i32 {
         let mut balance = 0;
         let mut in_string = false;
         let mut escaped = false;
+        let mut has_braces = false;
 
         for c in s.chars() {
             if in_string {
@@ -237,10 +256,23 @@ impl SimpleRepl {
                 escaped = false;
             } else if c == '{' {
                 balance += 1;
+                has_braces = true;
             } else if c == '}' {
                 balance -= 1;
+                has_braces = true;
             }
         }
+
+        // Track keyword-based blocks when no braces on this line
+        if !has_braces {
+            let trimmed = s.trim();
+            if trimmed == "end" {
+                balance -= 1;
+            } else if Self::is_keyword_block_opener(trimmed) {
+                balance += 1;
+            }
+        }
+
         balance
     }
 
@@ -456,6 +488,7 @@ impl SimpleRepl {
             && !trimmed.ends_with('}')
             && !trimmed.starts_with("let ")
             && !trimmed.starts_with("fn ")
+            && !trimmed.starts_with("def ")
             && !trimmed.starts_with("class ")
             && !trimmed.starts_with("const ")
         {
@@ -477,6 +510,7 @@ impl SimpleRepl {
         !trimmed.starts_with("let ")
             && !trimmed.starts_with("const ")
             && !trimmed.starts_with("fn ")
+            && !trimmed.starts_with("def ")
             && !trimmed.starts_with("class ")
             && !trimmed.starts_with("interface ")
             && !trimmed.starts_with("if ")

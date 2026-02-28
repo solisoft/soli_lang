@@ -140,11 +140,13 @@ impl InputState {
     fn detect_multiline_needed(&self) -> bool {
         let line = self.line.as_string();
         let trimmed = line.trim();
-        if trimmed.contains("end") {
+        // Single-line block: `if x then print("hi") end` — no multiline needed
+        if trimmed.split_whitespace().any(|w| w == "end") {
             return false;
         }
         trimmed.ends_with('{')
             || (trimmed.starts_with("class ") && !trimmed.ends_with('}'))
+            || trimmed.starts_with("def ")
             || trimmed.starts_with("fn ")
             || trimmed.starts_with("if ")
             || trimmed.starts_with("while ")
@@ -158,13 +160,16 @@ impl InputState {
         self.is_multiline = true;
         self.multiline_buffer = self.line.as_string();
         self.multiline_indent = Self::calculate_indent(&self.multiline_buffer);
-        self.brace_balance = Self::count_braces(&self.multiline_buffer);
+        self.brace_balance = Self::count_block_balance(&self.multiline_buffer);
         self.line = LineBuffer::new();
     }
 
     fn calculate_indent(line: &str) -> usize {
         let trimmed = line.trim_start();
         let leading_spaces = line.len() - trimmed.len();
+        if trimmed == "end" {
+            return leading_spaces.saturating_sub(4);
+        }
         let extra_indent = if trimmed.ends_with('{')
             || trimmed.ends_with("then")
             || trimmed.ends_with("do")
@@ -179,16 +184,30 @@ impl InputState {
             } else {
                 0
             }
+        } else if Self::is_keyword_block_opener(trimmed) && !trimmed.contains('{') {
+            4
         } else {
             0
         };
         leading_spaces + extra_indent
     }
 
-    fn count_braces(s: &str) -> i32 {
+    fn is_keyword_block_opener(trimmed: &str) -> bool {
+        trimmed.starts_with("def ")
+            || trimmed.starts_with("fn ")
+            || trimmed.starts_with("if ")
+            || trimmed.starts_with("unless ")
+            || trimmed.starts_with("while ")
+            || trimmed.starts_with("for ")
+            || trimmed.starts_with("class ")
+            || trimmed.starts_with("match ")
+    }
+
+    fn count_block_balance(s: &str) -> i32 {
         let mut balance = 0;
         let mut in_string = false;
         let mut escaped = false;
+        let mut has_braces = false;
 
         for c in s.chars() {
             if in_string {
@@ -204,10 +223,23 @@ impl InputState {
                 escaped = false;
             } else if c == '{' {
                 balance += 1;
+                has_braces = true;
             } else if c == '}' {
                 balance -= 1;
+                has_braces = true;
             }
         }
+
+        // Track keyword-based blocks when no braces on this line
+        if !has_braces {
+            let trimmed = s.trim();
+            if trimmed == "end" {
+                balance -= 1;
+            } else if Self::is_keyword_block_opener(trimmed) {
+                balance += 1;
+            }
+        }
+
         balance
     }
 
@@ -608,7 +640,7 @@ impl TuiRepl {
             self.input.multiline_buffer.push('\n');
             self.input.multiline_buffer.push_str(&line);
             self.input.multiline_indent = InputState::calculate_indent(&line);
-            let line_balance = InputState::count_braces(&line);
+            let line_balance = InputState::count_block_balance(&line);
             self.input.brace_balance += line_balance;
 
             if self.input.brace_balance <= 0 && !trimmed.is_empty() {
@@ -666,6 +698,7 @@ impl TuiRepl {
         self.input.is_multiline = false;
         self.input.multiline_indent = 0;
         self.input.brace_balance = 0;
+        self.input.line = LineBuffer::new();
 
         // Show the executed code as input
         self.input.add_input(&code);
@@ -683,6 +716,7 @@ impl TuiRepl {
             && !trimmed.ends_with('}')
             && !trimmed.starts_with("let ")
             && !trimmed.starts_with("fn ")
+            && !trimmed.starts_with("def ")
             && !trimmed.starts_with("class ")
             && !trimmed.starts_with("const ")
         {
@@ -738,6 +772,7 @@ impl TuiRepl {
         !trimmed.starts_with("let ")
             && !trimmed.starts_with("const ")
             && !trimmed.starts_with("fn ")
+            && !trimmed.starts_with("def ")
             && !trimmed.starts_with("class ")
             && !trimmed.starts_with("interface ")
             && !trimmed.starts_with("if ")

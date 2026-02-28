@@ -133,17 +133,33 @@ pub fn evaluate_with_interpreter(
             let base_val = evaluate_with_interpreter(base, interpreter)?;
             match (&base_val, method.as_str()) {
                 (Value::String(s), "length" | "len") => return Ok(Value::Int(s.len() as i64)),
-                (Value::String(s), "upcase" | "uppercase") => return Ok(Value::String(s.to_uppercase())),
-                (Value::String(s), "downcase" | "lowercase") => return Ok(Value::String(s.to_lowercase())),
-                (Value::String(s), "strip" | "trim") => return Ok(Value::String(s.trim().to_string())),
+                (Value::String(s), "upcase" | "uppercase") => {
+                    return Ok(Value::String(s.to_uppercase()))
+                }
+                (Value::String(s), "downcase" | "lowercase") => {
+                    return Ok(Value::String(s.to_lowercase()))
+                }
+                (Value::String(s), "strip" | "trim") => {
+                    return Ok(Value::String(s.trim().to_string()))
+                }
                 (Value::String(s), "empty?") => return Ok(Value::Bool(s.is_empty())),
-                (Value::String(s), "reverse") => return Ok(Value::String(s.chars().rev().collect())),
+                (Value::String(s), "reverse") => {
+                    return Ok(Value::String(s.chars().rev().collect()))
+                }
                 (Value::String(s), "to_i") => return Ok(Value::Int(s.parse::<i64>().unwrap_or(0))),
-                (Value::Array(arr), "length" | "len") => return Ok(Value::Int(arr.borrow().len() as i64)),
+                (Value::Array(arr), "length" | "len") => {
+                    return Ok(Value::Int(arr.borrow().len() as i64))
+                }
                 (Value::Array(arr), "empty?") => return Ok(Value::Bool(arr.borrow().is_empty())),
-                (Value::Array(arr), "first") => return Ok(arr.borrow().first().cloned().unwrap_or(Value::Null)),
-                (Value::Array(arr), "last") => return Ok(arr.borrow().last().cloned().unwrap_or(Value::Null)),
-                (Value::Hash(h), "length" | "len") => return Ok(Value::Int(h.borrow().len() as i64)),
+                (Value::Array(arr), "first") => {
+                    return Ok(arr.borrow().first().cloned().unwrap_or(Value::Null))
+                }
+                (Value::Array(arr), "last") => {
+                    return Ok(arr.borrow().last().cloned().unwrap_or(Value::Null))
+                }
+                (Value::Hash(h), "length" | "len") => {
+                    return Ok(Value::Int(h.borrow().len() as i64))
+                }
                 (Value::Hash(h), "empty?") => return Ok(Value::Bool(h.borrow().is_empty())),
                 (Value::Hash(h), "keys") => {
                     let keys: Vec<Value> = h.borrow().keys().map(|k| k.to_value()).collect();
@@ -338,10 +354,7 @@ mod tests {
 
     #[test]
     fn test_translate_variable() {
-        let expr = Expr::Field(
-            Box::new(Expr::Var("user".to_string())),
-            "name".to_string(),
-        );
+        let expr = Expr::Field(Box::new(Expr::Var("user".to_string())), "name".to_string());
         let core = translate_expr(&expr);
         assert!(matches!(core, ExprKind::Member { .. }));
     }
@@ -363,10 +376,7 @@ mod tests {
     fn test_evaluate_nested_hash_access() {
         let user = make_hash(vec![("name", Value::String("Alice".to_string()))]);
         let data = make_hash(vec![("user", user)]);
-        let expr = Expr::Field(
-            Box::new(Expr::Var("user".to_string())),
-            "name".to_string(),
-        );
+        let expr = Expr::Field(Box::new(Expr::Var("user".to_string())), "name".to_string());
         let result = evaluate_expression(&expr, &data);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Value::String("Alice".to_string()));
@@ -374,10 +384,7 @@ mod tests {
 
     #[test]
     fn test_reuse_interpreter() {
-        let data = make_hash(vec![
-            ("x", Value::Int(10)),
-            ("y", Value::Int(20)),
-        ]);
+        let data = make_hash(vec![("x", Value::Int(10)), ("y", Value::Int(20))]);
         let mut interp = create_template_interpreter(&data);
 
         let expr1 = Expr::Var("x".to_string());

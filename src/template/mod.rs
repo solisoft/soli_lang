@@ -80,7 +80,7 @@ impl TemplateCache {
         let template_path = self.resolve_template_path(template_name)?;
 
         // Get template from cache
-        let nodes = self.get_or_load_template(&*template_path)?;
+        let nodes = self.get_or_load_template(&template_path)?;
 
         // Create partial renderer closure
         let partial_renderer =
@@ -100,7 +100,7 @@ impl TemplateCache {
         )?;
 
         // If the template is a markdown file, convert to HTML
-        let content = if is_markdown_template(&*template_path) {
+        let content = if is_markdown_template(&template_path) {
             markdown_to_html(&content)
         } else {
             content
@@ -108,15 +108,13 @@ impl TemplateCache {
 
         // Apply layout if specified, reusing the same interpreter
         match layout {
-            Some(Some(layout_name)) => {
-                self.render_layout_with_shared_interpreter(
-                    &mut interpreter,
-                    &content,
-                    data,
-                    layout_name,
-                    &partial_renderer,
-                )
-            }
+            Some(Some(layout_name)) => self.render_layout_with_shared_interpreter(
+                &mut interpreter,
+                &content,
+                data,
+                layout_name,
+                &partial_renderer,
+            ),
             Some(None) => {
                 // Explicitly no layout (layout: false)
                 Ok(content)
@@ -155,7 +153,7 @@ impl TemplateCache {
         };
 
         let template_path = self.resolve_template_path(&partial_name)?;
-        let nodes = self.get_or_load_template(&*template_path)?;
+        let nodes = self.get_or_load_template(&template_path)?;
 
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
@@ -169,7 +167,7 @@ impl TemplateCache {
         )?;
 
         // If the partial is a markdown file, convert to HTML
-        if is_markdown_template(&*template_path) {
+        if is_markdown_template(&template_path) {
             Ok(markdown_to_html(&content))
         } else {
             Ok(content)
@@ -200,7 +198,7 @@ impl TemplateCache {
 
         match self.resolve_template_path(layout_key) {
             Ok(layout_path) => {
-                let layout_nodes = self.get_or_load_template(&*layout_path)?;
+                let layout_nodes = self.get_or_load_template(&layout_path)?;
                 let layout_path_str = layout_path.to_string_lossy();
                 layout::render_layout_with_interpreter(
                     interpreter,
@@ -217,7 +215,6 @@ impl TemplateCache {
             }
         }
     }
-
 
     /// Resolve a template name to a file path (cached).
     /// Returns Rc<PathBuf> so cache hits are pointer increments, not heap clones.

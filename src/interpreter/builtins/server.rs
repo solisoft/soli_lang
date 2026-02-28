@@ -818,16 +818,30 @@ pub fn build_request_hash_with_parsed(
     };
 
     // Build unified "all" params only when at least one source has data
-    let has_body_params = parsed.json.as_ref().map_or(false, |v| matches!(v, Value::Hash(_)))
-        || parsed.form.as_ref().map_or(false, |v| matches!(v, Value::Hash(_)));
+    let has_body_params = parsed
+        .json
+        .as_ref()
+        .is_some_and(|v| matches!(v, Value::Hash(_)))
+        || parsed
+            .form
+            .as_ref()
+            .is_some_and(|v| matches!(v, Value::Hash(_)));
     let all_value = if params_value.is_none() && query_value.is_none() && !has_body_params {
         None // All sources empty — skip building unified params entirely
     } else {
         let params_ref = params_value.as_ref().and_then(|v| {
-            if let Value::Hash(h) = v { Some(h.borrow()) } else { None }
+            if let Value::Hash(h) = v {
+                Some(h.borrow())
+            } else {
+                None
+            }
         });
         let query_ref = query_value.as_ref().and_then(|v| {
-            if let Value::Hash(h) = v { Some(h.borrow()) } else { None }
+            if let Value::Hash(h) = v {
+                Some(h.borrow())
+            } else {
+                None
+            }
         });
         let empty_map = IndexMap::new();
         let params_map = params_ref.as_deref().unwrap_or(&empty_map);

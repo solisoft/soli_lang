@@ -40,7 +40,10 @@ impl Interpreter {
             ExprKind::Null => Ok(Value::Null),
 
             // Variables
-            ExprKind::Variable(name) => self.evaluate_variable(name, expr),
+            ExprKind::Variable(name) => {
+                let val = self.evaluate_variable(name, expr)?;
+                self.try_auto_invoke(val, expr.span)
+            }
 
             // Grouping
             ExprKind::Grouping(inner) => self.evaluate(inner),
@@ -413,10 +416,10 @@ impl Interpreter {
             }
             return Ok(val);
         }
-        // Check user-defined instance/class methods (is_method && 0 required params).
+        // Check user-defined functions/methods and native functions with 0 required params.
         // Use call_value to properly handle default parameter values.
         let should_auto_invoke = match &val {
-            Value::Function(func) => func.is_method && func.arity() == 0,
+            Value::Function(func) => func.arity() == 0,
             Value::NativeFunction(func) => func.arity == Some(0),
             _ => false,
         };

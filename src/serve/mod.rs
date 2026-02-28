@@ -1642,12 +1642,9 @@ async fn handle_hyper_request(
 
             // Inject live reload script for HTML responses (only in dev mode)
             let body = if reload_tx.is_some() {
-                let is_html = resp_data
-                    .headers
-                    .iter()
-                    .any(|(k, v)| {
-                        k.eq_ignore_ascii_case("content-type") && v.contains("text/html")
-                    });
+                let is_html = resp_data.headers.iter().any(|(k, v)| {
+                    k.eq_ignore_ascii_case("content-type") && v.contains("text/html")
+                });
                 if is_html {
                     live_reload::inject_live_reload_script(&resp_data.body)
                 } else {
@@ -2486,8 +2483,7 @@ fn call_handler(
                 return Ok(handler.clone());
             }
             drop(cached);
-            let result =
-                crate::interpreter::builtins::router::resolve_handler(handler_name, None);
+            let result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
             if let Ok(ref handler) = result {
                 cache
                     .borrow_mut()
@@ -2694,8 +2690,7 @@ fn call_oop_controller_action(
         Some(v) => v,
         None => {
             // Cache this controller as non-OOP to skip future lookups
-            NON_OOP_CONTROLLERS
-                .with(|cache| cache.borrow_mut().insert(controller_key.to_string()));
+            NON_OOP_CONTROLLERS.with(|cache| cache.borrow_mut().insert(controller_key.to_string()));
             return None;
         }
     };
@@ -3260,7 +3255,11 @@ fn handle_request(
     let log_requests = LOG_REQUESTS.with(|v| *v);
 
     // Only create timer when logging is enabled (avoids clock_gettime syscall per request)
-    let start_time = if log_requests { Some(Instant::now()) } else { None };
+    let start_time = if log_requests {
+        Some(Instant::now())
+    } else {
+        None
+    };
 
     // Set up session only if request has cookies (skip entirely for API/benchmark requests)
     let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
@@ -3335,8 +3334,7 @@ fn handle_request(
         } else {
             // Clear session context before returning 404
             set_current_session_id(None);
-            let error_html =
-                render_production_error_page(404, "Action not found for this route.");
+            let error_html = render_production_error_page(404, "Action not found for this route.");
             return ResponseData {
                 status: 404,
                 headers: vec![(
