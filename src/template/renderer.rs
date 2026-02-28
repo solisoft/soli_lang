@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use crate::interpreter::executor::Interpreter;
 use crate::interpreter::value::Value;
+use crate::span::Span;
 use crate::template::core_eval;
 use crate::template::parser::{Expr, TemplateNode};
 
@@ -83,6 +84,7 @@ fn render_inner(
             TemplateNode::Partial { line, .. } => Some(*line),
             TemplateNode::CodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreCodeBlock { line, .. } => Some(*line),
+            TemplateNode::CoreOutput { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -225,6 +227,13 @@ fn render_inner(
                             .map_err(|e| format!("Evaluation error: {}", e))?;
                     }
                 }
+                TemplateNode::CoreOutput { expr, escaped, line: _ } => {
+                    let value = interpreter.evaluate(expr)
+                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    // Auto-call methods/functions with no args (parentheses optional in templates)
+                    let value = auto_call_if_callable(interpreter, value)?;
+                    write_value_to_output(&value, *escaped, output);
+                }
             }
             Ok(())
         })();
@@ -300,6 +309,20 @@ pub fn html_escape(s: &str) -> Cow<'_, str> {
         }
     }
     Cow::Owned(result)
+}
+
+/// Auto-call callable values (Function, NativeFunction, Method) with no arguments.
+/// This allows templates to omit parentheses for no-arg method calls: `<%= now.to_iso %>`.
+#[inline]
+fn auto_call_if_callable(interpreter: &mut Interpreter, value: Value) -> Result<Value, String> {
+    match &value {
+        Value::Function(_) | Value::NativeFunction(_) | Value::Method(_) => {
+            interpreter
+                .call_value(value, vec![], Span::default())
+                .map_err(|e| format!("Evaluation error: {}", e))
+        }
+        _ => Ok(value),
+    }
 }
 
 /// Check if a value is truthy

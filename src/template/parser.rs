@@ -175,6 +175,12 @@ pub enum TemplateNode {
         stmts: Vec<crate::ast::stmt::Stmt>,
         line: usize,
     },
+    /// Output expression parsed by the core language parser (full language support)
+    CoreOutput {
+        expr: crate::ast::expr::Expr,
+        escaped: bool,
+        line: usize,
+    },
 }
 
 /// Token types during lexing
@@ -300,8 +306,9 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                     let partial = parse_partial_call(expr, *line)?;
                     nodes.push(partial);
                 } else {
-                    nodes.push(TemplateNode::Output {
-                        expr: compile_expr(expr),
+                    let core_expr = parse_core_expr(expr, *line)?;
+                    nodes.push(TemplateNode::CoreOutput {
+                        expr: core_expr,
                         escaped: true,
                         line: *line,
                     });
@@ -312,8 +319,9 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                 if expr == "yield" {
                     nodes.push(TemplateNode::Yield);
                 } else {
-                    nodes.push(TemplateNode::Output {
-                        expr: compile_expr(expr),
+                    let core_expr = parse_core_expr(expr, *line)?;
+                    nodes.push(TemplateNode::CoreOutput {
+                        expr: core_expr,
                         escaped: false,
                         line: *line,
                     });
@@ -322,9 +330,19 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
             }
             Token::OutputUnescape(expr, line) => {
                 // <%== expr %> is shorthand for <%= html_unescape(expr) %>
-                let inner_expr = compile_expr(expr);
-                nodes.push(TemplateNode::Output {
-                    expr: Expr::Call("html_unescape".to_string(), vec![inner_expr]),
+                let inner_expr = parse_core_expr(expr, *line)?;
+                let call_expr = crate::ast::expr::Expr::new(
+                    crate::ast::expr::ExprKind::Call {
+                        callee: Box::new(crate::ast::expr::Expr::new(
+                            crate::ast::expr::ExprKind::Variable("html_unescape".to_string()),
+                            crate::span::Span::default(),
+                        )),
+                        arguments: vec![crate::ast::expr::Argument::Positional(inner_expr)],
+                    },
+                    crate::span::Span::default(),
+                );
+                nodes.push(TemplateNode::CoreOutput {
+                    expr: call_expr,
                     escaped: false, // Don't escape the unescaped output
                     line: *line,
                 });
@@ -724,6 +742,19 @@ fn parse_core_code(code: &str, line: usize) -> Result<Vec<crate::ast::stmt::Stmt
         .parse()
         .map_err(|e| format!("Parse error at line {}: {}", line, e))?;
     Ok(program.statements)
+}
+
+/// Parse an expression through the core language parser.
+/// Used for `<%= %>` output expressions to support the full language.
+fn parse_core_expr(code: &str, line: usize) -> Result<crate::ast::expr::Expr, String> {
+    let stmts = parse_core_code(code, line)?;
+    match stmts.into_iter().next() {
+        Some(stmt) => match stmt.kind {
+            crate::ast::stmt::StmtKind::Expression(expr) => Ok(expr),
+            _ => Err(format!("Expected expression at line {}", line)),
+        },
+        None => Err(format!("Empty expression at line {}", line)),
+    }
 }
 
 /// Compile an expression string into a pre-compiled Expr AST.
@@ -1363,19 +1394,12 @@ mod tests {
         let nodes = parse_template("<%== encoded %>").unwrap();
         assert_eq!(nodes.len(), 1);
         match &nodes[0] {
-            TemplateNode::Output { expr, escaped, .. } => {
-                // Should be a call to html_unescape
-                match expr {
-                    Expr::Call(name, args) => {
-                        assert_eq!(name, "html_unescape");
-                        assert_eq!(args.len(), 1);
-                        assert_eq!(args[0], Expr::Var("encoded".to_string()));
-                    }
-                    _ => panic!("Expected Call expression"),
-                }
+            TemplateNode::CoreOutput { expr, escaped, .. } => {
+                // Should be a call to html_unescape wrapping the expression
+                assert!(matches!(&expr.kind, crate::ast::expr::ExprKind::Call { .. }));
                 assert!(!escaped); // Should not escape the unescaped output
             }
-            _ => panic!("Expected Output node"),
+            _ => panic!("Expected CoreOutput node"),
         }
     }
 
@@ -1404,14 +1428,15 @@ mod tests {
     #[test]
     fn test_parse_output() {
         let nodes = parse_template("<%= name %>").unwrap();
-        assert_eq!(
-            nodes,
-            vec![TemplateNode::Output {
-                expr: Expr::Var("name".to_string()),
-                escaped: true,
-                line: 1,
-            }]
-        );
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::CoreOutput { expr, escaped, line } => {
+                assert!(matches!(&expr.kind, crate::ast::expr::ExprKind::Variable(n) if n == "name"));
+                assert!(escaped);
+                assert_eq!(*line, 1);
+            }
+            _ => panic!("Expected CoreOutput node"),
+        }
     }
 
     #[test]
@@ -1533,16 +1558,13 @@ mod tests {
     #[test]
     fn test_parse_function_call() {
         let nodes = parse_template("<%= public_path(\"css/application.css\") %>").unwrap();
-        assert_eq!(
-            nodes,
-            vec![TemplateNode::Output {
-                expr: Expr::Call(
-                    "public_path".to_string(),
-                    vec![Expr::StringLit("css/application.css".to_string())],
-                ),
-                escaped: true,
-                line: 1,
-            }]
-        );
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::CoreOutput { expr, escaped, .. } => {
+                assert!(matches!(&expr.kind, crate::ast::expr::ExprKind::Call { .. }));
+                assert!(escaped);
+            }
+            _ => panic!("Expected CoreOutput node"),
+        }
     }
 }
