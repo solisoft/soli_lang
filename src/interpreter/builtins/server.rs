@@ -758,8 +758,8 @@ pub fn build_request_hash(
     method: &str,
     path: &str,
     params: HashMap<String, String>,
-    query: &HashMap<String, String>,
-    headers: &HashMap<String, String>,
+    query: HashMap<String, String>,
+    headers: HashMap<String, String>,
     body: &str,
 ) -> Value {
     build_request_hash_with_parsed(
@@ -776,12 +776,13 @@ pub fn build_request_hash(
 /// Build a request hash with parsed body data.
 /// Skips inserting Null/empty fields to reduce allocations — missing keys
 /// return Null on access anyway (via StrKey lookup in template engine).
+/// Takes owned query and headers to avoid cloning individual keys/values.
 pub fn build_request_hash_with_parsed(
     method: &str,
     path: &str,
     params: HashMap<String, String>,
-    query: &HashMap<String, String>,
-    headers: &HashMap<String, String>,
+    query: HashMap<String, String>,
+    headers: HashMap<String, String>,
     body: &str,
     parsed: ParsedBody,
 ) -> Value {
@@ -801,7 +802,7 @@ pub fn build_request_hash_with_parsed(
     } else {
         let mut map = IndexMap::with_capacity(query.len());
         for (k, v) in query {
-            map.insert(HashKey::String(k.clone()), Value::String(v.clone()));
+            map.insert(HashKey::String(k), Value::String(v));
         }
         Some(Value::Hash(Rc::new(RefCell::new(map))))
     };
@@ -811,7 +812,7 @@ pub fn build_request_hash_with_parsed(
     } else {
         let mut map = IndexMap::with_capacity(headers.len());
         for (k, v) in headers {
-            map.insert(HashKey::String(k.clone()), Value::String(v.clone()));
+            map.insert(HashKey::String(k), Value::String(v));
         }
         Some(Value::Hash(Rc::new(RefCell::new(map))))
     };

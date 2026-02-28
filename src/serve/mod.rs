@@ -70,7 +70,7 @@ use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::{
     build_request_hash_with_parsed, extract_response, find_route, get_routes,
     parse_form_urlencoded_body, parse_json_body, parse_query_string, routes_to_worker_routes,
-    set_worker_routes, take_fast_path_response, ParsedBody, WorkerRoute,
+    set_worker_routes, ParsedBody, WorkerRoute,
 };
 
 // Thread-local storage for tokio runtime handle (used by HTTP builtins for async operations)
@@ -118,7 +118,7 @@ use worker_pool::{HotReloadVersions, WorkerQueues, WorkerSender};
 
 /// Request data sent to interpreter thread
 pub(crate) struct RequestData {
-    pub(crate) method: String,
+    pub(crate) method: Cow<'static, str>,
     pub(crate) path: String,
     pub(crate) query: HashMap<String, String>,
     pub(crate) headers: HashMap<String, String>,
@@ -1095,8 +1095,8 @@ fn worker_loop(
         // Batch process HTTP requests using try_recv for non-blocking drain
         for _ in 0..server_constants::BATCH_SIZE {
             match work_rx.try_recv() {
-                Ok(data) => {
-                    let resp_data = handle_request(interpreter, &mut vm, &data, dev_mode);
+                Ok(mut data) => {
+                    let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
                     let _ = data.response_tx.send(resp_data);
                 }
                 Err(channel::TryRecvError::Empty) => {
@@ -1131,7 +1131,7 @@ fn worker_loop(
             if let Ok(oper) = result {
                 let idx = oper.index();
                 if idx == work_idx {
-                    if let Ok(data) = oper.recv(&work_rx) {
+                    if let Ok(mut data) = oper.recv(&work_rx) {
                         // Check hot reload before handling
                         if dev_mode {
                             let current_views = hot_reload_versions.views.load(Ordering::Acquire);
@@ -1140,7 +1140,7 @@ fn worker_loop(
                                 clear_template_cache();
                             }
                         }
-                        let resp_data = handle_request(interpreter, &mut vm, &data, dev_mode);
+                        let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
                         let _ = data.response_tx.send(resp_data);
                     }
                 } else if Some(idx) == ws_idx {
@@ -1224,15 +1224,15 @@ async fn handle_hyper_request(
     lv_event_tx: channel::Sender<LiveViewEventData>,
     dev_mode: bool,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    let method = match *req.method() {
-        hyper::Method::GET => "GET".to_string(),
-        hyper::Method::POST => "POST".to_string(),
-        hyper::Method::PUT => "PUT".to_string(),
-        hyper::Method::DELETE => "DELETE".to_string(),
-        hyper::Method::PATCH => "PATCH".to_string(),
-        hyper::Method::HEAD => "HEAD".to_string(),
-        hyper::Method::OPTIONS => "OPTIONS".to_string(),
-        _ => req.method().to_string().to_uppercase(),
+    let method: Cow<'static, str> = match *req.method() {
+        hyper::Method::GET => Cow::Borrowed("GET"),
+        hyper::Method::POST => Cow::Borrowed("POST"),
+        hyper::Method::PUT => Cow::Borrowed("PUT"),
+        hyper::Method::DELETE => Cow::Borrowed("DELETE"),
+        hyper::Method::PATCH => Cow::Borrowed("PATCH"),
+        hyper::Method::HEAD => Cow::Borrowed("HEAD"),
+        hyper::Method::OPTIONS => Cow::Borrowed("OPTIONS"),
+        _ => Cow::Owned(req.method().to_string().to_uppercase()),
     };
     let uri = req.uri();
     let path = uri.path().to_string();
@@ -1585,8 +1585,8 @@ async fn handle_hyper_request(
 
     // Send to interpreter thread
     let request_data = RequestData {
-        method: method.clone(),
-        path: path.clone(),
+        method,
+        path,
         query,
         headers,
         body,
@@ -1640,7 +1640,7 @@ async fn handle_hyper_request(
             let is_html = resp_data
                 .headers
                 .iter()
-                .any(|(k, v)| k.to_lowercase() == "content-type" && v.contains("text/html"));
+                .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("text/html"));
 
             for (key, value) in &resp_data.headers {
                 builder = builder.header(key.as_str(), value.as_str());
@@ -2614,6 +2614,9 @@ fn call_handler(
 // None means not yet initialized; Some(set) means we've checked the registry.
 thread_local! {
     static CONTROLLERS_WITH_HOOKS: RefCell<Option<std::collections::HashSet<String>>> = const { RefCell::new(None) };
+    // Cache of controller keys known to NOT have OOP class definitions.
+    // Avoids repeated scope-chain walks for function-based controllers.
+    static NON_OOP_CONTROLLERS: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
 }
 
 /// Check if a controller has hooks, using thread-local cache to avoid RwLock reads.
@@ -2651,12 +2654,25 @@ fn call_oop_controller_action(
 ) -> Option<ResponseData> {
     let (controller_key, action_name) = handler_name.split_once('#')?;
 
+    // Fast path: skip environment lookup for controllers known to not be OOP classes
+    if NON_OOP_CONTROLLERS.with(|cache| cache.borrow().contains(controller_key)) {
+        return None;
+    }
+
     // Check if this is an OOP controller (has a class definition)
     // Convert controller_key (e.g., "posts") to PascalCase class name (e.g., "PostsController")
     let class_name = to_pascal_case_controller(controller_key);
 
     // Look up the class in the environment
-    let class_value = interpreter.environment.borrow().get(&class_name)?;
+    let class_value = match interpreter.environment.borrow().get(&class_name) {
+        Some(v) => v,
+        None => {
+            // Cache this controller as non-OOP to skip future lookups
+            NON_OOP_CONTROLLERS
+                .with(|cache| cache.borrow_mut().insert(controller_key.to_string()));
+            return None;
+        }
+    };
 
     // Check if it's actually a class
     let class_rc = match class_value {
@@ -3203,12 +3219,9 @@ fn parse_request_body(
 fn handle_request(
     interpreter: &mut Interpreter,
     vm: &mut Option<crate::vm::Vm>,
-    data: &RequestData,
+    data: &mut RequestData,
     dev_mode: bool,
 ) -> ResponseData {
-    // Clear any stale fast-path response from a previous request
-    let _ = take_fast_path_response();
-
     let method = &data.method;
     let path = &data.path;
 
@@ -3321,13 +3334,17 @@ fn handle_request(
         )
     };
 
-    // Build request hash with parsed body (pass references to avoid cloning)
+    // Take ownership of headers and query to avoid cloning individual keys/values
+    let headers = std::mem::take(&mut data.headers);
+    let query = std::mem::take(&mut data.query);
+
+    // Build request hash with parsed body (owned headers/query avoid String clones)
     let mut request_hash = build_request_hash_with_parsed(
         &data.method,
         &data.path,
         matched_params,
-        &data.query,
-        &data.headers,
+        query,
+        headers,
         &data.body,
         parsed_body,
     );
@@ -4052,7 +4069,7 @@ fn render_error_page(
     let mut request_hash_map = HashMap::new();
     request_hash_map.insert(
         "method".to_string(),
-        Value::String(request_data.method.clone()),
+        Value::String(request_data.method.to_string()),
     );
     request_hash_map.insert("path".to_string(), Value::String(request_data.path.clone()));
     request_hash_map.insert(
