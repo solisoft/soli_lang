@@ -2474,16 +2474,38 @@ fn call_handler(
         // If not an OOP controller or error, fall through to function-based handling
     }
 
-    // Use CONTROLLERS registry to look up handler by full name (controller#action)
-    let handler_result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
+    // Use CONTROLLERS registry to look up handler by full name (controller#action).
+    // In production mode, cache resolved handlers to skip per-request lookups.
+    let handler_result = if !dev_mode {
+        thread_local! {
+            static HANDLER_CACHE: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
+        }
+        HANDLER_CACHE.with(|cache| {
+            let cached = cache.borrow();
+            if let Some(handler) = cached.get(handler_name) {
+                return Ok(handler.clone());
+            }
+            drop(cached);
+            let result =
+                crate::interpreter::builtins::router::resolve_handler(handler_name, None);
+            if let Ok(ref handler) = result {
+                cache
+                    .borrow_mut()
+                    .insert(handler_name.to_string(), handler.clone());
+            }
+            result
+        })
+    } else {
+        crate::interpreter::builtins::router::resolve_handler(handler_name, None)
+    };
 
     // Try VM execution in production mode for function-based handlers
     if let Some(ref mut vm) = vm {
         if !vm.failed_handlers.contains(handler_name) {
             if let Ok(ref handler_value) = handler_result {
-                match vm.call_value_direct(
+                match vm.call_value_direct_one(
                     handler_value.clone(),
-                    vec![request_hash.clone()],
+                    request_hash.clone(),
                     Span::default(),
                 ) {
                     Ok(result) => {
@@ -2847,9 +2869,9 @@ fn call_class_method(
         if let Some(vm) = vm {
             let handler_key = format!("{}#{}", class.name, method_name);
             if !vm.failed_handlers.contains(&handler_key) {
-                match vm.call_value_direct(
+                match vm.call_value_direct_one(
                     Value::Function(method.clone()),
-                    vec![request_hash.clone()],
+                    request_hash.clone(),
                     Span::default(),
                 ) {
                     Ok(result) => {

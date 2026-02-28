@@ -246,10 +246,24 @@ impl Vm {
         span: Span,
     ) -> Result<Value, RuntimeError> {
         self.push(callee);
-        for arg in &args {
-            self.push(arg.clone());
+        let argc = args.len();
+        for arg in args {
+            self.push(arg);
         }
-        self.call_value(args.len(), span)?;
+        self.call_value(argc, span)?;
+        self.run()
+    }
+
+    /// Optimized single-arg call that avoids Vec heap allocation.
+    pub fn call_value_direct_one(
+        &mut self,
+        callee: Value,
+        arg: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.push(callee);
+        self.push(arg);
+        self.call_value(1, span)?;
         self.run()
     }
 
