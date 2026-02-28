@@ -4,7 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{HashKey, StrKey, Value};
+use indexmap::IndexMap;
 
 /// A runtime environment containing variable bindings.
 #[derive(Debug, Clone)]
@@ -12,6 +13,10 @@ pub struct Environment {
     values: HashMap<String, Value>,
     consts: HashMap<String, Value>,
     enclosing: Option<Rc<RefCell<Environment>>>,
+    /// Optional data hash for template rendering.
+    /// Checked during get() before walking the enclosing chain.
+    /// Avoids copying all data fields into the HashMap.
+    data_hash: Option<Rc<RefCell<IndexMap<HashKey, Value>>>>,
 }
 
 impl Environment {
@@ -20,6 +25,7 @@ impl Environment {
             values: HashMap::new(),
             consts: HashMap::new(),
             enclosing: None,
+            data_hash: None,
         }
     }
 
@@ -28,12 +34,48 @@ impl Environment {
             values: HashMap::new(),
             consts: HashMap::new(),
             enclosing: Some(enclosing),
+            data_hash: None,
         }
+    }
+
+    /// Create an environment with a data hash for template rendering.
+    /// Variables are looked up in the data hash before walking the enclosing chain,
+    /// avoiding the need to copy all data fields into the values HashMap.
+    pub fn with_enclosing_and_data(
+        enclosing: Rc<RefCell<Environment>>,
+        data_hash: Rc<RefCell<IndexMap<HashKey, Value>>>,
+    ) -> Self {
+        Self {
+            values: HashMap::new(),
+            consts: HashMap::new(),
+            enclosing: Some(enclosing),
+            data_hash: Some(data_hash),
+        }
+    }
+
+    /// Reset this environment for reuse in template rendering.
+    /// Clears local variables (keeps HashMap capacity) and updates the data hash.
+    #[inline]
+    pub fn reset_for_reuse(&mut self, data_hash: Option<Rc<RefCell<IndexMap<HashKey, Value>>>>) {
+        self.values.clear();
+        self.data_hash = data_hash;
     }
 
     /// Define a new variable in the current scope.
     pub fn define(&mut self, name: String, value: Value) {
         self.values.insert(name, value);
+    }
+
+    /// Update an existing variable or define it if not found.
+    /// Avoids String allocation for the key when the variable already exists.
+    /// Ideal for loop variables that are redefined every iteration.
+    #[inline]
+    pub fn define_or_update(&mut self, name: &str, value: Value) {
+        if let Some(existing) = self.values.get_mut(name) {
+            *existing = value;
+        } else {
+            self.values.insert(name.to_string(), value);
+        }
     }
 
     /// Define a constant in the current scope.
@@ -54,6 +96,7 @@ impl Environment {
 
     /// Get a variable's value, searching up the scope chain.
     /// Consts are checked first so they shadow let variables with the same name.
+    /// Data hash (if set) is checked before walking the enclosing chain.
     pub fn get(&self, name: &str) -> Option<Value> {
         // Check consts first (const shadows let)
         if let Some(value) = self.consts.get(name) {
@@ -61,6 +104,12 @@ impl Environment {
         }
         if let Some(value) = self.values.get(name) {
             return Some(value.clone());
+        }
+        // Check data hash (template data, avoids copying into values HashMap)
+        if let Some(ref hash) = self.data_hash {
+            if let Some(value) = hash.borrow().get(&StrKey(name)) {
+                return Some(value.clone());
+            }
         }
         if let Some(ref enclosing) = self.enclosing {
             return enclosing.borrow().get(name);

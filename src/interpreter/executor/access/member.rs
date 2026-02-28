@@ -299,8 +299,8 @@ impl Interpreter {
             })),
             _ => {
                 // Try to access as a hash key (dot notation for hash access)
-                let hash_key = crate::interpreter::value::HashKey::String(name.to_string());
-                if let Some(v) = hash.borrow().get(&hash_key) {
+                // Use StrKey for zero-allocation lookup (hashes identically to HashKey::String)
+                if let Some(v) = hash.borrow().get(&crate::interpreter::value::StrKey(name)) {
                     return Ok(v.clone());
                 }
                 Ok(Value::Null)

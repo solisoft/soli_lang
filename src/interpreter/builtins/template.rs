@@ -19,7 +19,7 @@ use crate::interpreter::builtins::datetime::helpers as datetime_helpers;
 use crate::interpreter::builtins::html;
 use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{value_to_json, Function, HashKey, NativeFunction, Value};
+use crate::interpreter::value::{value_to_json, Function, HashKey, NativeFunction, StrKey, Value};
 use crate::template::{html_response, TemplateCache};
 
 // Thread-local template cache
@@ -263,30 +263,47 @@ pub fn render_error_template(status_code: u16, message: &str, request_id: &str) 
         .ok()
 }
 
+/// Check if a value could potentially contain futures (quick discriminant check).
+#[inline]
+fn could_contain_futures(v: &Value) -> bool {
+    matches!(v, Value::Future(_) | Value::Hash(_) | Value::Array(_))
+}
+
 /// Recursively resolve all Future values in a Value.
 /// This ensures that async operations (like HTTP requests) are completed
 /// before the data is used in templates.
+/// Fast path: returns the value as-is when no futures are present (zero allocations).
 fn resolve_futures_in_value(value: Value) -> Value {
+    // Fast path: primitive values never contain futures
+    match &value {
+        Value::Future(_) | Value::Hash(_) | Value::Array(_) => {}
+        _ => return value,
+    }
+    // Slow path: check for and resolve futures
     match value {
-        Value::Future(_) => {
-            // Resolve the future, blocking until complete
-            match value.resolve() {
-                Ok(resolved) => resolve_futures_in_value(resolved),
-                Err(e) => Value::String(format!("<future error: {}>", e)),
-            }
-        }
+        Value::Future(_) => match value.resolve() {
+            Ok(resolved) => resolve_futures_in_value(resolved),
+            Err(e) => Value::String(format!("<future error: {}>", e)),
+        },
         Value::Hash(hash) => {
+            // Quick scan: if no values could contain futures, return as-is
+            let needs = hash.borrow().values().any(could_contain_futures);
+            if !needs {
+                return Value::Hash(hash);
+            }
             let resolved_pairs: IndexMap<HashKey, Value> = hash
                 .borrow()
                 .iter()
-                .map(|(k, v)| {
-                    let resolved_v = resolve_futures_in_value(v.clone());
-                    (k.clone(), resolved_v)
-                })
+                .map(|(k, v)| (k.clone(), resolve_futures_in_value(v.clone())))
                 .collect();
             Value::Hash(Rc::new(RefCell::new(resolved_pairs)))
         }
         Value::Array(arr) => {
+            // Quick scan: if no items could contain futures, return as-is
+            let needs = arr.borrow().iter().any(could_contain_futures);
+            if !needs {
+                return Value::Array(arr);
+            }
             let resolved_items: Vec<Value> = arr
                 .borrow()
                 .iter()
@@ -294,8 +311,7 @@ fn resolve_futures_in_value(value: Value) -> Value {
                 .collect();
             Value::Array(Rc::new(RefCell::new(resolved_items)))
         }
-        // Other value types don't contain futures
-        other => other,
+        _ => unreachable!(),
     }
 }
 
@@ -335,616 +351,259 @@ fn get_file_mtime_cached(path: &PathBuf) -> Result<String, String> {
 }
 
 /// Inject template helper functions into the data context
-pub fn inject_template_helpers(data: &Value) -> Value {
-    match data {
-        Value::Hash(hash) => {
-            let mut new_hash: IndexMap<HashKey, Value> = hash.borrow().clone();
-
-            // Inject user-defined view helpers from app/helpers/*.sl
-            VIEW_HELPERS.with(|helpers| {
-                let helpers_map = helpers.borrow();
+/// Inject only user-defined view helpers from app/helpers/*.sl into data.
+/// Static helpers (range, html_escape, etc.) are in the thread-local builtins.
+pub fn inject_template_helpers(data: &Value) {
+    if let Value::Hash(hash) = data {
+        VIEW_HELPERS.with(|helpers| {
+            let helpers_map = helpers.borrow();
+            if !helpers_map.is_empty() {
+                let mut h = hash.borrow_mut();
                 for (name, value) in helpers_map.iter() {
                     let key = HashKey::String(name.clone());
-                    // Only add if not already present in data (allow override)
-                    if !new_hash.contains_key(&key) {
-                        new_hash.insert(key, value.clone());
+                    if !h.contains_key(&key) {
+                        h.insert(key, value.clone());
                     }
                 }
-            });
-
-            // Check if public_path already exists
-            let public_path_key = HashKey::String("public_path".to_string());
-            let has_public_path = new_hash.contains_key(&public_path_key);
-
-            // Add range() function if not present
-            let range_key = HashKey::String("range".to_string());
-            let has_range = new_hash.contains_key(&range_key);
-
-            if !has_range {
-                let range_func =
-                    Value::NativeFunction(NativeFunction::new("range", None, |args| {
-                        if args.len() < 2 || args.len() > 3 {
-                            return Err(format!(
-                                "range() expects 2 or 3 arguments, got {}",
-                                args.len()
-                            ));
-                        }
-
-                        let start = match &args[0] {
-                            Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                    "range() expects integer start, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        let end = match &args[1] {
-                            Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                    "range() expects integer end, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-
-                        let step = if args.len() == 3 {
-                            match &args[2] {
-                                Value::Int(n) => {
-                                    if *n == 0 {
-                                        return Err("range() step cannot be zero".to_string());
-                                    }
-                                    *n
-                                }
-                                other => {
-                                    return Err(format!(
-                                        "range() expects integer step, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            }
-                        } else {
-                            1
-                        };
-
-                        let mut values = Vec::new();
-                        if step > 0 {
-                            let mut i = start;
-                            while i < end {
-                                values.push(Value::Int(i));
-                                i += step;
-                            }
-                        } else {
-                            let mut i = start;
-                            while i > end {
-                                values.push(Value::Int(i));
-                                i += step;
-                            }
-                        }
-
-                        Ok(Value::Array(Rc::new(RefCell::new(values))))
-                    }));
-
-                new_hash.insert(range_key, range_func);
             }
-
-            if !has_public_path {
-                // Create the public_path native function
-                let public_path_func =
-                    Value::NativeFunction(NativeFunction::new("public_path", Some(1), |args| {
-                        let path = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "public_path() expects string path, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-
-                        // Get public directory
-                        let public_dir = match PUBLIC_DIR.lock() {
-                            Ok(dir_guard) => dir_guard.clone(),
-                            _ => None,
-                        };
-
-                        let public_dir = match public_dir {
-                            Some(dir) => dir,
-                            None => {
-                                // Default to "public" in current directory
-                                PathBuf::from("public")
-                            }
-                        };
-
-                        // Build full file path
-                        let full_path = public_dir.join(&path);
-
-                        // Get mtime if file exists, otherwise return path without version
-                        match get_file_mtime_cached(&full_path) {
-                            Ok(mtime) => {
-                                // Return path with query parameter
-                                if path.contains('?') {
-                                    Ok(Value::String(format!("/{}&v={}", path, mtime)))
-                                } else {
-                                    Ok(Value::String(format!("/{}?v={}", path, mtime)))
-                                }
-                            }
-                            Err(_) => {
-                                // File doesn't exist, return path without version
-                                Ok(Value::String(format!("/{}", path)))
-                            }
-                        }
-                    }));
-
-                new_hash.insert(public_path_key, public_path_func);
-            }
-
-            // Add strip_html() function if not present
-            let strip_html_key = HashKey::String("strip_html".to_string());
-            let has_strip_html = new_hash.contains_key(&strip_html_key);
-
-            if !has_strip_html {
-                let strip_html_func =
-                    Value::NativeFunction(NativeFunction::new("strip_html", Some(1), |args| {
-                        match &args[0] {
-                            Value::String(s) => Ok(Value::String(html::strip_html(s))),
-                            other => Err(format!(
-                                "strip_html() expects string, got {}",
-                                other.type_name()
-                            )),
-                        }
-                    }));
-                new_hash.insert(strip_html_key, strip_html_func);
-            }
-
-            // Add substring() function if not present
-            let substring_key = HashKey::String("substring".to_string());
-            let has_substring = new_hash.contains_key(&substring_key);
-
-            if !has_substring {
-                let substring_func =
-                    Value::NativeFunction(NativeFunction::new("substring", Some(3), |args| {
-                        let s = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "substring() expects string as first argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        let start = match &args[1] {
-                            Value::Int(n) => *n as usize,
-                            other => {
-                                return Err(format!(
-                                    "substring() expects int as second argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        let end = match &args[2] {
-                            Value::Int(n) => *n as usize,
-                            other => {
-                                return Err(format!(
-                                    "substring() expects int as third argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        Ok(Value::String(html::substring(&s, start, end)))
-                    }));
-                new_hash.insert(substring_key, substring_func);
-            }
-
-            // Add html_escape() function if not present
-            let html_escape_key = HashKey::String("html_escape".to_string());
-            let has_html_escape = new_hash.contains_key(&html_escape_key);
-
-            if !has_html_escape {
-                let html_escape_func =
-                    Value::NativeFunction(NativeFunction::new("html_escape", Some(1), |args| {
-                        let s = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => format!("{}", other),
-                        };
-                        Ok(Value::String(html::html_escape(&s)))
-                    }));
-                new_hash.insert(html_escape_key, html_escape_func);
-            }
-
-            // Add html_unescape() function if not present
-            let html_unescape_key = HashKey::String("html_unescape".to_string());
-            let has_html_unescape = new_hash.contains_key(&html_unescape_key);
-
-            if !has_html_unescape {
-                let html_unescape_func =
-                    Value::NativeFunction(NativeFunction::new("html_unescape", Some(1), |args| {
-                        match &args[0] {
-                            Value::String(s) => Ok(Value::String(html::html_unescape(s))),
-                            other => Err(format!(
-                                "html_unescape() expects string, got {}",
-                                other.type_name()
-                            )),
-                        }
-                    }));
-                new_hash.insert(html_unescape_key, html_unescape_func);
-            }
-
-            // Add sanitize_html() function if not present
-            let sanitize_html_key = HashKey::String("sanitize_html".to_string());
-            let has_sanitize_html = new_hash.contains_key(&sanitize_html_key);
-
-            if !has_sanitize_html {
-                let sanitize_html_func =
-                    Value::NativeFunction(NativeFunction::new("sanitize_html", Some(1), |args| {
-                        match &args[0] {
-                            Value::String(s) => Ok(Value::String(html::sanitize_html(s))),
-                            other => Err(format!(
-                                "sanitize_html() expects string, got {}",
-                                other.type_name()
-                            )),
-                        }
-                    }));
-                new_hash.insert(sanitize_html_key, sanitize_html_func);
-            }
-
-            // Add datetime_now() function if not present
-            let datetime_now_key = HashKey::String("datetime_now".to_string());
-            let has_datetime_now = new_hash.contains_key(&datetime_now_key);
-
-            if !has_datetime_now {
-                let datetime_now_func =
-                    Value::NativeFunction(NativeFunction::new("datetime_now", Some(0), |_args| {
-                        Ok(Value::Int(datetime_helpers::datetime_now()))
-                    }));
-                new_hash.insert(datetime_now_key, datetime_now_func);
-            }
-
-            // Add datetime_format() function if not present
-            let datetime_format_key = HashKey::String("datetime_format".to_string());
-            let has_datetime_format = new_hash.contains_key(&datetime_format_key);
-
-            if !has_datetime_format {
-                let datetime_format_func = Value::NativeFunction(NativeFunction::new(
-                    "datetime_format",
-                    Some(2),
-                    |args| {
-                        let timestamp = match &args[0] {
-                            Value::Int(n) => *n,
-                            Value::String(s) => {
-                                // Try to parse string as timestamp
-                                datetime_helpers::datetime_parse(s).unwrap_or(0)
-                            }
-                            other => {
-                                return Err(format!(
-                                    "datetime_format() expects timestamp (int) or date string as first argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        let format = match &args[1] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "datetime_format() expects string format as second argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        Ok(Value::String(datetime_helpers::datetime_format(
-                            timestamp, &format,
-                        )))
-                    },
-                ));
-                new_hash.insert(datetime_format_key, datetime_format_func);
-            }
-
-            // Add datetime_parse() function if not present
-            let datetime_parse_key = HashKey::String("datetime_parse".to_string());
-            let has_datetime_parse = new_hash.contains_key(&datetime_parse_key);
-
-            if !has_datetime_parse {
-                let datetime_parse_func =
-                    Value::NativeFunction(NativeFunction::new("datetime_parse", Some(1), |args| {
-                        let s = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "datetime_parse() expects string, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        match datetime_helpers::datetime_parse(&s) {
-                            Some(ts) => Ok(Value::Int(ts)),
-                            None => Ok(Value::Null),
-                        }
-                    }));
-                new_hash.insert(datetime_parse_key, datetime_parse_func);
-            }
-
-            // Add datetime_add_days() function if not present
-            let datetime_add_days_key = HashKey::String("datetime_add_days".to_string());
-            let has_datetime_add_days = new_hash.contains_key(&datetime_add_days_key);
-
-            if !has_datetime_add_days {
-                let datetime_add_days_func = Value::NativeFunction(NativeFunction::new(
-                    "datetime_add_days",
-                    Some(2),
-                    |args| {
-                        let timestamp = match &args[0] {
-                            Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                    "datetime_add_days() expects timestamp (int) as first argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        let days = match &args[1] {
-                            Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                    "datetime_add_days() expects int as second argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        Ok(Value::Int(datetime_helpers::datetime_add_days(
-                            timestamp, days,
-                        )))
-                    },
-                ));
-                new_hash.insert(datetime_add_days_key, datetime_add_days_func);
-            }
-
-            // Add datetime_add_hours() function if not present
-            let datetime_add_hours_key = HashKey::String("datetime_add_hours".to_string());
-            let has_datetime_add_hours = new_hash.contains_key(&datetime_add_hours_key);
-
-            if !has_datetime_add_hours {
-                let datetime_add_hours_func = Value::NativeFunction(NativeFunction::new(
-                    "datetime_add_hours",
-                    Some(2),
-                    |args| {
-                        let timestamp = match &args[0] {
-                            Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                    "datetime_add_hours() expects timestamp (int) as first argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        let hours = match &args[1] {
-                            Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                    "datetime_add_hours() expects int as second argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        Ok(Value::Int(datetime_helpers::datetime_add_hours(
-                            timestamp, hours,
-                        )))
-                    },
-                ));
-                new_hash.insert(datetime_add_hours_key, datetime_add_hours_func);
-            }
-
-            // Add datetime_diff() function if not present
-            let datetime_diff_key = HashKey::String("datetime_diff".to_string());
-            let has_datetime_diff = new_hash.contains_key(&datetime_diff_key);
-
-            if !has_datetime_diff {
-                let datetime_diff_func = Value::NativeFunction(NativeFunction::new(
-                    "datetime_diff",
-                    Some(2),
-                    |args| {
-                        let t1 = match &args[0] {
-                            Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                "datetime_diff() expects timestamp (int) as first argument, got {}",
-                                other.type_name()
-                            ))
-                            }
-                        };
-                        let t2 = match &args[1] {
-                            Value::Int(n) => *n,
-                            other => {
-                                return Err(format!(
-                                    "datetime_diff() expects timestamp (int) as second argument, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        Ok(Value::Int(datetime_helpers::datetime_diff(t1, t2)))
-                    },
-                ));
-                new_hash.insert(datetime_diff_key, datetime_diff_func);
-            }
-
-            // Add time_ago() function if not present
-            let time_ago_key = HashKey::String("time_ago".to_string());
-            let has_time_ago = new_hash.contains_key(&time_ago_key);
-
-            if !has_time_ago {
-                let time_ago_func =
-                    Value::NativeFunction(NativeFunction::new("time_ago", Some(1), |args| {
-                        let timestamp = match &args[0] {
-                            Value::Int(n) => *n,
-                            Value::String(s) => {
-                                // Try to parse string as timestamp
-                                datetime_helpers::datetime_parse(s).unwrap_or(0)
-                            }
-                            other => {
-                                return Err(format!(
-                                    "time_ago() expects timestamp (int) or date string, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        // Use current locale for localized output
-                        let locale = i18n_helpers::get_locale();
-                        Ok(Value::String(datetime_helpers::time_ago_localized(
-                            timestamp, &locale,
-                        )))
-                    }));
-                new_hash.insert(time_ago_key, time_ago_func);
-            }
-
-            // Add locale() function if not present
-            let locale_key = HashKey::String("locale".to_string());
-            let has_locale = new_hash.contains_key(&locale_key);
-
-            if !has_locale {
-                let locale_func =
-                    Value::NativeFunction(NativeFunction::new("locale", Some(0), |_args| {
-                        Ok(Value::String(i18n_helpers::get_locale()))
-                    }));
-                new_hash.insert(locale_key, locale_func);
-            }
-
-            // Add set_locale() function if not present
-            let set_locale_key = HashKey::String("set_locale".to_string());
-            let has_set_locale = new_hash.contains_key(&set_locale_key);
-
-            if !has_set_locale {
-                let set_locale_func =
-                    Value::NativeFunction(NativeFunction::new("set_locale", Some(1), |args| {
-                        let locale = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "set_locale() expects string, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        i18n_helpers::set_locale(&locale);
-                        Ok(Value::String(locale))
-                    }));
-                new_hash.insert(set_locale_key, set_locale_func);
-            }
-
-            // Add t() function (translate alias) if not present
-            let t_key = HashKey::String("t".to_string());
-            let has_t = new_hash.contains_key(&t_key);
-
-            if !has_t {
-                let t_func = Value::NativeFunction(NativeFunction::new("t", Some(1), |args| {
-                    let key = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        other => {
-                            return Err(format!(
-                                "t() expects string key, got {}",
-                                other.type_name()
-                            ))
-                        }
-                    };
-                    // Return the key itself as fallback (translations loaded elsewhere)
-                    Ok(Value::String(key))
-                }));
-                new_hash.insert(t_key, t_func);
-            }
-
-            // Add l() function (localize date) if not present
-            let l_key = HashKey::String("l".to_string());
-            let has_l = new_hash.contains_key(&l_key);
-
-            if !has_l {
-                let l_func = Value::NativeFunction(NativeFunction::new("l", None, |args| {
-                    if args.is_empty() {
-                        return Err("l() requires at least 1 argument (timestamp)".to_string());
-                    }
-
-                    // Get timestamp (first arg)
-                    let timestamp = match &args[0] {
-                        Value::Int(n) => *n,
-                        Value::String(s) => datetime_helpers::datetime_parse(s).unwrap_or(0),
-                        other => {
-                            return Err(format!(
-                            "l() expects timestamp (int) or date string as first argument, got {}",
-                            other.type_name()
-                        ))
-                        }
-                    };
-
-                    // Get format (second arg, default "short")
-                    let format = if args.len() > 1 {
-                        match &args[1] {
-                            Value::String(s) => s.clone(),
-                            _ => "short".to_string(),
-                        }
-                    } else {
-                        "short".to_string()
-                    };
-
-                    // Get locale from i18n helpers
-                    let locale = i18n_helpers::get_locale();
-
-                    Ok(Value::String(datetime_helpers::localize_date(
-                        timestamp, &locale, &format,
-                    )))
-                }));
-                new_hash.insert(l_key, l_func);
-            }
-
-            // Add render_partial() function if not present
-            let render_partial_key = HashKey::String("render_partial".to_string());
-            let has_render_partial = new_hash.contains_key(&render_partial_key);
-
-            if !has_render_partial {
-                let render_partial_func =
-                    Value::NativeFunction(NativeFunction::new("render_partial", None, |args| {
-                        if args.is_empty() {
-                            return Err(
-                                "render_partial() requires at least 1 argument (partial name)"
-                                    .to_string(),
-                            );
-                        }
-
-                        // Get partial name
-                        let partial_name = match &args[0] {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "render_partial() expects string partial name, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-
-                        // Get optional data context (default to empty hash)
-                        let data = if args.len() > 1 {
-                            args[1].clone()
-                        } else {
-                            Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
-                        };
-
-                        // Resolve any futures in the data before rendering
-                        let data = resolve_futures_in_value(data);
-
-                        // Get template cache and render partial
-                        let cache = get_template_cache()?;
-
-                        // Inject helpers into the data context for nested partials
-                        let data_with_helpers = inject_template_helpers(&data);
-
-                        cache
-                            .render_partial(&partial_name, &data_with_helpers)
-                            .map(Value::String)
-                    }));
-                new_hash.insert(render_partial_key, render_partial_func);
-            }
-
-            Value::Hash(Rc::new(RefCell::new(new_hash)))
-        }
-        _ => data.clone(),
+        });
     }
+}
+
+/// Register static template helpers into an Environment (called once per thread).
+/// These helpers (range, public_path, html_escape, etc.) are created once and
+/// shared via the thread-local builtins Rc, avoiding ~20 NativeFunction allocations per render.
+pub fn register_static_template_helpers(env: &mut Environment) {
+    env.define("range".to_string(), Value::NativeFunction(NativeFunction::new("range", None, |args| {
+        if args.len() < 2 || args.len() > 3 {
+            return Err(format!("range() expects 2 or 3 arguments, got {}", args.len()));
+        }
+        let start = match &args[0] {
+            Value::Int(n) => *n,
+            other => return Err(format!("range() expects integer start, got {}", other.type_name())),
+        };
+        let end = match &args[1] {
+            Value::Int(n) => *n,
+            other => return Err(format!("range() expects integer end, got {}", other.type_name())),
+        };
+        let step = if args.len() == 3 {
+            match &args[2] {
+                Value::Int(n) if *n == 0 => return Err("range() step cannot be zero".to_string()),
+                Value::Int(n) => *n,
+                other => return Err(format!("range() expects integer step, got {}", other.type_name())),
+            }
+        } else { 1 };
+        let mut values = Vec::new();
+        if step > 0 {
+            let mut i = start;
+            while i < end { values.push(Value::Int(i)); i += step; }
+        } else {
+            let mut i = start;
+            while i > end { values.push(Value::Int(i)); i += step; }
+        }
+        Ok(Value::Array(Rc::new(RefCell::new(values))))
+    })));
+
+    env.define("public_path".to_string(), Value::NativeFunction(NativeFunction::new("public_path", Some(1), |args| {
+        let path = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => return Err(format!("public_path() expects string path, got {}", other.type_name())),
+        };
+        let public_dir = match PUBLIC_DIR.lock() {
+            Ok(dir_guard) => dir_guard.clone(),
+            _ => None,
+        };
+        let public_dir = public_dir.unwrap_or_else(|| PathBuf::from("public"));
+        let full_path = public_dir.join(&path);
+        match get_file_mtime_cached(&full_path) {
+            Ok(mtime) => {
+                if path.contains('?') {
+                    Ok(Value::String(format!("/{}&v={}", path, mtime)))
+                } else {
+                    Ok(Value::String(format!("/{}?v={}", path, mtime)))
+                }
+            }
+            Err(_) => Ok(Value::String(format!("/{}", path))),
+        }
+    })));
+
+    env.define("strip_html".to_string(), Value::NativeFunction(NativeFunction::new("strip_html", Some(1), |args| {
+        match &args[0] {
+            Value::String(s) => Ok(Value::String(html::strip_html(s))),
+            other => Err(format!("strip_html() expects string, got {}", other.type_name())),
+        }
+    })));
+
+    env.define("substring".to_string(), Value::NativeFunction(NativeFunction::new("substring", Some(3), |args| {
+        let s = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => return Err(format!("substring() expects string as first argument, got {}", other.type_name())),
+        };
+        let start = match &args[1] {
+            Value::Int(n) => *n as usize,
+            other => return Err(format!("substring() expects int as second argument, got {}", other.type_name())),
+        };
+        let end = match &args[2] {
+            Value::Int(n) => *n as usize,
+            other => return Err(format!("substring() expects int as third argument, got {}", other.type_name())),
+        };
+        Ok(Value::String(html::substring(&s, start, end)))
+    })));
+
+    env.define("html_escape".to_string(), Value::NativeFunction(NativeFunction::new("html_escape", Some(1), |args| {
+        let s = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => format!("{}", other),
+        };
+        Ok(Value::String(html::html_escape(&s)))
+    })));
+
+    env.define("html_unescape".to_string(), Value::NativeFunction(NativeFunction::new("html_unescape", Some(1), |args| {
+        match &args[0] {
+            Value::String(s) => Ok(Value::String(html::html_unescape(s))),
+            other => Err(format!("html_unescape() expects string, got {}", other.type_name())),
+        }
+    })));
+
+    env.define("sanitize_html".to_string(), Value::NativeFunction(NativeFunction::new("sanitize_html", Some(1), |args| {
+        match &args[0] {
+            Value::String(s) => Ok(Value::String(html::sanitize_html(s))),
+            other => Err(format!("sanitize_html() expects string, got {}", other.type_name())),
+        }
+    })));
+
+    env.define("datetime_now".to_string(), Value::NativeFunction(NativeFunction::new("datetime_now", Some(0), |_args| {
+        Ok(Value::Int(datetime_helpers::datetime_now()))
+    })));
+
+    env.define("datetime_format".to_string(), Value::NativeFunction(NativeFunction::new("datetime_format", Some(2), |args| {
+        let timestamp = match &args[0] {
+            Value::Int(n) => *n,
+            Value::String(s) => datetime_helpers::datetime_parse(s).unwrap_or(0),
+            other => return Err(format!("datetime_format() expects timestamp (int) or date string as first argument, got {}", other.type_name())),
+        };
+        let format = match &args[1] {
+            Value::String(s) => s.clone(),
+            other => return Err(format!("datetime_format() expects string format as second argument, got {}", other.type_name())),
+        };
+        Ok(Value::String(datetime_helpers::datetime_format(timestamp, &format)))
+    })));
+
+    env.define("datetime_parse".to_string(), Value::NativeFunction(NativeFunction::new("datetime_parse", Some(1), |args| {
+        let s = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => return Err(format!("datetime_parse() expects string, got {}", other.type_name())),
+        };
+        match datetime_helpers::datetime_parse(&s) {
+            Some(ts) => Ok(Value::Int(ts)),
+            None => Ok(Value::Null),
+        }
+    })));
+
+    env.define("datetime_add_days".to_string(), Value::NativeFunction(NativeFunction::new("datetime_add_days", Some(2), |args| {
+        let timestamp = match &args[0] {
+            Value::Int(n) => *n,
+            other => return Err(format!("datetime_add_days() expects timestamp (int) as first argument, got {}", other.type_name())),
+        };
+        let days = match &args[1] {
+            Value::Int(n) => *n,
+            other => return Err(format!("datetime_add_days() expects int as second argument, got {}", other.type_name())),
+        };
+        Ok(Value::Int(datetime_helpers::datetime_add_days(timestamp, days)))
+    })));
+
+    env.define("datetime_add_hours".to_string(), Value::NativeFunction(NativeFunction::new("datetime_add_hours", Some(2), |args| {
+        let timestamp = match &args[0] {
+            Value::Int(n) => *n,
+            other => return Err(format!("datetime_add_hours() expects timestamp (int) as first argument, got {}", other.type_name())),
+        };
+        let hours = match &args[1] {
+            Value::Int(n) => *n,
+            other => return Err(format!("datetime_add_hours() expects int as second argument, got {}", other.type_name())),
+        };
+        Ok(Value::Int(datetime_helpers::datetime_add_hours(timestamp, hours)))
+    })));
+
+    env.define("datetime_diff".to_string(), Value::NativeFunction(NativeFunction::new("datetime_diff", Some(2), |args| {
+        let t1 = match &args[0] {
+            Value::Int(n) => *n,
+            other => return Err(format!("datetime_diff() expects timestamp (int) as first argument, got {}", other.type_name())),
+        };
+        let t2 = match &args[1] {
+            Value::Int(n) => *n,
+            other => return Err(format!("datetime_diff() expects timestamp (int) as second argument, got {}", other.type_name())),
+        };
+        Ok(Value::Int(datetime_helpers::datetime_diff(t1, t2)))
+    })));
+
+    env.define("time_ago".to_string(), Value::NativeFunction(NativeFunction::new("time_ago", Some(1), |args| {
+        let timestamp = match &args[0] {
+            Value::Int(n) => *n,
+            Value::String(s) => datetime_helpers::datetime_parse(s).unwrap_or(0),
+            other => return Err(format!("time_ago() expects timestamp (int) or date string, got {}", other.type_name())),
+        };
+        let locale = i18n_helpers::get_locale();
+        Ok(Value::String(datetime_helpers::time_ago_localized(timestamp, &locale)))
+    })));
+
+    env.define("locale".to_string(), Value::NativeFunction(NativeFunction::new("locale", Some(0), |_args| {
+        Ok(Value::String(i18n_helpers::get_locale()))
+    })));
+
+    env.define("set_locale".to_string(), Value::NativeFunction(NativeFunction::new("set_locale", Some(1), |args| {
+        let locale = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => return Err(format!("set_locale() expects string, got {}", other.type_name())),
+        };
+        i18n_helpers::set_locale(&locale);
+        Ok(Value::String(locale))
+    })));
+
+    env.define("t".to_string(), Value::NativeFunction(NativeFunction::new("t", Some(1), |args| {
+        let key = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => return Err(format!("t() expects string key, got {}", other.type_name())),
+        };
+        Ok(Value::String(key))
+    })));
+
+    env.define("l".to_string(), Value::NativeFunction(NativeFunction::new("l", None, |args| {
+        if args.is_empty() {
+            return Err("l() requires at least 1 argument (timestamp)".to_string());
+        }
+        let timestamp = match &args[0] {
+            Value::Int(n) => *n,
+            Value::String(s) => datetime_helpers::datetime_parse(s).unwrap_or(0),
+            other => return Err(format!("l() expects timestamp (int) or date string as first argument, got {}", other.type_name())),
+        };
+        let format = if args.len() > 1 {
+            match &args[1] {
+                Value::String(s) => s.clone(),
+                _ => "short".to_string(),
+            }
+        } else { "short".to_string() };
+        let locale = i18n_helpers::get_locale();
+        Ok(Value::String(datetime_helpers::localize_date(timestamp, &locale, &format)))
+    })));
+
+    env.define("render_partial".to_string(), Value::NativeFunction(NativeFunction::new("render_partial", None, |args| {
+        if args.is_empty() {
+            return Err("render_partial() requires at least 1 argument (partial name)".to_string());
+        }
+        let partial_name = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => return Err(format!("render_partial() expects string partial name, got {}", other.type_name())),
+        };
+        let data = if args.len() > 1 {
+            args[1].clone()
+        } else {
+            Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
+        };
+        let data = resolve_futures_in_value(data);
+        let cache = get_template_cache()?;
+        inject_template_helpers(&data);
+        cache.render_partial(&partial_name, &data).map(Value::String)
+    })));
 }
 
 /// Register template-related builtin functions.
@@ -1005,9 +664,7 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             // Extract layout option - check options hash first, then data hash
             let layout = if let Some(opts) = &options {
-                let opts = opts.borrow();
-                let layout_key = HashKey::String("layout".to_string());
-                opts.get(&layout_key).cloned()
+                opts.borrow().get(&StrKey("layout")).cloned()
             } else {
                 None
             };
@@ -1015,9 +672,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             // If not found in options, check data hash for layout key
             let layout = if layout.is_none() {
                 if let Value::Hash(data_hash) = &data {
-                    let data_hash = data_hash.borrow();
-                    let layout_key = HashKey::String("layout".to_string());
-                    data_hash.get(&layout_key).cloned()
+                    data_hash.borrow().get(&StrKey("layout")).cloned()
                 } else {
                     None
                 }
@@ -1036,9 +691,7 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             // Extract status option (default 200)
             let status = if let Some(opts) = &options {
-                let opts = opts.borrow();
-                let status_key = HashKey::String("status".to_string());
-                if let Some(Value::Int(n)) = opts.get(&status_key) {
+                if let Some(Value::Int(n)) = opts.borrow().get(&StrKey("status")) {
                     *n
                 } else {
                     200
@@ -1050,8 +703,8 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Get template cache and render
             let cache = get_template_cache()?;
 
-            // Inject template helper functions into data context
-            let data_with_helpers = inject_template_helpers(&data);
+            // Inject template helper functions into data context (in-place, no clone)
+            inject_template_helpers(&data);
 
             // Convert layout option for render call
             let layout_arg = match &layout {
@@ -1063,7 +716,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Set view context for debugging (in case of error)
             set_view_debug_context(Some(data.clone()));
 
-            let result = cache.render(&template_name, &data_with_helpers, layout_arg);
+            let result = cache.render(&template_name, &data, layout_arg);
 
             match result {
                 Ok(rendered) => {
@@ -1113,10 +766,10 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Get template cache and render
             let cache = get_template_cache()?;
 
-            // Inject template helper functions into data context
-            let data_with_helpers = inject_template_helpers(&data);
+            // Inject template helper functions into data context (in-place)
+            inject_template_helpers(&data);
 
-            let rendered = cache.render_partial(&partial_name, &data_with_helpers)?;
+            let rendered = cache.render_partial(&partial_name, &data)?;
 
             // Return just the string for partials (they're typically embedded)
             Ok(Value::String(rendered))
@@ -1131,7 +784,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                 Value::String(s) => s.clone(),
                 other => format!("{}", other),
             };
-            Ok(Value::String(crate::template::renderer::html_escape(&s)))
+            Ok(Value::String(crate::template::renderer::html_escape(&s).into_owned()))
         })),
     );
 
@@ -1143,7 +796,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                 Value::String(s) => s.clone(),
                 other => format!("{}", other),
             };
-            Ok(Value::String(crate::template::renderer::html_escape(&s)))
+            Ok(Value::String(crate::template::renderer::html_escape(&s).into_owned()))
         })),
     );
 

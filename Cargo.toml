@@ -123,3 +123,8 @@ harness = false
 [[bench]]
 name = "vm"
 harness = false
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

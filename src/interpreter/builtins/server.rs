@@ -879,7 +879,7 @@ fn build_unified_params(
 
 /// Extract response data from a response hash returned by a handler.
 /// Checks fast-path thread-local first (set by render_json/render_text).
-pub fn extract_response(response: &Value) -> (u16, HashMap<String, String>, String) {
+pub fn extract_response(response: Value) -> (u16, HashMap<String, String>, String) {
     // Fast path: if render_json/render_text set a pre-built response, use it directly
     if let Some(fast) = take_fast_path_response() {
         return (fast.status, fast.headers.into_iter().collect(), fast.body);
@@ -890,26 +890,74 @@ pub fn extract_response(response: &Value) -> (u16, HashMap<String, String>, Stri
     let mut body = String::new();
 
     if let Value::Hash(hash) = response {
-        for (k, v) in hash.borrow().iter() {
+        // Try to take sole ownership of the inner map to avoid cloning
+        let map = match Rc::try_unwrap(hash) {
+            Ok(cell) => cell.into_inner(),
+            Err(rc) => {
+                // Shared reference — must clone values
+                let borrowed = rc.borrow();
+                for (k, v) in borrowed.iter() {
+                    if let HashKey::String(key) = k {
+                        match key.as_str() {
+                            "status" => {
+                                if let Value::Int(s) = v {
+                                    status = *s as u16;
+                                }
+                            }
+                            "headers" => {
+                                if let Value::Hash(h) = v {
+                                    for (hk, hv) in h.borrow().iter() {
+                                        if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
+                                            headers.insert(k.clone(), v.clone());
+                                        }
+                                    }
+                                }
+                            }
+                            "body" => {
+                                body = match v {
+                                    Value::String(s) => s.clone(),
+                                    _ => format!("{}", v),
+                                };
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                return (status, headers, body);
+            }
+        };
+        // Sole owner — can move values out without cloning
+        for (k, v) in map {
             if let HashKey::String(key) = k {
                 match key.as_str() {
                     "status" => {
                         if let Value::Int(s) = v {
-                            status = *s as u16;
+                            status = s as u16;
                         }
                     }
                     "headers" => {
                         if let Value::Hash(h) = v {
-                            for (hk, hv) in h.borrow().iter() {
-                                if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
-                                    headers.insert(k.clone(), v.clone());
+                            match Rc::try_unwrap(h) {
+                                Ok(cell) => {
+                                    for (hk, hv) in cell.into_inner() {
+                                        if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
+                                            headers.insert(k, v);
+                                        }
+                                    }
+                                }
+                                Err(rc) => {
+                                    for (hk, hv) in rc.borrow().iter() {
+                                        if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
+                                            headers.insert(k.clone(), v.clone());
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                     "body" => {
                         body = match v {
-                            Value::String(s) => s.clone(),
+                            Value::String(s) => s,
                             _ => format!("{}", v),
                         };
                     }
@@ -918,7 +966,6 @@ pub fn extract_response(response: &Value) -> (u16, HashMap<String, String>, Stri
             }
         }
     } else {
-        // If not a hash, use the value as the body
         body = format!("{}", response);
     }
 

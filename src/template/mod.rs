@@ -7,6 +7,7 @@
 //! - `<%= yield %>` - Layout content insertion point
 //! - `<%= render 'partial' %>` - Partial rendering
 
+pub mod core_eval;
 pub mod helpers;
 pub mod layout;
 pub mod parser;
@@ -18,11 +19,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use indexmap::IndexMap;
-
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::Value;
 use parser::parse_template;
-use renderer::render_nodes_with_path;
+use renderer::{render_nodes_with_path, render_with_interpreter};
 use std::rc::Rc;
 
 /// A cached template with its parsed AST and modification time.
@@ -42,8 +41,9 @@ const TEMPLATE_CACHE_MAX_SIZE: usize = 500;
 pub struct TemplateCache {
     /// Base directory for views (e.g., app/views)
     views_dir: PathBuf,
-    /// Cached parsed templates (path -> nodes)
-    cache: RefCell<HashMap<String, CachedTemplate>>,
+    /// Cached parsed templates (PathBuf -> nodes). Uses PathBuf keys to avoid
+    /// String conversion on every cache lookup (hot path).
+    cache: RefCell<HashMap<PathBuf, CachedTemplate>>,
     /// Cached path resolutions (template_name -> resolved_path)
     path_cache: RefCell<HashMap<String, PathBuf>>,
 }
@@ -77,7 +77,6 @@ impl TemplateCache {
     ) -> Result<String, String> {
         // Get the template file path
         let template_path = self.resolve_template_path(template_name)?;
-        let template_path_str = template_path.to_string_lossy().to_string();
 
         // Get template from cache
         let nodes = self.get_or_load_template(&template_path)?;
@@ -86,8 +85,13 @@ impl TemplateCache {
         let partial_renderer =
             |name: &str, ctx: &Value| -> Result<String, String> { self.render_partial(name, ctx) };
 
-        // Render the template content with path for error reporting
-        let content = render_nodes_with_path(
+        // Create ONE interpreter for both view and layout rendering
+        let mut interpreter = core_eval::create_template_interpreter(data);
+
+        // Render the template content with shared interpreter
+        let template_path_str = template_path.to_string_lossy();
+        let content = render_with_interpreter(
+            &mut interpreter,
             &nodes,
             data,
             Some(&partial_renderer),
@@ -101,11 +105,16 @@ impl TemplateCache {
             content
         };
 
-        // Apply layout if specified
+        // Apply layout if specified, reusing the same interpreter
         match layout {
             Some(Some(layout_name)) => {
-                // Use specified layout
-                self.render_with_named_layout(&content, data, layout_name, &partial_renderer)
+                self.render_layout_with_shared_interpreter(
+                    &mut interpreter,
+                    &content,
+                    data,
+                    layout_name,
+                    &partial_renderer,
+                )
             }
             Some(None) => {
                 // Explicitly no layout (layout: false)
@@ -117,7 +126,13 @@ impl TemplateCache {
                 if template_name.contains("/_") || template_name.starts_with('_') {
                     Ok(content)
                 } else {
-                    self.render_with_named_layout(&content, data, "application", &partial_renderer)
+                    self.render_layout_with_shared_interpreter(
+                        &mut interpreter,
+                        &content,
+                        data,
+                        "application",
+                        &partial_renderer,
+                    )
                 }
             }
         }
@@ -139,12 +154,12 @@ impl TemplateCache {
         };
 
         let template_path = self.resolve_template_path(&partial_name)?;
-        let template_path_str = template_path.to_string_lossy().to_string();
         let nodes = self.get_or_load_template(&template_path)?;
 
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
 
+        let template_path_str = template_path.to_string_lossy();
         let content = render_nodes_with_path(
             &nodes,
             data,
@@ -160,9 +175,10 @@ impl TemplateCache {
         }
     }
 
-    /// Render content with a named layout.
-    fn render_with_named_layout(
+    /// Render content with a named layout, reusing an existing interpreter.
+    fn render_layout_with_shared_interpreter(
         &self,
+        interpreter: &mut crate::interpreter::executor::Interpreter,
         content: &str,
         data: &Value,
         layout_name: &str,
@@ -177,9 +193,10 @@ impl TemplateCache {
 
         match self.resolve_template_path(&layout_template) {
             Ok(layout_path) => {
-                let layout_path_str = layout_path.to_string_lossy().to_string();
                 let layout_nodes = self.get_or_load_template(&layout_path)?;
-                layout::render_layout_nodes_with_path(
+                let layout_path_str = layout_path.to_string_lossy();
+                layout::render_layout_with_interpreter(
+                    interpreter,
                     &layout_nodes,
                     content,
                     data,
@@ -193,6 +210,7 @@ impl TemplateCache {
             }
         }
     }
+
 
     /// Resolve a template name to a file path (cached).
     fn resolve_template_path(&self, name: &str) -> Result<PathBuf, String> {
@@ -272,12 +290,10 @@ impl TemplateCache {
 
     /// Get a template from cache or load and parse it.
     fn get_or_load_template(&self, path: &Path) -> Result<Rc<Vec<parser::TemplateNode>>, String> {
-        let path_str = path.to_string_lossy().to_string();
-
-        // Check cache first (fast path - no file I/O)
+        // Check cache first (fast path - no allocation, no file I/O)
         {
             let cache = self.cache.borrow();
-            if let Some(cached) = cache.get(&path_str) {
+            if let Some(cached) = cache.get(path) {
                 return Ok(cached.nodes.clone()); // Rc clone is O(1)
             }
         }
@@ -299,7 +315,7 @@ impl TemplateCache {
                 cache.clear();
             }
             cache.insert(
-                path_str,
+                path.to_path_buf(),
                 CachedTemplate {
                     nodes: nodes.clone(),
                     modified,
@@ -319,8 +335,7 @@ impl TemplateCache {
     /// Check if any tracked templates have changed.
     pub fn has_changes(&self) -> bool {
         let cache = self.cache.borrow();
-        for (path_str, cached) in cache.iter() {
-            let path = Path::new(path_str);
+        for (path, cached) in cache.iter() {
             if let Ok(metadata) = fs::metadata(path) {
                 if let Ok(modified) = metadata.modified() {
                     if modified != cached.modified {
@@ -335,6 +350,9 @@ impl TemplateCache {
 
 /// Create a response hash for rendered HTML content.
 pub fn html_response(body: String, status: i64) -> Value {
+    use crate::interpreter::value::HashKey;
+    use indexmap::IndexMap;
+
     // Inject live reload script if enabled
     let body = if crate::serve::live_reload::is_live_reload_enabled() {
         crate::serve::live_reload::inject_live_reload_script(&body)
@@ -342,13 +360,13 @@ pub fn html_response(body: String, status: i64) -> Value {
         body
     };
 
-    let mut headers: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut headers: IndexMap<HashKey, Value> = IndexMap::with_capacity(1);
     headers.insert(
         HashKey::String("Content-Type".to_string()),
         Value::String("text/html; charset=utf-8".to_string()),
     );
 
-    let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut result: IndexMap<HashKey, Value> = IndexMap::with_capacity(3);
     result.insert(HashKey::String("status".to_string()), Value::Int(status));
     result.insert(
         HashKey::String("headers".to_string()),
@@ -381,6 +399,8 @@ fn markdown_to_html(markdown: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::interpreter::value::HashKey;
+    use indexmap::IndexMap;
     use std::fs;
 
     #[test]

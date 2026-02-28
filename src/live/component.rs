@@ -162,11 +162,11 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
     let data = json_to_value(state)?;
 
     // Inject template helpers (range, public_path, html_escape, etc.)
-    let data_with_helpers = inject_template_helpers(&data);
+    inject_template_helpers(&data);
 
     // Parse the template using the existing ERB parser
     let nodes = parse_template(&content)?;
 
     // Render using the existing template renderer
-    render_nodes(&nodes, &data_with_helpers, None)
+    render_nodes(&nodes, &data, None)
 }

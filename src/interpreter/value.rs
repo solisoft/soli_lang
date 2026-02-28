@@ -71,14 +71,33 @@ pub enum HashKey {
 
 impl Hash for HashKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        std::mem::discriminant(self).hash(state);
         match self {
-            HashKey::Int(n) => n.hash(state),
-            HashKey::Decimal(d) => d.hash(state),
-            HashKey::String(s) => s.hash(state),
-            HashKey::Bool(b) => b.hash(state),
-            HashKey::Null => {}
+            HashKey::Int(n) => { 0u8.hash(state); n.hash(state); }
+            HashKey::Decimal(d) => { 1u8.hash(state); d.hash(state); }
+            HashKey::String(s) => { 2u8.hash(state); s.hash(state); }
+            HashKey::Bool(b) => { 3u8.hash(state); b.hash(state); }
+            HashKey::Null => { 4u8.hash(state); }
         }
+    }
+}
+
+/// Zero-allocation key for looking up string keys in IndexMap<HashKey, Value>.
+/// Hashes identically to HashKey::String, avoiding String clone for lookups.
+#[repr(transparent)]
+pub struct StrKey<'a>(pub &'a str);
+
+impl Hash for StrKey<'_> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        2u8.hash(state); // Must match HashKey::String tag
+        self.0.hash(state);
+    }
+}
+
+impl indexmap::Equivalent<HashKey> for StrKey<'_> {
+    #[inline]
+    fn equivalent(&self, key: &HashKey) -> bool {
+        matches!(key, HashKey::String(s) if s.as_str() == self.0)
     }
 }
 

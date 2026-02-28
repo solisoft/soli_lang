@@ -54,6 +54,65 @@ pub enum Expr {
     Range(Box<Expr>, Box<Expr>),
 }
 
+impl Expr {
+    pub fn to_source(&self) -> String {
+        match self {
+            Expr::StringLit(s) => format!("\"{}\"", s),
+            Expr::IntLit(n) => n.to_string(),
+            Expr::FloatLit(n) => n.to_string(),
+            Expr::BoolLit(b) => b.to_string(),
+            Expr::Null => "null".to_string(),
+            Expr::ArrayLit(elements) => {
+                let parts: Vec<String> = elements.iter().map(|e| e.to_source()).collect();
+                format!("[{}]", parts.join(", "))
+            }
+            Expr::Var(name) => name.clone(),
+            Expr::Field(base, field) => format!("{}.{}", base.to_source(), field),
+            Expr::Index(base, key) => format!("{}[{}]", base.to_source(), key.to_source()),
+            Expr::Binary(left, op, right) => {
+                let op_str = match op {
+                    BinaryOp::Add => "+",
+                    BinaryOp::Subtract => "-",
+                    BinaryOp::Multiply => "*",
+                    BinaryOp::Divide => "/",
+                    BinaryOp::Modulo => "%",
+                };
+                format!("({} {} {})", left.to_source(), op_str, right.to_source())
+            }
+            Expr::Compare(left, op, right) => {
+                let op_str = match op {
+                    CompareOp::Eq => "==",
+                    CompareOp::Ne => "!=",
+                    CompareOp::Lt => "<",
+                    CompareOp::Le => "<=",
+                    CompareOp::Gt => ">",
+                    CompareOp::Ge => ">=",
+                };
+                format!("({} {} {})", left.to_source(), op_str, right.to_source())
+            }
+            Expr::And(left, right) => format!("({} && {})", left.to_source(), right.to_source()),
+            Expr::Or(left, right) => format!("({} || {})", left.to_source(), right.to_source()),
+            Expr::Not(inner) => format!("!{}", inner.to_source()),
+            Expr::Method(base, method) => format!("{}.{}", base.to_source(), method),
+            Expr::MethodCall { base, method, args } => {
+                let arg_sources: Vec<String> = args.iter().map(|e| e.to_source()).collect();
+                format!(
+                    "{}.{}({})",
+                    base.to_source(),
+                    method,
+                    arg_sources.join(", ")
+                )
+            }
+            Expr::Call(name, args) => {
+                let arg_sources: Vec<String> = args.iter().map(|e| e.to_source()).collect();
+                format!("{}({})", name, arg_sources.join(", "))
+            }
+            Expr::Assign(name, value) => format!("{} = {}", name, value.to_source()),
+            Expr::Range(start, end) => format!("{}..{}", start.to_source(), end.to_source()),
+        }
+    }
+}
+
 /// Binary operators for arithmetic and string operations
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinaryOp {

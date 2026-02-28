@@ -72,6 +72,19 @@ impl Interpreter {
         }
     }
 
+    /// Create an interpreter with a pre-built environment (skips register_builtins).
+    /// Used by the template engine with a cached builtins environment.
+    pub fn with_environment(environment: Rc<RefCell<Environment>>) -> Self {
+        Self {
+            environment,
+            #[cfg(feature = "coverage")]
+            coverage_tracker: None,
+            current_source_path: None,
+            call_stack: Vec::new(),
+            assertion_count: 0,
+        }
+    }
+
     #[cfg(feature = "coverage")]
     pub fn with_coverage_tracker(tracker: Rc<RefCell<CoverageTracker>>) -> Self {
         let globals = Rc::new(RefCell::new(Environment::new()));
@@ -626,7 +639,7 @@ impl Interpreter {
                 Some(handler_value) => {
                     match self.call_value(handler_value, vec![request_hash], Span::default()) {
                         Ok(result) => {
-                            let (status, resp_headers, resp_body) = extract_response(&result);
+                            let (status, resp_headers, resp_body) = extract_response(result);
                             self.build_http_response(&mut stream, status, resp_headers, resp_body)?
                         }
                         Err(e) => self.build_http_response(

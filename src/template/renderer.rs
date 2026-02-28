@@ -1,40 +1,21 @@
 //! Template renderer that executes template AST with a data context.
 //!
-//! Evaluates pre-compiled expressions for fast rendering.
+//! Uses a single interpreter per render call for optimal performance.
+//! Writes directly into a shared output buffer (no intermediate String allocations).
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
-
-use crate::interpreter::value::{HashKey, Value};
-use crate::interpreter::Interpreter;
-use crate::template::helpers::{call_array_method, call_string_method};
-use crate::template::parser::{BinaryOp, CompareOp, Expr, TemplateNode};
+use crate::interpreter::executor::Interpreter;
+use crate::interpreter::value::Value;
+use crate::template::core_eval;
+use crate::template::parser::{Expr, TemplateNode};
 
 /// Type alias for partial renderer callbacks to reduce type complexity.
 pub type PartialRenderer<'a> = Option<&'a dyn Fn(&str, &Value) -> Result<String, String>>;
 
-/// Resolve a value if it's a Future, otherwise return as-is.
-/// This enables auto-resolution of async HTTP responses in templates.
-#[inline]
-fn resolve_if_future(value: Value) -> Result<Value, String> {
-    if value.is_future() {
-        value.resolve()
-    } else {
-        Ok(value)
-    }
-}
-
 /// Render a template AST with the given data context.
-///
-/// # Arguments
-/// * `nodes` - The template AST nodes to render
-/// * `data` - The data context (Hash) for variable lookups
-/// * `partial_renderer` - Optional callback for rendering partials
-///
-/// # Returns
-/// The rendered HTML string, or an error message.
 pub fn render_nodes(
     nodes: &[TemplateNode],
     data: &Value,
@@ -44,26 +25,57 @@ pub fn render_nodes(
 }
 
 /// Render a template AST with the given data context and template path for error reporting.
-///
-/// # Arguments
-/// * `nodes` - The template AST nodes to render
-/// * `data` - The data context (Hash) for variable lookups
-/// * `partial_renderer` - Optional callback for rendering partials
-/// * `template_path` - Optional path to the template file for error messages
-///
-/// # Returns
-/// The rendered HTML string, or an error message including template path.
 pub fn render_nodes_with_path(
     nodes: &[TemplateNode],
     data: &Value,
     partial_renderer: PartialRenderer<'_>,
     template_path: Option<&str>,
 ) -> Result<String, String> {
+    let mut interpreter = core_eval::create_template_interpreter(data);
     let mut output = String::new();
-    let mut current_data = data.clone();
+    render_inner(
+        &mut interpreter,
+        nodes,
+        data,
+        partial_renderer,
+        template_path,
+        &mut output,
+    )?;
+    Ok(output)
+}
 
+/// Render a template AST with an existing interpreter (avoids creating a new one).
+/// Used to share a single interpreter across view + layout rendering.
+pub fn render_with_interpreter(
+    interpreter: &mut Interpreter,
+    nodes: &[TemplateNode],
+    data: &Value,
+    partial_renderer: PartialRenderer<'_>,
+    template_path: Option<&str>,
+) -> Result<String, String> {
+    let mut output = String::new();
+    render_inner(
+        interpreter,
+        nodes,
+        data,
+        partial_renderer,
+        template_path,
+        &mut output,
+    )?;
+    Ok(output)
+}
+
+/// Internal render function that writes directly into the output buffer.
+/// Reuses a single interpreter and avoids intermediate String allocations.
+fn render_inner(
+    interpreter: &mut Interpreter,
+    nodes: &[TemplateNode],
+    data: &Value,
+    partial_renderer: PartialRenderer<'_>,
+    template_path: Option<&str>,
+    output: &mut String,
+) -> Result<(), String> {
     for node in nodes {
-        // Track line number for error reporting
         let node_line = match node {
             TemplateNode::Output { line, .. } => Some(*line),
             TemplateNode::If { line, .. } => Some(*line),
@@ -83,13 +95,8 @@ pub fn render_nodes_with_path(
                     escaped,
                     line: _,
                 } => {
-                    let value = evaluate_expr(expr, &current_data)?;
-                    let s = value_to_string(&value);
-                    if *escaped {
-                        output.push_str(&html_escape(&s));
-                    } else {
-                        output.push_str(&s);
-                    }
+                    let value = core_eval::evaluate_with_interpreter(expr, interpreter)?;
+                    write_value_to_output(&value, *escaped, output);
                 }
                 TemplateNode::If {
                     condition,
@@ -97,21 +104,26 @@ pub fn render_nodes_with_path(
                     else_body,
                     line: _,
                 } => {
-                    let cond_value = evaluate_expr(condition, &current_data)?;
+                    let cond_value =
+                        core_eval::evaluate_with_interpreter(condition, interpreter)?;
                     if is_truthy(&cond_value) {
-                        output.push_str(&render_nodes_with_path(
+                        render_inner(
+                            interpreter,
                             body,
-                            &current_data,
+                            data,
                             partial_renderer,
                             template_path,
-                        )?);
+                            output,
+                        )?;
                     } else if let Some(else_nodes) = else_body {
-                        output.push_str(&render_nodes_with_path(
+                        render_inner(
+                            interpreter,
                             else_nodes,
-                            &current_data,
+                            data,
                             partial_renderer,
                             template_path,
-                        )?);
+                            output,
+                        )?;
                     }
                 }
                 TemplateNode::For {
@@ -121,41 +133,49 @@ pub fn render_nodes_with_path(
                     body,
                     line: _,
                 } => {
-                    let iterable_value = evaluate_expr(iterable, &current_data)?;
+                    let iterable_value =
+                        core_eval::evaluate_with_interpreter(iterable, interpreter)?;
                     match &iterable_value {
                         Value::Array(arr) => {
+                            core_eval::push_scope(interpreter);
                             for (i, item) in arr.borrow().iter().enumerate() {
-                                // Create new context with loop variable
-                                let loop_data = with_variable(&current_data, var, item.clone())?;
-                                // Add index variable if specified
-                                let loop_data = if let Some(idx_var) = index_var {
-                                    with_variable(&loop_data, idx_var, Value::Int(i as i64))?
-                                } else {
-                                    loop_data
-                                };
-                                output.push_str(&render_nodes_with_path(
+                                core_eval::define_var(interpreter, var, item.clone());
+                                if let Some(idx_var) = index_var {
+                                    core_eval::define_var(
+                                        interpreter,
+                                        idx_var,
+                                        Value::Int(i as i64),
+                                    );
+                                }
+                                render_inner(
+                                    interpreter,
                                     body,
-                                    &loop_data,
+                                    data,
                                     partial_renderer,
                                     template_path,
-                                )?);
+                                    output,
+                                )?;
                             }
+                            core_eval::pop_scope(interpreter);
                         }
                         Value::Hash(hash) => {
-                            // Iterate over hash entries as [key, value] pairs
+                            core_eval::push_scope(interpreter);
                             for (k, v) in hash.borrow().iter() {
                                 let pair = Value::Array(Rc::new(RefCell::new(vec![
                                     k.to_value(),
                                     v.clone(),
                                 ])));
-                                let loop_data = with_variable(&current_data, var, pair)?;
-                                output.push_str(&render_nodes_with_path(
+                                core_eval::define_var(interpreter, var, pair);
+                                render_inner(
+                                    interpreter,
                                     body,
-                                    &loop_data,
+                                    data,
                                     partial_renderer,
                                     template_path,
-                                )?);
+                                    output,
+                                )?;
                             }
+                            core_eval::pop_scope(interpreter);
                         }
                         _ => {
                             return Err(format!(
@@ -166,8 +186,6 @@ pub fn render_nodes_with_path(
                     }
                 }
                 TemplateNode::Yield => {
-                    // Yield is handled by the layout system, not here
-                    // If we encounter it during normal rendering, it's an error
                     return Err("yield encountered outside of layout context".to_string());
                 }
                 TemplateNode::Partial {
@@ -177,9 +195,9 @@ pub fn render_nodes_with_path(
                 } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
-                            evaluate_expr(ctx_expr, &current_data)?
+                            core_eval::evaluate_with_interpreter(ctx_expr, interpreter)?
                         } else {
-                            current_data.clone()
+                            data.clone()
                         };
                         output.push_str(&renderer(name, &partial_data)?);
                     } else {
@@ -187,16 +205,25 @@ pub fn render_nodes_with_path(
                     }
                 }
                 TemplateNode::CodeBlock { expr, line: _ } => {
-                    current_data = evaluate_code_block(expr, &current_data)?;
+                    match expr {
+                        Expr::Assign(name, value_expr) => {
+                            let value = core_eval::evaluate_with_interpreter(
+                                value_expr,
+                                interpreter,
+                            )?;
+                            core_eval::define_var(interpreter, name, value);
+                        }
+                        _ => {
+                            core_eval::evaluate_with_interpreter(expr, interpreter)?;
+                        }
+                    }
                 }
             }
             Ok(())
         })();
 
-        // If there was an error, add template path and line context
         if let Err(e) = result {
             if let Some(path) = template_path {
-                // Check if error already has path info
                 if !e.contains(".html.slv")
                     && !e.contains(".slv")
                     && !e.contains(".html.erb")
@@ -212,400 +239,60 @@ pub fn render_nodes_with_path(
         }
     }
 
-    Ok(output)
+    Ok(())
 }
 
-/// Evaluate a code block expression (e.g., variable assignment)
-fn evaluate_code_block(expr: &Expr, data: &Value) -> Result<Value, String> {
-    evaluate_expr(expr, data)
-}
-
-/// Evaluate a pre-compiled expression in the context of the data.
-/// This is the fast path - no string parsing required.
+/// Write a Value directly to the output buffer, applying HTML escaping if needed.
+/// Avoids intermediate String allocations for Int/Float/Bool (which can't contain HTML chars).
 #[inline]
-fn evaluate_expr(expr: &Expr, data: &Value) -> Result<Value, String> {
-    match expr {
-        Expr::StringLit(s) => Ok(Value::String(s.clone())),
-        Expr::IntLit(n) => Ok(Value::Int(*n)),
-        Expr::FloatLit(n) => Ok(Value::Float(*n)),
-        Expr::BoolLit(b) => Ok(Value::Bool(*b)),
-        Expr::Null => Ok(Value::Null),
-
-        Expr::ArrayLit(elements) => {
-            let values: Result<Vec<Value>, String> =
-                elements.iter().map(|e| evaluate_expr(e, data)).collect();
-            Ok(Value::Array(Rc::new(RefCell::new(values?))))
-        }
-
-        Expr::Var(name) => get_hash_value(data, name),
-
-        Expr::Field(base, field) => {
-            let base_value = evaluate_expr(base, data)?;
-            get_hash_value(&base_value, field)
-        }
-
-        Expr::Index(base, key) => {
-            let base_value = evaluate_expr(base, data)?;
-            let key_value = evaluate_expr(key, data)?;
-            index_value(&base_value, &key_value)
-        }
-
-        Expr::Binary(left, op, right) => {
-            let left_val = evaluate_expr(left, data)?;
-            let right_val = evaluate_expr(right, data)?;
-            evaluate_binary_op(&left_val, *op, &right_val)
-        }
-
-        Expr::Compare(left, op, right) => {
-            let left_val = evaluate_expr(left, data)?;
-            let right_val = evaluate_expr(right, data)?;
-            let result = match op {
-                CompareOp::Eq => values_equal(&left_val, &right_val),
-                CompareOp::Ne => !values_equal(&left_val, &right_val),
-                CompareOp::Gt => compare_values(&left_val, &right_val)? > 0,
-                CompareOp::Lt => compare_values(&left_val, &right_val)? < 0,
-                CompareOp::Ge => compare_values(&left_val, &right_val)? >= 0,
-                CompareOp::Le => compare_values(&left_val, &right_val)? <= 0,
-            };
-            Ok(Value::Bool(result))
-        }
-
-        Expr::And(left, right) => {
-            let left_val = evaluate_expr(left, data)?;
-            let right_val = evaluate_expr(right, data)?;
-            Ok(Value::Bool(is_truthy(&left_val) && is_truthy(&right_val)))
-        }
-
-        Expr::Or(left, right) => {
-            let left_val = evaluate_expr(left, data)?;
-            let right_val = evaluate_expr(right, data)?;
-            Ok(Value::Bool(is_truthy(&left_val) || is_truthy(&right_val)))
-        }
-
-        Expr::Not(inner) => {
-            let inner_val = evaluate_expr(inner, data)?;
-            Ok(Value::Bool(!is_truthy(&inner_val)))
-        }
-
-        Expr::Method(base, method) => {
-            let base_value = evaluate_expr(base, data)?;
-
-            // Handle methods that require function arguments by returning an error
-            // that suggests using the full language instead
-            let needs_function = matches!(
-                method.as_str(),
-                "map"
-                    | "filter"
-                    | "each"
-                    | "reduce"
-                    | "find"
-                    | "any?"
-                    | "all?"
-                    | "sort"
-                    | "sort_by"
-                    | "uniq"
-                    | "compact"
-                    | "flatten"
-                    | "include?"
-                    | "sample"
-                    | "shuffle"
-                    | "take"
-                    | "drop"
-                    | "zip"
-            );
-
-            if needs_function {
-                return Err(format!(
-                    "Method '{}' requires a function argument. Use the full language in <% %> tags instead.",
-                    method
-                ));
-            }
-
-            match &base_value {
-                Value::Array(arr) => {
-                    let items: Vec<Value> = arr.borrow().clone();
-                    call_array_method(&items, method, vec![])
-                }
-                Value::String(s) => call_string_method(s, method, vec![]),
-                Value::Hash(h) => {
-                    // Hash methods
-                    match method.as_str() {
-                        "length" | "len" | "size" => Ok(Value::Int(h.borrow().len() as i64)),
-                        "empty" | "is_empty" => Ok(Value::Bool(h.borrow().is_empty())),
-                        "keys" => {
-                            let keys: Vec<Value> = h
-                                .borrow()
-                                .keys()
-                                .map(|k| match k {
-                                    HashKey::String(s) => Value::String(s.clone()),
-                                    HashKey::Int(n) => Value::Int(*n),
-                                    HashKey::Decimal(_) => Value::Null,
-                                    HashKey::Bool(b) => Value::Bool(*b),
-                                    HashKey::Null => Value::Null,
-                                })
-                                .collect();
-                            Ok(Value::Array(Rc::new(RefCell::new(keys))))
-                        }
-                        "values" => {
-                            let values: Vec<Value> = h.borrow().values().cloned().collect();
-                            Ok(Value::Array(Rc::new(RefCell::new(values))))
-                        }
-                        "has_key" | "has" => Err("Use 'in' operator: key in hash".to_string()),
-                        _ => Err(format!("Unknown hash method: {}", method)),
-                    }
-                }
-                _ => Err(format!(
-                    "Cannot call method '{}' on {}",
-                    method,
-                    base_value.type_name()
-                )),
-            }
-        }
-
-        Expr::MethodCall { base, method, args } => {
-            let base_value = evaluate_expr(base, data)?;
-
-            // Evaluate arguments
-            let evaluated_args: Result<Vec<Value>, String> =
-                args.iter().map(|arg| evaluate_expr(arg, data)).collect();
-            let evaluated_args = evaluated_args?;
-
-            // Handle methods that require function arguments
-            let needs_function = matches!(
-                method.as_str(),
-                "map"
-                    | "filter"
-                    | "each"
-                    | "reduce"
-                    | "find"
-                    | "any?"
-                    | "all?"
-                    | "sort"
-                    | "sort_by"
-                    | "uniq"
-                    | "compact"
-                    | "flatten"
-                    | "include?"
-                    | "sample"
-                    | "shuffle"
-                    | "take"
-                    | "drop"
-                    | "zip"
-            );
-
-            if needs_function {
-                return Err(format!(
-                    "Method '{}' requires a function argument. Use the full language in <% %> tags instead.",
-                    method
-                ));
-            }
-
-            match &base_value {
-                Value::Array(arr) => {
-                    let items: Vec<Value> = arr.borrow().clone();
-                    call_array_method(&items, method, evaluated_args)
-                }
-                Value::String(s) => call_string_method(s, method, evaluated_args),
-                Value::Hash(h) => {
-                    // Hash methods with arguments
-                    match method.as_str() {
-                        "get" | "fetch" => {
-                            if let Some(key_val) = evaluated_args.first() {
-                                let hash_key = match key_val.to_hash_key() {
-                                    Some(k) => k,
-                                    None => {
-                                        return Err(format!(
-                                            "Invalid hash key for value: {}",
-                                            key_val.type_name()
-                                        ))
-                                    }
-                                };
-                                if let Some(v) = h.borrow().get(&hash_key) {
-                                    return Ok(v.clone());
-                                }
-                                Ok(Value::Null)
-                            } else {
-                                Err("get/fetch requires a key argument".to_string())
-                            }
-                        }
-                        _ => Err(format!("Unknown hash method with args: {}", method)),
-                    }
-                }
-                _ => Err(format!(
-                    "Cannot call method '{}' on {}",
-                    method,
-                    base_value.type_name()
-                )),
-            }
-        }
-
-        Expr::Call(name, args) => {
-            // Evaluate arguments
-            let evaluated_args: Result<Vec<Value>, String> =
-                args.iter().map(|arg| evaluate_expr(arg, data)).collect();
-
-            let evaluated_args = evaluated_args?;
-
-            // Look up the function in the data context (should be a NativeFunction)
-            let func_value = get_hash_value(data, name)?;
-
-            match func_value {
-                Value::NativeFunction(nf) => {
-                    // Call the native function
-                    (nf.func)(evaluated_args)
-                }
-                Value::Function(func) => {
-                    // Call user-defined function using interpreter
-                    call_user_function(&func, evaluated_args)
-                }
-                Value::Null => Err(format!(
-                    "'{}' is not defined (function not found in template context)",
-                    name
-                )),
-                _ => Err(format!(
-                    "'{}' is not a function, got {}",
-                    name,
-                    func_value.type_name()
-                )),
-            }
-        }
-
-        Expr::Assign(name, value_expr) => {
-            let value = evaluate_expr(value_expr, data)?;
-            with_variable(data, name, value)
-        }
-
-        Expr::Range(start, end) => {
-            let start_val = evaluate_expr(start, data)?;
-            let end_val = evaluate_expr(end, data)?;
-            match (start_val, end_val) {
-                (Value::Int(s), Value::Int(e)) => {
-                    let mut arr = Vec::new();
-                    for i in s..e {
-                        arr.push(Value::Int(i));
-                    }
-                    Ok(Value::Array(Rc::new(RefCell::new(arr))))
-                }
-                _ => Err("Range requires integer values".to_string()),
-            }
-        }
-    }
-}
-
-/// Index into a value (array or hash access)
-#[inline]
-fn index_value(base: &Value, key: &Value) -> Result<Value, String> {
-    match (base, key) {
-        (Value::Array(arr), Value::Int(idx)) => {
-            let arr = arr.borrow();
-            let idx = if *idx < 0 {
-                (arr.len() as i64 + idx) as usize
-            } else {
-                *idx as usize
-            };
-            if idx < arr.len() {
-                Ok(arr[idx].clone())
-            } else {
-                Ok(Value::Null)
-            }
-        }
-        (Value::Hash(hash), key) => {
-            let hash = hash.borrow();
-            if let Some(hash_key) = HashKey::from_value(key) {
-                if let Some(v) = hash.get(&hash_key) {
-                    return Ok(v.clone());
-                }
-            }
-            Ok(Value::Null)
-        }
-        _ => Ok(Value::Null),
-    }
-}
-
-/// Get a value from a hash by string key.
-/// Optimized to avoid allocating a Value::String for comparison.
-#[inline]
-fn get_hash_value(value: &Value, key: &str) -> Result<Value, String> {
+fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
+    use std::fmt::Write;
     match value {
-        Value::Hash(hash) => {
-            let hash = hash.borrow();
-            // Direct lookup using HashKey
-            let hash_key = HashKey::String(key.to_string());
-            if let Some(v) = hash.get(&hash_key) {
-                // Auto-resolve Futures when retrieving values from template data
-                return resolve_if_future(v.clone());
-            }
-            // Return null for missing keys instead of error
-            Ok(Value::Null)
-        }
-        Value::Null => Ok(Value::Null),
-        _ => Err(format!(
-            "Cannot access '{}' on {}: expected Hash",
-            key,
-            value.type_name()
-        )),
-    }
-}
-
-/// Create a new data context with an additional variable.
-/// Uses copy-on-write optimization: if the hash has only one reference,
-/// mutate in place; otherwise create a shallow clone.
-fn with_variable(data: &Value, name: &str, value: Value) -> Result<Value, String> {
-    match data {
-        Value::Hash(hash) => {
-            // Check if we have exclusive access (Rc strong count == 1)
-            if Rc::strong_count(hash) == 1 {
-                // We have exclusive access - mutate in place
-                let mut hash_ref = hash.borrow_mut();
-                let key = HashKey::String(name.to_string());
-                hash_ref.insert(key, value);
-                drop(hash_ref);
-                Ok(data.clone())
+        Value::String(s) => {
+            if escaped {
+                output.push_str(&html_escape(s));
             } else {
-                // Multiple references - need to clone
-                let mut new_hash: IndexMap<HashKey, Value> = hash.borrow().clone();
-                let key = HashKey::String(name.to_string());
-                new_hash.insert(key, value);
-                Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
+                output.push_str(s);
             }
         }
-        _ => Err("Data context must be a Hash".to_string()),
-    }
-}
-
-/// Convert a Value to its string representation for output
-#[inline]
-fn value_to_string(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        Value::Int(n) => n.to_string(),
-        Value::Float(n) => n.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Null => String::new(),
+        // Int/Float/Bool never contain HTML special chars — skip html_escape entirely
+        Value::Int(n) => { let _ = write!(output, "{}", n); }
+        Value::Float(n) => { let _ = write!(output, "{}", n); }
+        Value::Bool(b) => { let _ = write!(output, "{}", b); }
+        Value::Null => {}
         Value::Array(arr) => {
             let arr = arr.borrow();
-            let items: Vec<String> = arr.iter().map(value_to_string).collect();
-            items.join(", ")
+            for (i, item) in arr.iter().enumerate() {
+                if i > 0 {
+                    output.push_str(", ");
+                }
+                write_value_to_output(item, escaped, output);
+            }
         }
-        Value::Hash(_) => "[Hash]".to_string(),
-        _ => format!("{}", value),
+        Value::Hash(_) => output.push_str("[Hash]"),
+        _ => { let _ = write!(output, "{}", value); }
     }
 }
 
-/// Escape HTML special characters
-pub fn html_escape(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => result.push_str("&amp;"),
-            '<' => result.push_str("&lt;"),
-            '>' => result.push_str("&gt;"),
-            '"' => result.push_str("&quot;"),
-            '\'' => result.push_str("&#x27;"),
-            _ => result.push(c),
+/// Escape HTML special characters.
+/// Returns Cow::Borrowed when no escaping is needed (fast path).
+pub fn html_escape(s: &str) -> Cow<'_, str> {
+    // Fast path: scan bytes to check if escaping is needed at all
+    if !s.bytes().any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\'')) {
+        return Cow::Borrowed(s);
+    }
+    let mut result = String::with_capacity(s.len() + 8);
+    for b in s.bytes() {
+        match b {
+            b'&' => result.push_str("&amp;"),
+            b'<' => result.push_str("&lt;"),
+            b'>' => result.push_str("&gt;"),
+            b'"' => result.push_str("&quot;"),
+            b'\'' => result.push_str("&#x27;"),
+            _ => result.push(b as char),
         }
     }
-    result
+    Cow::Owned(result)
 }
 
 /// Check if a value is truthy
@@ -622,183 +309,12 @@ fn is_truthy(value: &Value) -> bool {
     }
 }
 
-/// Check if two values are equal
-#[inline]
-fn values_equal(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Int(a), Value::Int(b)) => a == b,
-        (Value::Float(a), Value::Float(b)) => a == b,
-        (Value::Int(a), Value::Float(b)) => (*a as f64) == *b,
-        (Value::Float(a), Value::Int(b)) => *a == (*b as f64),
-        (Value::String(a), Value::String(b)) => a == b,
-        (Value::Bool(a), Value::Bool(b)) => a == b,
-        (Value::Null, Value::Null) => true,
-        _ => false,
-    }
-}
-
-/// Compare two values, returning -1, 0, or 1
-#[inline]
-fn compare_values(a: &Value, b: &Value) -> Result<i32, String> {
-    match (a, b) {
-        (Value::Int(a), Value::Int(b)) => Ok(a.cmp(b) as i32),
-        (Value::Float(a), Value::Float(b)) => {
-            Ok(a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) as i32)
-        }
-        (Value::Int(a), Value::Float(b)) => {
-            let a = *a as f64;
-            Ok(a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) as i32)
-        }
-        (Value::Float(a), Value::Int(b)) => {
-            let b = *b as f64;
-            Ok(a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal) as i32)
-        }
-        (Value::String(a), Value::String(b)) => Ok(a.cmp(b) as i32),
-        _ => Err(format!(
-            "Cannot compare {} and {}",
-            a.type_name(),
-            b.type_name()
-        )),
-    }
-}
-
-/// Evaluate a binary operation
-#[inline]
-fn evaluate_binary_op(left: &Value, op: BinaryOp, right: &Value) -> Result<Value, String> {
-    match op {
-        BinaryOp::Add => match (left, right) {
-            // String concatenation
-            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-            (Value::String(a), b) => Ok(Value::String(format!("{}{}", a, value_to_string(b)))),
-            (a, Value::String(b)) => Ok(Value::String(format!("{}{}", value_to_string(a), b))),
-            // Numeric addition
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
-            _ => Err(format!(
-                "Cannot add {} and {}",
-                left.type_name(),
-                right.type_name()
-            )),
-        },
-        BinaryOp::Subtract => match (left, right) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - *b as f64)),
-            _ => Err(format!(
-                "Cannot subtract {} from {}",
-                right.type_name(),
-                left.type_name()
-            )),
-        },
-        BinaryOp::Multiply => match (left, right) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
-            _ => Err(format!(
-                "Cannot multiply {} and {}",
-                left.type_name(),
-                right.type_name()
-            )),
-        },
-        BinaryOp::Divide => match (left, right) {
-            (Value::Int(a), Value::Int(b)) => {
-                if *b == 0 {
-                    Err("Division by zero".to_string())
-                } else {
-                    Ok(Value::Int(a / b))
-                }
-            }
-            (Value::Float(a), Value::Float(b)) => {
-                if *b == 0.0 {
-                    Err("Division by zero".to_string())
-                } else {
-                    Ok(Value::Float(a / b))
-                }
-            }
-            (Value::Int(a), Value::Float(b)) => {
-                if *b == 0.0 {
-                    Err("Division by zero".to_string())
-                } else {
-                    Ok(Value::Float(*a as f64 / b))
-                }
-            }
-            (Value::Float(a), Value::Int(b)) => {
-                if *b == 0 {
-                    Err("Division by zero".to_string())
-                } else {
-                    Ok(Value::Float(a / *b as f64))
-                }
-            }
-            _ => Err(format!(
-                "Cannot divide {} by {}",
-                left.type_name(),
-                right.type_name()
-            )),
-        },
-        BinaryOp::Modulo => match (left, right) {
-            (Value::Int(a), Value::Int(b)) => {
-                if *b == 0 {
-                    Err("Modulo by zero".to_string())
-                } else {
-                    Ok(Value::Int(a % b))
-                }
-            }
-            _ => Err(format!(
-                "Cannot perform modulo on {} and {}",
-                left.type_name(),
-                right.type_name()
-            )),
-        },
-    }
-}
-
-/// Call a user-defined function (from helpers) using an interpreter.
-fn call_user_function(
-    func: &crate::interpreter::value::Function,
-    args: Vec<Value>,
-) -> Result<Value, String> {
-    // Create a new interpreter with builtins
-    let mut interpreter = Interpreter::new();
-
-    // Copy variables from the function's closure into the interpreter's environment
-    // This allows helpers to call other helpers
-    let closure_vars = func.closure.borrow().get_all_variables();
-    for (name, value) in closure_vars {
-        interpreter.environment.borrow_mut().define(name, value);
-    }
-
-    // Bind arguments to parameters
-    for (i, param) in func.params.iter().enumerate() {
-        let arg_value = args.get(i).cloned().unwrap_or(Value::Null);
-        interpreter
-            .environment
-            .borrow_mut()
-            .define(param.name.clone(), arg_value);
-    }
-
-    // Execute statements and capture return value
-    for stmt in &func.body {
-        match interpreter.execute(stmt) {
-            Ok(crate::interpreter::executor::ControlFlow::Return(value)) => {
-                return Ok(value);
-            }
-            Ok(_) => continue,
-            Err(e) => return Err(format!("Error in helper function '{}': {}", func.name, e)),
-        }
-    }
-
-    // No explicit return - return null
-    Ok(Value::Null)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::interpreter::value::HashKey;
     use crate::template::parser::compile_expr;
+    use indexmap::IndexMap;
 
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
         let hash: IndexMap<HashKey, Value> = pairs
@@ -966,7 +482,6 @@ mod tests {
 
     #[test]
     fn test_render_for_loop_with_index() {
-        // Test for loop with index: for item, i in items
         let nodes = vec![TemplateNode::For {
             var: "item".to_string(),
             index_var: Some("i".to_string()),
@@ -985,7 +500,6 @@ mod tests {
         ])));
         let data = make_hash(vec![("items", items)]);
         let result = render_nodes(&nodes, &data, None).unwrap();
-        // Should output 0, 1, 2 (indices)
         assert_eq!(result, "012");
     }
 }

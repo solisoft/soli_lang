@@ -2484,7 +2484,7 @@ fn call_handler(
                 ) {
                     Ok(result) => {
                         vm.reset();
-                        let (status, headers, body) = extract_response(&result);
+                        let (status, headers, body) = extract_response(result);
                         let headers: Vec<_> = headers.into_iter().collect();
                         return ResponseData {
                             status,
@@ -2510,7 +2510,7 @@ fn call_handler(
             match interpreter.call_value(handler_value, vec![request_hash], Span::default()) {
                 Ok(result) => {
                     interpreter.pop_frame();
-                    let (status, headers, body) = extract_response(&result);
+                    let (status, headers, body) = extract_response(result);
                     let headers: Vec<_> = headers.into_iter().collect();
                     ResponseData {
                         status,
@@ -2749,7 +2749,7 @@ fn call_oop_controller_action(
 
     let response = match action_result {
         Ok(result) => {
-            let (status, resp_headers, body) = extract_response(&result);
+            let (status, resp_headers, body) = extract_response(result);
             let resp_headers: Vec<_> = resp_headers.into_iter().collect();
             ResponseData {
                 status,
@@ -3392,7 +3392,7 @@ fn handle_request(
                     request_hash = modified_request;
                 }
                 MiddlewareResult::Response(resp) => {
-                    let (status, headers, body) = extract_response(&resp);
+                    let (status, headers, body) = extract_response(resp);
                     let headers: Vec<_> = headers.into_iter().collect();
                     return finalize_response(ResponseData {
                         status,
@@ -3493,7 +3493,7 @@ fn handle_request(
                     request_hash = modified_request;
                 }
                 MiddlewareResult::Response(resp) => {
-                    let (status, headers, body) = extract_response(&resp);
+                    let (status, headers, body) = extract_response(resp);
                     let headers: Vec<_> = headers.into_iter().collect();
                     return finalize_response(ResponseData {
                         status,
