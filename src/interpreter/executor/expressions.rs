@@ -415,8 +415,11 @@ impl Interpreter {
         }
         // Check user-defined instance/class methods (is_method && 0 required params).
         // Use call_value to properly handle default parameter values.
-        let should_auto_invoke =
-            matches!(&val, Value::Function(func) if func.is_method && func.arity() == 0);
+        let should_auto_invoke = match &val {
+            Value::Function(func) => func.is_method && func.arity() == 0,
+            Value::NativeFunction(func) => func.arity == Some(0),
+            _ => false,
+        };
         if should_auto_invoke {
             return self.call_value(val, vec![], span);
         }
