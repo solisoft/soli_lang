@@ -42,7 +42,7 @@ impl Interpreter {
             // Variables
             ExprKind::Variable(name) => {
                 let val = self.evaluate_variable(name, expr)?;
-                self.try_auto_invoke(val, expr.span)
+                self.try_auto_invoke(val, expr.span, true)
             }
 
             // Grouping
@@ -77,12 +77,12 @@ impl Interpreter {
             // Access
             ExprKind::Member { object, name } => {
                 let val = self.evaluate_member(object, name, expr.span)?;
-                self.try_auto_invoke(val, expr.span)
+                self.try_auto_invoke(val, expr.span, false)
             }
 
             ExprKind::SafeMember { object, name } => {
                 let val = self.evaluate_safe_member(object, name, expr.span)?;
-                self.try_auto_invoke(val, expr.span)
+                self.try_auto_invoke(val, expr.span, false)
             }
 
             ExprKind::QualifiedName { qualifier, name } => {
@@ -399,9 +399,16 @@ impl Interpreter {
         Ok(Value::Hash(Rc::new(RefCell::new(result))))
     }
 
-    /// Auto-invoke zero-argument methods when accessed without parentheses.
-    /// This enables Ruby-style `arr.length`, `str.upcase`, `obj.name` syntax.
-    fn try_auto_invoke(&mut self, val: Value, span: Span) -> RuntimeResult<Value> {
+    /// Auto-invoke zero-argument functions/methods when accessed without parentheses.
+    /// - Variable access (`from_variable=true`): auto-invoke any zero-arg function
+    /// - Member access (`from_variable=false`): only auto-invoke class methods (is_method),
+    ///   not lambda/function values stored in fields
+    fn try_auto_invoke(
+        &mut self,
+        val: Value,
+        span: Span,
+        from_variable: bool,
+    ) -> RuntimeResult<Value> {
         // Check built-in type methods (Value::Method)
         if let Value::Method(ref method) = val {
             if is_zero_arg_builtin_method(&method.method_name, &method.receiver) {
@@ -419,7 +426,8 @@ impl Interpreter {
         // Check user-defined functions/methods and native functions with 0 required params.
         // Use call_value to properly handle default parameter values.
         let should_auto_invoke = match &val {
-            Value::Function(func) => func.arity() == 0,
+            // For member access, only auto-invoke class methods, not lambda fields
+            Value::Function(func) => (from_variable || func.is_method) && func.arity() == 0,
             Value::NativeFunction(func) => func.arity == Some(0),
             _ => false,
         };
