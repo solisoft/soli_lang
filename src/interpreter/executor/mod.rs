@@ -645,7 +645,7 @@ impl Interpreter {
                         Err(e) => self.build_http_response(
                             &mut stream,
                             500,
-                            HashMap::new(),
+                            Vec::new(),
                             format!("Error: {}", e),
                         )?,
                     }
@@ -653,12 +653,12 @@ impl Interpreter {
                 None => self.build_http_response(
                     &mut stream,
                     500,
-                    HashMap::new(),
+                    Vec::new(),
                     format!("Handler not found: {}", route.handler_name),
                 )?,
             }
         } else {
-            self.build_http_response(&mut stream, 404, HashMap::new(), "Not Found".to_string())?;
+            self.build_http_response(&mut stream, 404, Vec::new(), "Not Found".to_string())?;
         }
 
         Ok(())
@@ -668,7 +668,7 @@ impl Interpreter {
         &self,
         stream: &mut std::net::TcpStream,
         status: u16,
-        headers: HashMap<String, String>,
+        headers: Vec<(String, String)>,
         body: String,
     ) -> RuntimeResult<()> {
         let status_text = match status {
@@ -706,7 +706,7 @@ impl Interpreter {
         stream: &mut std::net::TcpStream,
         message: &str,
     ) -> RuntimeResult<()> {
-        self.build_http_response(stream, 400, HashMap::new(), message.to_string())
+        self.build_http_response(stream, 400, Vec::new(), message.to_string())
     }
 }
 

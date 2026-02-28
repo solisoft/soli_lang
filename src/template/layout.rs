@@ -85,7 +85,8 @@ pub fn render_layout_with_interpreter(
     partial_renderer: PartialRenderer<'_>,
     layout_path: Option<&str>,
 ) -> Result<String, String> {
-    let mut output = String::new();
+    // Pre-allocate: layout wraps content, so output ≈ content + layout overhead
+    let mut output = String::with_capacity(content.len() + 2048);
     render_layout_inner(
         interpreter,
         nodes,

@@ -2485,7 +2485,6 @@ fn call_handler(
                     Ok(result) => {
                         vm.reset();
                         let (status, headers, body) = extract_response(result);
-                        let headers: Vec<_> = headers.into_iter().collect();
                         return ResponseData {
                             status,
                             headers,
@@ -2511,7 +2510,6 @@ fn call_handler(
                 Ok(result) => {
                     interpreter.pop_frame();
                     let (status, headers, body) = extract_response(result);
-                    let headers: Vec<_> = headers.into_iter().collect();
                     ResponseData {
                         status,
                         headers,
@@ -2750,7 +2748,6 @@ fn call_oop_controller_action(
     let response = match action_result {
         Ok(result) => {
             let (status, resp_headers, body) = extract_response(result);
-            let resp_headers: Vec<_> = resp_headers.into_iter().collect();
             ResponseData {
                 status,
                 headers: resp_headers,
@@ -3212,7 +3209,6 @@ fn handle_request(
     // Clear any stale fast-path response from a previous request
     let _ = take_fast_path_response();
 
-    let start_time = Instant::now();
     let method = &data.method;
     let path = &data.path;
 
@@ -3223,6 +3219,9 @@ fn handle_request(
             .unwrap_or(false);
     }
     let log_requests = LOG_REQUESTS.with(|v| *v);
+
+    // Only create timer when logging is enabled (avoids clock_gettime syscall per request)
+    let start_time = if log_requests { Some(Instant::now()) } else { None };
 
     // Set up session only if request has cookies (skip entirely for API/benchmark requests)
     let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
@@ -3238,14 +3237,14 @@ fn handle_request(
     };
 
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
-    let (route, matched_params) = match find_route(method, path) {
-        Some((r, params)) => (r, params),
+    let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
+        Some(found) => found,
         None => {
             // Clear session context before returning
             set_current_session_id(None);
             // Log timing for 404 responses (skip health checks)
             if log_requests && path != "/health" {
-                let elapsed = start_time.elapsed();
+                let elapsed = start_time.unwrap().elapsed();
                 println!(
                     "[LOG] {} {} - 404 ({:.3}ms)",
                     method,
@@ -3282,9 +3281,6 @@ fn handle_request(
             };
         }
     };
-
-    let route_handler_name = route.handler_name.clone();
-    let scoped_middleware = route.middleware.clone();
 
     // Expand wildcard action pattern (e.g., "docs#*" → "docs#routing")
     let expanded_handler = crate::interpreter::builtins::server::expand_wildcard_action(
@@ -3355,7 +3351,7 @@ fn handle_request(
         }
         // Log timing (skip health checks to avoid benchmark noise)
         if log_requests && path != "/health" {
-            let elapsed = start_time.elapsed();
+            let elapsed = start_time.unwrap().elapsed();
             println!(
                 "[LOG] {} {} - {} ({:.3}ms)",
                 method,
@@ -3393,7 +3389,6 @@ fn handle_request(
                 }
                 MiddlewareResult::Response(resp) => {
                     let (status, headers, body) = extract_response(resp);
-                    let headers: Vec<_> = headers.into_iter().collect();
                     return finalize_response(ResponseData {
                         status,
                         headers,
@@ -3494,7 +3489,6 @@ fn handle_request(
                 }
                 MiddlewareResult::Response(resp) => {
                     let (status, headers, body) = extract_response(resp);
-                    let headers: Vec<_> = headers.into_iter().collect();
                     return finalize_response(ResponseData {
                         status,
                         headers,

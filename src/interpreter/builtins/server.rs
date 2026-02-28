@@ -43,8 +43,9 @@ thread_local! {
 pub struct RouteIndex {
     /// Routes grouped by HTTP method
     by_method: HashMap<String, Vec<usize>>, // method -> indices into ROUTES
-    /// Exact path matches for fast lookup (method:path -> route index)
-    exact_matches: HashMap<String, usize>,
+    /// Exact path matches for fast lookup: method -> (path -> route index).
+    /// Two-level HashMap avoids format!("{}:{}", method, path) allocation per request.
+    exact_matches: HashMap<String, HashMap<String, usize>>,
     /// Version counter to detect stale index
     version: u64,
 }
@@ -68,8 +69,10 @@ impl RouteIndex {
 
             // Add exact matches (routes without dynamic segments)
             if !route.path_pattern.contains(':') {
-                let key = format!("{}:{}", route.method, route.path_pattern);
-                self.exact_matches.insert(key, idx);
+                self.exact_matches
+                    .entry(route.method.clone())
+                    .or_default()
+                    .insert(route.path_pattern.clone(), idx);
             }
         }
 
@@ -161,19 +164,27 @@ pub fn rebuild_route_index() {
 }
 
 /// Find a matching route by method and path using the index.
-/// Returns the matched route (cloned) and extracted parameters.
-/// This is more efficient than iterating through all routes.
-pub fn find_route(method: &str, path: &str) -> Option<(Route, HashMap<String, String>)> {
+/// Returns only the needed fields (handler_name, middleware, params) to avoid
+/// cloning the entire Route struct (which includes method and path_pattern we don't need).
+pub fn find_route(
+    method: &str,
+    path: &str,
+) -> Option<(String, Vec<Value>, HashMap<String, String>)> {
     ROUTES.with(|routes| {
         ROUTE_INDEX.with(|index| {
             let routes = routes.borrow();
             let index = index.borrow();
 
-            // Fast path: try exact match first
-            let exact_key = format!("{}:{}", method, path);
-            if let Some(&idx) = index.exact_matches.get(&exact_key) {
-                if let Some(route) = routes.get(idx) {
-                    return Some((route.clone(), HashMap::new()));
+            // Fast path: nested HashMap lookup avoids format!("{}:{}", method, path) allocation
+            if let Some(path_map) = index.exact_matches.get(method) {
+                if let Some(&idx) = path_map.get(path) {
+                    if let Some(route) = routes.get(idx) {
+                        return Some((
+                            route.handler_name.clone(),
+                            route.middleware.clone(),
+                            HashMap::new(),
+                        ));
+                    }
                 }
             }
 
@@ -182,7 +193,11 @@ pub fn find_route(method: &str, path: &str) -> Option<(Route, HashMap<String, St
                 for &idx in indices {
                     if let Some(route) = routes.get(idx) {
                         if let Some(params) = match_path(&route.path_pattern, path) {
-                            return Some((route.clone(), params));
+                            return Some((
+                                route.handler_name.clone(),
+                                route.middleware.clone(),
+                                params,
+                            ));
                         }
                     }
                 }
@@ -759,6 +774,8 @@ pub fn build_request_hash(
 }
 
 /// Build a request hash with parsed body data.
+/// Skips inserting Null/empty fields to reduce allocations — missing keys
+/// return Null on access anyway (via StrKey lookup in template engine).
 pub fn build_request_hash_with_parsed(
     method: &str,
     path: &str,
@@ -768,79 +785,105 @@ pub fn build_request_hash_with_parsed(
     body: &str,
     parsed: ParsedBody,
 ) -> Value {
-    // Build IndexMap directly from references with pre-allocated capacity
-    let params_pairs: IndexMap<HashKey, Value> = if params.is_empty() {
-        IndexMap::new()
+    // Build sub-hashes only when non-empty (avoids Rc allocation for empty maps)
+    let params_value = if params.is_empty() {
+        None
     } else {
         let mut map = IndexMap::with_capacity(params.len());
         for (k, v) in params {
             map.insert(HashKey::String(k), Value::String(v));
         }
-        map
+        Some(Value::Hash(Rc::new(RefCell::new(map))))
     };
 
-    let query_pairs: IndexMap<HashKey, Value> = if query.is_empty() {
-        IndexMap::new()
+    let query_value = if query.is_empty() {
+        None
     } else {
         let mut map = IndexMap::with_capacity(query.len());
         for (k, v) in query {
             map.insert(HashKey::String(k.clone()), Value::String(v.clone()));
         }
-        map
+        Some(Value::Hash(Rc::new(RefCell::new(map))))
     };
 
-    let header_pairs: IndexMap<HashKey, Value> = if headers.is_empty() {
-        IndexMap::new()
+    let header_value = if headers.is_empty() {
+        None
     } else {
         let mut map = IndexMap::with_capacity(headers.len());
         for (k, v) in headers {
             map.insert(HashKey::String(k.clone()), Value::String(v.clone()));
         }
-        map
+        Some(Value::Hash(Rc::new(RefCell::new(map))))
     };
 
-    // Build unified "all" params - merges route params, query params, and body params
-    let all_pairs = build_unified_params(&params_pairs, &query_pairs, &parsed);
+    // Build unified "all" params only when at least one source has data
+    let has_body_params = parsed.json.as_ref().map_or(false, |v| matches!(v, Value::Hash(_)))
+        || parsed.form.as_ref().map_or(false, |v| matches!(v, Value::Hash(_)));
+    let all_value = if params_value.is_none() && query_value.is_none() && !has_body_params {
+        None // All sources empty — skip building unified params entirely
+    } else {
+        let params_ref = params_value.as_ref().and_then(|v| {
+            if let Value::Hash(h) = v { Some(h.borrow()) } else { None }
+        });
+        let query_ref = query_value.as_ref().and_then(|v| {
+            if let Value::Hash(h) = v { Some(h.borrow()) } else { None }
+        });
+        let empty_map = IndexMap::new();
+        let params_map = params_ref.as_deref().unwrap_or(&empty_map);
+        let query_map = query_ref.as_deref().unwrap_or(&empty_map);
+        let all_pairs = build_unified_params_refs(params_map, query_map, &parsed);
+        Some(Value::Hash(Rc::new(RefCell::new(all_pairs))))
+    };
 
-    // Build request hash using cached keys (single thread_local access)
+    // Build request hash — only insert fields that have data
+    // (missing keys return Null on access via StrKey lookup)
     let request_pairs: IndexMap<HashKey, Value> = REQUEST_KEYS.with(|keys| {
-        let mut map = IndexMap::with_capacity(10);
+        // Count how many fields we'll actually insert
+        let capacity = 2 // method + path are always present
+            + if params_value.is_some() { 1 } else { 0 }
+            + if query_value.is_some() { 1 } else { 0 }
+            + if header_value.is_some() { 1 } else { 0 }
+            + if !body.is_empty() { 1 } else { 0 }
+            + if parsed.json.is_some() { 1 } else { 0 }
+            + if parsed.form.is_some() { 1 } else { 0 }
+            + if parsed.files.is_some() { 1 } else { 0 }
+            + if all_value.is_some() { 1 } else { 0 };
+        let mut map = IndexMap::with_capacity(capacity);
         map.insert(keys.method.clone(), Value::String(method.to_string()));
         map.insert(keys.path.clone(), Value::String(path.to_string()));
-        map.insert(
-            keys.params.clone(),
-            Value::Hash(Rc::new(RefCell::new(params_pairs))),
-        );
-        map.insert(
-            keys.query.clone(),
-            Value::Hash(Rc::new(RefCell::new(query_pairs))),
-        );
-        map.insert(
-            keys.headers.clone(),
-            Value::Hash(Rc::new(RefCell::new(header_pairs))),
-        );
-        map.insert(keys.body.clone(), Value::String(body.to_string()));
-        map.insert(keys.json.clone(), parsed.json.unwrap_or(Value::Null));
-        map.insert(keys.form.clone(), parsed.form.unwrap_or(Value::Null));
-        map.insert(
-            keys.files.clone(),
-            parsed
-                .files
-                .unwrap_or(Value::Array(Rc::new(RefCell::new(Vec::new())))),
-        );
-        map.insert(
-            keys.all.clone(),
-            Value::Hash(Rc::new(RefCell::new(all_pairs))),
-        );
+        if let Some(v) = params_value {
+            map.insert(keys.params.clone(), v);
+        }
+        if let Some(v) = query_value {
+            map.insert(keys.query.clone(), v);
+        }
+        if let Some(v) = header_value {
+            map.insert(keys.headers.clone(), v);
+        }
+        if !body.is_empty() {
+            map.insert(keys.body.clone(), Value::String(body.to_string()));
+        }
+        if let Some(json) = parsed.json {
+            map.insert(keys.json.clone(), json);
+        }
+        if let Some(form) = parsed.form {
+            map.insert(keys.form.clone(), form);
+        }
+        if let Some(files) = parsed.files {
+            map.insert(keys.files.clone(), files);
+        }
+        if let Some(v) = all_value {
+            map.insert(keys.all.clone(), v);
+        }
         map
     });
 
     Value::Hash(Rc::new(RefCell::new(request_pairs)))
 }
 
-/// Build unified params by merging route params, query params, and body params.
+/// Build unified params from borrowed IndexMap references.
 /// Body params take precedence, followed by query params, then route params.
-fn build_unified_params(
+fn build_unified_params_refs(
     route_params: &IndexMap<HashKey, Value>,
     query_params: &IndexMap<HashKey, Value>,
     parsed: &ParsedBody,
@@ -879,14 +922,15 @@ fn build_unified_params(
 
 /// Extract response data from a response hash returned by a handler.
 /// Checks fast-path thread-local first (set by render_json/render_text).
-pub fn extract_response(response: Value) -> (u16, HashMap<String, String>, String) {
+/// Returns Vec instead of HashMap since all callers need Vec<(String, String)>.
+pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, String) {
     // Fast path: if render_json/render_text set a pre-built response, use it directly
     if let Some(fast) = take_fast_path_response() {
-        return (fast.status, fast.headers.into_iter().collect(), fast.body);
+        return (fast.status, fast.headers, fast.body);
     }
 
     let mut status = 200u16;
-    let mut headers = HashMap::new();
+    let mut headers = Vec::new();
     let mut body = String::new();
 
     if let Value::Hash(hash) = response {
@@ -908,7 +952,7 @@ pub fn extract_response(response: Value) -> (u16, HashMap<String, String>, Strin
                                 if let Value::Hash(h) = v {
                                     for (hk, hv) in h.borrow().iter() {
                                         if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
-                                            headers.insert(k.clone(), v.clone());
+                                            headers.push((k.clone(), v.clone()));
                                         }
                                     }
                                 }
@@ -941,14 +985,14 @@ pub fn extract_response(response: Value) -> (u16, HashMap<String, String>, Strin
                                 Ok(cell) => {
                                     for (hk, hv) in cell.into_inner() {
                                         if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
-                                            headers.insert(k, v);
+                                            headers.push((k, v));
                                         }
                                     }
                                 }
                                 Err(rc) => {
                                     for (hk, hv) in rc.borrow().iter() {
                                         if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
-                                            headers.insert(k.clone(), v.clone());
+                                            headers.push((k.clone(), v.clone()));
                                         }
                                     }
                                 }

@@ -32,7 +32,7 @@ pub fn render_nodes_with_path(
     template_path: Option<&str>,
 ) -> Result<String, String> {
     let mut interpreter = core_eval::create_template_interpreter(data);
-    let mut output = String::new();
+    let mut output = String::with_capacity(2048);
     render_inner(
         &mut interpreter,
         nodes,
@@ -53,7 +53,7 @@ pub fn render_with_interpreter(
     partial_renderer: PartialRenderer<'_>,
     template_path: Option<&str>,
 ) -> Result<String, String> {
-    let mut output = String::new();
+    let mut output = String::with_capacity(4096);
     render_inner(
         interpreter,
         nodes,

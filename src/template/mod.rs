@@ -44,8 +44,9 @@ pub struct TemplateCache {
     /// Cached parsed templates (PathBuf -> nodes). Uses PathBuf keys to avoid
     /// String conversion on every cache lookup (hot path).
     cache: RefCell<HashMap<PathBuf, CachedTemplate>>,
-    /// Cached path resolutions (template_name -> resolved_path)
-    path_cache: RefCell<HashMap<String, PathBuf>>,
+    /// Cached path resolutions (template_name -> resolved_path).
+    /// Uses Rc<PathBuf> so cache hits are Rc clone (pointer increment) instead of PathBuf clone (heap alloc).
+    path_cache: RefCell<HashMap<String, Rc<PathBuf>>>,
 }
 
 impl TemplateCache {
@@ -79,7 +80,7 @@ impl TemplateCache {
         let template_path = self.resolve_template_path(template_name)?;
 
         // Get template from cache
-        let nodes = self.get_or_load_template(&template_path)?;
+        let nodes = self.get_or_load_template(&*template_path)?;
 
         // Create partial renderer closure
         let partial_renderer =
@@ -99,7 +100,7 @@ impl TemplateCache {
         )?;
 
         // If the template is a markdown file, convert to HTML
-        let content = if is_markdown_template(&template_path) {
+        let content = if is_markdown_template(&*template_path) {
             markdown_to_html(&content)
         } else {
             content
@@ -154,7 +155,7 @@ impl TemplateCache {
         };
 
         let template_path = self.resolve_template_path(&partial_name)?;
-        let nodes = self.get_or_load_template(&template_path)?;
+        let nodes = self.get_or_load_template(&*template_path)?;
 
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
@@ -168,7 +169,7 @@ impl TemplateCache {
         )?;
 
         // If the partial is a markdown file, convert to HTML
-        if is_markdown_template(&template_path) {
+        if is_markdown_template(&*template_path) {
             Ok(markdown_to_html(&content))
         } else {
             Ok(content)
@@ -188,12 +189,18 @@ impl TemplateCache {
         let layout_name = layout_name.trim_start_matches("layouts/");
         let layout_name = layout_name.trim_start_matches("layouts");
 
-        // Use the cache for layouts too (layouts/name.html.slv)
-        let layout_template = format!("layouts/{}", layout_name);
+        // Fast path: avoid format! allocation for the most common layout name
+        let layout_template;
+        let layout_key = if layout_name == "application" {
+            "layouts/application"
+        } else {
+            layout_template = format!("layouts/{}", layout_name);
+            &layout_template
+        };
 
-        match self.resolve_template_path(&layout_template) {
+        match self.resolve_template_path(layout_key) {
             Ok(layout_path) => {
-                let layout_nodes = self.get_or_load_template(&layout_path)?;
+                let layout_nodes = self.get_or_load_template(&*layout_path)?;
                 let layout_path_str = layout_path.to_string_lossy();
                 layout::render_layout_with_interpreter(
                     interpreter,
@@ -213,17 +220,18 @@ impl TemplateCache {
 
 
     /// Resolve a template name to a file path (cached).
-    fn resolve_template_path(&self, name: &str) -> Result<PathBuf, String> {
+    /// Returns Rc<PathBuf> so cache hits are pointer increments, not heap clones.
+    fn resolve_template_path(&self, name: &str) -> Result<Rc<PathBuf>, String> {
         // Check path cache first
         {
             let path_cache = self.path_cache.borrow();
             if let Some(path) = path_cache.get(name) {
-                return Ok(path.clone());
+                return Ok(Rc::clone(path));
             }
         }
 
         // Cache miss - do file system lookup
-        let resolved = self.do_resolve_template_path(name)?;
+        let resolved = Rc::new(self.do_resolve_template_path(name)?);
 
         // Cache the result (with eviction if cache is too large)
         {
@@ -231,7 +239,7 @@ impl TemplateCache {
             if path_cache.len() >= PATH_CACHE_MAX_SIZE {
                 path_cache.clear();
             }
-            path_cache.insert(name.to_string(), resolved.clone());
+            path_cache.insert(name.to_string(), Rc::clone(&resolved));
         }
 
         Ok(resolved)
