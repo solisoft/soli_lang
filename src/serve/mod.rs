@@ -1544,11 +1544,11 @@ async fn handle_hyper_request(
     // Parse query string
     let query = parse_query_string(query_str);
 
-    // Extract headers
-    let mut headers = HashMap::new();
+    // Extract headers (pre-allocate, use as_str to avoid Display formatting overhead)
+    let mut headers = HashMap::with_capacity(req.headers().keys_len());
     for (name, value) in req.headers() {
         if let Ok(v) = value.to_str() {
-            headers.insert(name.to_string(), v.to_string());
+            headers.insert(name.as_str().to_owned(), v.to_owned());
         }
     }
 
@@ -1636,19 +1636,23 @@ async fn handle_hyper_request(
                 .status(StatusCode::from_u16(resp_data.status).unwrap_or(StatusCode::OK))
                 .header("Server", "soliMVC");
 
-            // Check if response is HTML for live reload injection
-            let is_html = resp_data
-                .headers
-                .iter()
-                .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("text/html"));
-
             for (key, value) in &resp_data.headers {
                 builder = builder.header(key.as_str(), value.as_str());
             }
 
-            // Inject live reload script for HTML responses when enabled
-            let body = if is_html && reload_tx.is_some() {
-                live_reload::inject_live_reload_script(&resp_data.body)
+            // Inject live reload script for HTML responses (only in dev mode)
+            let body = if reload_tx.is_some() {
+                let is_html = resp_data
+                    .headers
+                    .iter()
+                    .any(|(k, v)| {
+                        k.eq_ignore_ascii_case("content-type") && v.contains("text/html")
+                    });
+                if is_html {
+                    live_reload::inject_live_reload_script(&resp_data.body)
+                } else {
+                    resp_data.body
+                }
             } else {
                 resp_data.body
             };
@@ -3296,29 +3300,30 @@ fn handle_request(
     };
 
     // Expand wildcard action pattern (e.g., "docs#*" → "docs#routing")
-    let expanded_handler = crate::interpreter::builtins::server::expand_wildcard_action(
-        &route_handler_name,
-        &matched_params,
-    );
-
-    // If expansion failed (wildcard but no param to expand), return 404
-    let handler_name = if expanded_handler.is_none()
-        && route_handler_name.contains('#')
-        && route_handler_name.ends_with("#*")
-    {
-        // Clear session context before returning 404
-        set_current_session_id(None);
-        let error_html = render_production_error_page(404, "Action not found for this route.");
-        return ResponseData {
-            status: 404,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/html; charset=utf-8".to_string(),
-            )],
-            body: error_html,
-        };
+    // Skip expansion entirely when handler doesn't use wildcards (common case)
+    let handler_name = if !route_handler_name.ends_with("#*") {
+        route_handler_name
     } else {
-        expanded_handler.unwrap_or(route_handler_name)
+        let expanded_handler = crate::interpreter::builtins::server::expand_wildcard_action(
+            &route_handler_name,
+            &matched_params,
+        );
+        if let Some(expanded) = expanded_handler {
+            expanded
+        } else {
+            // Clear session context before returning 404
+            set_current_session_id(None);
+            let error_html =
+                render_production_error_page(404, "Action not found for this route.");
+            return ResponseData {
+                status: 404,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                )],
+                body: error_html,
+            };
+        }
     };
 
     // Skip body parsing for GET/HEAD requests (no body to parse)
