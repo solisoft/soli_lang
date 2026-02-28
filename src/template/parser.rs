@@ -170,6 +170,11 @@ pub enum TemplateNode {
     },
     /// Code block to execute (for variable assignments, etc.)
     CodeBlock { expr: Expr, line: usize },
+    /// Code block parsed by the core language parser (full language support)
+    CoreCodeBlock {
+        stmts: Vec<crate::ast::stmt::Stmt>,
+        line: usize,
+    },
 }
 
 /// Token types during lexing
@@ -346,9 +351,9 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                         code, line
                     ));
                 } else {
-                    // Parse as expression (possibly assignment)
-                    let expr = compile_expr(code);
-                    nodes.push(TemplateNode::CodeBlock { expr, line: *line });
+                    // Parse through the core language parser for full language support
+                    let stmts = parse_core_code(code, *line)?;
+                    nodes.push(TemplateNode::CoreCodeBlock { stmts, line: *line });
                     i += 1;
                 }
             }
@@ -707,6 +712,18 @@ fn parse_partial_call(expr: &str, line: usize) -> Result<TemplateNode, String> {
         context,
         line,
     })
+}
+
+/// Parse a code block through the core language parser for full language support.
+/// This handles `let` declarations, function calls, assignments, and all other statements.
+fn parse_core_code(code: &str, line: usize) -> Result<Vec<crate::ast::stmt::Stmt>, String> {
+    let tokens = crate::lexer::Scanner::new(code)
+        .scan_tokens()
+        .map_err(|e| format!("Syntax error at line {}: {}", line, e))?;
+    let program = crate::parser::Parser::new(tokens)
+        .parse()
+        .map_err(|e| format!("Parse error at line {}: {}", line, e))?;
+    Ok(program.statements)
 }
 
 /// Compile an expression string into a pre-compiled Expr AST.

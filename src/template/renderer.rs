@@ -82,6 +82,7 @@ fn render_inner(
             TemplateNode::For { line, .. } => Some(*line),
             TemplateNode::Partial { line, .. } => Some(*line),
             TemplateNode::CodeBlock { line, .. } => Some(*line),
+            TemplateNode::CoreCodeBlock { line, .. } => Some(*line),
             _ => None,
         };
 
@@ -216,6 +217,12 @@ fn render_inner(
                         _ => {
                             core_eval::evaluate_with_interpreter(expr, interpreter)?;
                         }
+                    }
+                }
+                TemplateNode::CoreCodeBlock { stmts, line: _ } => {
+                    for stmt in stmts {
+                        interpreter.execute(stmt)
+                            .map_err(|e| format!("Evaluation error: {}", e))?;
                     }
                 }
             }
