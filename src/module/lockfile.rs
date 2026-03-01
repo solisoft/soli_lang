@@ -145,9 +145,7 @@ impl LockFile {
                 // No specific ref requested, any resolved rev is fine
                 true
             }
-            Dependency::Version(ver) => {
-                entry.resolved_rev == *ver
-            }
+            Dependency::Version(ver) => entry.resolved_rev == *ver,
             _ => false,
         }
     }

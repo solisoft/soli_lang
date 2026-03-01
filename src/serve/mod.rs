@@ -826,7 +826,7 @@ fn run_hyper_server_worker_pool(
 
     // Eagerly initialize the shared HTTP client within the tokio runtime context.
     // reqwest::Client requires a Tokio reactor during construction.
-    let _ = runtime_handle.block_on(async {
+    runtime_handle.block_on(async {
         crate::interpreter::builtins::http_class::get_http_client();
     });
 

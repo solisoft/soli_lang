@@ -20,13 +20,22 @@ pub struct VersionInfo {
 /// Resolve a package version from the registry.
 ///
 /// GET {registry}/api/packages/{name}/{version}
-pub fn resolve_version(registry_url: &str, name: &str, version: &str) -> Result<VersionInfo, String> {
+pub fn resolve_version(
+    registry_url: &str,
+    name: &str,
+    version: &str,
+) -> Result<VersionInfo, String> {
     let api_url = format!("{}/api/packages/{}/{}", registry_url, name, version);
 
     let response = ureq::get(&api_url)
         .set("User-Agent", "soli-package-manager")
         .call()
-        .map_err(|e| format!("Failed to resolve '{}@{}' from registry: {}", name, version, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to resolve '{}@{}' from registry: {}",
+                name, version, e
+            )
+        })?;
 
     let body: serde_json::Value = response
         .into_json()
@@ -34,7 +43,12 @@ pub fn resolve_version(registry_url: &str, name: &str, version: &str) -> Result<
 
     let download_url = body["download_url"]
         .as_str()
-        .ok_or_else(|| format!("Registry response missing 'download_url' for '{}@{}'", name, version))?
+        .ok_or_else(|| {
+            format!(
+                "Registry response missing 'download_url' for '{}@{}'",
+                name, version
+            )
+        })?
         .to_string();
 
     Ok(VersionInfo { download_url })
@@ -57,8 +71,7 @@ pub fn download_package(url: &str, dest: &Path) -> Result<(), String> {
     let mut archive = tar::Archive::new(decoder);
 
     // Create destination directory
-    fs::create_dir_all(dest)
-        .map_err(|e| format!("Failed to create cache directory: {}", e))?;
+    fs::create_dir_all(dest).map_err(|e| format!("Failed to create cache directory: {}", e))?;
 
     // Extract directly — registry tarballs are flat (no top-level dir to strip)
     for entry in archive
@@ -81,8 +94,8 @@ pub fn download_package(url: &str, dest: &Path) -> Result<(), String> {
                 fs::create_dir_all(parent)
                     .map_err(|e| format!("Failed to create parent directory: {}", e))?;
             }
-            let mut out_file = fs::File::create(&out_path)
-                .map_err(|e| format!("Failed to create file: {}", e))?;
+            let mut out_file =
+                fs::File::create(&out_path).map_err(|e| format!("Failed to create file: {}", e))?;
             io::copy(&mut entry, &mut out_file)
                 .map_err(|e| format!("Failed to extract file: {}", e))?;
         }

@@ -86,9 +86,7 @@ enum Command {
         token: Option<String>,
     },
     /// Publish package to registry
-    Publish {
-        registry: Option<String>,
-    },
+    Publish { registry: Option<String> },
 }
 
 /// Database migration action
@@ -1396,8 +1394,7 @@ fn run_install() {
         .filter(|(_, d)| {
             matches!(
                 d,
-                solilang::module::Dependency::Git { .. }
-                    | solilang::module::Dependency::Version(_)
+                solilang::module::Dependency::Git { .. } | solilang::module::Dependency::Version(_)
             )
         })
         .collect();
@@ -1493,12 +1490,10 @@ fn run_login(registry: Option<&str>, token: Option<&str>) {
         // Prompt interactively
         eprint!("  Enter API token: ");
         let mut input = String::new();
-        std::io::stdin()
-            .read_line(&mut input)
-            .unwrap_or_else(|e| {
-                eprintln!("Error reading input: {}", e);
-                process::exit(1);
-            });
+        std::io::stdin().read_line(&mut input).unwrap_or_else(|e| {
+            eprintln!("Error reading input: {}", e);
+            process::exit(1);
+        });
         let input = input.trim().to_string();
         if input.is_empty() {
             eprintln!("Error: Token cannot be empty");
@@ -1518,10 +1513,7 @@ fn run_login(registry: Option<&str>, token: Option<&str>) {
     });
 
     println!();
-    println!(
-        "  \x1b[32m\x1b[1m✓\x1b[0m Logged in to {}",
-        registry_url
-    );
+    println!("  \x1b[32m\x1b[1m✓\x1b[0m Logged in to {}", registry_url);
     println!();
 }
 

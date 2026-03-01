@@ -272,11 +272,7 @@ fn install_git_dep(
 }
 
 /// Install a single version-based dependency from the registry.
-fn install_version_dep(
-    name: &str,
-    version: &str,
-    lock: &mut LockFile,
-) -> Result<(), String> {
+fn install_version_dep(name: &str, version: &str, lock: &mut LockFile) -> Result<(), String> {
     use super::registry;
 
     let dep = Dependency::Version(version.to_string());

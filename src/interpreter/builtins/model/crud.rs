@@ -1,12 +1,12 @@
 //! Database CRUD operations and JSON conversion utilities.
 
+use crate::interpreter::builtins::http_class::get_http_client;
+use crate::interpreter::value::{HashKey, Value};
+use crate::serve::get_tokio_handle;
 use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::serve::get_tokio_handle;
-use crate::interpreter::builtins::http_class::get_http_client;
-use crate::interpreter::value::{HashKey, Value};
 
 use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token};
 
@@ -46,7 +46,6 @@ where
         FALLBACK_RT.with(|rt| rt.block_on(future))
     }
 }
-
 
 /// Execute DB operation that returns serde_json::Value directly.
 /// This skips the double JSON conversion (Value -> String -> Value).

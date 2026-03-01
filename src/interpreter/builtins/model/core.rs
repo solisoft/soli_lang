@@ -59,8 +59,8 @@ pub fn get_jwt_token() -> Option<&'static str> {
                 (Some(u), Some(p)) => (u, p),
                 _ => return None,
             };
-            let host =
-                std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+            let host = std::env::var("SOLIDB_HOST")
+                .unwrap_or_else(|_| "http://localhost:6745".to_string());
             let login_url = format!("{}/auth/login", host);
             let payload = serde_json::json!({
                 "username": username,

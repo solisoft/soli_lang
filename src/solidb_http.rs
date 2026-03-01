@@ -156,8 +156,10 @@ impl SoliDBClient {
             let status = response.status();
 
             if !status.is_success() {
-                let error_text =
-                    response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
                 return Err(SoliDBError {
                     message: format!("HTTP {} {}: {}", status, path_owned, error_text),
                     code: Some(status.as_u16() as i32),
