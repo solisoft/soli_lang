@@ -291,11 +291,11 @@ let derived_public = Crypto.x25519_public_key(keypair["private"])
 
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
-        <a href="/docs/builtins/json" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+        <a href="/docs/builtins/markdown" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
-            JSON Functions
+            Markdown Class
         </a>
         <a href="/docs/builtins/jwt" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
             JWT Functions

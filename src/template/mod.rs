@@ -389,7 +389,7 @@ fn is_markdown_template(path: &Path) -> bool {
 }
 
 /// Convert markdown text to HTML using pulldown-cmark.
-fn markdown_to_html(markdown: &str) -> String {
+pub fn markdown_to_html(markdown: &str) -> String {
     use pulldown_cmark::{html, Options, Parser};
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);

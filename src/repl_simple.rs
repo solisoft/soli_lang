@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crate::interpreter::Interpreter;
 use crate::lexer::Scanner;
 use crate::parser::Parser;
+use crate::repl_common;
 use crate::repl_highlight::SyntaxHighlighter;
 
 const HISTORY_FILE: &str = ".soli_history";
@@ -127,28 +128,14 @@ impl SimpleRepl {
     }
 
     fn detect_multiline_needed(&self, line: &str) -> bool {
-        let trimmed = line.trim();
-        // Single-line block: `if x then print("hi") end` — no multiline needed
-        if trimmed.split_whitespace().any(|w| w == "end") {
-            return false;
-        }
-        trimmed.ends_with('{')
-            || (trimmed.starts_with("class ") && !trimmed.ends_with('}'))
-            || trimmed.starts_with("def ")
-            || trimmed.starts_with("fn ")
-            || trimmed.starts_with("if ")
-            || trimmed.starts_with("while ")
-            || trimmed.starts_with("for ")
-            || trimmed.starts_with("match ")
-            || trimmed == "do"
-            || trimmed.starts_with("try")
+        repl_common::detect_multiline_needed(line)
     }
 
     fn enter_multiline(&mut self, line: &str) {
         self.is_multiline = true;
         self.multiline_buffer = line.to_string();
-        self.multiline_indent = Self::calculate_indent(line);
-        self.brace_balance = Self::count_block_balance(line);
+        self.multiline_indent = repl_common::calculate_indent(line);
+        self.brace_balance = repl_common::count_block_balance(line);
         println!("      (enter .break to cancel)");
     }
 
@@ -160,9 +147,9 @@ impl SimpleRepl {
 
         self.multiline_buffer.push('\n');
         self.multiline_buffer.push_str(line);
-        self.multiline_indent = Self::calculate_indent(line);
+        self.multiline_indent = repl_common::calculate_indent(line);
 
-        let line_balance = Self::count_block_balance(line);
+        let line_balance = repl_common::count_block_balance(line);
         self.brace_balance += line_balance;
 
         if self.brace_balance <= 0 && !line.trim().is_empty() {
@@ -195,85 +182,6 @@ impl SimpleRepl {
         self.multiline_indent = 0;
         self.brace_balance = 0;
         println!("(cancelled)");
-    }
-
-    fn calculate_indent(line: &str) -> usize {
-        let trimmed = line.trim_start();
-        let leading_spaces = line.len() - trimmed.len();
-        if trimmed == "end" {
-            return leading_spaces.saturating_sub(4);
-        }
-        let extra_indent = if trimmed.ends_with('{')
-            || trimmed.ends_with("then")
-            || trimmed.ends_with("do")
-            || trimmed.ends_with("catch")
-            || trimmed.ends_with("finally")
-            || trimmed.ends_with("try")
-        {
-            4
-        } else if trimmed.ends_with("else") || trimmed.ends_with("elsif") {
-            if trimmed.starts_with("els") {
-                4
-            } else {
-                0
-            }
-        } else if Self::is_keyword_block_opener(trimmed) && !trimmed.contains('{') {
-            4
-        } else {
-            0
-        };
-        leading_spaces + extra_indent
-    }
-
-    fn is_keyword_block_opener(trimmed: &str) -> bool {
-        trimmed.starts_with("def ")
-            || trimmed.starts_with("fn ")
-            || trimmed.starts_with("if ")
-            || trimmed.starts_with("unless ")
-            || trimmed.starts_with("while ")
-            || trimmed.starts_with("for ")
-            || trimmed.starts_with("class ")
-            || trimmed.starts_with("match ")
-    }
-
-    fn count_block_balance(s: &str) -> i32 {
-        let mut balance = 0;
-        let mut in_string = false;
-        let mut escaped = false;
-        let mut has_braces = false;
-
-        for c in s.chars() {
-            if in_string {
-                if escaped {
-                    escaped = false;
-                } else if c == '\\' {
-                    escaped = true;
-                } else if c == '"' {
-                    in_string = false;
-                }
-            } else if c == '"' {
-                in_string = true;
-                escaped = false;
-            } else if c == '{' {
-                balance += 1;
-                has_braces = true;
-            } else if c == '}' {
-                balance -= 1;
-                has_braces = true;
-            }
-        }
-
-        // Track keyword-based blocks when no braces on this line
-        if !has_braces {
-            let trimmed = s.trim();
-            if trimmed == "end" {
-                balance -= 1;
-            } else if Self::is_keyword_block_opener(trimmed) {
-                balance += 1;
-            }
-        }
-
-        balance
     }
 
     fn is_magic_command(&self, line: &str) -> bool {
@@ -479,49 +387,13 @@ impl SimpleRepl {
     }
 
     fn execute_code(&mut self, code: &str) -> Result<(), crate::error::SolilangError> {
-        let should_print = Self::should_print_result(code);
-        let trimmed = code.trim();
-
-        let source = if should_print && !trimmed.ends_with('}') && !trimmed.ends_with(';') {
-            format!("print({});", trimmed)
-        } else if !trimmed.ends_with(';')
-            && !trimmed.ends_with('}')
-            && !trimmed.starts_with("let ")
-            && !trimmed.starts_with("fn ")
-            && !trimmed.starts_with("def ")
-            && !trimmed.starts_with("class ")
-            && !trimmed.starts_with("const ")
-        {
-            format!("{};", trimmed)
-        } else {
-            code.to_string()
-        };
+        let source = repl_common::prepare_source(code);
 
         let tokens = Scanner::new(&source).scan_tokens()?;
         let program = Parser::new(tokens).parse()?;
         self.interpreter.interpret(&program)?;
 
         Ok(())
-    }
-
-    fn should_print_result(source: &str) -> bool {
-        let trimmed = source.trim_end_matches(';').trim();
-
-        !trimmed.starts_with("let ")
-            && !trimmed.starts_with("const ")
-            && !trimmed.starts_with("fn ")
-            && !trimmed.starts_with("def ")
-            && !trimmed.starts_with("class ")
-            && !trimmed.starts_with("interface ")
-            && !trimmed.starts_with("if ")
-            && !trimmed.starts_with("while ")
-            && !trimmed.starts_with("for ")
-            && !trimmed.starts_with("return ")
-            && !trimmed.starts_with("print(")
-            && !trimmed.starts_with("println(")
-            && !trimmed.starts_with(".")
-            && !trimmed.starts_with("try")
-            && !trimmed.starts_with("import ")
     }
 }
 

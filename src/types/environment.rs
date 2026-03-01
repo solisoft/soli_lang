@@ -1202,6 +1202,20 @@ impl TypeEnvironment {
             },
         );
         self.classes.insert("System".to_string(), system_class);
+
+        // Markdown class
+        let mut markdown_class = ClassType::new("Markdown".to_string());
+        markdown_class.methods.insert(
+            "to_html".to_string(),
+            MethodInfo {
+                name: "to_html".to_string(),
+                params: vec![("markdown".to_string(), Type::String)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("Markdown".to_string(), markdown_class);
     }
 
     /// Enter a new scope.

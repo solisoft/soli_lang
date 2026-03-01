@@ -23,14 +23,7 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         // Bypass auto-invoke for callees so that func() gets the raw
         // function reference, not the auto-invoked result.
-        let callee_val = match &callee.kind {
-            ExprKind::Variable(name) => self.evaluate_variable(name, callee)?,
-            ExprKind::Member { object, name } => self.evaluate_member(object, name, callee.span)?,
-            ExprKind::SafeMember { object, name } => {
-                self.evaluate_safe_member(object, name, callee.span)?
-            }
-            _ => self.evaluate(callee)?,
-        };
+        let callee_val = self.evaluate_callee(callee)?;
 
         // Safe navigation: if &.method() and object was null, propagate null
         if matches!(callee.kind, ExprKind::SafeMember { .. }) && matches!(callee_val, Value::Null) {

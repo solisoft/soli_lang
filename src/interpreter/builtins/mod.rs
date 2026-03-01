@@ -30,6 +30,7 @@ pub mod http_class;
 pub mod i18n;
 pub mod json;
 pub mod jwt;
+pub mod markdown;
 pub mod math;
 pub mod model;
 pub mod rate_limit;
@@ -174,6 +175,9 @@ pub fn register_builtins(env: &mut Environment) {
 
     // HTML functions (html_escape, html_unescape, sanitize_html, strip_html)
     html::register_html_builtins(env);
+
+    // Markdown class (Markdown.to_html)
+    markdown::register_markdown_builtins(env);
 
     // Register JSON class (replaces json_parse and json_stringify functions)
     json::register_json_class(env);

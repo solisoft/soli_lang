@@ -13,6 +13,15 @@ use std::rc::Rc;
 
 use super::{ControlFlow, Interpreter, RuntimeResult};
 
+/// Distinguishes the context in which auto-invoke is triggered.
+#[derive(Clone, Copy)]
+pub(crate) enum AutoInvokeContext {
+    /// Bare variable access: auto-invoke any zero-arg function
+    Variable,
+    /// Member access (`.method`): only auto-invoke class methods, not lambda fields
+    Member,
+}
+
 // Pattern matching is still in the main module as it's a cross-cutting concern
 impl Interpreter {
     /// Evaluate an expression.
@@ -42,7 +51,7 @@ impl Interpreter {
             // Variables
             ExprKind::Variable(name) => {
                 let val = self.evaluate_variable(name, expr)?;
-                self.try_auto_invoke(val, expr.span, true)
+                self.try_auto_invoke(val, expr.span, AutoInvokeContext::Variable)
             }
 
             // Grouping
@@ -77,12 +86,12 @@ impl Interpreter {
             // Access
             ExprKind::Member { object, name } => {
                 let val = self.evaluate_member(object, name, expr.span)?;
-                self.try_auto_invoke(val, expr.span, false)
+                self.try_auto_invoke(val, expr.span, AutoInvokeContext::Member)
             }
 
             ExprKind::SafeMember { object, name } => {
                 let val = self.evaluate_safe_member(object, name, expr.span)?;
-                self.try_auto_invoke(val, expr.span, false)
+                self.try_auto_invoke(val, expr.span, AutoInvokeContext::Member)
             }
 
             ExprKind::QualifiedName { qualifier, name } => {
@@ -400,14 +409,14 @@ impl Interpreter {
     }
 
     /// Auto-invoke zero-argument functions/methods when accessed without parentheses.
-    /// - Variable access (`from_variable=true`): auto-invoke any zero-arg function
-    /// - Member access (`from_variable=false`): only auto-invoke class methods (is_method),
+    /// - `Variable` context: auto-invoke any zero-arg function
+    /// - `Member` context: only auto-invoke class methods (is_method),
     ///   not lambda/function values stored in fields
     fn try_auto_invoke(
         &mut self,
         val: Value,
         span: Span,
-        from_variable: bool,
+        ctx: AutoInvokeContext,
     ) -> RuntimeResult<Value> {
         // Check built-in type methods (Value::Method)
         if let Value::Method(ref method) = val {
@@ -427,7 +436,9 @@ impl Interpreter {
         // Use call_value to properly handle default parameter values.
         let should_auto_invoke = match &val {
             // For member access, only auto-invoke class methods, not lambda fields
-            Value::Function(func) => (from_variable || func.is_method) && func.arity() == 0,
+            Value::Function(func) => {
+                (matches!(ctx, AutoInvokeContext::Variable) || func.is_method) && func.arity() == 0
+            }
             Value::NativeFunction(func) => func.arity == Some(0),
             _ => false,
         };
@@ -435,6 +446,19 @@ impl Interpreter {
             return self.call_value(val, vec![], span);
         }
         Ok(val)
+    }
+
+    /// Evaluate a callee expression without auto-invoke, so that `func()` gets
+    /// the raw function reference rather than the auto-invoked result.
+    pub(crate) fn evaluate_callee(&mut self, expr: &Expr) -> RuntimeResult<Value> {
+        match &expr.kind {
+            ExprKind::Variable(name) => self.evaluate_variable(name, expr),
+            ExprKind::Member { object, name } => self.evaluate_member(object, name, expr.span),
+            ExprKind::SafeMember { object, name } => {
+                self.evaluate_safe_member(object, name, expr.span)
+            }
+            _ => self.evaluate(expr),
+        }
     }
 
     #[allow(clippy::arc_with_non_send_sync)]

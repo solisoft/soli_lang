@@ -1,0 +1,255 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Markdown</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-sky-400 to-cyan-400 bg-clip-text text-transparent">Markdown Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Convert Markdown text to HTML. Render content from databases, APIs, or user input.
+        </p>
+    </div>
+
+    <!-- Markdown.to_html -->
+    <section id="section-markdown-class" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-sky-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                </svg>
+            </span>
+            Markdown.to_html(markdown)
+        </h2>
+
+        <section id="def-markdown-to-html" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-markdown-to-html" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Markdown.to_html(markdown)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Convert a Markdown string to HTML. Supports standard Markdown plus tables, strikethrough, and task lists.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">markdown</code> : <code class="text-purple-400">String</code> - Markdown source text
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - The rendered HTML
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let html = Markdown.to_html("# Hello World")
+println(html)  # &lt;h1&gt;Hello World&lt;/h1&gt;</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Supported Syntax -->
+    <section id="section-syntax" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Supported Syntax</h2>
+
+        <div class="space-y-4">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Headings</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">Markdown.to_html("# Heading 1")    # &lt;h1&gt;Heading 1&lt;/h1&gt;
+Markdown.to_html("## Heading 2")   # &lt;h2&gt;Heading 2&lt;/h2&gt;
+Markdown.to_html("### Heading 3")  # &lt;h3&gt;Heading 3&lt;/h3&gt;</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Inline Formatting</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">Markdown.to_html("**bold**")        # &lt;strong&gt;bold&lt;/strong&gt;
+Markdown.to_html("*italic*")        # &lt;em&gt;italic&lt;/em&gt;
+Markdown.to_html("`code`")          # &lt;code&gt;code&lt;/code&gt;
+Markdown.to_html("~~strikethrough~~")  # &lt;del&gt;strikethrough&lt;/del&gt;</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Links and Images</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">Markdown.to_html("[Soli](https://example.com)")
+# &lt;a href="https://example.com"&gt;Soli&lt;/a&gt;
+
+Markdown.to_html("![alt](image.png)")
+# &lt;img src="image.png" alt="alt"&gt;</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Lists</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Unordered
+Markdown.to_html("- apple\n- banana\n- cherry")
+
+# Ordered
+Markdown.to_html("1. first\n2. second\n3. third")</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Code Blocks</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">let md = "```soli\nlet x = 42\nprintln(x)\n```"
+let html = Markdown.to_html(md)
+# Renders a &lt;pre&gt;&lt;code&gt; block</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Tables</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">let md = "| Name  | Age |\n|-------|-----|\n| Alice | 30  |\n| Bob   | 25  |"
+let html = Markdown.to_html(md)
+# Renders an HTML &lt;table&gt;</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Blockquotes</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">Markdown.to_html("> This is a quote")
+# &lt;blockquote&gt;&lt;p&gt;This is a quote&lt;/p&gt;&lt;/blockquote&gt;</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Common Patterns -->
+    <section id="section-patterns" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Common Patterns</h2>
+
+        <div class="space-y-4">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Rendering Content from a Database</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm"># In a controller action
+def show(req)
+    let post = Post.find(req.params["id"])
+    let html_body = Markdown.to_html(post.body)
+
+    render("posts/show", { post: post, html_body: html_body })
+end</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Building Dynamic Content</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm">let title = "Release Notes"
+let items = ["Bug fixes", "New features", "Performance"]
+
+let md = "# #{title}\n\n"
+for item in items
+    md = md + "- #{item}\n"
+end
+
+let html = Markdown.to_html(md)</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Processing API Responses</h3>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Fetch markdown content from an external API
+let response = Http.get("https://api.example.com/docs/readme")
+let data = JSON.parse(response.body)
+let html = Markdown.to_html(data["content"])</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Markdown Views -->
+    <section id="section-views" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-sky-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+            </span>
+            Markdown View Files
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <p class="text-gray-400 mb-4">
+                The template engine automatically renders <code class="text-amber-400">.md</code> and <code class="text-amber-400">.html.md</code> view files as HTML. No controller changes needed &mdash; just create a Markdown file in your views directory and it works like any other view.
+            </p>
+
+            <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Resolution Order</h4>
+            <p class="text-gray-400 mb-3">
+                When you call <code class="text-amber-400">render("posts/show", data)</code>, the template engine looks for files in this order:
+            </p>
+            <ol class="list-decimal list-inside text-gray-400 space-y-1 mb-4 ml-2">
+                <li><code class="text-amber-400">posts/show.html.slv</code> &mdash; Soli template (preferred)</li>
+                <li><code class="text-amber-400">posts/show.slv</code></li>
+                <li><code class="text-amber-400">posts/show.html.md</code> &mdash; Markdown view</li>
+                <li><code class="text-amber-400">posts/show.md</code> &mdash; Markdown view</li>
+            </ol>
+            <p class="text-gray-400">
+                If a <code class="text-amber-400">.slv</code> and <code class="text-amber-400">.md</code> file both exist for the same view, the <code class="text-amber-400">.slv</code> file wins.
+            </p>
+        </div>
+
+        <div class="space-y-4">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Static Markdown View</h3>
+                <p class="text-gray-400 mb-3">Create a plain Markdown file &mdash; it gets converted to HTML and wrapped in your layout automatically.</p>
+                <pre data-filename="app/views/docs/about.md"><code class="language-markdown text-sm"># About Us
+
+We build **great** software.
+
+- Fast
+- Reliable
+- Simple</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Markdown with Template Tags</h3>
+                <p class="text-gray-400 mb-3">Mix Markdown with Soli template tags. Template expressions are evaluated first, then the result is rendered as Markdown.</p>
+                <pre data-filename="app/views/posts/show.html.md"><code class="language-markdown text-sm"># &lt;%= title %&gt;
+
+*Published on &lt;%= published_at %&gt;*
+
+&lt;%= body %&gt;
+
+---
+
+Tags: &lt;% for tag in tags %&gt;**&lt;%= tag %&gt;** &lt;% end %&gt;</code></pre>
+                <pre data-filename="Controller"><code class="language-soli text-sm">def show(req)
+    let post = Post.find(req.params["id"])
+    render("posts/show", {
+        title: post.title,
+        published_at: post.published_at,
+        body: post.body,
+        tags: post.tags
+    })
+end</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Markdown Partials</h3>
+                <p class="text-gray-400 mb-3">Partials also work with Markdown. Prefix the filename with an underscore as usual.</p>
+                <pre data-filename="app/views/shared/_disclaimer.md"><code class="language-markdown text-sm">**Disclaimer:** This content is provided *as-is* without warranties.</code></pre>
+                <pre data-filename="app/views/posts/show.html.slv"><code class="language-html text-sm">&lt;article&gt;
+    &lt;h1&gt;&lt;%= title %&gt;&lt;/h1&gt;
+    &lt;div class="content"&gt;&lt;%- body %&gt;&lt;/div&gt;
+    &lt;%= render "shared/disclaimer" %&gt;
+&lt;/article&gt;</code></pre>
+            </div>
+        </div>
+
+        <div class="mt-4 rounded-xl bg-sky-500/10 border border-sky-500/20 p-5">
+            <h4 class="text-sm font-semibold text-sky-300 mb-2">When to use view files vs Markdown.to_html()</h4>
+            <div class="text-sm text-gray-400 space-y-2">
+                <p>Use <strong class="text-white">.md view files</strong> for pages where the content structure is known at design time &mdash; documentation pages, about pages, static content with a few dynamic variables.</p>
+                <p>Use <strong class="text-white">Markdown.to_html()</strong> for content that comes from external sources at runtime &mdash; database fields, API responses, user-submitted text.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/json" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            JSON Class
+        </a>
+        <a href="/docs/builtins/crypto" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Crypto Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

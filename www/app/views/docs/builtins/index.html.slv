@@ -38,6 +38,10 @@
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs font-bold">J</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">JSON</span>
             </a>
+            <a href="/docs/builtins/markdown" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-sky-500/20 flex items-center justify-center text-sky-400 text-xs font-bold">Md</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Markdown</span>
+            </a>
             <a href="/docs/builtins/crypto" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center text-red-400 text-xs font-bold">Cr</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Crypto</span>
@@ -131,6 +135,12 @@ and backtick syntax. Returns async results with stdout, stderr, and exit_code.</
                     <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">JSON Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Parse and stringify JSON data.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="/docs/builtins/markdown" class="group">
+                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Markdown Class</h3>
+                </a>
+                <p class="text-gray-400 mt-2">Convert Markdown text to HTML with tables, strikethrough, and task list support.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/crypto" class="group">

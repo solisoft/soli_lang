@@ -274,6 +274,10 @@ fn builtins_soap(req)
     render_docs("docs/builtins/soap", "SOAP Class", "builtins", "soap")
 end
 
+fn builtins_markdown(req)
+    render_docs("docs/builtins/markdown", "Markdown Class", "builtins", "markdown")
+end
+
 # ============================================================================
 # Utility
 # ============================================================================

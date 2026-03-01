@@ -2082,6 +2082,10 @@ video {
   border-color: rgb(239 68 68 / 0.3);
 }
 
+.border-sky-500\/20 {
+  border-color: rgb(14 165 233 / 0.2);
+}
+
 .border-teal-500\/30 {
   border-color: rgb(20 184 166 / 0.3);
 }
@@ -2385,6 +2389,14 @@ video {
   background-color: rgb(244 63 94 / 0.2);
 }
 
+.bg-sky-500\/10 {
+  background-color: rgb(14 165 233 / 0.1);
+}
+
+.bg-sky-500\/20 {
+  background-color: rgb(14 165 233 / 0.2);
+}
+
 .bg-slate-500\/20 {
   background-color: rgb(100 116 139 / 0.2);
 }
@@ -2626,6 +2638,12 @@ video {
 .from-rose-400 {
   --tw-gradient-from: #fb7185 var(--tw-gradient-from-position);
   --tw-gradient-to: rgb(251 113 133 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+.from-sky-400 {
+  --tw-gradient-from: #38bdf8 var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(56 189 248 / 0) var(--tw-gradient-to-position);
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
 
@@ -3350,6 +3368,16 @@ video {
 .text-rose-400 {
   --tw-text-opacity: 1;
   color: rgb(251 113 133 / var(--tw-text-opacity, 1));
+}
+
+.text-sky-300 {
+  --tw-text-opacity: 1;
+  color: rgb(125 211 252 / var(--tw-text-opacity, 1));
+}
+
+.text-sky-400 {
+  --tw-text-opacity: 1;
+  color: rgb(56 189 248 / var(--tw-text-opacity, 1));
 }
 
 .text-slate-400 {

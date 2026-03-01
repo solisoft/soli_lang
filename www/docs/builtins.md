@@ -763,7 +763,7 @@ Register a GET route handler.
 
 **Example:**
 ```soli
-fn health(req)
+def health(req)
     return {"status": 200, "body": "OK"}
 end
 
@@ -777,7 +777,7 @@ Register a POST route handler.
 
 **Example:**
 ```soli
-fn create_user(req)
+def create_user(req)
     let name = req["json"]["name"]
     return {"status": 201, "body": "Created: " + name}
 end
@@ -822,7 +822,7 @@ http_server_listen(3000);
 
 **Handler Function Signature:**
 ```soli
-fn my_handler(req)    let id = req["params"]["id"]           # Path parameters
+def my_handler(req)    let id = req["params"]["id"]           # Path parameters
     let name = req["query"]["name"]         # Query string
     let data = req["json"]["field"]         # JSON body
     let token = req["headers"]["Authorization"]  # Headers
@@ -1277,6 +1277,67 @@ println(json)  # {"name":"Alice","scores":[95,87]}
 
 let arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]
+```
+
+---
+
+## Markdown Class
+
+The `Markdown` class converts Markdown text to HTML. It supports standard Markdown syntax plus tables, strikethrough, and task lists.
+
+### Markdown.to_html(markdown)
+
+Converts a Markdown string to HTML.
+
+**Parameters:**
+- `markdown` (String) - Markdown source text
+
+**Returns:** String - The rendered HTML
+
+**Example:**
+```soli
+let html = Markdown.to_html("# Hello World")
+println(html)  # <h1>Hello World</h1>
+```
+
+**Supported syntax:**
+
+```soli
+# Headings
+Markdown.to_html("# H1\n## H2\n### H3")
+
+# Bold and italic
+Markdown.to_html("**bold** and *italic*")
+
+# Links
+Markdown.to_html("[Soli](https://example.com)")
+
+# Lists
+Markdown.to_html("- item 1\n- item 2\n- item 3")
+
+# Code blocks
+Markdown.to_html("```\nlet x = 1\n```")
+
+# Tables
+Markdown.to_html("| Name | Age |\n|------|-----|\n| Alice | 30 |")
+
+# Strikethrough
+Markdown.to_html("~~removed~~")
+
+# Blockquotes
+Markdown.to_html("> This is a quote")
+```
+
+**Use with dynamic content:**
+
+```soli
+# From a database field
+let post = Post.find(1)
+let html = Markdown.to_html(post.body)
+
+# With string interpolation
+let title = "My Post"
+let html = Markdown.to_html("# #{title}\n\nSome content here.")
 ```
 
 ---
@@ -2344,7 +2405,7 @@ Load translations from external JSON files at application startup. This is typic
 ```soli
 let i18n_translations = {}
 
-fn flatten_dict(dict, prefix) -> Hash
+def flatten_dict(dict, prefix) -> Hash
     let result = {}
     for (pair in entries(dict))
         let key = pair[0]
@@ -2362,7 +2423,7 @@ fn flatten_dict(dict, prefix) -> Hash
     return result
 end
 
-fn i18n_load_translations(locale, dict)
+def i18n_load_translations(locale, dict)
     let flat = flatten_dict(dict, locale)
     for (pair in entries(flat))
         i18n_translations[pair[0]] = pair[1]
@@ -2393,7 +2454,7 @@ http_server_listen(3000);
 **Using in Controllers:**
 
 ```soli
-fn home_index(req)
+def home_index(req)
     let welcome = I18n.translate("app.welcome", null, i18n_translations)
     let home_link = I18n.translate("nav.home", null, i18n_translations)
     
