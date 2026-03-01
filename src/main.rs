@@ -62,6 +62,33 @@ enum Command {
     },
     /// Lint source files
     Lint { path: Option<String> },
+    /// Initialize a new soli.toml
+    Init,
+    /// Add a dependency
+    Add {
+        name: String,
+        git: Option<String>,
+        path: Option<String>,
+        tag: Option<String>,
+        branch: Option<String>,
+        rev: Option<String>,
+        version: Option<String>,
+    },
+    /// Remove a dependency
+    Remove { name: String },
+    /// Install all dependencies
+    Install,
+    /// Update dependencies
+    Update { name: Option<String> },
+    /// Login to package registry
+    Login {
+        registry: Option<String>,
+        token: Option<String>,
+    },
+    /// Publish package to registry
+    Publish {
+        registry: Option<String>,
+    },
 }
 
 /// Database migration action
@@ -83,6 +110,15 @@ fn print_usage() {
     eprintln!();
     eprintln!("Usage: soli [options] [script.sl]");
     eprintln!("       soli new <app_name>");
+    eprintln!("       soli init");
+    eprintln!("       soli add <name> --git <url> [--tag TAG] [--branch BRANCH] [--rev REV]");
+    eprintln!("       soli add <name> --path <path>");
+    eprintln!("       soli add <name> --version <version>");
+    eprintln!("       soli remove <name>");
+    eprintln!("       soli install");
+    eprintln!("       soli update [name]");
+    eprintln!("       soli login [--registry URL] [--token TOKEN]");
+    eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
@@ -93,6 +129,15 @@ fn print_usage() {
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
     eprintln!("  new <app_name> --template <url>  Create from custom template URL");
+    eprintln!("  init                 Create soli.toml in current directory");
+    eprintln!("  add <name> --git <url>  Add a git dependency");
+    eprintln!("  add <name> --path <path>  Add a local path dependency");
+    eprintln!("  add <name> --version <ver>  Add a registry dependency");
+    eprintln!("  remove <name>        Remove a dependency");
+    eprintln!("  login                Login to the package registry");
+    eprintln!("  publish              Publish the current package to the registry");
+    eprintln!("  install              Install all dependencies from soli.toml");
+    eprintln!("  update [name]        Update dependencies (re-resolve from source)");
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
@@ -118,6 +163,13 @@ fn print_usage() {
     eprintln!("  soli script.sl                Run a script file");
     eprintln!("  soli new my_app               Create a new MVC application");
     eprintln!("  soli new my_app --template https://github.com/user/template/archive/main.tar.gz  Create from custom template");
+    eprintln!("  soli init                     Create soli.toml in current directory");
+    eprintln!("  soli add math --git https://github.com/user/soli-math --tag v1.0.0");
+    eprintln!("  soli add utils --path ../shared/utils");
+    eprintln!("  soli remove math              Remove dependency");
+    eprintln!("  soli install                  Install all dependencies");
+    eprintln!("  soli update                   Update all dependencies");
+    eprintln!("  soli update math              Update a specific dependency");
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
     eprintln!("  soli serve my_app             Start production server (no hot reload)");
@@ -355,6 +407,184 @@ fn parse_args() -> Options {
                 };
                 return options;
             }
+            "init" => {
+                options.command = Command::Init;
+                return options;
+            }
+            "add" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("add command requires a package name");
+                    print_usage();
+                    process::exit(64);
+                }
+                let name = args[i].clone();
+                i += 1;
+
+                let mut git = None;
+                let mut path = None;
+                let mut tag = None;
+                let mut branch = None;
+                let mut rev = None;
+                let mut version = None;
+
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--git" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--git requires a URL");
+                                process::exit(64);
+                            }
+                            git = Some(args[i].clone());
+                        }
+                        "--path" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--path requires a path");
+                                process::exit(64);
+                            }
+                            path = Some(args[i].clone());
+                        }
+                        "--tag" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--tag requires a value");
+                                process::exit(64);
+                            }
+                            tag = Some(args[i].clone());
+                        }
+                        "--branch" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--branch requires a value");
+                                process::exit(64);
+                            }
+                            branch = Some(args[i].clone());
+                        }
+                        "--rev" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--rev requires a value");
+                                process::exit(64);
+                            }
+                            rev = Some(args[i].clone());
+                        }
+                        "--version" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--version requires a value");
+                                process::exit(64);
+                            }
+                            version = Some(args[i].clone());
+                        }
+                        _ => {
+                            eprintln!("Unknown option for add: {}", args[i]);
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+
+                options.command = Command::Add {
+                    name,
+                    git,
+                    path,
+                    tag,
+                    branch,
+                    rev,
+                    version,
+                };
+                return options;
+            }
+            "remove" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("remove command requires a package name");
+                    print_usage();
+                    process::exit(64);
+                }
+                options.command = Command::Remove {
+                    name: args[i].clone(),
+                };
+                return options;
+            }
+            "install" => {
+                options.command = Command::Install;
+                return options;
+            }
+            "login" => {
+                i += 1;
+                let mut registry = None;
+                let mut token = None;
+
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--registry" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--registry requires a URL");
+                                process::exit(64);
+                            }
+                            registry = Some(args[i].clone());
+                        }
+                        "--token" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--token requires a value");
+                                process::exit(64);
+                            }
+                            token = Some(args[i].clone());
+                        }
+                        _ => {
+                            eprintln!("Unknown option for login: {}", args[i]);
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+
+                options.command = Command::Login { registry, token };
+                return options;
+            }
+            "publish" => {
+                i += 1;
+                let mut registry = None;
+
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--registry" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--registry requires a URL");
+                                process::exit(64);
+                            }
+                            registry = Some(args[i].clone());
+                        }
+                        _ => {
+                            eprintln!("Unknown option for publish: {}", args[i]);
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+
+                options.command = Command::Publish { registry };
+                return options;
+            }
+            "update" => {
+                i += 1;
+                let name = if i < args.len() && !args[i].starts_with('-') {
+                    Some(args[i].clone())
+                } else {
+                    None
+                };
+                options.command = Command::Update { name };
+                return options;
+            }
             "--no-type-check" => options.no_type_check = true,
             "lint" => {
                 i += 1;
@@ -497,6 +727,21 @@ fn main() {
             daemonize,
         } => run_serve(folder, *port, *dev_mode, *workers, *daemonize),
         Command::Lint { path } => run_lint(path.as_deref()),
+        Command::Init => run_init(),
+        Command::Add {
+            name,
+            git,
+            path,
+            tag,
+            branch,
+            rev,
+            version,
+        } => run_add(name, git, path, tag, branch, rev, version),
+        Command::Remove { name } => run_remove(name),
+        Command::Install => run_install(),
+        Command::Update { name } => run_update(name.as_deref()),
+        Command::Login { registry, token } => run_login(registry.as_deref(), token.as_deref()),
+        Command::Publish { registry } => run_publish(registry.as_deref()),
         Command::Test {
             path,
             jobs,
@@ -985,6 +1230,422 @@ fn collect_test_files(dir: &Path) -> Vec<std::path::PathBuf> {
     }
 
     files
+}
+
+fn run_init() {
+    use solilang::module::Package;
+
+    let toml_path = Path::new("soli.toml");
+    if toml_path.exists() {
+        eprintln!("soli.toml already exists in this directory");
+        process::exit(1);
+    }
+
+    // Use current directory name as package name
+    let name = env::current_dir()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+        .unwrap_or_else(|| "my-package".to_string());
+
+    let pkg = Package::new(&name);
+    let content = pkg.to_toml();
+
+    fs::write(toml_path, content).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to write soli.toml: {}", e);
+        process::exit(1);
+    });
+
+    println!();
+    println!("  \x1b[32m\x1b[1m✓\x1b[0m Created soli.toml");
+    println!();
+}
+
+fn run_add(
+    name: &str,
+    git: &Option<String>,
+    path: &Option<String>,
+    tag: &Option<String>,
+    branch: &Option<String>,
+    rev: &Option<String>,
+    version: &Option<String>,
+) {
+    use solilang::module::{installer, lockfile::LockFile, Dependency, Package};
+
+    // Find or create soli.toml
+    let toml_path = match Package::find(Path::new(".")) {
+        Some(p) => p,
+        None => {
+            eprintln!("No soli.toml found. Run 'soli init' first.");
+            process::exit(1);
+        }
+    };
+
+    let mut pkg = Package::load(&toml_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to load soli.toml: {}", e);
+        process::exit(1);
+    });
+
+    let dep = if let Some(git_url) = git {
+        Dependency::Git {
+            url: git_url.clone(),
+            tag: tag.clone(),
+            branch: branch.clone(),
+            rev: rev.clone(),
+        }
+    } else if let Some(dep_path) = path {
+        Dependency::Path(dep_path.clone())
+    } else if let Some(ver) = version {
+        Dependency::Version(ver.clone())
+    } else {
+        eprintln!("Error: Must specify --git, --path, or --version");
+        print_usage();
+        process::exit(64);
+    };
+
+    installer::add_dependency(&mut pkg, name, dep.clone());
+
+    // Write updated soli.toml
+    fs::write(&toml_path, pkg.to_toml()).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to write soli.toml: {}", e);
+        process::exit(1);
+    });
+
+    println!();
+    println!("  \x1b[32m\x1b[1m✓\x1b[0m Added dependency '{}'", name);
+
+    // Install if it's a remote dependency
+    if matches!(dep, Dependency::Git { .. } | Dependency::Version(_)) {
+        let lock_path = toml_path.with_file_name("soli.lock");
+        let mut lock = LockFile::load(&lock_path).unwrap_or_default();
+
+        println!();
+        println!("  Installing...");
+        if let Err(e) = installer::install_all(&pkg, &mut lock, &lock_path) {
+            eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    }
+
+    println!();
+}
+
+fn run_remove(name: &str) {
+    use solilang::module::{installer, lockfile::LockFile, Package};
+
+    let toml_path = match Package::find(Path::new(".")) {
+        Some(p) => p,
+        None => {
+            eprintln!("No soli.toml found.");
+            process::exit(1);
+        }
+    };
+
+    let mut pkg = Package::load(&toml_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to load soli.toml: {}", e);
+        process::exit(1);
+    });
+
+    if !pkg.dependencies.contains_key(name) {
+        eprintln!("Error: Dependency '{}' not found in soli.toml", name);
+        process::exit(1);
+    }
+
+    let lock_path = toml_path.with_file_name("soli.lock");
+    let mut lock = LockFile::load(&lock_path).unwrap_or_default();
+
+    installer::remove_dependency(&mut pkg, name, &mut lock);
+
+    // Write updated soli.toml
+    fs::write(&toml_path, pkg.to_toml()).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to write soli.toml: {}", e);
+        process::exit(1);
+    });
+
+    // Write updated lock file
+    if let Err(e) = lock.save(&lock_path) {
+        eprintln!("Warning: Failed to update lock file: {}", e);
+    }
+
+    println!();
+    println!("  \x1b[32m\x1b[1m✓\x1b[0m Removed dependency '{}'", name);
+    println!();
+}
+
+fn run_install() {
+    use solilang::module::{installer, lockfile::LockFile, Package};
+
+    let toml_path = match Package::find(Path::new(".")) {
+        Some(p) => p,
+        None => {
+            eprintln!("No soli.toml found. Run 'soli init' first.");
+            process::exit(1);
+        }
+    };
+
+    let pkg = Package::load(&toml_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to load soli.toml: {}", e);
+        process::exit(1);
+    });
+
+    let lock_path = toml_path.with_file_name("soli.lock");
+    let mut lock = LockFile::load(&lock_path).unwrap_or_default();
+
+    let remote_deps: Vec<_> = pkg
+        .dependencies
+        .iter()
+        .filter(|(_, d)| {
+            matches!(
+                d,
+                solilang::module::Dependency::Git { .. }
+                    | solilang::module::Dependency::Version(_)
+            )
+        })
+        .collect();
+
+    if remote_deps.is_empty() {
+        println!();
+        println!("  No remote dependencies to install.");
+        println!();
+        return;
+    }
+
+    println!();
+    println!("  \x1b[1mInstalling dependencies...\x1b[0m");
+    println!();
+
+    if let Err(e) = installer::install_all(&pkg, &mut lock, &lock_path) {
+        eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+        process::exit(1);
+    }
+
+    // Print summary
+    let summary = installer::installed_summary(&lock);
+    if !summary.is_empty() {
+        println!();
+        println!(
+            "  \x1b[32m\x1b[1m✓\x1b[0m {} package(s) installed",
+            summary.len()
+        );
+        for (name, rev, _) in &summary {
+            println!("    {} @ {}", name, rev);
+        }
+    }
+    println!();
+}
+
+fn run_update(name: Option<&str>) {
+    use solilang::module::{installer, lockfile::LockFile, Package};
+
+    let toml_path = match Package::find(Path::new(".")) {
+        Some(p) => p,
+        None => {
+            eprintln!("No soli.toml found. Run 'soli init' first.");
+            process::exit(1);
+        }
+    };
+
+    let pkg = Package::load(&toml_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to load soli.toml: {}", e);
+        process::exit(1);
+    });
+
+    let lock_path = toml_path.with_file_name("soli.lock");
+    let mut lock = LockFile::load(&lock_path).unwrap_or_default();
+
+    println!();
+    println!("  \x1b[1mUpdating dependencies...\x1b[0m");
+    println!();
+
+    let result = if let Some(pkg_name) = name {
+        installer::update_package(pkg_name, &pkg, &mut lock, &lock_path)
+    } else {
+        installer::update_all(&pkg, &mut lock, &lock_path)
+    };
+
+    if let Err(e) = result {
+        eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+        process::exit(1);
+    }
+
+    let summary = installer::installed_summary(&lock);
+    if !summary.is_empty() {
+        println!();
+        println!(
+            "  \x1b[32m\x1b[1m✓\x1b[0m {} package(s) up to date",
+            summary.len()
+        );
+        for (name, rev, _) in &summary {
+            println!("    {} @ {}", name, rev);
+        }
+    }
+    println!();
+}
+
+fn run_login(registry: Option<&str>, token: Option<&str>) {
+    use solilang::module::credentials::{save_credentials, Credentials};
+    use solilang::module::registry::DEFAULT_REGISTRY;
+
+    let registry_url = registry.unwrap_or(DEFAULT_REGISTRY);
+
+    let token_value = if let Some(t) = token {
+        t.to_string()
+    } else {
+        // Prompt interactively
+        eprint!("  Enter API token: ");
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .unwrap_or_else(|e| {
+                eprintln!("Error reading input: {}", e);
+                process::exit(1);
+            });
+        let input = input.trim().to_string();
+        if input.is_empty() {
+            eprintln!("Error: Token cannot be empty");
+            process::exit(1);
+        }
+        input
+    };
+
+    let creds = Credentials {
+        url: registry_url.to_string(),
+        token: token_value,
+    };
+
+    save_credentials(&creds).unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        process::exit(1);
+    });
+
+    println!();
+    println!(
+        "  \x1b[32m\x1b[1m✓\x1b[0m Logged in to {}",
+        registry_url
+    );
+    println!();
+}
+
+fn run_publish(registry: Option<&str>) {
+    use solilang::module::credentials::load_credentials;
+    use solilang::module::registry::{self, DEFAULT_REGISTRY};
+    use solilang::module::Package;
+
+    let toml_path = match Package::find(Path::new(".")) {
+        Some(p) => p,
+        None => {
+            eprintln!("No soli.toml found. Run 'soli init' first.");
+            process::exit(1);
+        }
+    };
+
+    let pkg = Package::load(&toml_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to load soli.toml: {}", e);
+        process::exit(1);
+    });
+
+    if pkg.name.is_empty() {
+        eprintln!("Error: package.name is required in soli.toml");
+        process::exit(1);
+    }
+    if pkg.version.is_empty() {
+        eprintln!("Error: package.version is required in soli.toml");
+        process::exit(1);
+    }
+
+    let creds = load_credentials().unwrap_or_else(|| {
+        eprintln!("Error: Not logged in. Run 'soli login' first.");
+        process::exit(1);
+    });
+
+    let registry_url = match registry {
+        Some(url) => url.to_string(),
+        None if !creds.url.is_empty() => creds.url.clone(),
+        None => DEFAULT_REGISTRY.to_string(),
+    };
+
+    let project_dir = toml_path.parent().unwrap_or(Path::new("."));
+    let description = pkg.description.as_deref().unwrap_or("");
+
+    // Create tarball
+    println!();
+    println!("  \x1b[1mPackaging {}@{}...\x1b[0m", pkg.name, pkg.version);
+
+    let tarball_path = std::env::temp_dir().join(format!("{}-{}.tar.gz", pkg.name, pkg.version));
+    create_tarball(project_dir, &tarball_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to create tarball: {}", e);
+        process::exit(1);
+    });
+
+    println!("  \x1b[1mPublishing to {}...\x1b[0m", registry_url);
+
+    registry::publish_package(
+        &registry_url,
+        &creds.token,
+        &pkg.name,
+        &pkg.version,
+        description,
+        &tarball_path,
+    )
+    .unwrap_or_else(|e| {
+        // Clean up tarball on error
+        let _ = fs::remove_file(&tarball_path);
+        eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+        process::exit(1);
+    });
+
+    // Clean up tarball
+    let _ = fs::remove_file(&tarball_path);
+
+    println!();
+    println!(
+        "  \x1b[32m\x1b[1m✓\x1b[0m Published {}@{}",
+        pkg.name, pkg.version
+    );
+    println!();
+}
+
+/// Create a tar.gz archive of the project directory.
+fn create_tarball(project_dir: &Path, dest: &std::path::Path) -> Result<(), String> {
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use walkdir::WalkDir;
+
+    let file = fs::File::create(dest).map_err(|e| format!("Failed to create tarball: {}", e))?;
+    let encoder = GzEncoder::new(file, Compression::default());
+    let mut archive = tar::Builder::new(encoder);
+
+    let skip_dirs = [".git", "node_modules", "target", ".soli"];
+
+    for entry in WalkDir::new(project_dir).into_iter().filter_entry(|e| {
+        let name = e.file_name().to_string_lossy();
+        !skip_dirs.iter().any(|d| name == *d)
+    }) {
+        let entry = entry.map_err(|e| format!("Failed to walk directory: {}", e))?;
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(project_dir)
+            .map_err(|e| format!("Failed to compute relative path: {}", e))?;
+
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+
+        if path.is_file() {
+            archive
+                .append_path_with_name(path, relative)
+                .map_err(|e| format!("Failed to add file to tarball: {}", e))?;
+        } else if path.is_dir() {
+            archive
+                .append_dir(relative, path)
+                .map_err(|e| format!("Failed to add directory to tarball: {}", e))?;
+        }
+    }
+
+    archive
+        .finish()
+        .map_err(|e| format!("Failed to finalize tarball: {}", e))?;
+
+    Ok(())
 }
 
 fn run_db_migrate(action: &DbMigrateAction, folder: &str) {

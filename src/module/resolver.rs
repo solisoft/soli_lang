@@ -8,6 +8,7 @@ use crate::ast::{ImportDecl, ImportSpecifier, Program, Stmt, StmtKind};
 use crate::lexer::Scanner;
 use crate::parser::Parser;
 
+use super::lockfile::LockFile;
 use super::package::Package;
 
 /// A resolved module with its exports.
@@ -66,6 +67,8 @@ pub struct ModuleResolver {
     base_dir: PathBuf,
     /// Optional package configuration
     package: Option<Package>,
+    /// Optional lock file for git dependencies
+    lock: Option<LockFile>,
     /// Cache of resolved modules
     cache: HashMap<PathBuf, ResolvedModule>,
     /// Currently resolving stack (for cycle detection)
@@ -76,11 +79,21 @@ impl ModuleResolver {
     /// Create a new module resolver.
     pub fn new(base_dir: &Path) -> Self {
         // Try to find and load package file
-        let package = Package::find(base_dir).and_then(|p| Package::load(&p).ok());
+        let (package, lock) = match Package::find(base_dir) {
+            Some(pkg_path) => {
+                let pkg = Package::load(&pkg_path).ok();
+                // Try to load lock file from same directory as soli.toml
+                let lock_path = pkg_path.with_file_name("soli.lock");
+                let lock = LockFile::load(&lock_path).ok();
+                (pkg, lock)
+            }
+            None => (None, None),
+        };
 
         ModuleResolver {
             base_dir: base_dir.to_path_buf(),
             package,
+            lock,
             cache: HashMap::new(),
             resolving: Vec::new(),
         }
@@ -88,9 +101,14 @@ impl ModuleResolver {
 
     /// Create a module resolver with an explicit package.
     pub fn with_package(base_dir: &Path, package: Package) -> Self {
+        // Try to load lock file
+        let lock_path = base_dir.join("soli.lock");
+        let lock = LockFile::load(&lock_path).ok();
+
         ModuleResolver {
             base_dir: base_dir.to_path_buf(),
             package: Some(package),
+            lock,
             cache: HashMap::new(),
             resolving: Vec::new(),
         }
@@ -228,8 +246,33 @@ impl ModuleResolver {
                         return self.find_module_file(&resolved);
                     }
                     super::package::Dependency::Version(_) => {
+                        if let Some(entry) =
+                            self.lock.as_ref().and_then(|l| l.packages.get(parts[0]))
+                        {
+                            let mut resolved = entry.cache_path.clone();
+                            for part in &parts[1..] {
+                                resolved = resolved.join(part);
+                            }
+                            return self.find_module_file(&resolved);
+                        }
                         return Err(ResolveError::NotFound(format!(
-                            "Version-based dependencies not yet supported: {}",
+                            "Package '{}' not installed. Run 'soli install'",
+                            import_path
+                        )));
+                    }
+                    super::package::Dependency::Git { .. } => {
+                        // Look up installed path from lock file
+                        if let Some(entry) =
+                            self.lock.as_ref().and_then(|l| l.packages.get(parts[0]))
+                        {
+                            let mut resolved = entry.cache_path.clone();
+                            for part in &parts[1..] {
+                                resolved = resolved.join(part);
+                            }
+                            return self.find_module_file(&resolved);
+                        }
+                        return Err(ResolveError::NotFound(format!(
+                            "Package '{}' not installed. Run 'soli install'",
                             import_path
                         )));
                     }

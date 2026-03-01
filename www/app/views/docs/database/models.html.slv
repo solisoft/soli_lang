@@ -111,15 +111,23 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Query Builder Chaining</h2>
-    <p class="text-gray-400 mb-6">Chain methods to build complex queries:</p>
+    <p class="text-gray-400 mb-6">Chain methods to build complex queries. You can start a chain with <code>.where()</code>, <code>.order()</code>, or <code>.limit()</code>:</p>
 
-    <pre><code class="language-soli text-sm">let results = User
+    <pre><code class="language-soli text-sm"># Start with .where()
+let results = User
     .where("doc.age >= @age", { "age": 18 })
     .where("doc.active == @active", { "active": true })
     .order("created_at", "desc")
     .limit(10)
     .offset(20)
     .all
+
+# Start with .order() — no filter needed
+let recent = User.order("created_at", "desc").limit(5).all
+
+# Start with .limit()
+let sample = User.limit(3).all
+
 # Get first result only
 let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first
 # Count with conditions
@@ -146,6 +154,14 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count</code></p
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.where(filter, bind_vars)</code></td>
                     <td class="py-3 px-4 text-gray-400">Query with SDBQL filter</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.order(field, direction)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Start a query chain sorted by field ("asc"/"desc")</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.limit(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Start a query chain limited to n results</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.all</code></td>
@@ -396,8 +412,12 @@ queries:</p>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER doc.age >= @age RETURN doc</code></td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">.order("name", "asc")</code></td>
-                    <td class="py-3 px-4"><code class="text-green-300">... SORT doc.name ASC RETURN doc</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.order("name", "asc").all</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users SORT doc.name ASC RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.order("name", "asc").limit(10).all</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users SORT doc.name ASC LIMIT 10 RETURN doc</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.limit(10).offset(20)</code></td>

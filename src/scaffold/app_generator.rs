@@ -137,6 +137,11 @@ pub fn create_readme(app_path: &Path, name: &str) -> Result<(), String> {
     write_file(&app_path.join("README.md"), &app::readme(name))
 }
 
+/// Create soli.toml
+pub fn create_soli_toml(app_path: &Path, name: &str) -> Result<(), String> {
+    write_file(&app_path.join("soli.toml"), &app::soli_toml(name))
+}
+
 /// Install npm dependencies with spinner
 pub fn install_npm_dependencies(app_path: &Path) -> bool {
     // Check if npm is available
@@ -450,6 +455,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_gitignore(app_path)?;
     create_tailwind_config(app_path)?;
     create_package_json(app_path, name)?;
+    create_soli_toml(app_path, name)?;
     ProgressDisplay::done();
 
     // Step 3: Create MVC components

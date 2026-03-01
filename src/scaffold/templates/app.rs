@@ -53,6 +53,18 @@ pub fn package_json(name: &str) -> String {
     )
 }
 
+/// Generate soli.toml content
+pub fn soli_toml(name: &str) -> String {
+    format!(
+        r#"[package]
+name = "{}"
+version = "0.1.0"
+main = "app.sl"
+"#,
+        name
+    )
+}
+
 /// Generate README.md content
 pub fn readme(name: &str) -> String {
     format!(

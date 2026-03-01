@@ -4,16 +4,18 @@ use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-
+use crate::serve::get_tokio_handle;
 use crate::interpreter::builtins::http_class::get_http_client;
 use crate::interpreter::value::{HashKey, Value};
-use crate::serve::get_tokio_handle;
 
-use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name};
+use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token};
 
-/// Apply DB authentication headers (API key or basic auth) to a request.
+/// Apply DB authentication headers.
+/// Priority: JWT (fastest) > API key > Basic auth fallback.
 fn apply_db_auth(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-    if let Some(key) = get_api_key() {
+    if let Some(jwt) = get_jwt_token() {
+        builder.header("Authorization", format!("Bearer {}", jwt))
+    } else if let Some(key) = get_api_key() {
         builder.header("X-API-Key", key)
     } else if let Some(auth) = get_basic_auth() {
         builder.header("Authorization", auth)
@@ -44,6 +46,7 @@ where
         FALLBACK_RT.with(|rt| rt.block_on(future))
     }
 }
+
 
 /// Execute DB operation that returns serde_json::Value directly.
 /// This skips the double JSON conversion (Value -> String -> Value).
@@ -302,11 +305,14 @@ use crate::interpreter::builtins::model::core::DB_CONFIG;
 use crate::solidb_http::SoliDBClient;
 
 /// Create a SoliDBClient configured with database and auth from the environment.
+/// Auth priority: JWT (fastest) > API key > Basic auth (matches apply_db_auth).
 fn create_db_client() -> Result<SoliDBClient, String> {
     let mut client =
         SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
     client.set_database(get_database_name());
-    if let Some(key) = get_api_key() {
+    if let Some(jwt) = get_jwt_token() {
+        client = client.with_jwt_token(jwt);
+    } else if let Some(key) = get_api_key() {
         client = client.with_api_key(key);
     } else if let (Ok(user), Ok(pass)) = (
         std::env::var("SOLIDB_USERNAME"),

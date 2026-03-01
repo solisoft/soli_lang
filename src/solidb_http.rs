@@ -3,7 +3,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::interpreter::builtins::http_class::get_http_client;
-use crate::serve::get_tokio_handle;
 
 fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
     rmp_serde::from_slice(bytes).map_err(|e| SoliDBError {
@@ -11,6 +10,7 @@ fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
         code: None,
     })
 }
+use crate::serve::get_tokio_handle;
 
 // Fallback tokio runtime for SoliDB operations outside of a server context
 // (e.g., migrations, REPL). Uses a lightweight current-thread runtime.
@@ -35,6 +35,7 @@ pub struct SoliDBClient {
     base_url: String,
     database: Option<String>,
     api_key: Option<String>,
+    jwt_token: Option<String>,
     username: Option<String>,
     password: Option<String>,
 }
@@ -76,6 +77,7 @@ impl SoliDBClient {
             base_url,
             database: None,
             api_key: None,
+            jwt_token: None,
             username: None,
             password: None,
         })
@@ -83,6 +85,11 @@ impl SoliDBClient {
 
     pub fn with_api_key(mut self, api_key: &str) -> Self {
         self.api_key = Some(api_key.to_string());
+        self
+    }
+
+    pub fn with_jwt_token(mut self, token: &str) -> Self {
+        self.jwt_token = Some(token.to_string());
         self
     }
 
@@ -110,14 +117,15 @@ impl SoliDBClient {
         body: Option<&Value>,
     ) -> Result<Value, SoliDBError> {
         let url = format!("{}{}", self.base_url, path);
-        let client = get_http_client();
+        let client = get_http_client().clone();
         let mut request = client.request(method.clone(), &url);
 
-        if let Some(api_key) = &self.api_key {
+        // Auth priority: JWT (fastest) > API key > Basic auth
+        if let Some(jwt) = &self.jwt_token {
+            request = request.header("Authorization", format!("Bearer {}", jwt));
+        } else if let Some(api_key) = &self.api_key {
             request = request.header("x-api-key", api_key);
-        }
-
-        if let (Some(u), Some(p)) = (&self.username, &self.password) {
+        } else if let (Some(u), Some(p)) = (&self.username, &self.password) {
             request = request.basic_auth(u, Some(p));
         }
 
@@ -133,54 +141,61 @@ impl SoliDBClient {
                 .body(json_bytes);
         }
 
-        let response = block_on(request.send()).map_err(|e| SoliDBError {
-            message: format!("HTTP request failed: {}", e),
-            code: None,
-        })?;
+        let path_owned = path.to_string();
+        let method_clone = method.clone();
 
-        let status = response.status();
-
-        if !status.is_success() {
-            let error_text =
-                block_on(response.text()).unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(SoliDBError {
-                message: format!("HTTP {} {}: {}", status, path, error_text),
-                code: Some(status.as_u16() as i32),
-            });
-        }
-
-        let content_type = response
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_string();
-
-        let bytes = block_on(response.bytes()).map_err(|e| SoliDBError {
-            message: format!("Failed to read response: {}", e),
-            code: None,
-        })?;
-
-        if bytes.is_empty() {
-            return Err(SoliDBError {
-                message: format!("Empty response for HTTP {} {}", method, path),
+        // Single block_on for the entire operation (send + read response).
+        // Holding a response body stream outside a tokio context causes
+        // "there is no reactor running" panics with reqwest 0.12.
+        block_on(async move {
+            let response = request.send().await.map_err(|e| SoliDBError {
+                message: format!("HTTP request failed: {}", e),
                 code: None,
-            });
-        }
+            })?;
 
-        if content_type.contains("msgpack") {
-            deserialize_msgpack(&bytes)
-        } else {
-            // Fallback to JSON if server doesn't support msgpack
-            serde_json::from_slice(&bytes).map_err(|e| SoliDBError {
-                message: format!(
-                    "Failed to parse response: {} - Body: {}",
-                    e,
-                    String::from_utf8_lossy(&bytes)
-                ),
+            let status = response.status();
+
+            if !status.is_success() {
+                let error_text =
+                    response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(SoliDBError {
+                    message: format!("HTTP {} {}: {}", status, path_owned, error_text),
+                    code: Some(status.as_u16() as i32),
+                });
+            }
+
+            let content_type = response
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+
+            let bytes = response.bytes().await.map_err(|e| SoliDBError {
+                message: format!("Failed to read response: {}", e),
                 code: None,
-            })
-        }
+            })?;
+
+            if bytes.is_empty() {
+                return Err(SoliDBError {
+                    message: format!("Empty response for HTTP {} {}", method_clone, path_owned),
+                    code: None,
+                });
+            }
+
+            if content_type.contains("msgpack") {
+                deserialize_msgpack(&bytes)
+            } else {
+                serde_json::from_slice(&bytes).map_err(|e| SoliDBError {
+                    message: format!(
+                        "Failed to parse response: {} - Body: {}",
+                        e,
+                        String::from_utf8_lossy(&bytes)
+                    ),
+                    code: None,
+                })
+            }
+        })
     }
 
     pub fn ping(&self) -> Result<bool, SoliDBError> {

@@ -56,7 +56,6 @@ pub(crate) fn load_models(
     {
         let path = entry.path();
         if path.extension().is_some_and(|ext| ext == "sl") {
-            println!("Loading model: {}", path.display());
             execute_file(interpreter, &path)?;
         }
     }
@@ -152,8 +151,6 @@ pub(crate) fn load_controller(
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
-
-    println!("Loading controller: {}", controller_name);
 
     // Track file for hot reload
     file_tracker.track(controller_path);

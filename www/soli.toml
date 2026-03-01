@@ -1,0 +1,7 @@
+[package]
+name = "soli-www-demo"
+version = "0.1.0"
+description = "Soli web framework demo application"
+
+[dependencies]
+soli-state-machine = { git = "https://github.com/solisoft/soli-state-machine", branch = "main" }

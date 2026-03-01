@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const DEFAULT_VERSION: &str = env!("CARGO_PKG_VERSION", "0.2.0");
 
@@ -19,6 +19,8 @@ pub struct Package {
     pub main: String,
     /// Dependencies: name -> path or version
     pub dependencies: HashMap<String, Dependency>,
+    /// Directory containing soli.toml (set by Package::load)
+    pub package_dir: Option<PathBuf>,
 }
 
 /// A package dependency.
@@ -28,6 +30,13 @@ pub enum Dependency {
     Path(String),
     /// Version from registry (future)
     Version(String),
+    /// Git repository dependency
+    Git {
+        url: String,
+        tag: Option<String>,
+        branch: Option<String>,
+        rev: Option<String>,
+    },
 }
 
 /// Errors that can occur during package parsing.
@@ -65,13 +74,16 @@ impl Package {
             description: None,
             main: "app.sl".to_string(),
             dependencies: HashMap::new(),
+            package_dir: None,
         }
     }
 
     /// Load a package from a soli.toml file.
     pub fn load(path: &Path) -> Result<Self, PackageError> {
         let content = fs::read_to_string(path)?;
-        Self::parse(&content)
+        let mut pkg = Self::parse(&content)?;
+        pkg.package_dir = path.parent().map(|p| p.to_path_buf());
+        Ok(pkg)
     }
 
     /// Parse a soli.toml content string.
@@ -196,25 +208,142 @@ fn parse_dependency(value: &str) -> Result<Dependency, PackageError> {
         }
     }
 
-    // Inline table: { path = "..." }
+    // Inline table: { path = "..." } or { git = "...", tag = "v1.0" }
     if value.starts_with('{') && value.ends_with('}') {
-        let inner = &value[1..value.len() - 1].trim();
-        if let Some((key, val)) = inner.split_once('=') {
-            let key = key.trim();
-            let val = parse_string_value(val.trim())?;
+        let inner = value[1..value.len() - 1].trim();
+        let pairs = parse_inline_table_pairs(inner)?;
 
-            match key {
-                "path" => return Ok(Dependency::Path(val)),
-                "version" => return Ok(Dependency::Version(val)),
-                _ => return Err(PackageError::InvalidField(format!("dependency.{}", key))),
-            }
+        if pairs.contains_key("git") {
+            return Ok(Dependency::Git {
+                url: pairs.get("git").cloned().unwrap_or_default(),
+                tag: pairs.get("tag").cloned(),
+                branch: pairs.get("branch").cloned(),
+                rev: pairs.get("rev").cloned(),
+            });
         }
+
+        if let Some(path) = pairs.get("path") {
+            return Ok(Dependency::Path(path.clone()));
+        }
+
+        if let Some(version) = pairs.get("version") {
+            return Ok(Dependency::Version(version.clone()));
+        }
+
+        return Err(PackageError::ParseError(format!(
+            "Inline table must contain 'path', 'version', or 'git' key: {}",
+            value
+        )));
     }
 
     Err(PackageError::ParseError(format!(
         "Invalid dependency value: {}",
         value
     )))
+}
+
+/// Parse comma-separated key=value pairs from an inline table, respecting quoted values.
+fn parse_inline_table_pairs(inner: &str) -> Result<HashMap<String, String>, PackageError> {
+    let mut pairs = HashMap::new();
+    let mut remaining = inner;
+
+    while !remaining.is_empty() {
+        // Find key = value
+        let eq_pos = remaining.find('=').ok_or_else(|| {
+            PackageError::ParseError(format!("Expected key = value in inline table: {}", inner))
+        })?;
+
+        let key = remaining[..eq_pos].trim();
+        remaining = remaining[eq_pos + 1..].trim_start();
+
+        // Parse the value (quoted string)
+        let (val, rest) = if let Some(stripped) = remaining.strip_prefix('"') {
+            // Find closing quote
+            let end = stripped.find('"').ok_or_else(|| {
+                PackageError::ParseError(format!("Unterminated string in inline table: {}", inner))
+            })?;
+            let val = &stripped[..end];
+            let rest = stripped[end + 1..].trim_start();
+            // Skip comma if present
+            let rest = rest.strip_prefix(',').unwrap_or(rest).trim_start();
+            (val.to_string(), rest)
+        } else if let Some(stripped) = remaining.strip_prefix('\'') {
+            let end = stripped.find('\'').ok_or_else(|| {
+                PackageError::ParseError(format!("Unterminated string in inline table: {}", inner))
+            })?;
+            let val = &stripped[..end];
+            let rest = stripped[end + 1..].trim_start();
+            let rest = rest.strip_prefix(',').unwrap_or(rest).trim_start();
+            (val.to_string(), rest)
+        } else {
+            // Unquoted value - read until comma or end
+            if let Some(comma) = remaining.find(',') {
+                let val = remaining[..comma].trim();
+                (val.to_string(), remaining[comma + 1..].trim_start())
+            } else {
+                (remaining.trim().to_string(), "")
+            }
+        };
+
+        pairs.insert(key.to_string(), val);
+        remaining = rest;
+    }
+
+    Ok(pairs)
+}
+
+impl Package {
+    /// Serialize the package back to TOML format.
+    pub fn to_toml(&self) -> String {
+        let mut out = String::new();
+
+        out.push_str("[package]\n");
+        out.push_str(&format!("name = \"{}\"\n", self.name));
+        out.push_str(&format!("version = \"{}\"\n", self.version));
+        if let Some(ref desc) = self.description {
+            out.push_str(&format!("description = \"{}\"\n", desc));
+        }
+        if self.main != "app.sl" {
+            out.push_str(&format!("main = \"{}\"\n", self.main));
+        }
+
+        if !self.dependencies.is_empty() {
+            out.push_str("\n[dependencies]\n");
+            // Sort dependencies for deterministic output
+            let mut deps: Vec<_> = self.dependencies.iter().collect();
+            deps.sort_by_key(|(k, _)| (*k).clone());
+            for (name, dep) in deps {
+                match dep {
+                    Dependency::Path(p) => {
+                        out.push_str(&format!("{} = {{ path = \"{}\" }}\n", name, p));
+                    }
+                    Dependency::Version(v) => {
+                        out.push_str(&format!("{} = \"{}\"\n", name, v));
+                    }
+                    Dependency::Git {
+                        url,
+                        tag,
+                        branch,
+                        rev,
+                    } => {
+                        let mut parts = vec![format!("git = \"{}\"", url)];
+                        if let Some(t) = tag {
+                            parts.push(format!("tag = \"{}\"", t));
+                        }
+                        if let Some(b) = branch {
+                            parts.push(format!("branch = \"{}\"", b));
+                        }
+                        if let Some(r) = rev {
+                            parts.push(format!("rev = \"{}\"", r));
+                        }
+                        out.push_str(&format!("{} = {{ {} }}\n", name, parts.join(", ")));
+                    }
+                }
+            }
+        }
+
+        out
+    }
 }
 
 #[cfg(test)]
@@ -260,6 +389,97 @@ http = { path = "../http-lib" }
         match &pkg.dependencies["http"] {
             Dependency::Path(p) => assert_eq!(p, "../http-lib"),
             _ => panic!("Expected path dependency"),
+        }
+    }
+
+    #[test]
+    fn test_parse_git_dependency() {
+        let content = r#"
+[package]
+name = "my-app"
+version = "1.0.0"
+
+[dependencies]
+math = { git = "https://github.com/user/soli-math", tag = "v1.0.0" }
+utils = { git = "https://github.com/user/soli-utils", branch = "main" }
+core = { git = "https://github.com/user/soli-core", rev = "abc123" }
+"#;
+
+        let pkg = Package::parse(content).unwrap();
+        assert_eq!(pkg.dependencies.len(), 3);
+
+        match &pkg.dependencies["math"] {
+            Dependency::Git {
+                url,
+                tag,
+                branch,
+                rev,
+            } => {
+                assert_eq!(url, "https://github.com/user/soli-math");
+                assert_eq!(tag.as_deref(), Some("v1.0.0"));
+                assert!(branch.is_none());
+                assert!(rev.is_none());
+            }
+            _ => panic!("Expected git dependency"),
+        }
+
+        match &pkg.dependencies["utils"] {
+            Dependency::Git {
+                url,
+                tag,
+                branch,
+                rev,
+            } => {
+                assert_eq!(url, "https://github.com/user/soli-utils");
+                assert!(tag.is_none());
+                assert_eq!(branch.as_deref(), Some("main"));
+                assert!(rev.is_none());
+            }
+            _ => panic!("Expected git dependency"),
+        }
+
+        match &pkg.dependencies["core"] {
+            Dependency::Git {
+                url,
+                tag,
+                branch,
+                rev,
+            } => {
+                assert_eq!(url, "https://github.com/user/soli-core");
+                assert!(tag.is_none());
+                assert!(branch.is_none());
+                assert_eq!(rev.as_deref(), Some("abc123"));
+            }
+            _ => panic!("Expected git dependency"),
+        }
+    }
+
+    #[test]
+    fn test_to_toml_roundtrip() {
+        let content = r#"
+[package]
+name = "my-app"
+version = "1.0.0"
+
+[dependencies]
+math = { git = "https://github.com/user/soli-math", tag = "v1.0.0" }
+utils = { path = "../utils" }
+"#;
+
+        let pkg = Package::parse(content).unwrap();
+        let toml_str = pkg.to_toml();
+        let pkg2 = Package::parse(&toml_str).unwrap();
+
+        assert_eq!(pkg2.name, "my-app");
+        assert_eq!(pkg2.version, "1.0.0");
+        assert_eq!(pkg2.dependencies.len(), 2);
+
+        match &pkg2.dependencies["math"] {
+            Dependency::Git { url, tag, .. } => {
+                assert_eq!(url, "https://github.com/user/soli-math");
+                assert_eq!(tag.as_deref(), Some("v1.0.0"));
+            }
+            _ => panic!("Expected git dependency"),
         }
     }
 }

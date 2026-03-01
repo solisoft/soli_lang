@@ -38,6 +38,58 @@ impl DbConfig {
     }
 }
 
+/// Cached JWT token obtained by logging in with Basic auth credentials.
+/// This avoids Argon2 password verification on every DB request.
+static CACHED_JWT: OnceLock<Option<String>> = OnceLock::new();
+
+/// Initialize JWT token by logging in to SoliDB. Call this at startup (outside tokio).
+pub fn init_jwt_token() {
+    let _ = get_jwt_token();
+}
+
+/// Get cached JWT token, logging in with Basic auth credentials (via ureq, no tokio).
+/// JWT is faster than both API key and Basic auth for subsequent requests.
+pub fn get_jwt_token() -> Option<&'static str> {
+    CACHED_JWT
+        .get_or_init(|| {
+            let (username, password) = match (
+                std::env::var("SOLIDB_USERNAME").ok(),
+                std::env::var("SOLIDB_PASSWORD").ok(),
+            ) {
+                (Some(u), Some(p)) => (u, p),
+                _ => return None,
+            };
+            let host =
+                std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+            let login_url = format!("{}/auth/login", host);
+            let payload = serde_json::json!({
+                "username": username,
+                "password": password,
+            });
+            // Use ureq (synchronous) to avoid tokio runtime conflicts
+            match ureq::post(&login_url)
+                .set("Content-Type", "application/json")
+                .send_string(&payload.to_string())
+            {
+                Ok(resp) => match resp.into_string() {
+                    Ok(body) => match serde_json::from_str::<serde_json::Value>(&body) {
+                        Ok(json) => json
+                            .get("token")
+                            .and_then(|t| t.as_str())
+                            .map(|t| t.to_string()),
+                        Err(_) => None,
+                    },
+                    Err(_) => None,
+                },
+                Err(e) => {
+                    eprintln!("Warning: JWT login failed ({}), falling back", e);
+                    None
+                }
+            }
+        })
+        .as_deref()
+}
+
 lazy_static! {
     /// Global registry mapping class names to their metadata.
     pub static ref MODEL_REGISTRY: RwLock<HashMap<String, ModelMetadata>> =
@@ -509,6 +561,62 @@ impl Model {
                 let collection = get_collection_from_class(&args)?;
                 let sdbql = format!("FOR doc IN {} RETURN doc", collection);
                 Ok(exec_async_query_raw(sdbql))
+            })),
+        );
+
+        // Model.order(field, direction?) - Returns a QueryBuilder with ordering (no filter)
+        native_static_methods.insert(
+            "order".to_string(),
+            Rc::new(NativeFunction::new("Model.order", Some(3), |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let collection = class_name_to_collection(&class_name);
+
+                let field = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(other) => {
+                        return Err(format!(
+                            "Model.order() expects string field name, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("Model.order() requires a field name".to_string()),
+                };
+
+                let direction = match args.get(2) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => "asc".to_string(),
+                };
+
+                let mut qb = QueryBuilder::new(class_name, collection);
+                qb.set_order(field, direction);
+
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Model.limit(n) - Returns a QueryBuilder with a limit (no filter)
+        native_static_methods.insert(
+            "limit".to_string(),
+            Rc::new(NativeFunction::new("Model.limit", Some(2), |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let collection = class_name_to_collection(&class_name);
+
+                let limit = match args.get(1) {
+                    Some(Value::Int(n)) => *n as usize,
+                    Some(Value::Float(f)) => *f as usize,
+                    Some(other) => {
+                        return Err(format!(
+                            "Model.limit() expects integer, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("Model.limit() requires a number".to_string()),
+                };
+
+                let mut qb = QueryBuilder::new(class_name, collection);
+                qb.set_limit(limit);
+
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
         );
 

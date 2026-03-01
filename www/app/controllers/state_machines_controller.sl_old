@@ -1,6 +1,6 @@
 # StateMachine Controller - REST API for State Machine management
 
-import "../../stdlib/state_machine.sl"
+import "soli-state-machine"
 
 # In-memory store for demo (use SolidB/DB in production)
 let state_machines: Hash = {}

@@ -824,6 +824,16 @@ fn run_hyper_server_worker_pool(
         .recv()
         .expect("Failed to receive runtime handle from tokio thread");
 
+    // Eagerly initialize the shared HTTP client within the tokio runtime context.
+    // reqwest::Client requires a Tokio reactor during construction.
+    let _ = runtime_handle.block_on(async {
+        crate::interpreter::builtins::http_class::get_http_client();
+    });
+
+    // Login to SoliDB once to get a JWT token (uses ureq, no tokio needed).
+    // Must be after .env loading and DB config init.
+    crate::interpreter::builtins::model::core::init_jwt_token();
+
     for i in 0..num_workers {
         // Each worker gets its own dedicated receiver (no contention!)
         let work_rx = worker_queues.get_receiver(i);
@@ -846,33 +856,54 @@ fn run_hyper_server_worker_pool(
             // Set tokio runtime handle for this worker thread (used by HTTP builtins)
             set_tokio_handle(runtime_handle.clone());
 
-            // Panic catch wrapper
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let mut interpreter = Interpreter::new();
+            // Auto-restart loop: if the worker panics, recreate interpreter and resume
+            loop {
+                // Clone values for this iteration (cheap Arc/crossbeam clones)
+                let work_rx = work_rx.clone();
+                let models_dir = models_dir.clone();
+                let middleware_dir = middleware_dir.clone();
+                let helpers_dir = helpers_dir.clone();
+                let ws_event_rx = ws_event_rx.clone();
+                let lv_event_rx = lv_event_rx.clone();
+                let ws_registry = ws_registry.clone();
+                let reload_tx = reload_tx.clone();
+                let worker_routes = worker_routes.clone();
+                let controllers_dir = controllers_dir.clone();
+                let views_dir = views_dir.clone();
+                let hot_reload_versions = hot_reload_versions.clone();
+                let runtime_handle = runtime_handle.clone();
+                let routes_file = routes_file.clone();
 
-                worker_loop(
-                    i,
-                    work_rx,
-                    models_dir,
-                    middleware_dir,
-                    helpers_dir,
-                    ws_event_rx,
-                    lv_event_rx,
-                    ws_registry,
-                    reload_tx,
-                    &mut interpreter,
-                    worker_routes,
-                    controllers_dir,
-                    views_dir,
-                    hot_reload_versions,
-                    runtime_handle,
-                    routes_file,
-                    dev_mode,
-                );
-            }));
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut interpreter = Interpreter::new();
 
-            if result.is_err() {
-                eprintln!("Worker {} panicked", i);
+                    worker_loop(
+                        i,
+                        work_rx,
+                        models_dir,
+                        middleware_dir,
+                        helpers_dir,
+                        ws_event_rx,
+                        lv_event_rx,
+                        ws_registry,
+                        reload_tx,
+                        &mut interpreter,
+                        worker_routes,
+                        controllers_dir,
+                        views_dir,
+                        hot_reload_versions,
+                        runtime_handle,
+                        routes_file,
+                        dev_mode,
+                    );
+                }));
+
+                match result {
+                    Ok(_) => break, // Normal exit
+                    Err(_) => {
+                        eprintln!("Worker {} panicked, restarting...", i);
+                    }
+                }
             }
         });
 
