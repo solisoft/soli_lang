@@ -462,6 +462,7 @@ fn run_hyper_server_worker_pool(
     // Spawn tokio runtime for HTTP server
     thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(num_workers)
             .enable_all()
             .build()
             .expect("Failed to create tokio runtime");
@@ -875,7 +876,7 @@ fn run_hyper_server_worker_pool(
                 let routes_file = routes_file.clone();
 
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let mut interpreter = Interpreter::new();
+                    let mut interpreter = Interpreter::new_for_serve();
 
                     worker_loop(
                         i,
@@ -981,8 +982,6 @@ fn worker_loop(
 
     // Create VM for production mode (bytecode execution for handler calls)
     let mut vm: Option<crate::vm::Vm> = if !dev_mode {
-        // Ensure all builtins are loaded before copying globals into VM
-        crate::interpreter::builtins::register_builtins(&mut interpreter.environment.borrow_mut());
         let mut vm = crate::vm::Vm::new();
         // Copy all globals from interpreter environment into VM
         // This includes all native builtins, classes, and user-defined functions

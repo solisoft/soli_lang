@@ -70,7 +70,7 @@ Soli is the programming language that powers the MVC framework. It features:
 The Soli language has its own comprehensive documentation:
 
 - **[Soli Language Reference](/docs/soli-language)** - Complete guide to Soli syntax, types, functions, classes, and more
-- [Official Soli Documentation](https://solilang.com/docs/guides/introduction) - Full language documentation
+- [Official Soli Documentation](https://soli.solisoft.net.com/docs/guides/introduction) - Full language documentation
 
 ## Design Philosophy
 

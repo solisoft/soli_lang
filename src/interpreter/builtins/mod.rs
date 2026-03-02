@@ -54,7 +54,9 @@ pub mod uploads;
 pub mod validation;
 
 /// Register all built-in functions in the given environment.
-pub fn register_builtins(env: &mut Environment) {
+/// When `include_test_builtins` is false, test-only modules (factories, assertions,
+/// test_dsl, test_server) are skipped to save memory in serve mode.
+pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // ===== Core I/O functions =====
 
     // print(...) - Print values to stdout (auto-resolves Futures)
@@ -241,17 +243,13 @@ pub fn register_builtins(env: &mut Environment) {
     // Register JWT builtins
     jwt::register_jwt_builtins(env);
 
-    // Register factory builtins
-    factories::register_factories(env);
-
-    // Register assertion builtins
-    assertions::register_assertions(env);
-
-    // Register test DSL builtins
-    test_dsl::register_test_builtins(env);
-
-    // Register test server builtins
-    test_server::register_test_server_builtins(env);
+    // Register test-only builtins (skipped in serve mode)
+    if include_test_builtins {
+        factories::register_factories(env);
+        assertions::register_assertions(env);
+        test_dsl::register_test_builtins(env);
+        test_server::register_test_server_builtins(env);
+    }
 
     // Register request helper builtins
     request_helpers::register_request_helpers(env);
@@ -294,8 +292,8 @@ pub fn register_builtins(env: &mut Environment) {
 fn register_error_classes(env: &mut Environment) {
     use crate::interpreter::value::Class;
 
-    // Create the Error base class
-    let error_class = Class {
+    // Create the Error base class (shared by all subclasses)
+    let error_class = Rc::new(Class {
         name: "Error".to_string(),
         superclass: None,
         methods: HashMap::new(),
@@ -307,15 +305,14 @@ fn register_error_classes(env: &mut Environment) {
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
         ..Default::default()
-    };
-    env.define("Error".to_string(), Value::Class(Rc::new(error_class)));
+    });
+    env.define("Error".to_string(), Value::Class(error_class.clone()));
 
-    // ValueError class
-    let value_error_class = Class {
-        name: "ValueError".to_string(),
-        superclass: Some(Rc::new(Class {
-            name: "Error".to_string(),
-            superclass: None,
+    // Helper to create an error subclass sharing the same Error base Rc
+    let mut define_error_subclass = |name: &str| {
+        let subclass = Class {
+            name: name.to_string(),
+            superclass: Some(error_class.clone()),
             methods: HashMap::new(),
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
@@ -325,143 +322,13 @@ fn register_error_classes(env: &mut Environment) {
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
             ..Default::default()
-        })),
-        methods: HashMap::new(),
-        static_methods: HashMap::new(),
-        native_static_methods: HashMap::new(),
-        native_methods: HashMap::new(),
-        static_fields: Rc::new(RefCell::new(HashMap::new())),
-        fields: HashMap::new(),
-        constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        ..Default::default()
+        };
+        env.define(name.to_string(), Value::Class(Rc::new(subclass)));
     };
-    env.define(
-        "ValueError".to_string(),
-        Value::Class(Rc::new(value_error_class)),
-    );
 
-    // TypeError class
-    let type_error_class = Class {
-        name: "TypeError".to_string(),
-        superclass: Some(Rc::new(Class {
-            name: "Error".to_string(),
-            superclass: None,
-            methods: HashMap::new(),
-            static_methods: HashMap::new(),
-            native_static_methods: HashMap::new(),
-            native_methods: HashMap::new(),
-            static_fields: Rc::new(RefCell::new(HashMap::new())),
-            fields: HashMap::new(),
-            constructor: None,
-            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            ..Default::default()
-        })),
-        methods: HashMap::new(),
-        static_methods: HashMap::new(),
-        native_static_methods: HashMap::new(),
-        native_methods: HashMap::new(),
-        static_fields: Rc::new(RefCell::new(HashMap::new())),
-        fields: HashMap::new(),
-        constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        ..Default::default()
-    };
-    env.define(
-        "TypeError".to_string(),
-        Value::Class(Rc::new(type_error_class)),
-    );
-
-    // KeyError class (for hash key not found)
-    let key_error_class = Class {
-        name: "KeyError".to_string(),
-        superclass: Some(Rc::new(Class {
-            name: "Error".to_string(),
-            superclass: None,
-            methods: HashMap::new(),
-            static_methods: HashMap::new(),
-            native_static_methods: HashMap::new(),
-            native_methods: HashMap::new(),
-            static_fields: Rc::new(RefCell::new(HashMap::new())),
-            fields: HashMap::new(),
-            constructor: None,
-            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            ..Default::default()
-        })),
-        methods: HashMap::new(),
-        static_methods: HashMap::new(),
-        native_static_methods: HashMap::new(),
-        native_methods: HashMap::new(),
-        static_fields: Rc::new(RefCell::new(HashMap::new())),
-        fields: HashMap::new(),
-        constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        ..Default::default()
-    };
-    env.define(
-        "KeyError".to_string(),
-        Value::Class(Rc::new(key_error_class)),
-    );
-
-    // IndexError class (for array index out of bounds)
-    let index_error_class = Class {
-        name: "IndexError".to_string(),
-        superclass: Some(Rc::new(Class {
-            name: "Error".to_string(),
-            superclass: None,
-            methods: HashMap::new(),
-            static_methods: HashMap::new(),
-            native_static_methods: HashMap::new(),
-            native_methods: HashMap::new(),
-            static_fields: Rc::new(RefCell::new(HashMap::new())),
-            fields: HashMap::new(),
-            constructor: None,
-            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            ..Default::default()
-        })),
-        methods: HashMap::new(),
-        static_methods: HashMap::new(),
-        native_static_methods: HashMap::new(),
-        native_methods: HashMap::new(),
-        static_fields: Rc::new(RefCell::new(HashMap::new())),
-        fields: HashMap::new(),
-        constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        ..Default::default()
-    };
-    env.define(
-        "IndexError".to_string(),
-        Value::Class(Rc::new(index_error_class)),
-    );
-
-    // RuntimeError class
-    let runtime_error_class = Class {
-        name: "RuntimeError".to_string(),
-        superclass: Some(Rc::new(Class {
-            name: "Error".to_string(),
-            superclass: None,
-            methods: HashMap::new(),
-            static_methods: HashMap::new(),
-            native_static_methods: HashMap::new(),
-            native_methods: HashMap::new(),
-            static_fields: Rc::new(RefCell::new(HashMap::new())),
-            fields: HashMap::new(),
-            constructor: None,
-            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            ..Default::default()
-        })),
-        methods: HashMap::new(),
-        static_methods: HashMap::new(),
-        native_static_methods: HashMap::new(),
-        native_methods: HashMap::new(),
-        static_fields: Rc::new(RefCell::new(HashMap::new())),
-        fields: HashMap::new(),
-        constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        ..Default::default()
-    };
-    env.define(
-        "RuntimeError".to_string(),
-        Value::Class(Rc::new(runtime_error_class)),
-    );
+    define_error_subclass("ValueError");
+    define_error_subclass("TypeError");
+    define_error_subclass("KeyError");
+    define_error_subclass("IndexError");
+    define_error_subclass("RuntimeError");
 }

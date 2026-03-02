@@ -29,6 +29,17 @@ impl Environment {
         }
     }
 
+    /// Create an environment pre-sized for builtin registration (~300 entries).
+    /// Avoids repeated rehashing during `register_builtins()`.
+    pub fn with_builtins_capacity() -> Self {
+        Self {
+            values: HashMap::with_capacity(300),
+            consts: HashMap::new(),
+            enclosing: None,
+            data_hash: None,
+        }
+    }
+
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Self {
             values: HashMap::new(),

@@ -105,7 +105,7 @@ pub fn get_http_client() -> &'static Client {
         Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .pool_max_idle_per_host(64)
+            .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .build()
             .expect("Failed to create HTTP client")

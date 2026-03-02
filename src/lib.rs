@@ -398,7 +398,7 @@ fn create_function_value(
 
     // Create an environment with builtins registered
     let mut env = interpreter::environment::Environment::new();
-    interpreter::builtins::register_builtins(&mut env);
+    interpreter::builtins::register_builtins(&mut env, true);
 
     let decl = ast::FunctionDecl {
         name: "test_fn".to_string(),

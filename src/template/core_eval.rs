@@ -33,8 +33,8 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
     BUILTINS_RC.with(|cell| {
         let mut opt = cell.borrow_mut();
         if opt.is_none() {
-            let mut env = Environment::new();
-            crate::interpreter::builtins::register_builtins(&mut env);
+            let mut env = Environment::with_builtins_capacity();
+            crate::interpreter::builtins::register_builtins(&mut env, true);
             crate::interpreter::builtins::template::register_static_template_helpers(&mut env);
             *opt = Some(Rc::new(RefCell::new(env)));
         }

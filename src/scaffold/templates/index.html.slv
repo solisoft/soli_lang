@@ -37,7 +37,7 @@
         <!-- Quick Start Cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full mb-16">
             <!-- Documentation -->
-            <a href="https://solilang.com/docs" target="_blank" class="group relative p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/10">
+            <a href="https://soli.solisoft.net/docs" target="_blank" class="group relative p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/10">
                 <div class="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl"></div>
                 <div class="relative">
                     <div class="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
@@ -113,7 +113,7 @@
                 Built with
                 <span class="text-pink-400">&hearts;</span>
                 using
-                <a href="https://solilang.com" class="text-indigo-400 hover:text-indigo-300 transition-colors">Soli</a>
+                <a href="https://soli.solisoft.net" class="text-indigo-400 hover:text-indigo-300 transition-colors">Soli</a>
             </p>
         </div>
     </div>

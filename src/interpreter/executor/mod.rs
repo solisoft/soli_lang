@@ -59,8 +59,23 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        let globals = Rc::new(RefCell::new(Environment::new()));
-        register_builtins(&mut globals.borrow_mut());
+        let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
+        register_builtins(&mut globals.borrow_mut(), true);
+
+        Self {
+            environment: globals,
+            #[cfg(feature = "coverage")]
+            coverage_tracker: None,
+            current_source_path: None,
+            call_stack: Vec::new(),
+            assertion_count: 0,
+        }
+    }
+
+    /// Create an interpreter for serve mode (skips test builtins to save memory).
+    pub fn new_for_serve() -> Self {
+        let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
+        register_builtins(&mut globals.borrow_mut(), false);
 
         Self {
             environment: globals,
@@ -87,8 +102,8 @@ impl Interpreter {
 
     #[cfg(feature = "coverage")]
     pub fn with_coverage_tracker(tracker: Rc<RefCell<CoverageTracker>>) -> Self {
-        let globals = Rc::new(RefCell::new(Environment::new()));
-        register_builtins(&mut globals.borrow_mut());
+        let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
+        register_builtins(&mut globals.borrow_mut(), true);
 
         Self {
             environment: globals,

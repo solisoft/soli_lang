@@ -153,8 +153,8 @@ soli db:migrate status
 
 ## Documentation
 
-- [Soli MVC Documentation](https://solilang.com/docs)
-- [Soli Language Reference](https://solilang.com/docs/soli-language)
+- [Soli MVC Documentation](https://soli.solisoft.net/docs)
+- [Soli Language Reference](https://soli.solisoft.net/docs/soli-language)
 - [Tailwind CSS](https://tailwindcss.com/docs)
 
 ## License
