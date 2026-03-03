@@ -1130,8 +1130,8 @@ fn run_test(
 
         // Find a random available port
         let port = {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0")
-                .expect("Failed to bind to random port");
+            let listener =
+                std::net::TcpListener::bind("127.0.0.1:0").expect("Failed to bind to random port");
             listener.local_addr().unwrap().port()
         };
         // Listener is dropped here, freeing the port for the server
@@ -1318,8 +1318,7 @@ fn run_test(
 /// Ensure the test database exists in SoliDB with a clean slate.
 /// Drops and recreates the database so tests start fresh.
 fn ensure_test_database() {
-    let host =
-        std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
 
     // Don't drop the "default" database
@@ -1334,8 +1333,8 @@ fn ensure_test_database() {
     ) {
         (Ok(user), Ok(pass)) => {
             use base64::Engine;
-            let encoded = base64::engine::general_purpose::STANDARD
-                .encode(format!("{}:{}", user, pass));
+            let encoded =
+                base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
             Some(format!("Basic {}", encoded))
         }
         _ => None,

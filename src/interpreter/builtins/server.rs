@@ -183,11 +183,7 @@ pub fn find_route(
                 if let Some(&idx) = path_map.get(path) {
                     if let Some(route) = routes.get(idx) {
                         let middleware = resolve_middleware(route);
-                        return Some((
-                            route.handler_name.clone(),
-                            middleware,
-                            HashMap::new(),
-                        ));
+                        return Some((route.handler_name.clone(), middleware, HashMap::new()));
                     }
                 }
             }
@@ -198,11 +194,7 @@ pub fn find_route(
                     if let Some(route) = routes.get(idx) {
                         if let Some(params) = match_path(&route.path_pattern, path) {
                             let middleware = resolve_middleware(route);
-                            return Some((
-                                route.handler_name.clone(),
-                                middleware,
-                                params,
-                            ));
+                            return Some((route.handler_name.clone(), middleware, params));
                         }
                     }
                 }

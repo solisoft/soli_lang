@@ -93,11 +93,11 @@ pub fn reset_router_context() {
 
 #[derive(Clone)]
 struct RouterScope {
-    path_prefix: String,        // Current URL prefix (e.g. "/users/:user_id")
-    controller: Option<String>, // Current controller context
-    is_member: bool,            // Are we inside a member block?
-    is_collection: bool,        // Are we inside a collection block?
-    middleware: Vec<Value>,     // Active middleware
+    path_prefix: String,           // Current URL prefix (e.g. "/users/:user_id")
+    controller: Option<String>,    // Current controller context
+    is_member: bool,               // Are we inside a member block?
+    is_collection: bool,           // Are we inside a collection block?
+    middleware: Vec<Value>,        // Active middleware
     middleware_names: Vec<String>, // Middleware names for worker thread transfer
 }
 

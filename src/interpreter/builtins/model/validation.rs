@@ -139,18 +139,13 @@ pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<
                         collection, rule.field
                     );
                     let mut bind_vars = std::collections::HashMap::new();
-                    bind_vars.insert(
-                        "val".to_string(),
-                        serde_json::Value::String(val.clone()),
-                    );
+                    bind_vars.insert("val".to_string(), serde_json::Value::String(val.clone()));
                     if let Ok(results) =
                         exec_with_auto_collection(sdbql, Some(bind_vars), &collection)
                     {
                         if !results.is_empty() {
-                            errors.push(ValidationError::new(
-                                &rule.field,
-                                "has already been taken",
-                            ));
+                            errors
+                                .push(ValidationError::new(&rule.field, "has already been taken"));
                         }
                     }
                 }

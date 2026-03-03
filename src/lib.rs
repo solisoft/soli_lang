@@ -433,19 +433,14 @@ fn execute_test_suites(
         // Run before_all if defined
         if let Some(before_all) = &suite.before_all {
             let rebound = rebind_closure(before_all, &interpreter.environment);
-            let _ =
-                interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
+            let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
         }
 
         for test in &suite.tests {
             // Run before_each if defined
             if let Some(before_each) = &suite.before_each {
                 let rebound = rebind_closure(before_each, &interpreter.environment);
-                let _ = interpreter.call_value(
-                    rebound,
-                    Vec::new(),
-                    span::Span::new(0, 0, 1, 1),
-                );
+                let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
             }
 
             // Rebind test body closure to interpreter's environment so
@@ -453,8 +448,7 @@ fn execute_test_suites(
             let test_body = rebind_closure(&test.body, &interpreter.environment);
 
             // Execute the test body and track failures
-            let result =
-                interpreter.call_value(test_body, Vec::new(), span::Span::new(0, 0, 1, 1));
+            let result = interpreter.call_value(test_body, Vec::new(), span::Span::new(0, 0, 1, 1));
 
             if let Err(e) = result {
                 failed_count += 1;
@@ -464,11 +458,7 @@ fn execute_test_suites(
             // Run after_each if defined
             if let Some(after_each) = &suite.after_each {
                 let rebound = rebind_closure(after_each, &interpreter.environment);
-                let _ = interpreter.call_value(
-                    rebound,
-                    Vec::new(),
-                    span::Span::new(0, 0, 1, 1),
-                );
+                let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
             }
         }
 
@@ -481,8 +471,7 @@ fn execute_test_suites(
         // Run after_all if defined
         if let Some(after_all) = &suite.after_all {
             let rebound = rebind_closure(after_all, &interpreter.environment);
-            let _ =
-                interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
+            let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
         }
     }
     Ok((failed_count, failed_tests))

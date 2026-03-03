@@ -339,7 +339,10 @@ fn exec_document_request(
             return Err(format!("HTTP {} {}: {}", status, url, body));
         }
 
-        let text = resp.text().await.map_err(|e| format!("Read error: {}", e))?;
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| format!("Read error: {}", e))?;
         if text.is_empty() {
             Ok(serde_json::Value::Null)
         } else {
@@ -393,8 +396,7 @@ pub fn exec_update(
     _merge: bool,
 ) -> Result<serde_json::Value, String> {
     let url = format!("{}/{}", document_base_url(collection), key);
-    let result =
-        exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
+    let result = exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
 
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
@@ -421,6 +423,5 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
 
 /// Execute a query with automatic collection creation.
 pub fn exec_query(collection: &str, sdbql: String) -> Result<Vec<serde_json::Value>, String> {
-    let result = exec_with_auto_collection(sdbql, None, collection);
-    result
+    exec_with_auto_collection(sdbql, None, collection)
 }

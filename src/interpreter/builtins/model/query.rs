@@ -136,9 +136,7 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
     };
 
     match result {
-        Value::Array(arr) => {
-            arr.borrow().iter().next().cloned().unwrap_or(Value::Null)
-        }
+        Value::Array(arr) => arr.borrow().iter().next().cloned().unwrap_or(Value::Null),
         // DB errors return Value::String("Error: ...") - treat as no result
         Value::String(ref s) if s.starts_with("Error:") => Value::Null,
         other => other,
