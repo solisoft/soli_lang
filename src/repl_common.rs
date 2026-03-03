@@ -128,6 +128,11 @@ pub fn should_print_result(source: &str) -> bool {
 pub fn prepare_source(code: &str) -> String {
     let trimmed = code.trim();
 
+    // Comment-only lines: pass through as-is (wrapping in print() would eat the closing paren)
+    if trimmed.starts_with('#') || trimmed.starts_with("//") {
+        return code.to_string();
+    }
+
     let passthrough = trimmed.ends_with('}') || trimmed.ends_with(';') || trimmed.ends_with("end");
 
     if should_print_result(code) && !passthrough {

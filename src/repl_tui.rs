@@ -11,7 +11,7 @@ use crossterm::{
 
 use gag::BufferRedirect;
 
-use crate::interpreter::Interpreter;
+use crate::interpreter::{Interpreter, Value};
 use crate::lexer::token::TokenKind;
 use crate::lexer::Scanner;
 use crate::parser::Parser;
@@ -87,6 +87,12 @@ enum OutputLine {
     Info(String),   // Info/system message (dim)
 }
 
+struct CompletionState {
+    candidates: Vec<String>,
+    index: usize,
+    prefix_start: usize,
+}
+
 struct InputState {
     line: LineBuffer,
     multiline_buffer: String,
@@ -96,6 +102,7 @@ struct InputState {
     history: Vec<String>,
     history_index: usize,
     output_lines: Vec<OutputLine>,
+    completion: Option<CompletionState>,
 }
 
 impl InputState {
@@ -109,6 +116,7 @@ impl InputState {
             history: Vec::new(),
             history_index: 0,
             output_lines: Vec::new(),
+            completion: None,
         }
     }
 
@@ -478,7 +486,197 @@ impl TuiRepl {
         }
     }
 
+    fn get_member_completions(&self, object_name: &str, method_prefix: &str) -> Vec<String> {
+        let env = self.interpreter.global_env();
+        let env_ref = env.borrow();
+        let value = env_ref.get(object_name);
+
+        let mut names: Vec<String> = Vec::new();
+
+        match value {
+            Some(Value::Class(class)) => {
+                // Static methods and fields for class access (e.g. DateTime.now)
+                names.extend(class.native_static_methods.keys().cloned());
+                names.extend(class.static_methods.keys().cloned());
+                names.extend(class.static_fields.borrow().keys().cloned());
+            }
+            Some(Value::Instance(instance)) => {
+                let inst = instance.borrow();
+                // Instance methods and fields (e.g. d.year)
+                names.extend(inst.class.native_methods.keys().cloned());
+                names.extend(inst.class.methods.keys().cloned());
+                names.extend(inst.fields.keys().cloned());
+            }
+            _ => {}
+        }
+
+        names.sort();
+        names.dedup();
+
+        let mut candidates = Vec::new();
+        for name in &names {
+            if name.starts_with(method_prefix) && name != method_prefix {
+                candidates.push(format!("{}.{}", object_name, name));
+            }
+        }
+        // If just "ClassName." with no prefix, show all
+        if method_prefix.is_empty() {
+            for name in &names {
+                candidates.push(format!("{}.{}", object_name, name));
+            }
+        }
+        candidates
+    }
+
+    fn get_completions(&self, prefix: &str) -> Vec<String> {
+        const KEYWORDS: &[&str] = &[
+            "let", "const", "fn", "def", "return", "if", "else", "elsif", "while", "for", "in",
+            "class", "extends", "implements", "interface", "new", "this", "super", "public",
+            "private", "protected", "static", "null", "true", "false", "try", "catch", "finally",
+            "throw", "not", "and", "or", "async", "await", "match", "case", "when", "end",
+            "unless", "import", "export", "from", "as", "do", "then",
+        ];
+
+        const BUILTINS: &[&str] = &[
+            "print", "println", "input", "len", "clock", "str", "int", "float", "type", "range",
+            "abs", "min", "max", "sqrt", "pow", "barf", "slurp", "sleep", "break", "await",
+            "validate", "jwt_sign", "jwt_verify", "jwt_decode", "getenv", "setenv", "unsetenv",
+            "hasenv", "dotenv", "html_escape", "html_unescape", "sanitize_html", "strip_html",
+            "render", "render_json", "render_text", "redirect",
+        ];
+
+        const CLASSES: &[&str] = &[
+            "String", "Array", "Hash", "Set", "Range", "Base64", "Math", "File", "HTTP", "JSON",
+            "Regex", "SOAP", "Crypto", "System", "DateTime", "Duration", "I18n", "Markdown",
+            "Error", "ValueError", "TypeError", "KeyError", "IndexError", "RuntimeError",
+            "V", "JWT", "Model", "Cache", "RateLimit",
+        ];
+
+        const DOT_COMMANDS: &[&str] = &[
+            ".help", ".vars", ".variables", ".funcs", ".functions", ".classes", ".history",
+            ".hist", ".clear", ".reset", ".break", ".cancel", ".highlight", ".theme", ".exit",
+            ".quit",
+        ];
+
+        let mut candidates: Vec<String> = Vec::new();
+
+        // Dot commands only complete at line start
+        if prefix.starts_with('.') {
+            for cmd in DOT_COMMANDS {
+                if cmd.starts_with(prefix) && *cmd != prefix {
+                    candidates.push(cmd.to_string());
+                }
+            }
+        } else if let Some(dot_pos) = prefix.rfind('.') {
+            // Method/field completion: "name.meth" → complete from live environment
+            let object_name = &prefix[..dot_pos];
+            let method_prefix = &prefix[dot_pos + 1..];
+            candidates = self.get_member_completions(object_name, method_prefix);
+        } else {
+            for kw in KEYWORDS {
+                if kw.starts_with(prefix) && *kw != prefix {
+                    candidates.push(kw.to_string());
+                }
+            }
+            for bi in BUILTINS {
+                if bi.starts_with(prefix) && *bi != prefix {
+                    candidates.push(bi.to_string());
+                }
+            }
+            for cls in CLASSES {
+                if cls.starts_with(prefix) && *cls != prefix {
+                    candidates.push(cls.to_string());
+                }
+            }
+
+            // Add user-defined names from environment
+            let env = self.interpreter.global_env();
+            let var_names = env.borrow().get_var_names();
+            for name in &var_names {
+                // Skip internal names already covered by static lists
+                if name.starts_with("__") {
+                    continue;
+                }
+                if name.starts_with(prefix) && name != prefix {
+                    candidates.push(name.clone());
+                }
+            }
+        }
+
+        candidates.sort();
+        candidates.dedup();
+        candidates
+    }
+
+    fn handle_tab(&mut self) {
+        if let Some(ref mut state) = self.input.completion {
+            // Cycling through existing completions
+            state.index = (state.index + 1) % state.candidates.len();
+            let candidate = state.candidates[state.index].clone();
+            let prefix_start = state.prefix_start;
+
+            // Replace from prefix_start to current cursor with the candidate
+            self.input.line.chars.truncate(prefix_start);
+            self.input.line.cursor = prefix_start;
+            for c in candidate.chars() {
+                self.input.line.insert(c);
+            }
+        } else {
+            // Start new completion
+            let text = self.input.line.as_string();
+            let cursor = self.input.line.cursor;
+            let before_cursor = &text[..text.char_indices()
+                .nth(cursor)
+                .map(|(i, _)| i)
+                .unwrap_or(text.len())];
+
+            // Find the word prefix (identifiers or dot-commands)
+            let prefix_start = before_cursor
+                .rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+                .map(|i| {
+                    // byte index → char index
+                    before_cursor[..=i].chars().count()
+                })
+                .unwrap_or(0);
+
+            let prefix: String = self.input.line.chars[prefix_start..cursor].iter().collect();
+            if prefix.is_empty() {
+                // No prefix: insert spaces as indentation
+                for _ in 0..4 {
+                    self.input.line.insert(' ');
+                }
+                return;
+            }
+
+            let candidates = self.get_completions(&prefix);
+            if candidates.is_empty() {
+                return;
+            }
+
+            // Apply first candidate
+            let first = candidates[0].clone();
+            self.input.line.chars.truncate(prefix_start);
+            self.input.line.cursor = prefix_start;
+            for c in first.chars() {
+                self.input.line.insert(c);
+            }
+
+            if candidates.len() > 1 {
+                self.input.completion = Some(CompletionState {
+                    candidates,
+                    index: 0,
+                    prefix_start,
+                });
+            }
+        }
+    }
+
     fn handle_key(&mut self, key: event::KeyEvent) -> bool {
+        // Any key except Tab resets completion state
+        if key.code != KeyCode::Tab {
+            self.input.completion = None;
+        }
+
         match key.code {
             KeyCode::Char(c) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -535,10 +733,7 @@ impl TuiRepl {
                 self.input.line.move_to_end();
             }
             KeyCode::Tab => {
-                self.input.line.insert(' ');
-                self.input.line.insert(' ');
-                self.input.line.insert(' ');
-                self.input.line.insert(' ');
+                self.handle_tab();
             }
             KeyCode::Esc => {
                 self.save_history();
