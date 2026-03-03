@@ -64,7 +64,9 @@ impl QueryBuilder {
         let mut query = format!("FOR doc IN {}", collection_str);
 
         if let Some(filter) = &self.filter {
-            query.push_str(&format!(" FILTER {}", filter));
+            // Translate Soli operators to SDBQL operators
+            let sdbql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
+            query.push_str(&format!(" FILTER {}", sdbql_filter));
         }
 
         if let Some((field, direction)) = &self.order_by {
@@ -135,9 +137,10 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
 
     match result {
         Value::Array(arr) => {
-            let first = arr.borrow().iter().next().cloned().unwrap_or(Value::Null);
-            first
+            arr.borrow().iter().next().cloned().unwrap_or(Value::Null)
         }
+        // DB errors return Value::String("Error: ...") - treat as no result
+        Value::String(ref s) if s.starts_with("Error:") => Value::Null,
         other => other,
     }
 }
@@ -165,7 +168,7 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
         query.push_str(&format!(" FILTER {}", filter));
     }
 
-    query.push_str(" COLLECT WITH COUNT INTO count RETURN count");
+    query.push_str(" COLLECT WITH COUNT INTO cnt RETURN cnt");
 
     if bind_vars_str.is_empty() {
         exec_auto_collection(query, &collection)

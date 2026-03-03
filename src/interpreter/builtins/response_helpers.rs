@@ -125,6 +125,56 @@ pub fn register_response_helpers(env: &mut Environment) {
         })),
     );
 
+    // Register aliases without '?' suffix for convenience
+    env.define(
+        "res_ok".to_string(),
+        Value::NativeFunction(NativeFunction::new("res_ok", Some(1), |args| {
+            Ok(Value::Bool(is_success(&args[0])))
+        })),
+    );
+    env.define(
+        "res_redirect".to_string(),
+        Value::NativeFunction(NativeFunction::new("res_redirect", Some(1), |args| {
+            Ok(Value::Bool(is_redirect(&args[0])))
+        })),
+    );
+    env.define(
+        "res_client_error".to_string(),
+        Value::NativeFunction(NativeFunction::new("res_client_error", Some(1), |args| {
+            Ok(Value::Bool(is_client_error(&args[0])))
+        })),
+    );
+    env.define(
+        "res_server_error".to_string(),
+        Value::NativeFunction(NativeFunction::new("res_server_error", Some(1), |args| {
+            Ok(Value::Bool(is_server_error(&args[0])))
+        })),
+    );
+    env.define(
+        "res_not_found".to_string(),
+        Value::NativeFunction(NativeFunction::new("res_not_found", Some(1), |args| {
+            Ok(Value::Bool(is_not_found(&args[0])))
+        })),
+    );
+    env.define(
+        "res_unauthorized".to_string(),
+        Value::NativeFunction(NativeFunction::new("res_unauthorized", Some(1), |args| {
+            Ok(Value::Bool(is_unauthorized(&args[0])))
+        })),
+    );
+    env.define(
+        "res_forbidden".to_string(),
+        Value::NativeFunction(NativeFunction::new("res_forbidden", Some(1), |args| {
+            Ok(Value::Bool(is_forbidden(&args[0])))
+        })),
+    );
+    env.define(
+        "res_unprocessable".to_string(),
+        Value::NativeFunction(NativeFunction::new("res_unprocessable", Some(1), |args| {
+            Ok(Value::Bool(is_unprocessable(&args[0])))
+        })),
+    );
+
     env.define(
         "render_template?".to_string(),
         Value::NativeFunction(NativeFunction::new("render_template?", Some(0), |_args| {
@@ -196,7 +246,7 @@ fn extract_header(response: &Value, name: &str) -> Result<Value, String> {
                             let headers_hash = headers.borrow();
                             for (hk, hv) in headers_hash.iter() {
                                 if let HashKey::String(header_name) = hk {
-                                    if header_name == name {
+                                    if header_name.eq_ignore_ascii_case(name) {
                                         if let Value::String(s) = hv {
                                             return Ok(Value::String(s.clone()));
                                         }

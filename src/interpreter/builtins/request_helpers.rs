@@ -165,6 +165,16 @@ pub fn register_request_helpers(env: &mut Environment) {
             Ok(Value::Null)
         })),
     );
+
+    env.define(
+        "clear_headers".to_string(),
+        Value::NativeFunction(NativeFunction::new("clear_headers", Some(0), |_args| {
+            REQUEST_HEADERS.with(|cell| {
+                *cell.borrow_mut() = HashMap::new();
+            });
+            Ok(Value::Null)
+        })),
+    );
 }
 
 pub fn clear_authorization_inner() {
@@ -303,6 +313,40 @@ fn value_to_string(value: Value) -> Result<String, String> {
         Value::Float(f) => Ok(f.to_string()),
         Value::Bool(b) => Ok(b.to_string()),
         Value::Null => Ok("null".to_string()),
+        Value::Hash(_) | Value::Array(_) => Ok(value_to_json(&value)),
         _ => Err(format!("Cannot convert {} to string", value.type_name())),
+    }
+}
+
+fn value_to_json(value: &Value) -> String {
+    match value {
+        Value::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+        Value::Int(n) => n.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
+        Value::Hash(h) => {
+            let hash = h.borrow();
+            let pairs: Vec<String> = hash
+                .iter()
+                .map(|(k, v)| {
+                    let key = match k {
+                        HashKey::String(s) => s.clone(),
+                        HashKey::Int(i) => i.to_string(),
+                        HashKey::Bool(b) => b.to_string(),
+                        HashKey::Decimal(d) => d.to_string(),
+                        HashKey::Null => "null".to_string(),
+                    };
+                    format!("\"{}\":{}", key, value_to_json(v))
+                })
+                .collect();
+            format!("{{{}}}", pairs.join(","))
+        }
+        Value::Array(arr) => {
+            let arr = arr.borrow();
+            let items: Vec<String> = arr.iter().map(value_to_json).collect();
+            format!("[{}]", items.join(","))
+        }
+        _ => format!("\"{}\"", value),
     }
 }

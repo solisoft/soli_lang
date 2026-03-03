@@ -15,8 +15,8 @@ mod server_constants;
 pub mod websocket;
 
 // Modularized subcomponents
-mod app_loader;
-mod env_loader;
+pub(crate) mod app_loader;
+pub mod env_loader;
 mod file_tracker;
 mod file_upload;
 mod repl_session;
@@ -964,6 +964,14 @@ fn worker_loop(
 
     // Set dev mode for file hash caching (production = permanent cache, dev = check mtime)
     crate::interpreter::builtins::template::set_dev_mode(dev_mode);
+
+    // Load middleware in this worker (needed for scoped middleware resolution by name)
+    {
+        let mut file_tracker = FileTracker::new();
+        if let Err(e) = load_middleware(interpreter, &middleware_dir, &mut file_tracker) {
+            eprintln!("Worker {}: Error loading middleware: {}", worker_id, e);
+        }
+    }
 
     // Load models in this worker so classes are defined in environment
     if let Err(e) = load_models(interpreter, &_models_dir) {

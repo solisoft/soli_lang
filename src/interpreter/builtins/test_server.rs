@@ -81,6 +81,12 @@ pub fn start_test_server() -> u16 {
     port
 }
 
+/// Store a specific port as the test server port (used when the actual app server is started externally).
+pub fn start_test_server_on_port(port: u16) {
+    TEST_SERVER_PORT.store(port, Ordering::SeqCst);
+    TEST_SERVER_RUNNING.store(true, Ordering::SeqCst);
+}
+
 /// Stop the test server.
 pub fn stop_test_server() {
     TEST_SERVER_RUNNING.store(false, Ordering::SeqCst);

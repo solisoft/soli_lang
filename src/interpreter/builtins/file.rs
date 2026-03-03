@@ -80,6 +80,80 @@ pub fn register_file_builtins(env: &mut Environment) {
         })),
     );
 
+    // mkdir_p(path) - Create directory and all parent directories
+    env.define(
+        "mkdir_p".to_string(),
+        Value::NativeFunction(NativeFunction::new("mkdir_p", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("mkdir_p() expects string path".to_string()),
+            };
+            fs::create_dir_all(&path)
+                .map(|_| Value::Bool(true))
+                .map_err(|e| format!("mkdir_p() failed: {}", e))
+        })),
+    );
+
+    // file_exists(path) - Check if file exists (standalone function)
+    env.define(
+        "file_exists".to_string(),
+        Value::NativeFunction(NativeFunction::new("file_exists", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("file_exists() expects string path".to_string()),
+            };
+            Ok(Value::Bool(Path::new(&path).exists()))
+        })),
+    );
+
+    // file_write_base64(path, base64_data) - Decode base64 and write as binary
+    env.define(
+        "file_write_base64".to_string(),
+        Value::NativeFunction(NativeFunction::new("file_write_base64", Some(2), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("file_write_base64() expects string path".to_string()),
+            };
+            let data = match &args[1] {
+                Value::String(s) => s.clone(),
+                _ => return Err("file_write_base64() expects string data".to_string()),
+            };
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(&data)
+                .map_err(|e| format!("file_write_base64() decode failed: {}", e))?;
+            fs::write(&path, bytes)
+                .map(|_| Value::Bool(true))
+                .map_err(|e| format!("file_write_base64() write failed: {}", e))
+        })),
+    );
+
+    // file_write_bytes(path, bytes) - Write raw bytes to file
+    env.define(
+        "file_write_bytes".to_string(),
+        Value::NativeFunction(NativeFunction::new("file_write_bytes", Some(2), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("file_write_bytes() expects string path".to_string()),
+            };
+            let bytes: Vec<u8> = match &args[1] {
+                Value::Array(arr) => arr
+                    .borrow()
+                    .iter()
+                    .map(|v| match v {
+                        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+                        _ => Err("file_write_bytes() expects array of bytes (0-255)".to_string()),
+                    })
+                    .collect::<Result<Vec<u8>, String>>()?,
+                Value::String(s) => s.as_bytes().to_vec(),
+                _ => return Err("file_write_bytes() expects array or string data".to_string()),
+            };
+            fs::write(&path, bytes)
+                .map(|_| Value::Bool(true))
+                .map_err(|e| format!("file_write_bytes() write failed: {}", e))
+        })),
+    );
+
     // Register the File class with static methods
     register_file_class(env);
 }

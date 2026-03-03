@@ -25,8 +25,23 @@ impl SimpleRepl {
     pub fn new() -> Self {
         colored::control::set_override(true);
         let history_file = Self::get_history_path();
+
+        let mut interpreter = Interpreter::new();
+
+        // Auto-load models if running inside an MVC app directory
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let models_dir = cwd.join("app").join("models");
+        if models_dir.is_dir() {
+            crate::serve::env_loader::load_env_files(&cwd);
+            crate::interpreter::builtins::model::init_db_config();
+
+            if let Err(e) = crate::serve::app_loader::load_models(&mut interpreter, &models_dir) {
+                eprintln!("Warning: Failed to load models: {}", e);
+            }
+        }
+
         let mut repl = Self {
-            interpreter: Interpreter::new(),
+            interpreter,
             history: Vec::new(),
             history_file,
             multiline_buffer: String::new(),

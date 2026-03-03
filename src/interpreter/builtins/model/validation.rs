@@ -6,7 +6,8 @@ use std::rc::Rc;
 
 use crate::interpreter::value::{HashKey, Value};
 
-use super::core::MODEL_REGISTRY;
+use super::core::{class_name_to_collection, MODEL_REGISTRY};
+use super::crud::exec_with_auto_collection;
 
 /// A single validation rule for a field.
 #[derive(Debug, Clone, Default)]
@@ -124,6 +125,34 @@ pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<
                         &rule.field,
                         format!("is too long (maximum is {} characters)", max_len),
                     ));
+                }
+            }
+        }
+
+        // Uniqueness validation (query the database)
+        if rule.uniqueness {
+            if let Some(Value::String(val)) = &field_value {
+                if !val.is_empty() {
+                    let collection = class_name_to_collection(class_name);
+                    let sdbql = format!(
+                        "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN 1",
+                        collection, rule.field
+                    );
+                    let mut bind_vars = std::collections::HashMap::new();
+                    bind_vars.insert(
+                        "val".to_string(),
+                        serde_json::Value::String(val.clone()),
+                    );
+                    if let Ok(results) =
+                        exec_with_auto_collection(sdbql, Some(bind_vars), &collection)
+                    {
+                        if !results.is_empty() {
+                            errors.push(ValidationError::new(
+                                &rule.field,
+                                "has already been taken",
+                            ));
+                        }
+                    }
                 }
             }
         }

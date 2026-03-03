@@ -301,141 +301,126 @@ pub fn exec_auto_collection_with_binds(
 }
 
 use crate::interpreter::builtins::model::core::DB_CONFIG;
-use crate::solidb_http::SoliDBClient;
 
-/// Create a SoliDBClient configured with database and auth from the environment.
-/// Auth priority: JWT (fastest) > API key > Basic auth (matches apply_db_auth).
-fn create_db_client() -> Result<SoliDBClient, String> {
-    let mut client =
-        SoliDBClient::connect(&DB_CONFIG.host).map_err(|e| format!("Failed to connect: {}", e))?;
-    client.set_database(get_database_name());
-    if let Some(jwt) = get_jwt_token() {
-        client = client.with_jwt_token(jwt);
-    } else if let Some(key) = get_api_key() {
-        client = client.with_api_key(key);
-    } else if let (Ok(user), Ok(pass)) = (
-        std::env::var("SOLIDB_USERNAME"),
-        std::env::var("SOLIDB_PASSWORD"),
-    ) {
-        client = client.with_basic_auth(&user, &pass);
-    }
-    Ok(client)
+/// Build the base URL for document operations: http://{host}/_api/database/{db}/document/{collection}
+fn document_base_url(collection: &str) -> String {
+    format!(
+        "http://{}/_api/database/{}/document/{}",
+        DB_CONFIG.host,
+        get_database_name(),
+        collection
+    )
 }
 
-/// Execute a SoliDBClient insert operation with automatic collection creation.
+/// Execute a direct HTTP document operation using the shared runtime and client.
+fn exec_document_request(
+    method: reqwest::Method,
+    url: String,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let client = get_http_client().clone();
+
+    run_db_future(async move {
+        let mut request = apply_db_auth(client.request(method, &url));
+        if let Some(b) = body {
+            request = request
+                .header("Content-Type", "application/json")
+                .body(b.to_string());
+        }
+
+        let resp = request
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("HTTP {} {}: {}", status, url, body));
+        }
+
+        let text = resp.text().await.map_err(|e| format!("Read error: {}", e))?;
+        if text.is_empty() {
+            Ok(serde_json::Value::Null)
+        } else {
+            serde_json::from_str(&text).map_err(|e| format!("JSON error: {}", e))
+        }
+    })
+}
+
+/// Execute an insert with automatic collection creation.
 pub fn exec_insert(
     collection: &str,
     key: Option<&str>,
-    document: serde_json::Value,
+    mut document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let client = create_db_client()?;
-
-    let result = client
-        .insert(collection, key, document.clone())
-        .map_err(|e| format!("Create failed: {}", e));
+    if let Some(k) = key {
+        if let Some(obj) = document.as_object_mut() {
+            obj.insert("_key".to_string(), serde_json::json!(k));
+        }
+    }
+    let url = document_base_url(collection);
+    let result = exec_document_request(reqwest::Method::POST, url.clone(), Some(document.clone()));
 
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = create_db_client()?;
-            return client
-                .insert(collection, key, document)
-                .map_err(|e| format!("Create failed: {}", e));
+            return exec_document_request(reqwest::Method::POST, url, Some(document));
         }
     }
-
     result
 }
 
-/// Execute a SoliDBClient get operation with automatic collection creation.
+/// Execute a get with automatic collection creation.
 pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String> {
-    let client = create_db_client()?;
-
-    let result = client
-        .get(collection, key)
-        .map_err(|e| format!("Find failed: {}", e))
-        .map(|doc| doc.unwrap_or(serde_json::Value::Null));
+    let url = format!("{}/{}", document_base_url(collection), key);
+    let result = exec_document_request(reqwest::Method::GET, url.clone(), None);
 
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = create_db_client()?;
-            return client
-                .get(collection, key)
-                .map_err(|e| format!("Find failed: {}", e))
-                .map(|doc| doc.unwrap_or(serde_json::Value::Null));
+            return exec_document_request(reqwest::Method::GET, url, None);
         }
     }
-
     result
 }
 
-/// Execute a SoliDBClient update operation with automatic collection creation.
+/// Execute an update (PUT) with automatic collection creation.
 pub fn exec_update(
     collection: &str,
     key: &str,
     document: serde_json::Value,
-    merge: bool,
+    _merge: bool,
 ) -> Result<serde_json::Value, String> {
-    let client = create_db_client()?;
-
-    let result = client
-        .update(collection, key, document.clone(), merge)
-        .map_err(|e| format!("Update failed: {}", e));
+    let url = format!("{}/{}", document_base_url(collection), key);
+    let result =
+        exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
 
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = create_db_client()?;
-            return client
-                .update(collection, key, document, merge)
-                .map_err(|e| format!("Update failed: {}", e))
-                .map(|_| serde_json::Value::String("Updated".to_string()));
+            return exec_document_request(reqwest::Method::PUT, url, Some(document));
         }
     }
-
-    result.map(|_| serde_json::Value::String("Updated".to_string()))
+    result
 }
 
-/// Execute a SoliDBClient delete operation with automatic collection creation.
+/// Execute a delete with automatic collection creation.
 pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, String> {
-    let client = create_db_client()?;
-
-    let result = client
-        .delete(collection, key)
-        .map_err(|e| format!("Delete failed: {}", e));
+    let url = format!("{}/{}", document_base_url(collection), key);
+    let result = exec_document_request(reqwest::Method::DELETE, url.clone(), None);
 
     if let Err(ref e) = result {
         if is_collection_not_found_error(e) {
             create_collection_sync(collection)?;
-            let client = create_db_client()?;
-            return client
-                .delete(collection, key)
-                .map_err(|e| format!("Delete failed: {}", e))
-                .map(|_| serde_json::Value::String("Deleted".to_string()));
+            return exec_document_request(reqwest::Method::DELETE, url, None);
         }
     }
-
-    result.map(|_| serde_json::Value::String("Deleted".to_string()))
+    result
 }
 
-/// Execute a SoliDBClient query operation with automatic collection creation.
+/// Execute a query with automatic collection creation.
 pub fn exec_query(collection: &str, sdbql: String) -> Result<Vec<serde_json::Value>, String> {
-    let client = create_db_client()?;
-
-    let result = client
-        .query(&sdbql, None)
-        .map_err(|e| format!("Query failed: {}", e));
-
-    if let Err(ref e) = result {
-        if is_collection_not_found_error(e) {
-            create_collection_sync(collection)?;
-            let client = create_db_client()?;
-            return client
-                .query(&sdbql, None)
-                .map_err(|e| format!("Query failed: {}", e));
-        }
-    }
-
+    let result = exec_with_auto_collection(sdbql, None, collection);
     result
 }

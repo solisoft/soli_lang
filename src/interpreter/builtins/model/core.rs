@@ -453,6 +453,16 @@ impl Model {
                         result_map.insert("valid".to_string(), serde_json::Value::Bool(true));
 
                         if let serde_json::Value::Object(mut data_map) = data_value {
+                            // Flatten DB metadata fields from the id response
+                            // into the record for natural access (e.g., record["_key"])
+                            if let serde_json::Value::Object(ref id_map) = id {
+                                for field in &["_key", "_id", "_rev", "_created_at", "_updated_at"]
+                                {
+                                    if let Some(val) = id_map.get(*field) {
+                                        data_map.insert(field.to_string(), val.clone());
+                                    }
+                                }
+                            }
                             data_map.insert("id".to_string(), id);
                             result_map
                                 .insert("record".to_string(), serde_json::Value::Object(data_map));
@@ -490,7 +500,8 @@ impl Model {
 
                 match exec_get(&collection, &id) {
                     Ok(doc) => Ok(json_to_value(&doc)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    // Not found or collection error → null (not an application error)
+                    Err(_) => Ok(Value::Null),
                 }
             })),
         );
@@ -696,15 +707,21 @@ impl Model {
                 let collection = get_collection_from_class(&args)?;
 
                 let sdbql = format!(
-                    "FOR doc IN {} COLLECT WITH COUNT INTO count RETURN count",
+                    "FOR doc IN {} COLLECT WITH COUNT INTO cnt RETURN cnt",
                     collection
                 );
 
                 match exec_query(&collection, sdbql) {
-                    Ok(results) => Ok(Value::Array(Rc::new(RefCell::new(
-                        results.iter().map(json_to_value).collect(),
-                    )))),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Ok(results) => {
+                        // COUNT query returns [N] - extract the integer
+                        if let Some(count) = results.first() {
+                            Ok(json_to_value(count))
+                        } else {
+                            Ok(Value::Int(0))
+                        }
+                    }
+                    // Collection doesn't exist yet → count is 0
+                    Err(_) => Ok(Value::Int(0)),
                 }
             })),
         );

@@ -307,24 +307,17 @@ impl SoliDBClient {
         collection: &str,
         key: &str,
         document: Value,
-        merge: bool,
+        _merge: bool,
     ) -> Result<Value, SoliDBError> {
         let db = self.get_db()?;
-        let payload = serde_json::json!({
-            "document": document,
-            "merge": merge
-        });
         let path = format!("/_api/database/{}/document/{}/{}", db, collection, key);
-        let response: Value = self.request(reqwest::Method::PUT, &path, Some(&payload))?;
+        let response: Value = self.request(reqwest::Method::PUT, &path, Some(&document))?;
         Ok(response)
     }
 
     pub fn delete(&self, collection: &str, key: &str) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
-        let path = format!(
-            "/_api/database/{}/collection/{}/document/{}",
-            db, collection, key
-        );
+        let path = format!("/_api/database/{}/document/{}/{}", db, collection, key);
         self.request(reqwest::Method::DELETE, &path, None)?;
         Ok(())
     }

@@ -1044,6 +1044,33 @@ fn run_test(
         process::exit(1);
     }
 
+    // Set APP_ENV=test and load .env + .env.test
+    std::env::set_var("APP_ENV", "test");
+    let app_dir = if test_path.is_file() {
+        test_path
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap_or_else(|| std::path::Path::new("."))
+    } else {
+        test_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+    };
+    let env_test_path = app_dir.join(".env.test");
+    if !env_test_path.exists() {
+        eprintln!(
+            "Error: .env.test file not found at '{}'. Create one with test database configuration.",
+            env_test_path.display()
+        );
+        process::exit(1);
+    }
+    solilang::serve::env_loader::load_env_files(app_dir);
+
+    // Ensure the test database exists in SoliDB
+    ensure_test_database();
+
+    solilang::interpreter::builtins::model::init_db_config();
+
     let test_files: Vec<std::path::PathBuf> = if test_path.is_file() {
         vec![test_path.clone()]
     } else {
@@ -1054,6 +1081,28 @@ fn run_test(
         println!("No test files found.");
         return;
     }
+
+    // Pre-load model sources if app/models/ exists (MVC app)
+    let models_dir = app_dir.join("app").join("models");
+    let model_preamble = if models_dir.is_dir() {
+        let mut preamble = String::new();
+        if let Ok(entries) = fs::read_dir(&models_dir) {
+            let mut model_files: Vec<_> = entries
+                .flatten()
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "sl"))
+                .collect();
+            model_files.sort_by_key(|e| e.path());
+            for entry in model_files {
+                if let Ok(content) = fs::read_to_string(entry.path()) {
+                    preamble.push_str(&content);
+                    preamble.push('\n');
+                }
+            }
+        }
+        preamble
+    } else {
+        String::new()
+    };
 
     let num_workers = jobs.max(1);
     println!(
@@ -1078,8 +1127,49 @@ fn run_test(
 
     if needs_test_server {
         println!("Starting test server...");
-        let _test_server_port = solilang::interpreter::builtins::test_server::start_test_server();
-        println!("Test server running on port {}", _test_server_port);
+
+        // Find a random available port
+        let port = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0")
+                .expect("Failed to bind to random port");
+            listener.local_addr().unwrap().port()
+        };
+        // Listener is dropped here, freeing the port for the server
+
+        // Store port in test_server atomics so request helpers (get, post, etc.) can use it
+        solilang::interpreter::builtins::test_server::start_test_server_on_port(port);
+
+        // Start the actual app server in a background thread
+        let app_dir_owned = app_dir.to_path_buf();
+        std::thread::spawn(move || {
+            if let Err(e) =
+                solilang::serve::serve_folder_with_options(&app_dir_owned, port, false, 1)
+            {
+                eprintln!("Test server error: {}", e);
+            }
+        });
+
+        // Wait for the server to be ready by polling the health endpoint
+        let base_url = format!("http://127.0.0.1:{}", port);
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+        let max_attempts = 50;
+        let mut ready = false;
+        for _ in 0..max_attempts {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if client.get(format!("{}/health", base_url)).send().is_ok() {
+                ready = true;
+                break;
+            }
+        }
+        if !ready {
+            eprintln!("Error: Test server failed to start on port {}", port);
+            process::exit(1);
+        }
+
+        println!("Test server running on port {}", port);
         println!();
         std::io::stdout().flush().unwrap();
     }
@@ -1093,6 +1183,7 @@ fn run_test(
         for chunk in test_files.chunks(chunk_size) {
             let tx = tx.clone();
             let chunk: Vec<std::path::PathBuf> = chunk.to_vec();
+            let preamble = model_preamble.clone();
 
             handles.push(s.spawn(move || {
                 let mut results: Vec<(std::path::PathBuf, bool, String, std::time::Duration, i64)> =
@@ -1104,10 +1195,21 @@ fn run_test(
 
                     let (passed, error, assertions) = match result {
                         Ok(source) => {
+                            // Prepend model definitions for non-integration tests
+                            let full_source = if !preamble.is_empty()
+                                && !file
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().contains("integration"))
+                                    .unwrap_or(false)
+                            {
+                                format!("{}\n{}", preamble, source)
+                            } else {
+                                source
+                            };
                             // Catch panics from async operations (e.g., WebSocket tests)
                             let panic_result = std::panic::catch_unwind(|| {
                                 solilang::run_with_path_and_coverage(
-                                    &source,
+                                    &full_source,
                                     Some(&file),
                                     false,
                                     None,
@@ -1211,6 +1313,50 @@ fn run_test(
     }
 
     println!();
+}
+
+/// Ensure the test database exists in SoliDB with a clean slate.
+/// Drops and recreates the database so tests start fresh.
+fn ensure_test_database() {
+    let host =
+        std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
+
+    // Don't drop the "default" database
+    if database == "default" {
+        return;
+    }
+
+    // Build basic auth header if credentials are configured
+    let auth_header = match (
+        std::env::var("SOLIDB_USERNAME"),
+        std::env::var("SOLIDB_PASSWORD"),
+    ) {
+        (Ok(user), Ok(pass)) => {
+            use base64::Engine;
+            let encoded = base64::engine::general_purpose::STANDARD
+                .encode(format!("{}:{}", user, pass));
+            Some(format!("Basic {}", encoded))
+        }
+        _ => None,
+    };
+
+    // Drop existing test database (ignore errors - may not exist)
+    let drop_url = format!("{}/_api/database/{}", host, database);
+    let mut drop_req = ureq::delete(&drop_url);
+    if let Some(ref auth) = auth_header {
+        drop_req = drop_req.set("Authorization", auth);
+    }
+    let _ = drop_req.call();
+
+    // Create fresh test database
+    let create_url = format!("{}/_api/database", host);
+    let payload = format!(r#"{{"name":"{}"}}"#, database);
+    let mut create_req = ureq::post(&create_url).set("Content-Type", "application/json");
+    if let Some(ref auth) = auth_header {
+        create_req = create_req.set("Authorization", auth);
+    }
+    let _ = create_req.send_string(&payload);
 }
 
 fn collect_test_files(dir: &Path) -> Vec<std::path::PathBuf> {

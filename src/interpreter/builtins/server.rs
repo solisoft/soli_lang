@@ -17,6 +17,7 @@ pub struct Route {
     pub path_pattern: String,
     pub handler_name: String, // Store function name instead of Value
     pub middleware: Vec<Value>,
+    pub middleware_names: Vec<String>,
 }
 
 /// A worker-safe route struct without middleware Values.
@@ -26,6 +27,7 @@ pub struct WorkerRoute {
     pub method: String,
     pub path_pattern: String,
     pub handler_name: String,
+    pub middleware_names: Vec<String>,
 }
 
 // Route registry stored in thread-local storage.
@@ -135,7 +137,7 @@ pub fn clear_routes_for_prefix(prefix: &str) {
 /// Register a route with a handler name.
 /// Used by the MVC framework to register derived routes.
 pub fn register_route_with_handler(method: &str, path: &str, handler_name: String) {
-    register_route(method, path, handler_name, Vec::new());
+    register_route(method, path, handler_name, Vec::new(), Vec::new());
 }
 
 /// Register a route with a handler and scoped middleware.
@@ -144,8 +146,9 @@ pub fn register_route_with_middleware(
     path: &str,
     handler_name: String,
     middleware: Vec<Value>,
+    middleware_names: Vec<String>,
 ) {
-    register_route(method, path, handler_name, middleware);
+    register_route(method, path, handler_name, middleware, middleware_names);
 }
 
 /// Get all registered routes.
@@ -179,9 +182,10 @@ pub fn find_route(
             if let Some(path_map) = index.exact_matches.get(method) {
                 if let Some(&idx) = path_map.get(path) {
                     if let Some(route) = routes.get(idx) {
+                        let middleware = resolve_middleware(route);
                         return Some((
                             route.handler_name.clone(),
-                            route.middleware.clone(),
+                            middleware,
                             HashMap::new(),
                         ));
                     }
@@ -193,9 +197,10 @@ pub fn find_route(
                 for &idx in indices {
                     if let Some(route) = routes.get(idx) {
                         if let Some(params) = match_path(&route.path_pattern, path) {
+                            let middleware = resolve_middleware(route);
                             return Some((
                                 route.handler_name.clone(),
-                                route.middleware.clone(),
+                                middleware,
                                 params,
                             ));
                         }
@@ -206,6 +211,26 @@ pub fn find_route(
             None
         })
     })
+}
+
+/// Resolve middleware for a route.
+/// If the route has middleware Values (main thread), use them directly.
+/// If empty but has names (worker thread), look up middleware by name.
+fn resolve_middleware(route: &Route) -> Vec<Value> {
+    if !route.middleware.is_empty() {
+        return route.middleware.clone();
+    }
+    if route.middleware_names.is_empty() {
+        return Vec::new();
+    }
+    // Worker thread: resolve middleware by name from the registry
+    let mut middleware = Vec::new();
+    for name in &route.middleware_names {
+        if let Some(mw) = crate::serve::get_middleware_by_name(name) {
+            middleware.push(mw.handler.clone());
+        }
+    }
+    middleware
 }
 
 /// Expand a wildcard action pattern using matched path parameters.
@@ -282,6 +307,7 @@ pub fn routes_to_worker_routes(routes: &[Route]) -> Vec<WorkerRoute> {
             method: r.method.clone(),
             path_pattern: r.path_pattern.clone(),
             handler_name: r.handler_name.clone(),
+            middleware_names: r.middleware_names.clone(),
         })
         .collect()
 }
@@ -295,7 +321,8 @@ pub fn set_routes(routes: Vec<Route>) {
 
 /// Set worker routes in the current thread's storage (for worker threads).
 pub fn set_worker_routes(routes: Vec<WorkerRoute>) {
-    // Convert WorkerRoute back to Route (with empty middleware for workers)
+    // Convert WorkerRoute back to Route.
+    // Middleware Values are resolved by name at request time.
     let routes: Vec<Route> = routes
         .into_iter()
         .map(|r| Route {
@@ -303,6 +330,7 @@ pub fn set_worker_routes(routes: Vec<WorkerRoute>) {
             path_pattern: r.path_pattern,
             handler_name: r.handler_name,
             middleware: Vec::new(),
+            middleware_names: r.middleware_names,
         })
         .collect();
     ROUTES.with(|r| *r.borrow_mut() = routes);
@@ -310,13 +338,20 @@ pub fn set_worker_routes(routes: Vec<WorkerRoute>) {
 }
 
 /// Register a route.
-fn register_route(method: &str, path: &str, handler_name: String, middleware: Vec<Value>) {
+fn register_route(
+    method: &str,
+    path: &str,
+    handler_name: String,
+    middleware: Vec<Value>,
+    middleware_names: Vec<String>,
+) {
     ROUTES.with(|routes| {
         routes.borrow_mut().push(Route {
             method: method.to_string(),
             path_pattern: path.to_string(),
             handler_name,
             middleware,
+            middleware_names,
         });
     });
 }
@@ -1058,7 +1093,7 @@ pub fn register_server_builtins(env: &mut Environment) {
             };
 
             set_direct_routes_mode();
-            register_route("GET", &path, handler_name, Vec::new());
+            register_route("GET", &path, handler_name, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );
@@ -1087,7 +1122,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            register_route("POST", &path, handler_name, Vec::new());
+            register_route("POST", &path, handler_name, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );
@@ -1116,7 +1151,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            register_route("PUT", &path, handler_name, Vec::new());
+            register_route("PUT", &path, handler_name, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );
@@ -1145,7 +1180,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            register_route("DELETE", &path, handler_name, Vec::new());
+            register_route("DELETE", &path, handler_name, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );
@@ -1184,7 +1219,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            register_route(&method, &path, handler_name, Vec::new());
+            register_route(&method, &path, handler_name, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );

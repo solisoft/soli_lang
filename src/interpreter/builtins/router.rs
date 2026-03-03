@@ -55,6 +55,21 @@ fn extract_middleware_from_value(value: &Value) -> Vec<Value> {
     middleware
 }
 
+/// Extract middleware names from a value (string or array of strings).
+fn extract_middleware_names(value: &Value) -> Vec<String> {
+    let mut names = Vec::new();
+    if let Value::String(name) = value {
+        names.push(name.clone());
+    } else if let Value::Array(arr) = value {
+        for item in arr.borrow().iter() {
+            if let Value::String(name) = item {
+                names.push(name.clone());
+            }
+        }
+    }
+    names
+}
+
 // Global registries
 thread_local! {
     // Map "controller_name" -> "action_name" -> FunctionValue
@@ -83,6 +98,7 @@ struct RouterScope {
     is_member: bool,            // Are we inside a member block?
     is_collection: bool,        // Are we inside a collection block?
     middleware: Vec<Value>,     // Active middleware
+    middleware_names: Vec<String>, // Middleware names for worker thread transfer
 }
 
 impl Default for RouterScope {
@@ -93,6 +109,7 @@ impl Default for RouterScope {
             is_member: false,
             is_collection: false,
             middleware: Vec::new(),
+            middleware_names: Vec::new(),
         }
     }
 }
@@ -175,6 +192,7 @@ pub fn register_router_builtins(env: &mut Environment) {
 
                     let controller = name.clone(); // Default controller is resource name
                     let middleware = current.middleware.clone();
+                    let mw_names = current.middleware_names.clone();
 
                     // Register standard routes immediately
                     // Index: GET base_path
@@ -184,6 +202,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         &base_path,
                         handler_name,
                         middleware.clone(),
+                        mw_names.clone(),
                     );
 
                     // Create: POST base_path
@@ -193,6 +212,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         &base_path,
                         handler_name,
                         middleware.clone(),
+                        mw_names.clone(),
                     );
 
                     // New: GET base_path/new
@@ -202,6 +222,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         &format!("{}/new", base_path),
                         handler_name,
                         middleware.clone(),
+                        mw_names.clone(),
                     );
 
                     // Member routes base path
@@ -214,6 +235,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         &member_path,
                         handler_name,
                         middleware.clone(),
+                        mw_names.clone(),
                     );
 
                     // Update: PUT/PATCH member_path
@@ -223,12 +245,14 @@ pub fn register_router_builtins(env: &mut Environment) {
                         &member_path,
                         handler_name.clone(),
                         middleware.clone(),
+                        mw_names.clone(),
                     );
                     register_route_with_middleware(
                         "PATCH",
                         &member_path,
                         handler_name,
                         middleware.clone(),
+                        mw_names.clone(),
                     );
 
                     // Destroy: DELETE member_path
@@ -238,6 +262,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         &member_path,
                         handler_name,
                         middleware.clone(),
+                        mw_names.clone(),
                     );
 
                     // Edit: GET member_path/edit
@@ -247,6 +272,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         &format!("{}/edit", member_path),
                         handler_name,
                         middleware.clone(),
+                        mw_names.clone(),
                     );
 
                     // Push new scope for nested resources
@@ -266,6 +292,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         is_member: false,
                         is_collection: false,
                         middleware: current.middleware.clone(),
+                        middleware_names: current.middleware_names.clone(),
                     });
                 });
 
@@ -317,7 +344,8 @@ pub fn register_router_builtins(env: &mut Environment) {
                 let handler = action.clone();
                 // Pass scoped middleware from current context
                 let middleware = current.middleware.clone();
-                register_route_with_middleware(&method, &full_path, handler, middleware);
+                let mw_names = current.middleware_names.clone();
+                register_route_with_middleware(&method, &full_path, handler, middleware, mw_names);
                 Ok(Value::Null)
             })
         })),
@@ -345,6 +373,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                     is_member: true,
                     is_collection: false,
                     middleware: current.middleware,
+                    middleware_names: current.middleware_names,
                 });
             });
             Ok(Value::Null)
@@ -387,6 +416,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         is_member: false,
                         is_collection: true,
                         middleware: current.middleware,
+                        middleware_names: current.middleware_names,
                     });
                 });
                 Ok(Value::Null)
@@ -433,6 +463,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         is_member: false,
                         is_collection: false,
                         middleware: current.middleware,
+                        middleware_names: current.middleware_names,
                     });
                 });
                 Ok(Value::Null)
@@ -450,6 +481,7 @@ pub fn register_router_builtins(env: &mut Environment) {
             |args| {
                 // Extract middleware values from the argument (array of names or single name)
                 let middleware_values = extract_middleware_from_value(&args[0]);
+                let middleware_names_new = extract_middleware_names(&args[0]);
 
                 ROUTER_CONTEXT.with(|ctx| {
                     let mut stack = ctx.borrow_mut();
@@ -458,6 +490,8 @@ pub fn register_router_builtins(env: &mut Environment) {
                     // Push new scope with middleware added
                     let mut new_middleware = current.middleware.clone();
                     new_middleware.extend(middleware_values);
+                    let mut new_names = current.middleware_names.clone();
+                    new_names.extend(middleware_names_new);
 
                     stack.push(RouterScope {
                         path_prefix: current.path_prefix,
@@ -465,6 +499,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         is_member: current.is_member,
                         is_collection: current.is_collection,
                         middleware: new_middleware,
+                        middleware_names: new_names,
                     });
                 });
 

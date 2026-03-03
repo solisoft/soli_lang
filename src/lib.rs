@@ -432,23 +432,29 @@ fn execute_test_suites(
     for suite in suites {
         // Run before_all if defined
         if let Some(before_all) = &suite.before_all {
+            let rebound = rebind_closure(before_all, &interpreter.environment);
             let _ =
-                interpreter.call_value(before_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+                interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
         }
 
         for test in &suite.tests {
             // Run before_each if defined
             if let Some(before_each) = &suite.before_each {
+                let rebound = rebind_closure(before_each, &interpreter.environment);
                 let _ = interpreter.call_value(
-                    before_each.clone(),
+                    rebound,
                     Vec::new(),
                     span::Span::new(0, 0, 1, 1),
                 );
             }
 
+            // Rebind test body closure to interpreter's environment so
+            // top-level `def` functions (e.g. register_test_user) are accessible.
+            let test_body = rebind_closure(&test.body, &interpreter.environment);
+
             // Execute the test body and track failures
             let result =
-                interpreter.call_value(test.body.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+                interpreter.call_value(test_body, Vec::new(), span::Span::new(0, 0, 1, 1));
 
             if let Err(e) = result {
                 failed_count += 1;
@@ -457,8 +463,9 @@ fn execute_test_suites(
 
             // Run after_each if defined
             if let Some(after_each) = &suite.after_each {
+                let rebound = rebind_closure(after_each, &interpreter.environment);
                 let _ = interpreter.call_value(
-                    after_each.clone(),
+                    rebound,
                     Vec::new(),
                     span::Span::new(0, 0, 1, 1),
                 );
@@ -473,11 +480,39 @@ fn execute_test_suites(
 
         // Run after_all if defined
         if let Some(after_all) = &suite.after_all {
+            let rebound = rebind_closure(after_all, &interpreter.environment);
             let _ =
-                interpreter.call_value(after_all.clone(), Vec::new(), span::Span::new(0, 0, 1, 1));
+                interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
         }
     }
     Ok((failed_count, failed_tests))
+}
+
+/// Rebind a test function's closure to use the interpreter's environment,
+/// so that top-level definitions (def, let) are accessible inside tests.
+fn rebind_closure(
+    value: &interpreter::value::Value,
+    env: &std::rc::Rc<std::cell::RefCell<interpreter::environment::Environment>>,
+) -> interpreter::value::Value {
+    use interpreter::value::{Function, Value};
+    match value {
+        Value::Function(func) => {
+            let mut new_func = Function {
+                name: func.name.clone(),
+                params: func.params.clone(),
+                body: func.body.clone(),
+                closure: env.clone(),
+                is_method: func.is_method,
+                span: func.span,
+                source_path: func.source_path.clone(),
+                defining_superclass: func.defining_superclass.clone(),
+                return_type: func.return_type.clone(),
+            };
+            new_func.closure = env.clone();
+            Value::Function(std::rc::Rc::new(new_func))
+        }
+        other => other.clone(),
+    }
 }
 
 /// Check if a program has any import statements.
