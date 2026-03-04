@@ -381,7 +381,7 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexmap::IndexMap;
+    use crate::interpreter::value::HashPairs;
     use std::rc::Rc;
 
     #[test]
@@ -449,14 +449,14 @@ end
 
     #[test]
     fn test_middleware_result_continue() {
-        let mut request_map: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut request_map: HashPairs = HashPairs::default();
         request_map.insert(
             HashKey::String("path".to_string()),
             Value::String("/test".to_string()),
         );
         let request = Value::Hash(Rc::new(RefCell::new(request_map)));
 
-        let mut result_map: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result_map: HashPairs = HashPairs::default();
         result_map.insert(HashKey::String("continue".to_string()), Value::Bool(true));
         result_map.insert(HashKey::String("request".to_string()), request.clone());
         let result = Value::Hash(Rc::new(RefCell::new(result_map)));
@@ -469,7 +469,7 @@ end
 
     #[test]
     fn test_middleware_result_response() {
-        let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut response_map: HashPairs = HashPairs::default();
         response_map.insert(HashKey::String("status".to_string()), Value::Int(401));
         response_map.insert(
             HashKey::String("body".to_string()),
@@ -477,7 +477,7 @@ end
         );
         let response = Value::Hash(Rc::new(RefCell::new(response_map)));
 
-        let mut result_map: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result_map: HashPairs = HashPairs::default();
         result_map.insert(HashKey::String("continue".to_string()), Value::Bool(false));
         result_map.insert(HashKey::String("response".to_string()), response);
         let result = Value::Hash(Rc::new(RefCell::new(result_map)));

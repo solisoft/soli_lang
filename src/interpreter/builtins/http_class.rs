@@ -23,12 +23,11 @@ use std::rc::Rc;
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 
-use indexmap::IndexMap;
 use reqwest::Client;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{
-    hash_from_pairs, Class, FutureState, HashKey, HttpFutureKind, NativeFunction, Value,
+    hash_from_pairs, Class, FutureState, HashKey, HashPairs, HttpFutureKind, NativeFunction, Value,
 };
 use crate::serve::get_tokio_handle;
 
@@ -129,11 +128,10 @@ where
 }
 
 fn value_to_json(value: &Value) -> Result<String, String> {
-    let json = crate::interpreter::value::value_to_json(value)?;
-    serde_json::to_string(&json).map_err(|e| format!("JSON serialization error: {}", e))
+    crate::interpreter::value::stringify_to_string(value)
 }
 
-fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
+fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
     crate::interpreter::value::json_to_value(json)
 }
 
@@ -551,7 +549,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let text = resp.text().await.map_err(|e| e.to_string())?;
                         match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(json) => json_to_value(&json),
+                            Ok(json) => json_to_value(json),
                             Err(e) => Err(format!("Failed to parse JSON: {}", e)),
                         }
                     }) {
@@ -613,7 +611,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let text = resp.text().await.map_err(|e| e.to_string())?;
                         match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(json) => json_to_value(&json),
+                            Ok(json) => json_to_value(json),
                             Err(e) => Err(format!("Failed to parse JSON: {}", e)),
                         }
                     }) {
@@ -678,7 +676,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let text = resp.text().await.map_err(|e| e.to_string())?;
                         match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(json) => json_to_value(&json),
+                            Ok(json) => json_to_value(json),
                             Err(e) => Err(format!("Failed to parse JSON: {}", e)),
                         }
                     }) {
@@ -743,7 +741,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let text = resp.text().await.map_err(|e| e.to_string())?;
                         match serde_json::from_str::<serde_json::Value>(&text) {
-                            Ok(json) => json_to_value(&json),
+                            Ok(json) => json_to_value(json),
                             Err(e) => Err(format!("Failed to parse JSON: {}", e)),
                         }
                     }) {
@@ -973,7 +971,7 @@ pub fn register_http_class(env: &mut Environment) {
             };
 
             match serde_json::from_str::<serde_json::Value>(&json_str) {
-                Ok(json) => json_to_value(&json),
+                Ok(json) => json_to_value(json),
                 Err(e) => Err(format!("Failed to parse JSON: {}", e)),
             }
         })),
@@ -1086,7 +1084,7 @@ fn create_http_response(
     headers_map: serde_json::Map<String, serde_json::Value>,
     body: String,
 ) -> Result<Value, String> {
-    let response_headers: IndexMap<HashKey, Value> = headers_map
+    let response_headers: HashPairs = headers_map
         .into_iter()
         .map(|(k, v)| {
             (
@@ -1096,7 +1094,7 @@ fn create_http_response(
         })
         .collect();
 
-    let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut result: HashPairs = HashPairs::default();
     result.insert(
         HashKey::String("status".to_string()),
         Value::Int(status as i64),
@@ -1289,13 +1287,13 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
 }
 
 fn response_to_value(response: HttpResponse) -> Value {
-    let headers: IndexMap<HashKey, Value> = response
+    let headers: HashPairs = response
         .headers
         .into_iter()
         .map(|(k, v)| (HashKey::String(k), Value::String(v)))
         .collect();
 
-    let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut result: HashPairs = HashPairs::default();
     result.insert(
         HashKey::String("status".to_string()),
         Value::Int(response.status as i64),

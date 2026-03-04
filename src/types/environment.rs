@@ -1177,7 +1177,105 @@ impl TypeEnvironment {
                 is_static: true,
             },
         );
+        soap_class.methods.insert(
+            "to_xml".to_string(),
+            MethodInfo {
+                name: "to_xml".to_string(),
+                params: vec![("hash".to_string(), Type::Any)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
         self.classes.insert("SOAP".to_string(), soap_class);
+
+        // JSON class
+        let mut json_class = ClassType::new("JSON".to_string());
+        json_class.methods.insert(
+            "parse".to_string(),
+            MethodInfo {
+                name: "parse".to_string(),
+                params: vec![("json".to_string(), Type::String)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        json_class.methods.insert(
+            "stringify".to_string(),
+            MethodInfo {
+                name: "stringify".to_string(),
+                params: vec![("value".to_string(), Type::Any)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("JSON".to_string(), json_class);
+
+        // HTTP class
+        let mut http_class = ClassType::new("HTTP".to_string());
+        http_class.methods.insert(
+            "get".to_string(),
+            MethodInfo {
+                name: "get".to_string(),
+                params: vec![("url".to_string(), Type::String)],
+                return_type: Type::Future(Box::new(Type::String)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        http_class.methods.insert(
+            "post".to_string(),
+            MethodInfo {
+                name: "post".to_string(),
+                params: vec![
+                    ("url".to_string(), Type::String),
+                    ("body".to_string(), Type::Any),
+                ],
+                return_type: Type::Future(Box::new(Type::String)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        http_class.methods.insert(
+            "put".to_string(),
+            MethodInfo {
+                name: "put".to_string(),
+                params: vec![
+                    ("url".to_string(), Type::String),
+                    ("body".to_string(), Type::Any),
+                ],
+                return_type: Type::Future(Box::new(Type::String)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        http_class.methods.insert(
+            "delete".to_string(),
+            MethodInfo {
+                name: "delete".to_string(),
+                params: vec![("url".to_string(), Type::String)],
+                return_type: Type::Future(Box::new(Type::String)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        http_class.methods.insert(
+            "request".to_string(),
+            MethodInfo {
+                name: "request".to_string(),
+                params: vec![
+                    ("method".to_string(), Type::String),
+                    ("url".to_string(), Type::String),
+                    ("options".to_string(), Type::Any),
+                ],
+                return_type: Type::Future(Box::new(Type::Any)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("HTTP".to_string(), http_class);
 
         // System class
         let mut system_class = ClassType::new("System".to_string());

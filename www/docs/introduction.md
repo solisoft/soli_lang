@@ -72,6 +72,59 @@ The Soli language has its own comprehensive documentation:
 - **[Soli Language Reference](/docs/soli-language)** - Complete guide to Soli syntax, types, functions, classes, and more
 - [Official Soli Documentation](https://soli.solisoft.net.com/docs/guides/introduction) - Full language documentation
 
+## Performance
+
+Soli is designed for performance. Here's how it compares to Ruby:
+
+| Benchmark | Ruby | Soli | Speedup |
+|-----------|------|------|---------|
+| fib_recursive (n=20) | 38ms | 14ms | 2.7x |
+| fib_iterative (n=30) | 37ms | 3ms | 12x |
+| loop_sum (n=10000) | 36ms | 6ms | 6x |
+| string_ops (500 chars) | 38ms | 2ms | 19x |
+| pipeline_ops (1000 transforms) | 39ms | 4ms | 10x |
+| inheritance_deep (1000 calls) | 36ms | 5ms | 7x |
+
+### Benchmark Methodology
+
+Benchmarks were run using identical algorithms in both languages:
+
+```soli
+# Fibonacci (recursive)
+def fib(n: Int) -> Int
+  return n if n <= 1
+  fib(n - 1) + fib(n - 2)
+end
+
+let result = fib(20)
+```
+
+```ruby
+# Fibonacci (Ruby equivalent)
+def fib(n)
+  return n if n <= 1
+  fib(n - 1) + fib(n - 2)
+end
+result = fib(20)
+```
+
+Run benchmarks yourself:
+
+```bash
+# Ruby benchmarks
+for prog in fib_recursive fib_iterative loop_sum; do
+  time ruby benches/ruby/$prog.rb
+done
+
+# Soli benchmarks
+for prog in fib_recursive fib_iterative loop_sum; do
+  time ./target/release/soli benches/programs/$prog.sl
+done
+
+# Internal criterion benchmarks
+cargo bench
+```
+
 ## Design Philosophy
 
 Soli favors convention over configuration. By following standard naming patterns, you write less glue code and focus on building features.

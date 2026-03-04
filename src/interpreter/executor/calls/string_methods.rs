@@ -51,7 +51,27 @@ impl Interpreter {
             "oct" => self.string_oct(s, arguments, span),
             "truncate" => self.string_truncate(s, arguments, span),
             "length" | "len" => self.string_length(s, arguments, span),
-            "to_string" => Ok(Value::String(s.to_string())),
+            "to_s" | "to_string" => Ok(Value::String(s.to_string())),
+            "to_i" | "to_int" => {
+                let trimmed = s.trim();
+                // Try integer first, then float-truncate (e.g. "4.88".to_i => 4)
+                Ok(Value::Int(
+                    trimmed
+                        .parse::<i64>()
+                        .or_else(|_| trimmed.replace(',', ".").parse::<f64>().map(|f| f as i64))
+                        .unwrap_or(0),
+                ))
+            }
+            "to_f" | "to_float" => {
+                let trimmed = s.trim();
+                // Support comma as decimal separator (e.g. "4,88".to_f => 4.88)
+                Ok(Value::Float(
+                    trimmed
+                        .parse::<f64>()
+                        .or_else(|_| trimmed.replace(',', ".").parse::<f64>())
+                        .unwrap_or(0.0),
+                ))
+            }
             "upcase" | "uppercase" => Ok(Value::String(s.to_uppercase())),
             "downcase" | "lowercase" => Ok(Value::String(s.to_lowercase())),
             "trim" => Ok(Value::String(s.trim().to_string())),
@@ -67,6 +87,23 @@ impl Interpreter {
             "join" => Ok(Value::String(s.to_string())),
             "empty?" => self.string_empty(s, arguments, span),
             "include?" => self.string_include(s, arguments, span),
+            "is_a?" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let class_name = match &arguments[0] {
+                    Value::String(s) => s.as_str(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "is_a? expects a string argument",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::Bool(
+                    class_name == "string" || class_name == "object",
+                ))
+            }
             "chr" => Err(RuntimeError::type_error(
                 "chr is not a string instance method",
                 span,

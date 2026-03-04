@@ -153,4 +153,10 @@ pub enum Op {
     // --- Import ---
     /// Import a module by path constant index.
     Import(u16),
+
+    // --- JSON ---
+    /// Parse JSON string: pops string, pushes Value.
+    JsonParse,
+    /// Stringify value: pops value, pushes string.
+    JsonStringify,
 }

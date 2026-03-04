@@ -1,7 +1,7 @@
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::value_to_json;
-use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value};
-use indexmap::IndexMap;
+use crate::interpreter::value::{
+    json_to_value, stringify_to_string, Class, Instance, NativeFunction, Value,
+};
 use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -72,34 +72,6 @@ fn evict_expired_or_oldest(store: &mut CacheStore) {
     }
 }
 
-fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
-    match json {
-        serde_json::Value::Null => Ok(Value::Null),
-        serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(Value::Int(i))
-            } else if let Some(f) = n.as_f64() {
-                Ok(Value::Float(f))
-            } else {
-                Ok(Value::String(n.to_string()))
-            }
-        }
-        serde_json::Value::String(s) => Ok(Value::String(s.clone())),
-        serde_json::Value::Array(arr) => {
-            let values: Result<Vec<Value>, String> = arr.iter().map(json_to_value).collect();
-            Ok(Value::Array(Rc::new(RefCell::new(values?))))
-        }
-        serde_json::Value::Object(obj) => {
-            let mut result: IndexMap<HashKey, Value> = IndexMap::new();
-            for (k, v) in obj.iter() {
-                result.insert(HashKey::String(k.clone()), json_to_value(v)?);
-            }
-            Ok(Value::Hash(Rc::new(RefCell::new(result))))
-        }
-    }
-}
-
 pub fn register_cache_builtins(env: &mut Environment) {
     let mut cache_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
@@ -124,9 +96,8 @@ pub fn register_cache_builtins(env: &mut Environment) {
                 })
                 .unwrap_or(DEFAULT_TTL_SECONDS);
 
-            let json = value_to_json(value)
+            let json_str = stringify_to_string(value)
                 .map_err(|e| format!("Cache.set() failed to serialize value: {}", e))?;
-            let json_str = json.to_string();
 
             let mut store = CACHE_STORE
                 .write()
@@ -180,7 +151,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
                         if entry.expires_at > Instant::now() {
                             let json: serde_json::Value = serde_json::from_str(&entry.value)
                                 .map_err(|e| format!("Cache deserialization error: {}", e))?;
-                            return json_to_value(&json);
+                            return json_to_value(json);
                         }
                     }
                 }
@@ -398,9 +369,8 @@ pub fn register_cache_builtins(env: &mut Environment) {
                 })
                 .unwrap_or(DEFAULT_TTL_SECONDS);
 
-            let json = value_to_json(value)
+            let json_str = stringify_to_string(value)
                 .map_err(|e| format!("cache_set() failed to serialize value: {}", e))?;
-            let json_str = json.to_string();
 
             let mut store = CACHE_STORE
                 .write()
@@ -454,7 +424,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
                         if entry.expires_at > Instant::now() {
                             let json: serde_json::Value = serde_json::from_str(&entry.value)
                                 .map_err(|e| format!("Cache deserialization error: {}", e))?;
-                            return json_to_value(&json);
+                            return json_to_value(json);
                         }
                     }
                 }

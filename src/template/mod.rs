@@ -355,8 +355,8 @@ impl TemplateCache {
 
 /// Create a response hash for rendered HTML content.
 pub fn html_response(body: String, status: i64) -> Value {
-    use crate::interpreter::value::HashKey;
-    use indexmap::IndexMap;
+    use crate::interpreter::value::{HashKey, HashPairs};
+    use ahash::RandomState as AHasher;
 
     // Inject live reload script if enabled
     let body = if crate::serve::live_reload::is_live_reload_enabled() {
@@ -365,13 +365,13 @@ pub fn html_response(body: String, status: i64) -> Value {
         body
     };
 
-    let mut headers: IndexMap<HashKey, Value> = IndexMap::with_capacity(1);
+    let mut headers: HashPairs = HashPairs::with_capacity_and_hasher(1, AHasher::default());
     headers.insert(
         HashKey::String("Content-Type".to_string()),
         Value::String("text/html; charset=utf-8".to_string()),
     );
 
-    let mut result: IndexMap<HashKey, Value> = IndexMap::with_capacity(3);
+    let mut result: HashPairs = HashPairs::with_capacity_and_hasher(3, AHasher::default());
     result.insert(HashKey::String("status".to_string()), Value::Int(status));
     result.insert(
         HashKey::String("headers".to_string()),
@@ -404,8 +404,7 @@ pub fn markdown_to_html(markdown: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interpreter::value::HashKey;
-    use indexmap::IndexMap;
+    use crate::interpreter::value::{HashKey, HashPairs};
     use std::fs;
 
     #[test]
@@ -529,7 +528,7 @@ mod tests {
 
         fs::write(views.join("greeting.md"), "# Hello <%= name %>").unwrap();
 
-        let mut data = IndexMap::new();
+        let mut data = HashPairs::default();
         data.insert(
             HashKey::String("name".to_string()),
             Value::String("World".to_string()),

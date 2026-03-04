@@ -76,7 +76,7 @@ pub fn register_file_builtins(env: &mut Environment) {
                 .map_err(|e| format!("slurp_json failed to read {}: {}", path, e))?;
             let json: serde_json::Value = serde_json::from_str(&content)
                 .map_err(|e| format!("slurp_json failed to parse {}: {}", path, e))?;
-            json_to_value(&json)
+            json_to_value(json)
         })),
     );
 

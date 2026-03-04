@@ -82,9 +82,7 @@ print(factorial(5));  # 120
 
 # Calculate Fibonacci
 def fibonacci(n: Int) -> Int
-    if (n <= 1)
-        return n
-    end
+    return n if n <= 1
     fibonacci(n - 1) + fibonacci(n - 2)
 end
 
@@ -264,6 +262,33 @@ let adults = users.filter(def(u)
     let age = u["age"]
     age >= 18
 end);</code></pre>
+            </div>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Trailing block syntax</h3>
+        <p class="text-gray-400 mb-4">When a method's last argument is a lambda, you can pass it as a <strong class="text-white">trailing block</strong> &mdash; outside the parentheses, terminated by <code class="text-indigo-400">end</code>:</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Trailing block — no parentheses needed
+[1, 2, 3].map |x| x * 2 end          # [2, 4, 6]
+[1, 2, 3].filter |x| x > 1 end       # [2, 3]
+3.times |i| print(i) end              # 0 1 2
+
+# Equivalent parenthesized form
+[1, 2, 3].map(|x| x * 2)             # [2, 4, 6]
+[1, 2, 3].filter(|x| x > 1)          # [2, 3]
+3.times(|i| print(i))                 # 0 1 2
+
+# Methods with extra arguments — trailing block after parens
+1.upto(5) |i| print(i) end           # 1 2 3 4 5
+numbers.reduce(0) |acc, x| acc + x end
+
+# Multi-line trailing block
+[1, 2, 3].map |x|
+    let doubled = x * 2
+    doubled + 1
+end
+# [3, 5, 7]</code></pre>
             </div>
         </div>
 

@@ -5,9 +5,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::ast::expr::MatchPattern;
-use crate::interpreter::value::{HashKey, Value};
-
-use indexmap::IndexMap;
+use crate::interpreter::value::{HashKey, HashPairs, Value};
 
 use super::{Interpreter, RuntimeResult};
 
@@ -125,7 +123,7 @@ impl Interpreter {
                         .iter()
                         .map(|(f, _)| HashKey::String(f.clone()))
                         .collect();
-                    let rest_map: IndexMap<HashKey, Value> = hash
+                    let rest_map: HashPairs = hash
                         .into_iter()
                         .filter(|(k, _)| !matched_keys.contains(k))
                         .collect();

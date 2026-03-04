@@ -43,9 +43,20 @@ impl TypeChecker {
             Type::Hash {
                 key_type,
                 value_type,
-            } => self.check_hash_method(&key_type, &value_type, name, span),
+            } => {
+                // First check if it's a known method
+                if let Ok(method_type) = self.check_hash_method(&key_type, &value_type, name, span)
+                {
+                    return Ok(method_type);
+                }
+                // If not a method, treat as property access - return value_type
+                // (hash.key returns the value type for any key)
+                Ok((*value_type).clone())
+            }
             Type::String => self.check_string_method(name, span),
             Type::Any | Type::Unknown => Ok(Type::Any),
+            // Primitive types support methods via the OO method dispatch system
+            Type::Int | Type::Float | Type::Bool | Type::Null => Ok(Type::Any),
             _ => Err(TypeError::NoSuchMember {
                 type_name: format!("{}", obj_type),
                 member: name.to_string(),
@@ -81,8 +92,8 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(inner_type.clone()),
             }),
-            "empty?" | "include?" => Ok(Type::Function {
-                params: vec![],
+            "empty?" | "include?" | "contains" => Ok(Type::Function {
+                params: vec![inner_type.clone()],
                 return_type: Box::new(Type::Bool),
             }),
             "take" | "drop" => Ok(Type::Function {
@@ -101,14 +112,23 @@ impl TypeChecker {
                 params: vec![Type::String],
                 return_type: Box::new(Type::String),
             }),
-            "length" | "get" | "push" | "pop" | "clear" => {
-                // These are built-in methods with various signatures
-                // For simplicity, return Any
-                Ok(Type::Function {
-                    params: vec![],
-                    return_type: Box::new(Type::Any),
-                })
-            }
+            "length" | "get" | "pop" | "clear" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Any),
+            }),
+            "push" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Null),
+            }),
+            // Universal methods on all types
+            "class" | "inspect" | "to_string" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            }),
+            "nil?" | "is_a?" | "blank?" | "present?" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Bool),
+            }),
             _ => Err(TypeError::NoSuchMember {
                 type_name: format!("{}[]", inner_type),
                 member: name.to_string(),
@@ -126,9 +146,39 @@ impl TypeChecker {
         span: Span,
     ) -> TypeResult<Type> {
         match name {
-            "length" | "empty?" => Ok(Type::Function {
+            "length" | "len" | "empty?" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Int),
+            }),
+            "keys" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Array(Box::new(key_type.clone()))),
+            }),
+            "values" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Array(Box::new(value_type.clone()))),
+            }),
+            "entries" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Array(Box::new(Type::Array(Box::new(Type::Any))))),
+            }),
+            "has_key" | "delete" => Ok(Type::Function {
+                params: vec![key_type.clone()],
+                return_type: Box::new(value_type.clone()),
+            }),
+            "merge" => Ok(Type::Function {
+                params: vec![Type::Hash {
+                    key_type: Box::new(key_type.clone()),
+                    value_type: Box::new(value_type.clone()),
+                }],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(key_type.clone()),
+                    value_type: Box::new(value_type.clone()),
+                }),
+            }),
+            "clear" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Null),
             }),
             "map" | "filter" | "each" => Ok(Type::Function {
                 params: vec![Type::Any],
@@ -156,6 +206,15 @@ impl TypeChecker {
                     key_type: Box::new(key_type.clone()),
                     value_type: Box::new(value_type.clone()),
                 }),
+            }),
+            // Universal methods on all types
+            "class" | "inspect" | "to_string" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            }),
+            "nil?" | "is_a?" | "blank?" | "present?" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Bool),
             }),
             _ => Err(TypeError::NoSuchMember {
                 type_name: format!("Hash({}, {})", key_type, value_type),
@@ -201,9 +260,30 @@ impl TypeChecker {
                 params: vec![Type::Int],
                 return_type: Box::new(Type::String),
             }),
+            "to_i" | "to_int" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Int),
+            }),
+            "to_f" | "to_float" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Float),
+            }),
+            "to_s" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            }),
             "chr" | "insert" | "delete" | "substring" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Any),
+            }),
+            // Universal methods on all types
+            "class" | "inspect" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            }),
+            "nil?" | "is_a?" | "blank?" | "present?" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Bool),
             }),
             _ => Err(TypeError::NoSuchMember {
                 type_name: "String".to_string(),

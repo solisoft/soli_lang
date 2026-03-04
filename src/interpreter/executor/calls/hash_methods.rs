@@ -10,7 +10,7 @@ use crate::interpreter::value::{HashKey, Value};
 use crate::span::Span;
 
 use crate::interpreter::environment::Environment;
-use indexmap::IndexMap;
+use crate::interpreter::value::HashPairs;
 
 impl Interpreter {
     /// Handle hash methods.
@@ -36,7 +36,7 @@ impl Interpreter {
             "except" => self.hash_except(entries, arguments, span),
             "compact" => self.hash_compact(entries, arguments, span),
             "dig" => self.hash_dig(entries, arguments, span),
-            "length" => self.hash_length(entries, arguments, span),
+            "length" | "len" => self.hash_length(entries, arguments, span),
             "to_string" => self.hash_to_string(entries, arguments, span),
             "keys" => self.hash_keys(entries, arguments, span),
             "values" => self.hash_values(entries, arguments, span),
@@ -47,6 +47,21 @@ impl Interpreter {
             "clear" => self.hash_clear(entries, arguments, span),
             "set" => self.hash_set(entries, arguments, span),
             "empty?" => self.hash_empty(entries, arguments, span),
+            "is_a?" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let class_name = match &arguments[0] {
+                    Value::String(s) => s.as_str(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "is_a? expects a string argument",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::Bool(class_name == "hash" || class_name == "object"))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Hash".to_string(),
                 property: method_name.to_string(),
@@ -74,7 +89,7 @@ impl Interpreter {
             }
         };
 
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let mut call_env = Environment::with_enclosing(func.closure.clone());
 
@@ -129,7 +144,7 @@ impl Interpreter {
             }
         };
 
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let mut call_env = Environment::with_enclosing(func.closure.clone());
 
@@ -197,7 +212,7 @@ impl Interpreter {
             }
         }
 
-        let result: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+        let result: HashPairs = entries.iter().cloned().collect();
         Ok(Value::Hash(Rc::new(RefCell::new(result))))
     }
 
@@ -219,7 +234,7 @@ impl Interpreter {
         })?;
         let default = arguments.get(1).cloned().unwrap_or(Value::Null);
 
-        let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+        let entries_map: HashPairs = entries.iter().cloned().collect();
         Ok(entries_map.get(&hash_key).cloned().unwrap_or(default))
     }
 
@@ -240,7 +255,7 @@ impl Interpreter {
             )
         })?;
 
-        let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+        let entries_map: HashPairs = entries.iter().cloned().collect();
         if let Some(v) = entries_map.get(&hash_key) {
             Ok(v.clone())
         } else if let Some(default) = arguments.get(1) {
@@ -262,7 +277,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         for (k, v) in entries {
             let new_key = v.to_hash_key().ok_or_else(|| {
                 RuntimeError::type_error(
@@ -294,7 +309,7 @@ impl Interpreter {
             }
         };
 
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let mut call_env = Environment::with_enclosing(func.closure.clone());
 
@@ -340,7 +355,7 @@ impl Interpreter {
             }
         };
 
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let mut call_env = Environment::with_enclosing(func.closure.clone());
 
@@ -387,7 +402,7 @@ impl Interpreter {
             }
         };
 
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let mut call_env = Environment::with_enclosing(func.closure.clone());
 
@@ -435,7 +450,7 @@ impl Interpreter {
             }
         };
 
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let mut call_env = Environment::with_enclosing(func.closure.clone());
 
@@ -483,8 +498,8 @@ impl Interpreter {
             }
         };
 
-        let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let entries_map: HashPairs = entries.iter().cloned().collect();
+        let mut result: HashPairs = HashPairs::default();
         for key in keys_arr {
             let hash_key = key.to_hash_key().ok_or_else(|| {
                 RuntimeError::type_error(
@@ -522,7 +537,7 @@ impl Interpreter {
         let exclude_keys: HashSet<HashKey> =
             keys_arr.iter().filter_map(|k| k.to_hash_key()).collect();
 
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         for (k, v) in entries {
             if !exclude_keys.contains(k) {
                 result.insert(k.clone(), v.clone());
@@ -541,7 +556,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let result: IndexMap<HashKey, Value> = entries
+        let result: HashPairs = entries
             .iter()
             .filter(|(_, v)| !matches!(v, Value::Null))
             .cloned()
@@ -559,7 +574,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
 
-        let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+        let entries_map: HashPairs = entries.iter().cloned().collect();
         let mut current: Option<Value> = Some(Value::Hash(Rc::new(RefCell::new(entries_map))));
         for key in arguments {
             current = match current.take() {
@@ -667,7 +682,7 @@ impl Interpreter {
             Some(k) => k,
             None => return Ok(Value::Bool(false)),
         };
-        let entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+        let entries_map: HashPairs = entries.iter().cloned().collect();
         Ok(Value::Bool(entries_map.contains_key(&hash_key)))
     }
 
@@ -685,7 +700,7 @@ impl Interpreter {
             Some(k) => k,
             None => return Ok(Value::Null),
         };
-        let mut entries_map: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+        let mut entries_map: HashPairs = entries.iter().cloned().collect();
         Ok(entries_map.shift_remove(&hash_key).unwrap_or(Value::Null))
     }
 
@@ -707,7 +722,7 @@ impl Interpreter {
                 ))
             }
         };
-        let mut result: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+        let mut result: HashPairs = entries.iter().cloned().collect();
         for (k, v) in other {
             result.insert(k, v);
         }
@@ -739,7 +754,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        Ok(Value::Hash(Rc::new(RefCell::new(IndexMap::new()))))
+        Ok(Value::Hash(Rc::new(RefCell::new(HashPairs::default()))))
     }
 
     fn hash_set(
@@ -759,7 +774,7 @@ impl Interpreter {
                 span,
             )
         })?;
-        let mut result: IndexMap<HashKey, Value> = entries.iter().cloned().collect();
+        let mut result: HashPairs = entries.iter().cloned().collect();
         result.insert(hash_key, value);
         Ok(Value::Hash(Rc::new(RefCell::new(result))))
     }

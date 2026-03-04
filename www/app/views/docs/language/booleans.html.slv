@@ -1,0 +1,187 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Booleans</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-purple-400 to-violet-400 bg-clip-text text-transparent">Booleans</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            True and false values with methods for type conversion and introspection.
+        </p>
+    </div>
+
+    <!-- Creating Booleans -->
+    <section id="section-creating" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </span>
+            Creating Booleans
+        </h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let active = true
+let disabled = false
+let typed: Bool = true
+
+# From comparisons
+let result = 5 > 3       # true
+let equal = "a" == "b"   # false</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Conversion Methods -->
+    <section id="section-conversion" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+            </span>
+            Conversion Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-to-s" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-s" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.to_s / .to_string</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Convert to string representation.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">true.to_s    # "true"
+false.to_string  # "false"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-to-i" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-i" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.to_i / .to_int</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Convert to integer (true = 1, false = 0).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">true.to_i    # 1
+false.to_int # 0</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Introspection Methods -->
+    <section id="section-introspection" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+            </span>
+            Introspection Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-class" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-class" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.class</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the type name as a string.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">true.class   # "bool"
+false.class  # "bool"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-inspect" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-inspect" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.inspect</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns a developer-friendly string representation.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">true.inspect   # "true"
+false.inspect  # "false"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-is-a" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-is-a" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.is_a?(type_name)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if the value is of the given type. Supports <code class="text-indigo-400">"bool"</code> and <code class="text-indigo-400">"object"</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">true.is_a?("bool")     # true
+true.is_a?("object")   # true
+true.is_a?("int")      # false</code></pre>
+                </div>
+            </section>
+
+            <section id="method-nil" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-nil" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.nil?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns false (booleans are never nil).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">true.nil?    # false
+false.nil?   # false</code></pre>
+                </div>
+            </section>
+
+            <section id="method-blank-present" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-blank-present" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.blank? / .present?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-400">false</code> is considered blank; <code class="text-indigo-400">true</code> is present. This follows Ruby on Rails conventions.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">true.blank?    # false
+true.present?  # true
+false.blank?   # true
+false.present? # false</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/floats" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Floats
+        </a>
+        <a href="/docs/language/null" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Null
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

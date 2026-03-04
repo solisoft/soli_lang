@@ -2,7 +2,6 @@
 //!
 //! Provides async shell command execution with auto-resolving futures.
 
-use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::Command;
@@ -13,7 +12,7 @@ use std::sync::Mutex;
 use std::thread;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 
 pub fn register_system_builtins(env: &mut Environment) {
     // System class
@@ -79,7 +78,7 @@ fn system_class() -> Value {
             let result = execute_command(&program, &args)?;
 
             // Create a Hash with the result data using IndexMap
-            let mut hash: IndexMap<HashKey, Value> = IndexMap::new();
+            let mut hash: HashPairs = HashPairs::default();
             hash.insert(
                 HashKey::String("stdout".to_string()),
                 Value::String(result.stdout),

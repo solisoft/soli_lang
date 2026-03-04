@@ -134,6 +134,11 @@ impl Interpreter {
                 self.call_query_builder_method(qb, &method.method_name, arguments, span)
             }
             Value::String(s) => self.call_string_method(&s, &method.method_name, arguments, span),
+            Value::Int(n) => self.call_int_method(n, &method.method_name, arguments, span),
+            Value::Float(n) => self.call_float_method(n, &method.method_name, arguments, span),
+            Value::Bool(b) => self.call_bool_method(b, &method.method_name, arguments, span),
+            Value::Null => self.call_null_method(&method.method_name, arguments, span),
+            Value::Decimal(d) => self.call_decimal_method(d, &method.method_name, arguments, span),
             _ => Err(RuntimeError::type_error(
                 format!("{} does not support methods", method.receiver.type_name()),
                 span,
@@ -166,7 +171,7 @@ impl Interpreter {
             "first" => self.array_first(items, arguments, span),
             "last" => self.array_last(items, arguments, span),
             "empty?" => self.array_empty(items, arguments, span),
-            "include?" => self.array_include(items, arguments, span),
+            "include?" | "contains" => self.array_include(items, arguments, span),
             "sample" => self.array_sample(items, arguments, span),
             "shuffle" => self.array_shuffle(items, arguments, span),
             "take" => self.array_take(items, arguments, span),
@@ -182,6 +187,21 @@ impl Interpreter {
             "length" => self.array_length(items, arguments, span),
             "to_string" => self.array_to_string(items, arguments, span),
             "join" => self.array_join(items, arguments, span),
+            "is_a?" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let class_name = match &arguments[0] {
+                    Value::String(s) => s.as_str(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "is_a? expects a string argument",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::Bool(class_name == "array" || class_name == "object"))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: method_name.to_string(),

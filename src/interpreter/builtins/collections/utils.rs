@@ -2,13 +2,12 @@
 //! Also includes String class and Base64 class.
 
 use base64::{engine::general_purpose, Engine as _};
-use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashPairs, Instance, NativeFunction, Value};
 
 use super::array::register_array_class;
 use super::hash::register_hash_class;
@@ -611,7 +610,7 @@ pub fn wrap_array(value: Vec<Value>, env: &Environment) -> Value {
 }
 
 /// Wrap a hash value in a Hash class instance.
-pub fn wrap_hash(value: IndexMap<HashKey, Value>, env: &Environment) -> Value {
+pub fn wrap_hash(value: HashPairs, env: &Environment) -> Value {
     match env.get("Hash") {
         Some(Value::Class(class)) => {
             let mut inst = Instance::new(class.clone());

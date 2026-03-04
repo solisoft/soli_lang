@@ -1,6 +1,5 @@
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value};
-use indexmap::IndexMap;
+use crate::interpreter::value::{Class, HashKey, HashPairs, Instance, NativeFunction, Value};
 use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -219,7 +218,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
             let (allowed, remaining, reset) =
                 store.status(&key, limit, Duration::from_secs(window));
 
-            let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+            let mut result: HashPairs = HashPairs::default();
             result.insert(HashKey::String("allowed".to_string()), Value::Bool(allowed));
             result.insert(
                 HashKey::String("remaining".to_string()),
@@ -298,7 +297,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                     }
                 };
 
-                let mut headers: IndexMap<HashKey, Value> = IndexMap::new();
+                let mut headers: HashPairs = HashPairs::default();
                 headers.insert(
                     HashKey::String("X-RateLimit-Limit".to_string()),
                     Value::String(limit.to_string()),

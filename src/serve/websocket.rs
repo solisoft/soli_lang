@@ -11,13 +11,12 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
 use tungstenite::Message;
 use uuid::Uuid;
 
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::{HashKey, HashPairs, Value};
 
 type ConnectionPresenceMap = HashMap<Uuid, Vec<(String, String)>>;
 
@@ -582,7 +581,7 @@ impl WebSocketEvent {
 
     /// Convert to a Value for the Soli interpreter.
     pub fn to_value(&self) -> Value {
-        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut result: HashPairs = HashPairs::default();
         result.insert(
             HashKey::String("type".to_string()),
             Value::String(self.event_type.clone()),
@@ -1261,7 +1260,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler_action_from_value_join() {
-        let mut hash: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut hash: HashPairs = HashPairs::default();
         hash.insert(
             HashKey::String("join".to_string()),
             Value::String("room:lobby".to_string()),
@@ -1275,7 +1274,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler_action_from_value_leave() {
-        let mut hash: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut hash: HashPairs = HashPairs::default();
         hash.insert(
             HashKey::String("leave".to_string()),
             Value::String("room:lobby".to_string()),
@@ -1288,7 +1287,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler_action_from_value_broadcast_room() {
-        let mut hash: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut hash: HashPairs = HashPairs::default();
         hash.insert(
             HashKey::String("broadcast_room".to_string()),
             Value::String(r#"{"msg":"hello"}"#.to_string()),
@@ -1304,7 +1303,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler_action_from_value_track() {
-        let mut track_hash: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut track_hash: HashPairs = HashPairs::default();
         track_hash.insert(
             HashKey::String("channel".to_string()),
             Value::String("room:lobby".to_string()),
@@ -1318,7 +1317,7 @@ mod tests {
             Value::String("Alice".to_string()),
         );
 
-        let mut hash: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut hash: HashPairs = HashPairs::default();
         hash.insert(
             HashKey::String("track".to_string()),
             Value::Hash(Rc::new(RefCell::new(track_hash))),
@@ -1335,7 +1334,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler_action_from_value_multiple_actions() {
-        let mut hash: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut hash: HashPairs = HashPairs::default();
         hash.insert(
             HashKey::String("join".to_string()),
             Value::String("room:lobby".to_string()),

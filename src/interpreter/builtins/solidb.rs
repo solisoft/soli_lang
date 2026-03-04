@@ -6,8 +6,6 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::RwLock;
 
-use indexmap::IndexMap;
-
 use crate::solidb_http::SoliDBClient;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
@@ -23,7 +21,7 @@ where
         Ok(json_str) => {
             // Parse JSON and convert to Value
             match serde_json::from_str::<serde_json::Value>(&json_str) {
-                Ok(json) => json_to_value(&json),
+                Ok(json) => crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null),
                 Err(_) => Value::String(json_str),
             }
         }
@@ -38,36 +36,8 @@ where
     F: FnOnce() -> Result<serde_json::Value, String>,
 {
     match f() {
-        Ok(json) => json_to_value(&json),
+        Ok(json) => crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null),
         Err(e) => Value::String(format!("Error: {}", e)),
-    }
-}
-
-fn json_to_value(json: &serde_json::Value) -> Value {
-    match json {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Bool(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int(i)
-            } else if let Some(f) = n.as_f64() {
-                Value::Float(f)
-            } else {
-                Value::String(n.to_string())
-            }
-        }
-        serde_json::Value::String(s) => Value::String(s.clone()),
-        serde_json::Value::Array(arr) => {
-            let values: Vec<Value> = arr.iter().map(json_to_value).collect();
-            Value::Array(Rc::new(RefCell::new(values)))
-        }
-        serde_json::Value::Object(obj) => {
-            let pairs: IndexMap<HashKey, Value> = obj
-                .iter()
-                .map(|(k, v)| (HashKey::String(k.clone()), json_to_value(v)))
-                .collect();
-            Value::Hash(Rc::new(RefCell::new(pairs)))
-        }
     }
 }
 

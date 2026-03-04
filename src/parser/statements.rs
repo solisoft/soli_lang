@@ -168,16 +168,70 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::Return)?;
 
-        let value = if !self.check(&TokenKind::Semicolon) {
+        let value = if !self.check(&TokenKind::Semicolon)
+            && !self.check(&TokenKind::If)
+            && !self.check(&TokenKind::Unless)
+        {
             Some(self.expression()?)
         } else {
             None
         };
 
-        self.match_token(&TokenKind::Semicolon);
-        let span = start_span.merge(&self.previous_span());
+        let return_end_line = self.previous_span().line;
+        let return_stmt = Stmt::new(
+            StmtKind::Return(value),
+            start_span.merge(&self.previous_span()),
+        );
 
-        Ok(Stmt::new(StmtKind::Return(value), span))
+        // Check for postfix if: return expr if cond
+        if self.check(&TokenKind::If) && self.peek().span.line == return_end_line {
+            self.advance();
+            let has_paren = self.match_token(&TokenKind::LeftParen);
+            let cond = self.expression()?;
+            if has_paren {
+                self.expect(&TokenKind::RightParen)?;
+            }
+            self.match_token(&TokenKind::Semicolon);
+            let span = start_span.merge(&self.previous_span());
+            return Ok(Stmt::new(
+                StmtKind::If {
+                    condition: cond,
+                    then_branch: Box::new(return_stmt),
+                    else_branch: None,
+                },
+                span,
+            ));
+        }
+
+        // Check for postfix unless: return expr unless cond
+        if self.check(&TokenKind::Unless) && self.peek().span.line == return_end_line {
+            self.advance();
+            let has_paren = self.match_token(&TokenKind::LeftParen);
+            let cond = self.expression()?;
+            if has_paren {
+                self.expect(&TokenKind::RightParen)?;
+            }
+            self.match_token(&TokenKind::Semicolon);
+            let condition_expr = Expr::new(
+                ExprKind::Unary {
+                    operator: crate::ast::expr::UnaryOp::Not,
+                    operand: Box::new(cond),
+                },
+                start_span.merge(&self.previous_span()),
+            );
+            let span = start_span.merge(&self.previous_span());
+            return Ok(Stmt::new(
+                StmtKind::If {
+                    condition: condition_expr,
+                    then_branch: Box::new(return_stmt),
+                    else_branch: None,
+                },
+                span,
+            ));
+        }
+
+        self.match_token(&TokenKind::Semicolon);
+        Ok(return_stmt)
     }
 
     fn throw_statement(&mut self) -> ParseResult<Stmt> {

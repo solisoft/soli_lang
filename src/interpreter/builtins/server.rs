@@ -4,10 +4,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
-
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, NativeFunction, Value};
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
+use ahash::RandomState as AHasher;
 
 /// A registered route with its handler.
 /// For worker threads, we use a separate struct without middleware Values.
@@ -755,7 +754,7 @@ pub fn parse_json_body(body: &str) -> Option<Value> {
         return None;
     }
     match serde_json::from_str::<serde_json::Value>(body) {
-        Ok(json) => json_to_value(&json).ok(),
+        Ok(json) => json_to_value(json).ok(),
         Err(_) => None,
     }
 }
@@ -769,7 +768,7 @@ pub fn parse_form_urlencoded_body(body: &str) -> Option<Value> {
     if form_data.is_empty() {
         return None;
     }
-    let pairs: IndexMap<HashKey, Value> = form_data
+    let pairs: HashPairs = form_data
         .into_iter()
         .map(|(k, v)| (HashKey::String(k), Value::String(v)))
         .collect();
@@ -817,7 +816,7 @@ pub fn build_request_hash_with_parsed(
     let params_value = if params.is_empty() {
         None
     } else {
-        let mut map = IndexMap::with_capacity(params.len());
+        let mut map = HashPairs::with_capacity_and_hasher(params.len(), AHasher::default());
         for (k, v) in params {
             map.insert(HashKey::String(k), Value::String(v));
         }
@@ -827,7 +826,7 @@ pub fn build_request_hash_with_parsed(
     let query_value = if query.is_empty() {
         None
     } else {
-        let mut map = IndexMap::with_capacity(query.len());
+        let mut map = HashPairs::with_capacity_and_hasher(query.len(), AHasher::default());
         for (k, v) in query {
             map.insert(HashKey::String(k), Value::String(v));
         }
@@ -837,7 +836,7 @@ pub fn build_request_hash_with_parsed(
     let header_value = if headers.is_empty() {
         None
     } else {
-        let mut map = IndexMap::with_capacity(headers.len());
+        let mut map = HashPairs::with_capacity_and_hasher(headers.len(), AHasher::default());
         for (k, v) in headers {
             map.insert(HashKey::String(k), Value::String(v));
         }
@@ -870,7 +869,7 @@ pub fn build_request_hash_with_parsed(
                 None
             }
         });
-        let empty_map = IndexMap::new();
+        let empty_map = HashPairs::default();
         let params_map = params_ref.as_deref().unwrap_or(&empty_map);
         let query_map = query_ref.as_deref().unwrap_or(&empty_map);
         let all_pairs = build_unified_params_refs(params_map, query_map, &parsed);
@@ -879,7 +878,7 @@ pub fn build_request_hash_with_parsed(
 
     // Build request hash — only insert fields that have data
     // (missing keys return Null on access via StrKey lookup)
-    let request_pairs: IndexMap<HashKey, Value> = REQUEST_KEYS.with(|keys| {
+    let request_pairs: HashPairs = REQUEST_KEYS.with(|keys| {
         // Count how many fields we'll actually insert
         let capacity = 2 // method + path are always present
             + if params_value.is_some() { 1 } else { 0 }
@@ -890,7 +889,7 @@ pub fn build_request_hash_with_parsed(
             + if parsed.form.is_some() { 1 } else { 0 }
             + if parsed.files.is_some() { 1 } else { 0 }
             + if all_value.is_some() { 1 } else { 0 };
-        let mut map = IndexMap::with_capacity(capacity);
+        let mut map = HashPairs::with_capacity_and_hasher(capacity, AHasher::default());
         map.insert(keys.method.clone(), Value::String(method.to_string()));
         map.insert(keys.path.clone(), Value::String(path.to_string()));
         if let Some(v) = params_value {
@@ -926,12 +925,14 @@ pub fn build_request_hash_with_parsed(
 /// Build unified params from borrowed IndexMap references.
 /// Body params take precedence, followed by query params, then route params.
 fn build_unified_params_refs(
-    route_params: &IndexMap<HashKey, Value>,
-    query_params: &IndexMap<HashKey, Value>,
+    route_params: &HashPairs,
+    query_params: &HashPairs,
     parsed: &ParsedBody,
-) -> IndexMap<HashKey, Value> {
-    let mut all: IndexMap<HashKey, Value> =
-        IndexMap::with_capacity(route_params.len() + query_params.len());
+) -> HashPairs {
+    let mut all: HashPairs = HashPairs::with_capacity_and_hasher(
+        route_params.len() + query_params.len(),
+        AHasher::default(),
+    );
 
     // Start with route params
     for (k, v) in route_params {
@@ -1234,7 +1235,7 @@ pub fn register_server_builtins(env: &mut Environment) {
             };
 
             // Return a special marker hash that the executor will recognize
-            let mut marker: IndexMap<HashKey, Value> = IndexMap::new();
+            let mut marker: HashPairs = HashPairs::default();
             marker.insert(
                 HashKey::String("__server_listen__".to_string()),
                 Value::Bool(true),
@@ -1423,7 +1424,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
         "ws_clients".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_clients", Some(0), |_args| {
             // Return an empty hash for now
-            let pairs: IndexMap<HashKey, Value> = IndexMap::new();
+            let pairs: HashPairs = HashPairs::default();
             Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
         })),
     );
@@ -1443,7 +1444,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
             };
 
             // Return empty for now since this requires async
-            let pairs: IndexMap<HashKey, Value> = IndexMap::new();
+            let pairs: HashPairs = HashPairs::default();
             Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
         })),
     );
@@ -1529,7 +1530,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                                 .metas
                                 .iter()
                                 .map(|m| {
-                                    let mut meta_map: IndexMap<HashKey, Value> = IndexMap::new();
+                                    let mut meta_map: HashPairs = HashPairs::default();
                                     meta_map.insert(
                                         HashKey::String("connection_id".to_string()),
                                         Value::String(m.connection_id.to_string()),
@@ -1557,7 +1558,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                                 })
                                 .collect();
 
-                            let mut user_map: IndexMap<HashKey, Value> = IndexMap::new();
+                            let mut user_map: HashPairs = HashPairs::default();
                             user_map.insert(
                                 HashKey::String("user_id".to_string()),
                                 Value::String(p.user_id.clone()),
@@ -1648,7 +1649,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                         .metas
                         .iter()
                         .map(|m| {
-                            let mut meta_map: IndexMap<HashKey, Value> = IndexMap::new();
+                            let mut meta_map: HashPairs = HashPairs::default();
                             meta_map.insert(
                                 HashKey::String("connection_id".to_string()),
                                 Value::String(m.connection_id.to_string()),
@@ -1673,7 +1674,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                         })
                         .collect();
 
-                    let mut user_map: IndexMap<HashKey, Value> = IndexMap::new();
+                    let mut user_map: HashPairs = HashPairs::default();
                     user_map.insert(
                         HashKey::String("user_id".to_string()),
                         Value::String(presence.user_id),

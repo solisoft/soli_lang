@@ -4,10 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
-
 use crate::error::RuntimeError;
-use crate::interpreter::value::{Class, HashKey, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, Value};
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
@@ -47,7 +45,7 @@ pub enum IterState {
     },
     Hash {
         keys: Vec<HashKey>,
-        values: Rc<RefCell<IndexMap<HashKey, Value>>>,
+        values: Rc<RefCell<HashPairs>>,
         index: usize,
     },
     Range {
@@ -389,7 +387,7 @@ impl Vm {
                     self.push(Value::Array(Rc::new(RefCell::new(elements))));
                 }
                 Op::Hash(n) => {
-                    let mut map = IndexMap::new();
+                    let mut map = HashPairs::default();
                     let mut pairs = Vec::with_capacity(n as usize);
                     for _ in 0..n {
                         let value = self.pop();
@@ -595,6 +593,42 @@ impl Vm {
                     let _path = self.read_string_constant(frame_idx, idx);
                     // Import is handled at the higher level (module loader)
                     // The VM just sees the imported globals after module resolution
+                }
+
+                // --- JSON ---
+                Op::JsonParse => {
+                    let json_str = match self.pop() {
+                        Value::String(s) => s,
+                        other => {
+                            return Err(RuntimeError::new(
+                                format!("JSON.parse() expects string, got {}", other.type_name()),
+                                span,
+                            ))
+                        }
+                    };
+                    match crate::interpreter::value::parse_json(&json_str) {
+                        Ok(value) => self.push(value),
+                        Err(e) => {
+                            return Err(RuntimeError::new(
+                                format!("Failed to parse JSON: {}", e),
+                                span,
+                            ))
+                        }
+                    }
+                }
+                Op::JsonStringify => {
+                    let value = self.pop();
+                    match crate::interpreter::value::stringify_to_string(&value) {
+                        Ok(json_str) => {
+                            self.push(Value::String(json_str));
+                        }
+                        Err(e) => {
+                            return Err(RuntimeError::new(
+                                format!("Cannot convert to JSON: {}", e),
+                                span,
+                            ))
+                        }
+                    }
                 }
             }
         }

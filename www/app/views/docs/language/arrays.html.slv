@@ -171,13 +171,14 @@ print(arr);  # [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
 
 # Double each number
-let doubled = numbers.map(def(x)
-x * 2)
+let doubled = numbers.map(|x| x * 2)
 print(doubled);  # [2, 4, 6, 8, 10]
 
+# Trailing block syntax (equivalent)
+let doubled = numbers.map |x| x * 2 end
+
 # Convert to strings
-let strings = numbers.map(def(x)
-str(x))
+let strings = numbers.map(|x| str(x))
 print(strings);  # ["1", "2", "3", "4", "5"]</code></pre>
                 </div>
             </section>
@@ -194,13 +195,14 @@ print(strings);  # ["1", "2", "3", "4", "5"]</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 # Keep only even numbers
-let evens = numbers.filter(def(x)
-x % 2 == 0)
+let evens = numbers.filter(|x| x % 2 == 0)
 print(evens);  # [2, 4, 6, 8, 10]
 
+# Trailing block syntax (equivalent)
+let evens = numbers.filter |x| x % 2 == 0 end
+
 # Keep numbers greater than 5
-let large = numbers.filter(def(x)
-x > 5)
+let large = numbers.filter(|x| x > 5)
 print(large);  # [6, 7, 8, 9, 10]</code></pre>
                 </div>
             </section>
@@ -217,20 +219,15 @@ print(large);  # [6, 7, 8, 9, 10]</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
 
 # Sum all numbers
-let sum = numbers.reduce(def(acc, x)
-acc + x, 0)
+let sum = numbers.reduce(|acc, x| acc + x, 0)
 print(sum);  # 15
 
-# Product of all numbers
-let product = numbers.reduce(def(acc, x)
-acc * x, 1)
-print(product);  # 120
+# Trailing block syntax — extra args in parens, block after
+let sum = numbers.reduce(0) |acc, x| acc + x end
 
-# Find maximum
-let max = numbers.reduce(def(acc, x)
-if (x > acc)
-x else acc, numbers[0])
-print(max);  # 5</code></pre>
+# Product of all numbers
+let product = numbers.reduce(|acc, x| acc * x, 1)
+print(product);  # 120</code></pre>
                 </div>
             </section>
 
@@ -246,16 +243,17 @@ print(max);  # 5</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3]
 
 # Print each number
-numbers.each(def(x)
-print(x))
+numbers.each(|x| print(x))
 # Output: 1
 #         2
 #         3
 
+# Trailing block syntax (equivalent)
+numbers.each |x| print(x) end
+
 # Modify external state
-let sum = 0
-numbers.each(def(x)
-sum = sum + x)
+let sum = 0;
+numbers.each |x| sum = sum + x end
 print(sum);  # 6</code></pre>
                 </div>
             </section>
@@ -272,19 +270,21 @@ print(sum);  # 6</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
 
 # find - returns first matching element
-let first_even = numbers.find(def(x)
-x % 2 == 0)
+let first_even = numbers.find(|x| x % 2 == 0)
 print(first_even)  # 2
 
 # any? - returns true if any element matches
-let has_large = numbers.any?(def(x)
-x > 4)
+let has_large = numbers.any?(|x| x > 4)
 print(has_large)  # true
 
 # all? - returns true if all elements match
-let all_positive = numbers.all?(def(x)
-x > 0)
-print(all_positive)  # true</code></pre>
+let all_positive = numbers.all?(|x| x > 0)
+print(all_positive)  # true
+
+# Trailing block syntax works too
+let found = numbers.find |x| x > 3 end
+let any = numbers.any? |x| x > 4 end
+let all = numbers.all? |x| x > 0 end</code></pre>
                 </div>
             </section>
 
@@ -300,17 +300,19 @@ print(all_positive)  # true</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [3, 1, 4, 1, 5, 9, 2, 6]
 
 # Default sort (ascending)
-let sorted = numbers.sortprint(sorted);  # [1, 1, 2, 3, 4, 5, 6, 9]
+let sorted = numbers.sort
+print(sorted);  # [1, 1, 2, 3, 4, 5, 6, 9]
 
 # Custom comparator (descending)
-let desc = numbers.sort(def(a, b)
-b - a)
+let desc = numbers.sort(|a, b| b - a)
 print(desc);  # [9, 6, 5, 4, 3, 2, 1, 1]
+
+# Trailing block syntax
+let desc = numbers.sort |a, b| b - a end
 
 # Sort by string length
 let words = ["cherry", "pie", "apple"]
-let by_length = words.sort(def(a, b)
-len(a) - len(b))
+let by_length = words.sort |a, b| len(a) - len(b) end
 print(by_length);  # ["pie", "apple", "cherry"]</code></pre>
                 </div>
             </section>
@@ -332,17 +334,14 @@ print(by_length);  # ["pie", "apple", "cherry"]</code></pre>
 
 # Sort by hash key (string argument)
 let by_name = people.sort_by("name")
-print(by_name.map(def(p)
-p.get("name")));  # [Alice, Bob, Charlie]
+print(by_name.map(|p| p.get("name")));  # [Alice, Bob, Charlie]
 
 let by_age = people.sort_by("age")
-print(by_age.map(def(p)
-p.get("age")));  # [20, 25, 30]
+print(by_age.map(|p| p.get("age")));  # [20, 25, 30]
 
 # Sort by function (for computed values)
 let words = ["cherry", "pie", "apple"]
-let by_length = words.sort_by(def(w)
-len(w))
+let by_length = words.sort_by(|w| len(w))
 print(by_length);  # [pie, apple, cherry]</code></pre>
                 </div>
             </section>
@@ -357,7 +356,8 @@ print(by_length);  # [pie, apple, cherry]</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Return a new array with elements in reverse order.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
-let reversed = arr.reverseprint(reversed);  # [5, 4, 3, 2, 1]
+let reversed = arr.reverse
+print(reversed);  # [5, 4, 3, 2, 1]
 print(arr);       # [1, 2, 3, 4, 5] (original unchanged)</code></pre>
                 </div>
             </section>
@@ -432,20 +432,24 @@ print(empty.last);   # null</code></pre>
             <section id="method-empty-include" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-empty-include" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.empty?()</code> / <code class="text-lg font-mono text-indigo-400">.include?(value)</code>
+                        <code class="text-lg font-mono text-indigo-400">.empty?()</code> / <code class="text-lg font-mono text-indigo-400">.blank?()</code> / <code class="text-lg font-mono text-indigo-400">.present?()</code> / <code class="text-lg font-mono text-indigo-400">.include?(value)</code> / <code class="text-lg font-mono text-indigo-400">.contains(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Check if array is empty or contains a value.</p>
+                    <p class="text-gray-400 mb-3">Check if array is empty, blank, present, or contains a value. <code>.include?</code> and <code>.contains</code> are aliases.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
 
-print(arr.empty?());      # false
+print(arr.empty?);        # false
+print(arr.blank?);        # false
+print(arr.present?);      # true
 print(arr.include?(2));   # true
-print(arr.include?(99));  # false
+print(arr.contains(2));   # true
 
 let empty = []
-print(empty.empty?());    # true</code></pre>
+print(empty.empty?);      # true
+print(empty.blank?);      # true
+print(empty.present?);    # false</code></pre>
                 </div>
             </section>
 
@@ -563,23 +567,18 @@ print(paths.join("/"));   # "usr/local/bin"</code></pre>
 
 # Chain multiple methods together
 let result = numbers
-    .filter(def(x)
-x % 2 == 0)   # Keep evens: [2, 4, 6, 8, 10]
-    .map(def(x)
-x * x)           # Square them: [4, 16, 36, 64, 100]
-    .filter(def(x)
-x < 50);      # Keep less than 50: [4, 16, 36]
+    .filter(|x| x % 2 == 0)   # Keep evens: [2, 4, 6, 8, 10]
+    .map(|x| x * x)           # Square them: [4, 16, 36, 64, 100]
+    .filter(|x| x < 50)       # Keep less than 50: [4, 16, 36]
 
 print(result);  # [4, 16, 36]
 
 # With pipeline operator
 let result2 = numbers
-    |> filter(def(x)
-x > 5)
-    |> map(def(x)
-x * 2)
+    |> filter(|x| x > 5)
+    |> map(|x| x * 2)
     |> sum
-print(result2);  # 90 (12 + 14 + 16 + 18 + 20 + 22)</code></pre>
+print(result2);  # 90</code></pre>
             </div>
         </div>
     </section>
@@ -672,6 +671,23 @@ arr.get(-2);     # "second"</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
 arr.clear
 arr.length  # 0</code></pre>
+                </div>
+            </section>
+
+            <section id="array-introspection" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-introspection" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.class / .inspect / .nil? / .is_a?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Type introspection methods available on all types.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+arr.class         # "array"
+arr.inspect       # "[1, 2, 3]"
+arr.nil?          # false
+arr.is_a?("array")  # true</code></pre>
                 </div>
             </section>
         </div>

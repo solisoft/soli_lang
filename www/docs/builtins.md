@@ -501,82 +501,17 @@ barf("output.txt", "Hello, World!")
 
 ### Math Functions
 
-#### abs(number)
+Math operations are available as methods on numbers:
 
-Returns the absolute value of a number.
-
-**Parameters:**
-- `number` (Int|Float) - The number
-
-**Returns:** Int|Float
-
-**Example:**
 ```soli
-abs(-5)    # 5
-abs(-3.14) # 3.14
+(-5).abs       # 5
+16.sqrt        # 4.0
+2.pow(10)      # 1024
+[3, 7].min     # 3
+[3, 7].max     # 7
 ```
 
-#### min(a, b)
-
-Returns the smaller of two numbers.
-
-**Parameters:**
-- `a` (Int|Float) - First number
-- `b` (Int|Float) - Second number
-
-**Returns:** Int|Float
-
-**Example:**
-```soli
-min(3, 7)  # 3
-min(5.5, 2.2)  # 2.2
-```
-
-#### max(a, b)
-
-Returns the larger of two numbers.
-
-**Parameters:**
-- `a` (Int|Float) - First number
-- `b` (Int|Float) - Second number
-
-**Returns:** Int|Float
-
-**Example:**
-```soli
-max(3, 7)  # 7
-```
-
-#### sqrt(number)
-
-Returns the square root of a number.
-
-**Parameters:**
-- `number` (Int|Float) - The number (must be non-negative)
-
-**Returns:** Float
-
-**Example:**
-```soli
-sqrt(16)  # 4.0
-sqrt(2)   # 1.4142135623730951
-```
-
-#### pow(base, exponent)
-
-Returns base raised to the power of exponent.
-
-**Parameters:**
-- `base` (Int|Float) - The base
-- `exponent` (Int|Float) - The exponent
-
-**Returns:** Float
-
-**Example:**
-```soli
-pow(2, 3)   # 8.0
-pow(10, -2) # 0.01
-```
+See the [Number Methods](#number-methods) and [Math Class](#math-class) sections for more details.
 
 #### clock()
 

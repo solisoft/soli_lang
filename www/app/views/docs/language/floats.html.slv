@@ -1,0 +1,339 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Floats</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Floats</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            64-bit floating-point numbers (IEEE 754) with methods for rounding, comparison, and type conversion.
+        </p>
+    </div>
+
+    <!-- Creating Floats -->
+    <section id="section-creating" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </span>
+            Creating Floats
+        </h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let pi = 3.14159
+let temp = -40.0
+let tiny = 0.001
+let sci = 2.5e10          # Scientific notation
+let typed: Float = 1.5</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Rounding Methods -->
+    <section id="section-rounding" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                </svg>
+            </span>
+            Rounding Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-round" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-round" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.round / .round(digits)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Round to the nearest integer (0 args) or to a specific number of decimal places.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.7.round        # 4 (returns int)
+3.14159.round(2) # 3.14 (returns float)
+2.5.round        # 3</code></pre>
+                </div>
+            </section>
+
+            <section id="method-ceil" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-ceil" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.ceil</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Round up to the nearest integer.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.2.ceil     # 4
+(-3.2).ceil  # -3</code></pre>
+                </div>
+            </section>
+
+            <section id="method-floor" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-floor" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.floor</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Round down to the nearest integer.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.7.floor    # 3
+(-3.7).floor # -4</code></pre>
+                </div>
+            </section>
+
+            <section id="method-truncate" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-truncate" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.truncate</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Truncate toward zero (remove decimal part).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.7.truncate     # 3
+(-3.7).truncate  # -3</code></pre>
+                </div>
+            </section>
+
+            <section id="method-abs" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-abs" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.abs</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the absolute value.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">(-3.14).abs  # 3.14
+5.0.abs      # 5.0</code></pre>
+                </div>
+            </section>
+
+            <section id="method-sqrt" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-sqrt" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.sqrt</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the square root.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">16.0.sqrt    # 4.0
+2.0.sqrt     # 1.4142135623730951</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Predicate Methods -->
+    <section id="section-predicates" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Predicate Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-zero" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-zero" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.zero? / .positive? / .negative?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if the float is zero, positive, or negative.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">0.0.zero?        # true
+3.14.positive?   # true
+(-1.5).negative? # true</code></pre>
+                </div>
+            </section>
+
+            <section id="method-finite-infinite-nan" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-finite-infinite-nan" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.finite? / .infinite? / .nan?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check for special IEEE 754 float states.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.14.finite?     # true
+3.14.infinite?   # false
+3.14.nan?        # false</code></pre>
+                </div>
+            </section>
+
+            <section id="method-between" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-between" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.between?(min, max)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if the float is within the given range (inclusive).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.14.between?(1.0, 5.0)   # true
+0.5.between?(1.0, 5.0)    # false</code></pre>
+                </div>
+            </section>
+
+            <section id="method-clamp" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-clamp" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.clamp(min, max)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Constrain the float to be within the given range.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">15.5.clamp(0.0, 10.0)  # 10.0
+(-5.0).clamp(0.0, 10.0) # 0.0</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Conversion Methods -->
+    <section id="section-conversion" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+            </span>
+            Conversion Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-to-i" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-i" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.to_i / .to_int</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Convert to integer (truncates toward zero).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.7.to_i     # 3
+(-3.7).to_int # -3</code></pre>
+                </div>
+            </section>
+
+            <section id="method-to-s" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-s" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.to_s / .to_string</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Convert to string representation.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.14.to_s    # "3.14"
+(-1.5).to_string  # "-1.5"</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Introspection Methods -->
+    <section id="section-introspection" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+            </span>
+            Introspection Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-class" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-class" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.class</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the type name as a string.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.14.class   # "float"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-inspect" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-inspect" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.inspect</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns a developer-friendly string representation.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.14.inspect # "3.14"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-is-a" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-is-a" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.is_a?(type_name)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if the value is of the given type. Supports <code class="text-indigo-400">"float"</code>, <code class="text-indigo-400">"numeric"</code>, and <code class="text-indigo-400">"object"</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.14.is_a?("float")     # true
+3.14.is_a?("numeric")   # true
+3.14.is_a?("int")       # false</code></pre>
+                </div>
+            </section>
+
+            <section id="method-nil" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-nil" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.nil? / .blank? / .present?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Floats are never nil and always present.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.14.nil?      # false
+3.14.blank?    # false
+3.14.present?  # true</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/integers" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Integers
+        </a>
+        <a href="/docs/language/booleans" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Booleans
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

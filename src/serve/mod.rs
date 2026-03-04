@@ -48,8 +48,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use indexmap::IndexMap;
-
 use bytes::Bytes;
 use crossbeam::channel;
 use futures_util::SinkExt;
@@ -96,7 +94,7 @@ use crate::interpreter::builtins::session::{
     create_session_cookie, ensure_session, extract_session_id_from_cookie, set_current_session_id,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
-use crate::interpreter::value::HashKey;
+use crate::interpreter::value::{HashKey, HashPairs};
 use crate::interpreter::{Interpreter, Value};
 use crate::live::socket::{extract_session_id as extract_live_session_id, handle_live_connection};
 use crate::span::Span;
@@ -2045,7 +2043,7 @@ fn handle_websocket_event(
         };
 
     // Build event hash: {type, connection_id, message, channel?}
-    let mut event_map: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut event_map: HashPairs = HashPairs::default();
     event_map.insert(
         HashKey::String("type".to_string()),
         Value::String(data.event_type.clone()),
@@ -2288,7 +2286,7 @@ fn handle_liveview_event(
     let state_value = json_to_value(&instance.state);
     let params_value = json_to_value(&data.params);
 
-    let mut event_map: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut event_map: HashPairs = HashPairs::default();
     event_map.insert(
         HashKey::String("event".to_string()),
         Value::String(data.event.clone()),
@@ -2431,58 +2429,14 @@ fn render_and_send_patch(
     Ok(())
 }
 
-/// Convert serde_json::Value to interpreter Value
+/// Convert serde_json::Value reference to interpreter Value
 fn json_to_value(json: &serde_json::Value) -> Value {
-    match json {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Bool(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int(i)
-            } else if let Some(f) = n.as_f64() {
-                Value::Float(f)
-            } else {
-                Value::Null
-            }
-        }
-        serde_json::Value::String(s) => Value::String(s.clone()),
-        serde_json::Value::Array(arr) => {
-            let values: Vec<Value> = arr.iter().map(json_to_value).collect();
-            Value::Array(Rc::new(RefCell::new(values)))
-        }
-        serde_json::Value::Object(obj) => {
-            let map: IndexMap<HashKey, Value> = obj
-                .iter()
-                .map(|(k, v)| (HashKey::String(k.clone()), json_to_value(v)))
-                .collect();
-            Value::Hash(Rc::new(RefCell::new(map)))
-        }
-    }
+    crate::interpreter::value::json_to_value_ref(json).unwrap_or(Value::Null)
 }
 
 /// Convert interpreter Value to serde_json::Value
 fn value_to_json(value: &Value) -> serde_json::Value {
-    match value {
-        Value::Null => serde_json::Value::Null,
-        Value::Bool(b) => serde_json::Value::Bool(*b),
-        Value::Int(i) => serde_json::json!(*i),
-        Value::Float(f) => serde_json::json!(*f),
-        Value::String(s) => serde_json::Value::String(s.clone()),
-        Value::Array(arr) => {
-            let values: Vec<serde_json::Value> = arr.borrow().iter().map(value_to_json).collect();
-            serde_json::Value::Array(values)
-        }
-        Value::Hash(hash) => {
-            let mut obj = serde_json::Map::new();
-            for (k, v) in hash.borrow().iter() {
-                if let HashKey::String(key) = k {
-                    obj.insert(key.clone(), value_to_json(v));
-                }
-            }
-            serde_json::Value::Object(obj)
-        }
-        _ => serde_json::Value::Null,
-    }
+    crate::interpreter::value::value_to_json(value).unwrap_or(serde_json::Value::Null)
 }
 
 /// Call the route handler with the request hash.
@@ -3032,12 +2986,12 @@ fn execute_after_actions(
     req: Value,
     response: &ResponseData,
 ) -> ResponseData {
-    let headers_map: IndexMap<HashKey, Value> = response
+    let headers_map: HashPairs = response
         .headers
         .iter()
         .map(|(k, v)| (HashKey::String(k.clone()), Value::String(v.clone())))
         .collect();
-    let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut response_map: HashPairs = HashPairs::default();
     response_map.insert(
         HashKey::String("status".to_string()),
         Value::Int(response.status as i64),
@@ -3237,7 +3191,7 @@ fn parse_request_body(
     // Handle multipart data if available (parsed in async context)
     if let Some(form_fields) = multipart_form {
         if !form_fields.is_empty() {
-            let form_map: IndexMap<HashKey, Value> = form_fields
+            let form_map: HashPairs = form_fields
                 .iter()
                 .map(|(k, v)| (HashKey::String(k.clone()), Value::String(v.clone())))
                 .collect();
@@ -3962,8 +3916,7 @@ fn execute_repl_code(
 
 /// Helper to convert JSON to Value, returning Null on error.
 fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::Value {
-    crate::interpreter::value::json_to_value(&json)
-        .unwrap_or(crate::interpreter::value::Value::Null)
+    crate::interpreter::value::json_to_value(json).unwrap_or(crate::interpreter::value::Value::Null)
 }
 
 /// Helper function to render error page with full details.

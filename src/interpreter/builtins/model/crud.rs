@@ -1,9 +1,8 @@
 //! Database CRUD operations and JSON conversion utilities.
 
 use crate::interpreter::builtins::http_class::get_http_client;
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::Value;
 use crate::serve::get_tokio_handle;
-use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -54,37 +53,14 @@ where
     F: FnOnce() -> Result<serde_json::Value, String>,
 {
     match f() {
-        Ok(json) => json_to_value(&json),
+        Ok(json) => crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null),
         Err(e) => Value::String(format!("Error: {}", e)),
     }
 }
 
+/// Convert a serde_json::Value reference to a Soli Value (infallible wrapper).
 pub fn json_to_value(json: &serde_json::Value) -> Value {
-    match json {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Bool(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int(i)
-            } else if let Some(f) = n.as_f64() {
-                Value::Float(f)
-            } else {
-                Value::String(n.to_string())
-            }
-        }
-        serde_json::Value::String(s) => Value::String(s.clone()),
-        serde_json::Value::Array(arr) => {
-            let values: Vec<Value> = arr.iter().map(json_to_value).collect();
-            Value::Array(Rc::new(RefCell::new(values)))
-        }
-        serde_json::Value::Object(obj) => {
-            let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
-            for (k, v) in obj.iter() {
-                pairs.insert(HashKey::String(k.clone()), json_to_value(v));
-            }
-            Value::Hash(Rc::new(RefCell::new(pairs)))
-        }
-    }
+    crate::interpreter::value::json_to_value_ref(json).unwrap_or(Value::Null)
 }
 
 /// Fast async query execution - uses server's tokio runtime.

@@ -12,14 +12,14 @@ use std::time::SystemTime;
 
 use std::path::Path;
 
-use indexmap::IndexMap;
-
 use crate::ast::stmt::StmtKind;
 use crate::interpreter::builtins::datetime::helpers as datetime_helpers;
 use crate::interpreter::builtins::html;
 use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{value_to_json, Function, HashKey, NativeFunction, StrKey, Value};
+use crate::interpreter::value::{
+    value_to_json, Function, HashKey, HashPairs, NativeFunction, StrKey, Value,
+};
 use crate::template::{html_response, TemplateCache};
 
 // Thread-local template cache
@@ -242,7 +242,7 @@ pub fn render_error_template(status_code: u16, message: &str, request_id: &str) 
     let template_name = format!("errors/{}", status_code);
 
     // Create error context for the template
-    let mut error_map: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut error_map: HashPairs = HashPairs::default();
     error_map.insert(
         HashKey::String("status".to_string()),
         Value::Int(status_code as i64),
@@ -291,7 +291,7 @@ fn resolve_futures_in_value(value: Value) -> Value {
             if !needs {
                 return Value::Hash(hash);
             }
-            let resolved_pairs: IndexMap<HashKey, Value> = hash
+            let resolved_pairs: HashPairs = hash
                 .borrow()
                 .iter()
                 .map(|(k, v)| (k.clone(), resolve_futures_in_value(v.clone())))
@@ -780,7 +780,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             let data = if args.len() > 1 {
                 args[1].clone()
             } else {
-                Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
+                Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
             };
             let data = resolve_futures_in_value(data);
             let cache = get_template_cache()?;
@@ -818,7 +818,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             let data = if args.len() > 1 {
                 args[1].clone()
             } else {
-                Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
+                Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
             };
 
             // Validate data is a hash
@@ -943,7 +943,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             let data = if args.len() > 1 {
                 args[1].clone()
             } else {
-                Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
+                Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
             };
 
             // Resolve any futures in the data before rendering
@@ -1072,11 +1072,11 @@ pub fn register_template_builtins(env: &mut Environment) {
                 }
             };
 
-            let mut headers_map: IndexMap<HashKey, Value> = IndexMap::new();
+            let mut headers_map: HashPairs = HashPairs::default();
             headers_map.insert(HashKey::String("Location".to_string()), Value::String(url));
             let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
 
-            let mut response_map: IndexMap<HashKey, Value> = IndexMap::new();
+            let mut response_map: HashPairs = HashPairs::default();
             response_map.insert(HashKey::String("status".to_string()), Value::Int(302));
             response_map.insert(HashKey::String("headers".to_string()), headers);
             response_map.insert(

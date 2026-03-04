@@ -216,7 +216,7 @@ fn value_to_json(value: &Value) -> Result<JsonValue, String> {
 
 /// Convert a JSON value back to a Soli Value.
 fn json_to_value(json: &JsonValue) -> Value {
-    crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)
+    crate::interpreter::value::json_to_value_ref(json).unwrap_or(Value::Null)
 }
 
 /// Register session builtins in the given environment.

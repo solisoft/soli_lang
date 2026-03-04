@@ -10,13 +10,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
 use crate::interpreter::builtins::http_class::{get_http_client, validate_url_for_ssrf};
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 use crate::serve::get_tokio_handle;
 
 /// Default SOAP 1.1 namespace
@@ -109,7 +108,7 @@ pub fn register_soap_class(env: &mut Environment) {
                         let status_text =
                             resp.status().canonical_reason().unwrap_or("").to_string();
 
-                        let mut resp_headers = IndexMap::new();
+                        let mut resp_headers = HashPairs::default();
                         for (name, value) in resp.headers().iter() {
                             if let Ok(v) = value.to_str() {
                                 resp_headers.insert(
@@ -123,7 +122,7 @@ pub fn register_soap_class(env: &mut Environment) {
 
                         let parsed_xml = parse_xml_to_value(&body).unwrap_or(Value::Null);
 
-                        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+                        let mut result: HashPairs = HashPairs::default();
                         result.insert(
                             HashKey::String("status".to_string()),
                             Value::Int(status as i64),
@@ -153,7 +152,7 @@ pub fn register_soap_class(env: &mut Environment) {
     // SOAP.wrap(body, namespace?) -> String
     soap_static_methods.insert(
         "wrap".to_string(),
-        Rc::new(NativeFunction::new("SOAP.wrap", Some(1), |args| {
+        Rc::new(NativeFunction::new("SOAP.wrap", None, |args| {
             let body = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -296,7 +295,7 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
                 let body = resp.into_string().unwrap_or_default();
                 let parsed = parse_xml_to_value(&body).unwrap_or(Value::Null);
 
-                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+                let mut result: HashPairs = HashPairs::default();
                 result.insert(
                     HashKey::String("status".to_string()),
                     Value::Int(status as i64),
@@ -307,7 +306,7 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
                 );
                 result.insert(
                     HashKey::String("headers".to_string()),
-                    Value::Hash(Rc::new(RefCell::new(IndexMap::new()))),
+                    Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
                 );
                 result.insert(HashKey::String("body".to_string()), Value::String(body));
                 result.insert(HashKey::String("parsed".to_string()), parsed);
@@ -318,7 +317,7 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
                 let body = resp.into_string().unwrap_or_default();
                 let parsed = parse_xml_to_value(&body).unwrap_or(Value::Null);
 
-                let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+                let mut result: HashPairs = HashPairs::default();
                 result.insert(
                     HashKey::String("status".to_string()),
                     Value::Int(code as i64),
@@ -329,7 +328,7 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
                 );
                 result.insert(
                     HashKey::String("headers".to_string()),
-                    Value::Hash(Rc::new(RefCell::new(IndexMap::new()))),
+                    Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
                 );
                 result.insert(HashKey::String("body".to_string()), Value::String(body));
                 result.insert(HashKey::String("parsed".to_string()), parsed);
@@ -386,7 +385,7 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
     reader.config_mut().trim_text_start = true;
 
     let mut buf = Vec::new();
-    let mut stack: Vec<(String, IndexMap<HashKey, Value>)> = Vec::new();
+    let mut stack: Vec<(String, HashPairs)> = Vec::new();
     let mut current_text = String::new();
 
     loop {
@@ -403,7 +402,7 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                 }
 
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                stack.push((name, IndexMap::new()));
+                stack.push((name, HashPairs::default()));
             }
             Ok(Event::Text(e)) => {
                 if let Ok(text) = e.unescape() {
@@ -453,7 +452,7 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                         }
                     } else {
                         // Root element
-                        let mut root = IndexMap::new();
+                        let mut root = HashPairs::default();
                         root.insert(HashKey::String(name), value);
                         return Ok(Value::Hash(Rc::new(RefCell::new(root))));
                     }
@@ -474,7 +473,7 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
 
     match stack.pop() {
         Some((name, attrs)) => {
-            let mut root = IndexMap::new();
+            let mut root = HashPairs::default();
             root.insert(
                 HashKey::String(name),
                 Value::Hash(Rc::new(RefCell::new(attrs))),

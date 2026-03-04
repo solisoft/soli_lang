@@ -261,6 +261,19 @@ impl Compiler {
             }
         }
 
+        // Special case: JSON.parse() and JSON.stringify()
+        if let ExprKind::Member { object, name } = &callee.kind {
+            if let ExprKind::Variable(obj_name) = &object.kind {
+                if obj_name == "JSON" {
+                    if name == "parse" {
+                        return self.compile_json_parse(arguments, line);
+                    } else if name == "stringify" {
+                        return self.compile_json_stringify(arguments, line);
+                    }
+                }
+            }
+        }
+
         self.compile_expr(callee)?;
 
         let mut argc = 0u8;
@@ -325,6 +338,46 @@ impl Compiler {
             }
         }
         self.emit(Op::Call(argc), line);
+        Ok(())
+    }
+
+    fn compile_json_parse(&mut self, arguments: &[Argument], line: usize) -> CompileResult<()> {
+        // JSON.parse expects exactly 1 argument
+        if arguments.len() != 1 {
+            return Err(CompileError::new(
+                "JSON.parse() expects exactly 1 argument",
+                crate::span::Span::new(0, 0, line, 0),
+            ));
+        }
+        if let Argument::Positional(expr) = &arguments[0] {
+            self.compile_expr(expr)?;
+        } else {
+            return Err(CompileError::new(
+                "JSON.parse() expects positional argument",
+                crate::span::Span::new(0, 0, line, 0),
+            ));
+        }
+        self.emit(Op::JsonParse, line);
+        Ok(())
+    }
+
+    fn compile_json_stringify(&mut self, arguments: &[Argument], line: usize) -> CompileResult<()> {
+        // JSON.stringify expects exactly 1 argument
+        if arguments.len() != 1 {
+            return Err(CompileError::new(
+                "JSON.stringify() expects exactly 1 argument",
+                crate::span::Span::new(0, 0, line, 0),
+            ));
+        }
+        if let Argument::Positional(expr) = &arguments[0] {
+            self.compile_expr(expr)?;
+        } else {
+            return Err(CompileError::new(
+                "JSON.stringify() expects positional argument",
+                crate::span::Span::new(0, 0, line, 0),
+            ));
+        }
+        self.emit(Op::JsonStringify, line);
         Ok(())
     }
 

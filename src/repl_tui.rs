@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crossterm::{
     cursor::{self, Show},
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType},
     QueueableCommand,
 };
@@ -87,12 +87,6 @@ enum OutputLine {
     Info(String),   // Info/system message (dim)
 }
 
-struct CompletionState {
-    candidates: Vec<String>,
-    index: usize,
-    prefix_start: usize,
-}
-
 struct InputState {
     line: LineBuffer,
     multiline_buffer: String,
@@ -102,7 +96,6 @@ struct InputState {
     history: Vec<String>,
     history_index: usize,
     output_lines: Vec<OutputLine>,
-    completion: Option<CompletionState>,
 }
 
 impl InputState {
@@ -116,12 +109,13 @@ impl InputState {
             history: Vec::new(),
             history_index: 0,
             output_lines: Vec::new(),
-            completion: None,
         }
     }
 
     fn add_input(&mut self, text: &str) {
-        self.output_lines.push(OutputLine::Input(text.to_string()));
+        for line in text.lines() {
+            self.output_lines.push(OutputLine::Input(line.to_string()));
+        }
         self.trim_output();
     }
 
@@ -191,11 +185,44 @@ impl InputState {
     }
 }
 
+struct CompletionState {
+    candidates: Vec<String>,
+    index: usize,
+    replacement_start: usize,
+    active: bool,
+}
+
+impl CompletionState {
+    fn new() -> Self {
+        Self {
+            candidates: Vec::new(),
+            index: 0,
+            replacement_start: 0,
+            active: false,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.candidates.clear();
+        self.index = 0;
+        self.replacement_start = 0;
+        self.active = false;
+    }
+}
+
+fn methods_for_type(type_name: &str) -> Vec<&'static str> {
+    crate::interpreter::executor::calls::method_registry::known_methods(type_name)
+        .iter()
+        .map(|m| m.name)
+        .collect()
+}
+
 struct TuiRepl {
     interpreter: Interpreter,
     history_file: PathBuf,
     input: InputState,
     highlighting_enabled: bool,
+    completion: CompletionState,
 }
 
 impl TuiRepl {
@@ -227,6 +254,7 @@ impl TuiRepl {
             history_file,
             input: InputState::new(),
             highlighting_enabled: true,
+            completion: CompletionState::new(),
         };
         repl.load_history();
         repl
@@ -256,6 +284,9 @@ impl TuiRepl {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
 
+        // Enable bracketed paste so multi-line pastes arrive as a single event
+        stdout.queue(EnableBracketedPaste)?;
+
         // Hide cursor during drawing
         stdout.queue(cursor::Hide)?;
         stdout.queue(Clear(ClearType::All))?;
@@ -270,11 +301,18 @@ impl TuiRepl {
 
         loop {
             if event::poll(Duration::from_millis(50))? {
-                if let Event::Key(key) = event::read()? {
-                    if self.handle_key(key) {
-                        break;
+                match event::read()? {
+                    Event::Key(key) => {
+                        if self.handle_key(key) {
+                            break;
+                        }
+                        self.draw()?;
                     }
-                    self.draw()?;
+                    Event::Paste(text) => {
+                        self.handle_paste(&text);
+                        self.draw()?;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -282,6 +320,7 @@ impl TuiRepl {
         // Cleanup
         disable_raw_mode()?;
         let mut stdout = io::stdout();
+        stdout.queue(DisableBracketedPaste)?;
         stdout.queue(Clear(ClearType::All))?;
         stdout.queue(cursor::MoveTo(0, 0))?;
         stdout.queue(Show)?;
@@ -325,13 +364,26 @@ impl TuiRepl {
 
             let formatted = match output_line {
                 OutputLine::Input(text) => {
-                    // Input with syntax highlighting and >>> prefix
+                    // Input with syntax highlighting
+                    // First input line gets >>>, continuations get ...
                     let highlighted = self.highlight_code(text);
-                    format!("\x1b[90m>>>\x1b[0m {}", highlighted)
+                    let is_first = idx == 0
+                        || !matches!(self.input.output_lines[idx - 1], OutputLine::Input(_));
+                    if is_first {
+                        format!("\x1b[90m>>>\x1b[0m {}", highlighted)
+                    } else {
+                        format!("\x1b[90m...\x1b[0m {}", highlighted)
+                    }
                 }
                 OutputLine::Result(text) => {
-                    // Result in green with => prefix
-                    format!("\x1b[92m=> {}\x1b[0m", text)
+                    // Result in green: => prefix only on first result line
+                    let is_first = idx == 0
+                        || !matches!(self.input.output_lines[idx - 1], OutputLine::Result(_));
+                    if is_first {
+                        format!("\x1b[92m=> {}\x1b[0m", text)
+                    } else {
+                        format!("\x1b[92m   {}\x1b[0m", text)
+                    }
                 }
                 OutputLine::Error(text) => {
                     // Error in red
@@ -361,7 +413,7 @@ impl TuiRepl {
         // Track the row where input starts
         let input_start_row = (output_height + 1) as u16;
 
-        if self.input.is_multiline {
+        let (final_row, final_col) = if self.input.is_multiline {
             // Show multiline buffer with prompts
             let multiline_lines: Vec<&str> = self.input.multiline_buffer.lines().collect();
             let mut current_row = input_start_row;
@@ -383,9 +435,8 @@ impl TuiRepl {
             let highlighted = self.highlight_code(&input_text);
             stdout.write_all(highlighted.as_bytes())?;
 
-            // Position cursor on the current input line
             let cursor_col = cont_prompt.len() + cursor_pos;
-            stdout.queue(cursor::MoveTo(cursor_col as u16, current_row))?;
+            (current_row, cursor_col as u16)
         } else {
             // Single line mode
             stdout.queue(cursor::MoveTo(0, input_start_row))?;
@@ -395,12 +446,39 @@ impl TuiRepl {
             let highlighted = self.highlight_code(&input_text);
             stdout.write_all(highlighted.as_bytes())?;
 
-            // Position cursor
             let cursor_col = prompt.len() + cursor_pos;
-            stdout.queue(cursor::MoveTo(cursor_col as u16, input_start_row))?;
+            (input_start_row, cursor_col as u16)
+        };
+
+        // Draw completion popup if active
+        if self.completion.active && !self.completion.candidates.is_empty() {
+            let hint_row = final_row + 1;
+            if (hint_row as usize) < rows {
+                stdout.queue(cursor::MoveTo(0, hint_row))?;
+                let mut hint = String::new();
+                let mut total_len = 0;
+                for (i, candidate) in self.completion.candidates.iter().enumerate() {
+                    let entry = if i == self.completion.index {
+                        format!("\x1b[1;7m {candidate} \x1b[0m")
+                    } else {
+                        format!("\x1b[90m {candidate} \x1b[0m")
+                    };
+                    // Check if adding this entry would overflow terminal width
+                    // (candidate.len() + 2 for surrounding spaces)
+                    let visible_len = candidate.len() + 2;
+                    if total_len + visible_len > cols.saturating_sub(4) && i > 0 {
+                        hint.push_str("\x1b[90m ...\x1b[0m");
+                        break;
+                    }
+                    hint.push_str(&entry);
+                    total_len += visible_len;
+                }
+                stdout.write_all(hint.as_bytes())?;
+            }
         }
 
-        // Show the cursor at final position
+        // Restore cursor to input position
+        stdout.queue(cursor::MoveTo(final_col, final_row))?;
         stdout.queue(cursor::Show)?;
         stdout.flush()?;
         Ok(())
@@ -486,197 +564,10 @@ impl TuiRepl {
         }
     }
 
-    fn get_member_completions(&self, object_name: &str, method_prefix: &str) -> Vec<String> {
-        let env = self.interpreter.global_env();
-        let env_ref = env.borrow();
-        let value = env_ref.get(object_name);
-
-        let mut names: Vec<String> = Vec::new();
-
-        match value {
-            Some(Value::Class(class)) => {
-                // Static methods and fields for class access (e.g. DateTime.now)
-                names.extend(class.native_static_methods.keys().cloned());
-                names.extend(class.static_methods.keys().cloned());
-                names.extend(class.static_fields.borrow().keys().cloned());
-            }
-            Some(Value::Instance(instance)) => {
-                let inst = instance.borrow();
-                // Instance methods and fields (e.g. d.year)
-                names.extend(inst.class.native_methods.keys().cloned());
-                names.extend(inst.class.methods.keys().cloned());
-                names.extend(inst.fields.keys().cloned());
-            }
-            _ => {}
-        }
-
-        names.sort();
-        names.dedup();
-
-        let mut candidates = Vec::new();
-        for name in &names {
-            if name.starts_with(method_prefix) && name != method_prefix {
-                candidates.push(format!("{}.{}", object_name, name));
-            }
-        }
-        // If just "ClassName." with no prefix, show all
-        if method_prefix.is_empty() {
-            for name in &names {
-                candidates.push(format!("{}.{}", object_name, name));
-            }
-        }
-        candidates
-    }
-
-    fn get_completions(&self, prefix: &str) -> Vec<String> {
-        const KEYWORDS: &[&str] = &[
-            "let", "const", "fn", "def", "return", "if", "else", "elsif", "while", "for", "in",
-            "class", "extends", "implements", "interface", "new", "this", "super", "public",
-            "private", "protected", "static", "null", "true", "false", "try", "catch", "finally",
-            "throw", "not", "and", "or", "async", "await", "match", "case", "when", "end",
-            "unless", "import", "export", "from", "as", "do", "then",
-        ];
-
-        const BUILTINS: &[&str] = &[
-            "print", "println", "input", "len", "clock", "str", "int", "float", "type", "range",
-            "abs", "min", "max", "sqrt", "pow", "barf", "slurp", "sleep", "break", "await",
-            "validate", "jwt_sign", "jwt_verify", "jwt_decode", "getenv", "setenv", "unsetenv",
-            "hasenv", "dotenv", "html_escape", "html_unescape", "sanitize_html", "strip_html",
-            "render", "render_json", "render_text", "redirect",
-        ];
-
-        const CLASSES: &[&str] = &[
-            "String", "Array", "Hash", "Set", "Range", "Base64", "Math", "File", "HTTP", "JSON",
-            "Regex", "SOAP", "Crypto", "System", "DateTime", "Duration", "I18n", "Markdown",
-            "Error", "ValueError", "TypeError", "KeyError", "IndexError", "RuntimeError",
-            "V", "JWT", "Model", "Cache", "RateLimit",
-        ];
-
-        const DOT_COMMANDS: &[&str] = &[
-            ".help", ".vars", ".variables", ".funcs", ".functions", ".classes", ".history",
-            ".hist", ".clear", ".reset", ".break", ".cancel", ".highlight", ".theme", ".exit",
-            ".quit",
-        ];
-
-        let mut candidates: Vec<String> = Vec::new();
-
-        // Dot commands only complete at line start
-        if prefix.starts_with('.') {
-            for cmd in DOT_COMMANDS {
-                if cmd.starts_with(prefix) && *cmd != prefix {
-                    candidates.push(cmd.to_string());
-                }
-            }
-        } else if let Some(dot_pos) = prefix.rfind('.') {
-            // Method/field completion: "name.meth" → complete from live environment
-            let object_name = &prefix[..dot_pos];
-            let method_prefix = &prefix[dot_pos + 1..];
-            candidates = self.get_member_completions(object_name, method_prefix);
-        } else {
-            for kw in KEYWORDS {
-                if kw.starts_with(prefix) && *kw != prefix {
-                    candidates.push(kw.to_string());
-                }
-            }
-            for bi in BUILTINS {
-                if bi.starts_with(prefix) && *bi != prefix {
-                    candidates.push(bi.to_string());
-                }
-            }
-            for cls in CLASSES {
-                if cls.starts_with(prefix) && *cls != prefix {
-                    candidates.push(cls.to_string());
-                }
-            }
-
-            // Add user-defined names from environment
-            let env = self.interpreter.global_env();
-            let var_names = env.borrow().get_var_names();
-            for name in &var_names {
-                // Skip internal names already covered by static lists
-                if name.starts_with("__") {
-                    continue;
-                }
-                if name.starts_with(prefix) && name != prefix {
-                    candidates.push(name.clone());
-                }
-            }
-        }
-
-        candidates.sort();
-        candidates.dedup();
-        candidates
-    }
-
-    fn handle_tab(&mut self) {
-        if let Some(ref mut state) = self.input.completion {
-            // Cycling through existing completions
-            state.index = (state.index + 1) % state.candidates.len();
-            let candidate = state.candidates[state.index].clone();
-            let prefix_start = state.prefix_start;
-
-            // Replace from prefix_start to current cursor with the candidate
-            self.input.line.chars.truncate(prefix_start);
-            self.input.line.cursor = prefix_start;
-            for c in candidate.chars() {
-                self.input.line.insert(c);
-            }
-        } else {
-            // Start new completion
-            let text = self.input.line.as_string();
-            let cursor = self.input.line.cursor;
-            let before_cursor = &text[..text.char_indices()
-                .nth(cursor)
-                .map(|(i, _)| i)
-                .unwrap_or(text.len())];
-
-            // Find the word prefix (identifiers or dot-commands)
-            let prefix_start = before_cursor
-                .rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
-                .map(|i| {
-                    // byte index → char index
-                    before_cursor[..=i].chars().count()
-                })
-                .unwrap_or(0);
-
-            let prefix: String = self.input.line.chars[prefix_start..cursor].iter().collect();
-            if prefix.is_empty() {
-                // No prefix: insert spaces as indentation
-                for _ in 0..4 {
-                    self.input.line.insert(' ');
-                }
-                return;
-            }
-
-            let candidates = self.get_completions(&prefix);
-            if candidates.is_empty() {
-                return;
-            }
-
-            // Apply first candidate
-            let first = candidates[0].clone();
-            self.input.line.chars.truncate(prefix_start);
-            self.input.line.cursor = prefix_start;
-            for c in first.chars() {
-                self.input.line.insert(c);
-            }
-
-            if candidates.len() > 1 {
-                self.input.completion = Some(CompletionState {
-                    candidates,
-                    index: 0,
-                    prefix_start,
-                });
-            }
-        }
-    }
-
     fn handle_key(&mut self, key: event::KeyEvent) -> bool {
-        // Any key except Tab resets completion state
         if key.code != KeyCode::Tab {
-            self.input.completion = None;
+            self.completion.reset();
         }
-
         match key.code {
             KeyCode::Char(c) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -823,6 +714,69 @@ impl TuiRepl {
         self.execute_code(&code);
     }
 
+    fn handle_paste(&mut self, text: &str) {
+        let lines: Vec<&str> = text.lines().collect();
+        if lines.is_empty() {
+            return;
+        }
+
+        // Single-line paste: just insert into the current line buffer
+        if lines.len() == 1 {
+            for c in lines[0].chars() {
+                self.input.line.insert(c);
+            }
+            return;
+        }
+
+        // Multi-line paste: compute block balance over the whole pasted text
+        // and execute as a single unit
+        let full_code = if self.input.is_multiline {
+            // Already in multiline mode — append pasted text to buffer
+            let mut buf = self.input.multiline_buffer.clone();
+            for line in &lines {
+                buf.push('\n');
+                buf.push_str(line);
+            }
+            // Recompute balance for the whole buffer
+            let balance: i32 = buf.lines().map(repl_common::count_block_balance).sum();
+            if balance <= 0 {
+                self.input.multiline_buffer = buf;
+                self.execute_multiline();
+                return;
+            }
+            // Still unbalanced — keep in multiline mode
+            self.input.multiline_buffer = buf;
+            self.input.brace_balance = balance;
+            self.input.line = LineBuffer::new();
+            return;
+        } else {
+            // Not yet in multiline mode — check if paste is self-contained
+            let balance: i32 = lines
+                .iter()
+                .map(|l| repl_common::count_block_balance(l))
+                .sum();
+            if balance <= 0 {
+                // Self-contained block — execute directly
+                text.to_string()
+            } else {
+                // Incomplete block — enter multiline mode with the pasted text
+                self.input.is_multiline = true;
+                self.input.multiline_buffer = text.to_string();
+                self.input.brace_balance = balance;
+                self.input.multiline_indent =
+                    repl_common::calculate_indent(lines.last().unwrap_or(&""));
+                self.input.line = LineBuffer::new();
+                return;
+            }
+        };
+
+        // Execute the complete pasted code
+        self.input.add_to_history(&full_code);
+        self.input.add_input(&full_code);
+        self.execute_code(&full_code);
+        self.input.line = LineBuffer::new();
+    }
+
     fn execute_code(&mut self, code: &str) {
         let source = repl_common::prepare_source(code);
 
@@ -865,6 +819,446 @@ impl TuiRepl {
             },
             Err(e) => Err(format!("Lex Error: {}", e)),
         }
+    }
+
+    fn handle_tab(&mut self) {
+        if self.completion.active {
+            // Cycle to next candidate
+            self.completion.index = (self.completion.index + 1) % self.completion.candidates.len();
+            let candidate = self.completion.candidates[self.completion.index].clone();
+            // Replace text from replacement_start to current cursor
+            self.input
+                .line
+                .chars
+                .truncate(self.completion.replacement_start);
+            self.input.line.cursor = self.completion.replacement_start;
+            for c in candidate.chars() {
+                self.input.line.insert(c);
+            }
+            return;
+        }
+
+        let cursor = self.input.line.cursor;
+        // At start of line or after whitespace → indent
+        if cursor == 0
+            || self
+                .input
+                .line
+                .chars
+                .get(cursor - 1)
+                .is_none_or(|c| c.is_whitespace())
+        {
+            for _ in 0..4 {
+                self.input.line.insert(' ');
+            }
+            return;
+        }
+
+        let (candidates, replacement_start) = self.compute_completions();
+        match candidates.len() {
+            0 => {
+                for _ in 0..4 {
+                    self.input.line.insert(' ');
+                }
+            }
+            1 => {
+                let candidate = candidates[0].clone();
+                self.input.line.chars.truncate(replacement_start);
+                self.input.line.cursor = replacement_start;
+                for c in candidate.chars() {
+                    self.input.line.insert(c);
+                }
+            }
+            _ => {
+                let candidate = candidates[0].clone();
+                self.input.line.chars.truncate(replacement_start);
+                self.input.line.cursor = replacement_start;
+                for c in candidate.chars() {
+                    self.input.line.insert(c);
+                }
+                self.completion.candidates = candidates;
+                self.completion.index = 0;
+                self.completion.replacement_start = replacement_start;
+                self.completion.active = true;
+            }
+        }
+    }
+
+    fn compute_completions(&self) -> (Vec<String>, usize) {
+        let text: String = self.input.line.chars[..self.input.line.cursor]
+            .iter()
+            .collect();
+
+        // Find last dot that's not inside a string
+        if let Some(dot_pos) = self.find_last_dot(&text) {
+            let before_dot = text[..dot_pos].trim();
+            let after_dot = &text[dot_pos + 1..];
+
+            // Validate after_dot: empty or starts with alpha/underscore
+            if !after_dot.is_empty()
+                && !after_dot
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphabetic() || c == '_')
+            {
+                return (vec![], 0);
+            }
+
+            if let Some(type_name) = self.detect_type_of_expr(before_dot) {
+                let methods = self.methods_for_resolved_type(&type_name, before_dot);
+                let prefix = after_dot.to_lowercase();
+                let filtered: Vec<String> = methods
+                    .into_iter()
+                    .filter(|m| m.starts_with(&prefix))
+                    .map(|m| m.to_string())
+                    .collect();
+                // replacement_start is the char position after the dot
+                let replacement_start_chars = dot_pos + 1;
+                // Convert byte offset to char offset
+                let char_offset = text[..replacement_start_chars].chars().count();
+                return (filtered, char_offset);
+            }
+        }
+
+        // No dot context → identifier completion
+        self.get_identifier_completions(&text)
+    }
+
+    fn find_last_dot(&self, text: &str) -> Option<usize> {
+        let mut in_single_quote = false;
+        let mut in_double_quote = false;
+        let mut last_dot = None;
+        let mut prev = '\0';
+
+        for (i, c) in text.char_indices() {
+            match c {
+                '\'' if !in_double_quote && prev != '\\' => in_single_quote = !in_single_quote,
+                '"' if !in_single_quote && prev != '\\' => in_double_quote = !in_double_quote,
+                '.' if !in_single_quote && !in_double_quote => last_dot = Some(i),
+                _ => {}
+            }
+            prev = c;
+        }
+        last_dot
+    }
+
+    fn detect_type_of_expr(&self, expr: &str) -> Option<String> {
+        let expr = expr.trim();
+        if expr.is_empty() {
+            return None;
+        }
+
+        // String literals
+        if (expr.starts_with('"') && expr.ends_with('"'))
+            || (expr.starts_with('\'') && expr.ends_with('\''))
+        {
+            return Some("string".to_string());
+        }
+
+        // Bool
+        if expr == "true" || expr == "false" {
+            return Some("bool".to_string());
+        }
+
+        // Null
+        if expr == "null" {
+            return Some("null".to_string());
+        }
+
+        // Array literal
+        if expr.starts_with('[') && expr.ends_with(']') {
+            return Some("array".to_string());
+        }
+
+        // Hash literal
+        if expr.starts_with('{') && expr.ends_with('}') {
+            return Some("hash".to_string());
+        }
+
+        // Numeric: all digits → int, digits with one inner dot → float
+        if expr.chars().all(|c| c.is_ascii_digit() || c == '_') && !expr.is_empty() {
+            return Some("int".to_string());
+        }
+        if expr
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == '_')
+            && expr.contains('.')
+            && expr.matches('.').count() == 1
+        {
+            return Some("float".to_string());
+        }
+
+        // Negative numbers
+        if let Some(rest) = expr.strip_prefix('-') {
+            if rest.chars().all(|c| c.is_ascii_digit() || c == '_') && !rest.is_empty() {
+                return Some("int".to_string());
+            }
+            if rest
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c == '_')
+                && rest.contains('.')
+                && rest.matches('.').count() == 1
+            {
+                return Some("float".to_string());
+            }
+        }
+
+        // Identifier → look up in environment
+        if expr
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '?')
+            && expr
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+        {
+            let env = self.interpreter.global_env();
+            if let Some(val) = env.borrow().get(expr) {
+                return Some(Self::normalize_type_name(&val.type_name()));
+            }
+        }
+
+        // Chained method call: expr contains a dot → split on last dot,
+        // resolve base type, then infer return type of the method
+        if let Some(dot_pos) = self.find_last_dot(expr) {
+            let base = expr[..dot_pos].trim();
+            let method = expr[dot_pos + 1..].trim();
+            if let Some(base_type) = self.detect_type_of_expr(base) {
+                if let Some(ret) = self.method_return_type(&base_type, method) {
+                    return Some(ret);
+                }
+            }
+        }
+
+        // Fallback: evaluate the expression in the live interpreter to get its type
+        self.try_eval_type(expr)
+    }
+
+    /// Try to evaluate an expression and return its type name.
+    /// Suppresses stdout so side-effect output doesn't leak into the TUI.
+    fn try_eval_type(&self, expr: &str) -> Option<String> {
+        let var = "__tab_completion_tmp__";
+        let source = format!("let {} = {};", var, expr);
+        let tokens = Scanner::new(&source).scan_tokens().ok()?;
+        let program = Parser::new(tokens).parse().ok()?;
+        let mut tmp = Interpreter::with_environment(self.interpreter.global_env().clone());
+        // Suppress any stdout (e.g. println side effects)
+        let _guard = gag::BufferRedirect::stdout().ok();
+        tmp.interpret(&program).ok()?;
+        let env = tmp.global_env();
+        let val = env.borrow().get(var)?;
+        let ty = Self::normalize_type_name(&val.type_name());
+        // Only return types we can complete on
+        if !ty.is_empty() && ty != "function" && ty != "method" {
+            Some(ty)
+        } else {
+            None
+        }
+    }
+
+    /// Normalize a type name to match registry keys (lowercase, snake_case).
+    fn normalize_type_name(name: &str) -> String {
+        match name {
+            "QueryBuilder" => "query_builder".to_string(),
+            "Class" => "class".to_string(),
+            _ => name.to_lowercase(),
+        }
+    }
+
+    /// Get methods for a resolved type. Tries the static registry first,
+    /// then falls back to extracting methods from actual class/instance values.
+    fn methods_for_resolved_type(&self, type_name: &str, expr: &str) -> Vec<String> {
+        // Try static registry first
+        let registry = methods_for_type(type_name);
+        if !registry.is_empty() {
+            return registry.into_iter().map(|s| s.to_string()).collect();
+        }
+
+        // For "class" type, look up the actual class and extract static methods
+        if type_name == "class" {
+            return self.class_static_methods(expr);
+        }
+
+        // For instance types (type name is the class name), look up the class
+        self.class_instance_methods(type_name)
+    }
+
+    /// Extract static method names from a Class value looked up by expression.
+    fn class_static_methods(&self, expr: &str) -> Vec<String> {
+        let env = self.interpreter.global_env();
+        let val = env.borrow().get(expr.trim());
+        if let Some(Value::Class(class)) = val {
+            self.collect_class_static_methods(&class)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Extract instance method names from a class looked up by name.
+    fn class_instance_methods(&self, class_name: &str) -> Vec<String> {
+        let env = self.interpreter.global_env();
+        // Try PascalCase first (e.g. "user" → look up "User")
+        let pascal = Self::to_pascal_case(class_name);
+        let val = env
+            .borrow()
+            .get(&pascal)
+            .or_else(|| env.borrow().get(class_name));
+        if let Some(Value::Class(class)) = val {
+            let mut names: Vec<String> = Vec::new();
+            // User-defined instance methods
+            for name in class.methods.keys() {
+                names.push(name.to_string());
+            }
+            // Native instance methods
+            for name in class.native_methods.keys() {
+                names.push(name.to_string());
+            }
+            // Universal methods
+            for m in &["class", "inspect", "is_a?", "nil?", "to_s", "to_string"] {
+                if !names.iter().any(|n| n == m) {
+                    names.push(m.to_string());
+                }
+            }
+            names.sort();
+            names.dedup();
+            names
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn collect_class_static_methods(
+        &self,
+        class: &crate::interpreter::value::Class,
+    ) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        // User-defined static methods
+        for name in class.static_methods.keys() {
+            names.push(name.to_string());
+        }
+        // Native static methods (e.g. model methods: all, count, create, etc.)
+        for name in class.native_static_methods.keys() {
+            names.push(name.to_string());
+        }
+        // Universal methods
+        for m in &["class", "inspect", "is_a?", "nil?"] {
+            if !names.iter().any(|n| n == m) {
+                names.push(m.to_string());
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    fn to_pascal_case(s: &str) -> String {
+        let mut result = String::new();
+        let mut capitalize_next = true;
+        for c in s.chars() {
+            if c == '_' {
+                capitalize_next = true;
+            } else if capitalize_next {
+                result.push(c.to_ascii_uppercase());
+                capitalize_next = false;
+            } else {
+                result.push(c);
+            }
+        }
+        result
+    }
+
+    fn method_return_type(&self, type_name: &str, method: &str) -> Option<String> {
+        crate::interpreter::executor::calls::method_registry::method_return_type(type_name, method)
+            .map(|s| s.to_string())
+    }
+
+    fn get_identifier_completions(&self, text: &str) -> (Vec<String>, usize) {
+        // Find word boundary (scan backwards for identifier chars)
+        let chars: Vec<char> = text.chars().collect();
+        let mut start = chars.len();
+        while start > 0
+            && (chars[start - 1].is_alphanumeric()
+                || chars[start - 1] == '_'
+                || chars[start - 1] == '?')
+        {
+            start -= 1;
+        }
+
+        let prefix: String = chars[start..].iter().collect();
+        if prefix.is_empty() {
+            return (vec![], 0);
+        }
+
+        let keywords = [
+            "as",
+            "async",
+            "await",
+            "break",
+            "case",
+            "catch",
+            "class",
+            "const",
+            "else",
+            "elsif",
+            "end",
+            "export",
+            "extends",
+            "false",
+            "finally",
+            "fn",
+            "for",
+            "from",
+            "if",
+            "implements",
+            "import",
+            "in",
+            "interface",
+            "let",
+            "match",
+            "new",
+            "not",
+            "null",
+            "print",
+            "println",
+            "private",
+            "protected",
+            "public",
+            "return",
+            "static",
+            "super",
+            "this",
+            "throw",
+            "true",
+            "try",
+            "unless",
+            "when",
+            "while",
+        ];
+
+        let mut candidates: Vec<String> = Vec::new();
+
+        // Keywords
+        for kw in &keywords {
+            if kw.starts_with(&prefix) && *kw != prefix {
+                candidates.push(kw.to_string());
+            }
+        }
+
+        // Variable names from environment (skip __ internals)
+        let env = self.interpreter.global_env();
+        let var_names = env.borrow().get_var_names();
+        for name in &var_names {
+            if name.starts_with("__") {
+                continue;
+            }
+            if name.starts_with(&prefix) && *name != prefix {
+                candidates.push(name.clone());
+            }
+        }
+
+        candidates.sort();
+        candidates.dedup();
+        (candidates, start)
     }
 
     fn show_help(&mut self) {

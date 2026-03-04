@@ -4,9 +4,8 @@ use std::collections::HashMap;
 
 use bytes::Bytes;
 
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::{HashKey, HashPairs, Value};
 use crate::serve::UploadedFile;
-use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -77,7 +76,7 @@ pub fn uploaded_files_to_value(files: &[UploadedFile]) -> Value {
     let file_values: Vec<Value> = files
         .iter()
         .map(|f| {
-            let mut file_map: IndexMap<HashKey, Value> = IndexMap::new();
+            let mut file_map: HashPairs = HashPairs::default();
             file_map.insert(
                 HashKey::String("name".to_string()),
                 Value::String(f.name.clone()),

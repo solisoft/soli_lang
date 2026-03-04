@@ -1486,6 +1486,33 @@
       "keywords": ["function", "exit", "value"]
     },
     {
+      "title": "Anonymous Functions",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/functions#section-lambdas",
+      "signature": "fn(params) { ... }",
+      "description": "Anonymous functions (lambdas) can be assigned to variables or passed as arguments",
+      "keywords": ["lambda", "closure", "callback", "anonymous", "fn"]
+    },
+    {
+      "title": "Trailing Block Syntax",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/functions#section-lambdas",
+      "signature": "obj.method |params| body end",
+      "description": "Pass a block directly to a method without parentheses, using pipes for parameters",
+      "keywords": ["block", "trailing", "pipe", "lambda", "iterator", "each", "map", "filter"]
+    },
+    {
+      "title": "Trailing Block with Arguments",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/functions#section-lambdas",
+      "signature": "obj.method(args) |params| body end",
+      "description": "Pass arguments to a method and attach a trailing block for the callback parameter",
+      "keywords": ["block", "trailing", "pipe", "upto", "downto", "reduce", "arguments"]
+    },
+    {
       "title": "class",
       "type": "keyword",
       "category": "Language",
@@ -2663,6 +2690,609 @@
       "signature": "hash.to_string()",
       "description": "Convert the hash to its string representation",
       "keywords": ["hash", "to_string", "convert", "print", "display"]
+    },
+    {
+      "title": ".class",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-introspection",
+      "signature": "hash.class",
+      "description": "Returns the type name \"hash\"",
+      "keywords": ["hash", "class", "type", "introspection"]
+    },
+    {
+      "title": ".inspect",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-introspection",
+      "signature": "hash.inspect",
+      "description": "Returns a developer-friendly string representation of the hash",
+      "keywords": ["hash", "inspect", "debug", "display"]
+    },
+    {
+      "title": ".nil?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-introspection",
+      "signature": "hash.nil?",
+      "description": "Returns false (hashes are never nil)",
+      "keywords": ["hash", "nil", "null", "check"]
+    },
+    {
+      "title": ".is_a?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-introspection",
+      "signature": "hash.is_a?(type_name)",
+      "description": "Check if the value is of the given type",
+      "keywords": ["hash", "is_a", "type", "check", "introspection"]
+    },
+    {
+      "title": ".blank?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-introspection",
+      "signature": "hash.blank?",
+      "description": "Returns true if the hash is empty",
+      "keywords": ["hash", "blank", "empty", "check"]
+    },
+    {
+      "title": ".present?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#hash-introspection",
+      "signature": "hash.present?",
+      "description": "Returns true if the hash is not empty",
+      "keywords": ["hash", "present", "check", "exists"]
+    },
+    {
+      "title": ".class",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-introspection",
+      "signature": "array.class",
+      "description": "Returns the type name \"array\"",
+      "keywords": ["array", "class", "type", "introspection"]
+    },
+    {
+      "title": ".inspect",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-introspection",
+      "signature": "array.inspect",
+      "description": "Returns a developer-friendly string representation of the array",
+      "keywords": ["array", "inspect", "debug", "display"]
+    },
+    {
+      "title": ".nil?()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-introspection",
+      "signature": "array.nil?",
+      "description": "Returns false (arrays are never nil)",
+      "keywords": ["array", "nil", "null", "check"]
+    },
+    {
+      "title": ".is_a?()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-introspection",
+      "signature": "array.is_a?(type_name)",
+      "description": "Check if the value is of the given type",
+      "keywords": ["array", "is_a", "type", "check", "introspection"]
+    },
+    {
+      "title": ".abs",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-abs",
+      "signature": "int.abs",
+      "description": "Returns the absolute value of the integer",
+      "keywords": ["int", "integer", "abs", "absolute", "math"]
+    },
+    {
+      "title": ".pow()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-pow",
+      "signature": "int.pow(exponent)",
+      "description": "Raises the integer to the given power",
+      "keywords": ["int", "integer", "pow", "power", "exponent", "math"]
+    },
+    {
+      "title": ".sqrt",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-sqrt",
+      "signature": "int.sqrt",
+      "description": "Returns the square root as a float",
+      "keywords": ["int", "integer", "sqrt", "square root", "math"]
+    },
+    {
+      "title": ".gcd()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-gcd",
+      "signature": "int.gcd(other)",
+      "description": "Returns the greatest common divisor",
+      "keywords": ["int", "integer", "gcd", "divisor", "math"]
+    },
+    {
+      "title": ".lcm()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-lcm",
+      "signature": "int.lcm(other)",
+      "description": "Returns the least common multiple",
+      "keywords": ["int", "integer", "lcm", "multiple", "math"]
+    },
+    {
+      "title": ".even? / .odd?",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-even-odd",
+      "signature": "int.even? / int.odd?",
+      "description": "Check if the integer is even or odd",
+      "keywords": ["int", "integer", "even", "odd", "parity", "check"]
+    },
+    {
+      "title": ".zero?",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-zero",
+      "signature": "int.zero?",
+      "description": "Check if the integer is zero",
+      "keywords": ["int", "integer", "zero", "check", "predicate"]
+    },
+    {
+      "title": ".positive? / .negative?",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-positive-negative",
+      "signature": "int.positive? / int.negative?",
+      "description": "Check if the integer is positive or negative",
+      "keywords": ["int", "integer", "positive", "negative", "sign", "check"]
+    },
+    {
+      "title": ".between?()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-between",
+      "signature": "int.between?(min, max)",
+      "description": "Check if the integer is within the given range (inclusive)",
+      "keywords": ["int", "integer", "between", "range", "check"]
+    },
+    {
+      "title": ".clamp()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-clamp",
+      "signature": "int.clamp(min, max)",
+      "description": "Constrain the integer to be within the given range",
+      "keywords": ["int", "integer", "clamp", "limit", "range"]
+    },
+    {
+      "title": ".times",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-times",
+      "signature": "int.times |i| ... end",
+      "description": "Execute a block n times, passing the index",
+      "keywords": ["int", "integer", "times", "loop", "iterate", "repeat"]
+    },
+    {
+      "title": ".upto()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-upto",
+      "signature": "int.upto(limit) |i| ... end",
+      "description": "Iterate from the integer up to the limit (inclusive)",
+      "keywords": ["int", "integer", "upto", "loop", "iterate", "range"]
+    },
+    {
+      "title": ".downto()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-downto",
+      "signature": "int.downto(limit) |i| ... end",
+      "description": "Iterate from the integer down to the limit (inclusive)",
+      "keywords": ["int", "integer", "downto", "loop", "iterate", "range"]
+    },
+    {
+      "title": ".to_s / .to_string",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-to-s",
+      "signature": "int.to_s",
+      "description": "Convert integer to string representation",
+      "keywords": ["int", "integer", "to_s", "to_string", "convert"]
+    },
+    {
+      "title": ".to_f / .to_float",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-to-f",
+      "signature": "int.to_f",
+      "description": "Convert integer to floating-point number",
+      "keywords": ["int", "integer", "to_f", "to_float", "convert"]
+    },
+    {
+      "title": ".chr",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-chr",
+      "signature": "int.chr",
+      "description": "Convert a Unicode code point to a character string",
+      "keywords": ["int", "integer", "chr", "character", "unicode"]
+    },
+    {
+      "title": ".class",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-class",
+      "signature": "int.class",
+      "description": "Returns the type name \"int\"",
+      "keywords": ["int", "integer", "class", "type", "introspection"]
+    },
+    {
+      "title": ".inspect",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-inspect",
+      "signature": "int.inspect",
+      "description": "Returns a developer-friendly string representation",
+      "keywords": ["int", "integer", "inspect", "debug"]
+    },
+    {
+      "title": ".is_a?()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-is-a",
+      "signature": "int.is_a?(type_name)",
+      "description": "Check if the value is of the given type (int, numeric, object)",
+      "keywords": ["int", "integer", "is_a", "type", "check"]
+    },
+    {
+      "title": ".nil? / .blank? / .present?",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-blank-present",
+      "signature": "int.nil? / int.blank? / int.present?",
+      "description": "Integers are never nil, never blank, and always present",
+      "keywords": ["int", "integer", "nil", "blank", "present", "check"]
+    },
+    {
+      "title": ".round()",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-round",
+      "signature": "float.round / float.round(digits)",
+      "description": "Round to nearest integer or to specific decimal places",
+      "keywords": ["float", "round", "math", "precision"]
+    },
+    {
+      "title": ".ceil",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-ceil",
+      "signature": "float.ceil",
+      "description": "Round up to the nearest integer",
+      "keywords": ["float", "ceil", "ceiling", "round", "math"]
+    },
+    {
+      "title": ".floor",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-floor",
+      "signature": "float.floor",
+      "description": "Round down to the nearest integer",
+      "keywords": ["float", "floor", "round", "math"]
+    },
+    {
+      "title": ".truncate",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-truncate",
+      "signature": "float.truncate",
+      "description": "Truncate toward zero (remove decimal part)",
+      "keywords": ["float", "truncate", "trunc", "math"]
+    },
+    {
+      "title": ".abs",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-abs",
+      "signature": "float.abs",
+      "description": "Returns the absolute value of the float",
+      "keywords": ["float", "abs", "absolute", "math"]
+    },
+    {
+      "title": ".sqrt",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-sqrt",
+      "signature": "float.sqrt",
+      "description": "Returns the square root",
+      "keywords": ["float", "sqrt", "square root", "math"]
+    },
+    {
+      "title": ".zero? / .positive? / .negative?",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-zero",
+      "signature": "float.zero? / float.positive? / float.negative?",
+      "description": "Check if the float is zero, positive, or negative",
+      "keywords": ["float", "zero", "positive", "negative", "sign", "check"]
+    },
+    {
+      "title": ".finite? / .infinite? / .nan?",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-finite-infinite-nan",
+      "signature": "float.finite? / float.infinite? / float.nan?",
+      "description": "Check for special IEEE 754 float states",
+      "keywords": ["float", "finite", "infinite", "nan", "check", "ieee"]
+    },
+    {
+      "title": ".between?()",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-between",
+      "signature": "float.between?(min, max)",
+      "description": "Check if the float is within the given range (inclusive)",
+      "keywords": ["float", "between", "range", "check"]
+    },
+    {
+      "title": ".clamp()",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-clamp",
+      "signature": "float.clamp(min, max)",
+      "description": "Constrain the float to be within the given range",
+      "keywords": ["float", "clamp", "limit", "range"]
+    },
+    {
+      "title": ".to_i / .to_int",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-to-i",
+      "signature": "float.to_i",
+      "description": "Convert float to integer (truncates toward zero)",
+      "keywords": ["float", "to_i", "to_int", "convert", "integer"]
+    },
+    {
+      "title": ".to_s / .to_string",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-to-s",
+      "signature": "float.to_s",
+      "description": "Convert float to string representation",
+      "keywords": ["float", "to_s", "to_string", "convert"]
+    },
+    {
+      "title": ".class / .inspect / .is_a? / .nil? / .blank? / .present?",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-class",
+      "signature": "float.class / float.inspect / float.is_a?(type)",
+      "description": "Type introspection methods for floats",
+      "keywords": ["float", "class", "inspect", "is_a", "nil", "blank", "present", "introspection"]
+    },
+    {
+      "title": ".to_s / .to_string",
+      "type": "method",
+      "category": "Bool",
+      "path": "/docs/language/booleans#method-to-s",
+      "signature": "bool.to_s",
+      "description": "Convert boolean to string (\"true\" or \"false\")",
+      "keywords": ["bool", "boolean", "to_s", "to_string", "convert"]
+    },
+    {
+      "title": ".to_i / .to_int",
+      "type": "method",
+      "category": "Bool",
+      "path": "/docs/language/booleans#method-to-i",
+      "signature": "bool.to_i",
+      "description": "Convert boolean to integer (true=1, false=0)",
+      "keywords": ["bool", "boolean", "to_i", "to_int", "convert", "integer"]
+    },
+    {
+      "title": ".class / .inspect / .is_a? / .nil?",
+      "type": "method",
+      "category": "Bool",
+      "path": "/docs/language/booleans#method-class",
+      "signature": "bool.class / bool.inspect / bool.is_a?(type)",
+      "description": "Type introspection methods for booleans",
+      "keywords": ["bool", "boolean", "class", "inspect", "is_a", "nil", "introspection"]
+    },
+    {
+      "title": ".blank? / .present?",
+      "type": "method",
+      "category": "Bool",
+      "path": "/docs/language/booleans#method-blank-present",
+      "signature": "bool.blank? / bool.present?",
+      "description": "false is blank; true is present (Rails convention)",
+      "keywords": ["bool", "boolean", "blank", "present", "check"]
+    },
+    {
+      "title": ".to_s / .to_string",
+      "type": "method",
+      "category": "Null",
+      "path": "/docs/language/null#method-to-s",
+      "signature": "null.to_s",
+      "description": "Convert null to empty string",
+      "keywords": ["null", "to_s", "to_string", "convert", "empty"]
+    },
+    {
+      "title": ".to_i / .to_int",
+      "type": "method",
+      "category": "Null",
+      "path": "/docs/language/null#method-to-i",
+      "signature": "null.to_i",
+      "description": "Convert null to zero",
+      "keywords": ["null", "to_i", "to_int", "convert", "zero"]
+    },
+    {
+      "title": ".to_f / .to_float",
+      "type": "method",
+      "category": "Null",
+      "path": "/docs/language/null#method-to-f",
+      "signature": "null.to_f",
+      "description": "Convert null to zero float",
+      "keywords": ["null", "to_f", "to_float", "convert", "zero"]
+    },
+    {
+      "title": ".to_a / .to_array",
+      "type": "method",
+      "category": "Null",
+      "path": "/docs/language/null#method-to-a",
+      "signature": "null.to_a",
+      "description": "Convert null to empty array",
+      "keywords": ["null", "to_a", "to_array", "convert", "empty"]
+    },
+    {
+      "title": ".nil?",
+      "type": "method",
+      "category": "Null",
+      "path": "/docs/language/null#method-nil",
+      "signature": "null.nil?",
+      "description": "Returns true (null is the only type where nil? returns true)",
+      "keywords": ["null", "nil", "check", "predicate"]
+    },
+    {
+      "title": ".blank? / .present?",
+      "type": "method",
+      "category": "Null",
+      "path": "/docs/language/null#method-blank-present",
+      "signature": "null.blank? / null.present?",
+      "description": "Null is always blank and never present",
+      "keywords": ["null", "blank", "present", "check"]
+    },
+    {
+      "title": ".class / .inspect / .is_a?",
+      "type": "method",
+      "category": "Null",
+      "path": "/docs/language/null#method-class",
+      "signature": "null.class / null.inspect / null.is_a?(type)",
+      "description": "Type introspection methods for null",
+      "keywords": ["null", "class", "inspect", "is_a", "introspection"]
+    },
+    {
+      "title": ".round()",
+      "type": "method",
+      "category": "Decimal",
+      "path": "/docs/language/decimal#method-round",
+      "signature": "decimal.round / decimal.round(digits)",
+      "description": "Round to nearest integer or to specific decimal places",
+      "keywords": ["decimal", "round", "precision", "math"]
+    },
+    {
+      "title": ".ceil / .floor / .truncate",
+      "type": "method",
+      "category": "Decimal",
+      "path": "/docs/language/decimal#method-ceil-floor",
+      "signature": "decimal.ceil / decimal.floor / decimal.truncate",
+      "description": "Round up, down, or toward zero",
+      "keywords": ["decimal", "ceil", "floor", "truncate", "round", "math"]
+    },
+    {
+      "title": ".abs",
+      "type": "method",
+      "category": "Decimal",
+      "path": "/docs/language/decimal#method-abs",
+      "signature": "decimal.abs",
+      "description": "Returns the absolute value of the decimal",
+      "keywords": ["decimal", "abs", "absolute", "math"]
+    },
+    {
+      "title": ".sqrt",
+      "type": "method",
+      "category": "Decimal",
+      "path": "/docs/language/decimal#method-sqrt",
+      "signature": "decimal.sqrt",
+      "description": "Returns the square root as a float",
+      "keywords": ["decimal", "sqrt", "square root", "math"]
+    },
+    {
+      "title": ".zero? / .positive? / .negative?",
+      "type": "method",
+      "category": "Decimal",
+      "path": "/docs/language/decimal#method-predicates",
+      "signature": "decimal.zero? / decimal.positive? / decimal.negative?",
+      "description": "Check the sign of a decimal value",
+      "keywords": ["decimal", "zero", "positive", "negative", "sign", "check"]
+    },
+    {
+      "title": ".between?() / .clamp()",
+      "type": "method",
+      "category": "Decimal",
+      "path": "/docs/language/decimal#method-between",
+      "signature": "decimal.between?(min, max) / decimal.clamp(min, max)",
+      "description": "Range checking and clamping for decimals",
+      "keywords": ["decimal", "between", "clamp", "range", "check"]
+    },
+    {
+      "title": ".to_s / .to_i / .to_f",
+      "type": "method",
+      "category": "Decimal",
+      "path": "/docs/language/decimal#method-conversion",
+      "signature": "decimal.to_s / decimal.to_i / decimal.to_f",
+      "description": "Convert decimal to string, integer, or float",
+      "keywords": ["decimal", "to_s", "to_i", "to_f", "convert"]
+    },
+    {
+      "title": ".class / .inspect / .nil? / .blank? / .present? / .is_a?",
+      "type": "method",
+      "category": "Decimal",
+      "path": "/docs/language/decimal#method-introspection",
+      "signature": "decimal.class / decimal.inspect / decimal.is_a?(type)",
+      "description": "Type introspection methods for decimals",
+      "keywords": ["decimal", "class", "inspect", "nil", "blank", "present", "is_a", "introspection"]
+    },
+    {
+      "title": "Int",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/integers",
+      "signature": "42, -100, 9_000_000",
+      "description": "64-bit signed integers with arithmetic, iteration, and type methods",
+      "keywords": ["int", "integer", "number", "numeric", "type"]
+    },
+    {
+      "title": "Float",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/floats",
+      "signature": "3.14, 0.001, 2.5e10",
+      "description": "64-bit floating-point numbers with rounding, comparison, and conversion",
+      "keywords": ["float", "floating", "point", "number", "numeric", "type"]
+    },
+    {
+      "title": "Bool",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/booleans",
+      "signature": "true, false",
+      "description": "Boolean values with conversion and introspection methods",
+      "keywords": ["bool", "boolean", "true", "false", "type"]
+    },
+    {
+      "title": "Null",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/null",
+      "signature": "null",
+      "description": "Absence of value with safe conversion methods",
+      "keywords": ["null", "nil", "nothing", "empty", "type"]
+    },
+    {
+      "title": "Decimal",
+      "type": "type",
+      "category": "Language",
+      "path": "/docs/language/decimal",
+      "signature": "19.99D, 0.0675D",
+      "description": "Fixed-precision decimal arithmetic for financial calculations",
+      "keywords": ["decimal", "precision", "financial", "money", "currency", "type"]
     }
   ]
 }

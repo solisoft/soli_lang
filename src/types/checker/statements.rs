@@ -170,12 +170,12 @@ impl TypeChecker {
                     self.env.define(param.name.clone(), ty);
                 }
 
-                // Set expected return type
+                // Set expected return type (Any if not annotated)
                 let return_type = decl
                     .return_type
                     .as_ref()
                     .map(|t| self.resolve_type(t))
-                    .unwrap_or(Type::Void);
+                    .unwrap_or(Type::Any);
                 self.env.set_return_type(Some(return_type));
 
                 // Check body
@@ -263,12 +263,12 @@ impl TypeChecker {
                 self.env.define(param.name.clone(), ty);
             }
 
-            // Set return type
+            // Set return type (Any if not annotated)
             let return_type = method
                 .return_type
                 .as_ref()
                 .map(|t| self.resolve_type(t))
-                .unwrap_or(Type::Void);
+                .unwrap_or(Type::Any);
             self.env.set_return_type(Some(return_type));
 
             for s in &method.body {

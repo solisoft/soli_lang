@@ -1,12 +1,11 @@
 //! Set class operations.
 
-use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashPairs, Instance, NativeFunction, Value};
 
 pub fn register_set_class(env: &mut Environment) {
     // Placeholder for Set class - using Hash internally with values as keys
@@ -41,7 +40,7 @@ pub fn register_set_class(env: &mut Environment) {
                 let mut inst = Instance::new(class_ref.clone());
                 inst.set(
                     "__value".to_string(),
-                    Value::Hash(Rc::new(RefCell::new(IndexMap::new()))),
+                    Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
                 );
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             }

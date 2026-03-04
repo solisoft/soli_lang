@@ -769,10 +769,8 @@ end
 print(factorial(5));  # 120
 
 # Calculate Fibonacci
-fn fibonacci(n: Int) -> Int
-    if n <= 1
-        return n;
-    end
+def fibonacci(n: Int) -> Int
+    return n if n <= 1
     fibonacci(n - 1) + fibonacci(n - 2)
 end
 
@@ -2697,29 +2695,25 @@ let joined = join(["a", "b", "c"], ", ");  # "a, b, c"
 ### Math Functions
 
 ```soli
-# Basic math
-print(abs(-5));        # 5
-print(min(3, 7));      # 3
-print(max(3, 7));      # 7
+# Number methods
+print((-5).abs);       # 5
+print(16.sqrt);        # 4.0
+print(2.pow(10));      # 1024
+print([3, 7].min);     # 3
+print([3, 7].max);     # 7
 
-# Power and roots
-print(sqrt(16));       # 4.0
-print(pow(2, 10));     # 1024.0
-print(pow(27, 1/3));   # 3.0 (cube root)
+# Math class
+print(Math.sin(0));         # 0.0
+print(Math.cos(0));         # 1.0
+print(Math.tan(0.785398));  # ~1.0 (45 degrees in radians)
 
-# Trigonometry
-print(sin(0));         # 0.0
-print(cos(0));         # 1.0
-print(tan(0.785398));  # ~1.0 (45 degrees in radians)
-
-# Rounding
-print(floor(3.7));     # 3
-print(ceil(3.2));      # 4
-print(round(3.5));     # 4
+# Rounding (number methods)
+print(3.7.floor);      # 3
+print(3.2.ceil);       # 4
+print(3.5.round);      # 4
 
 # Random
-let random_num = random();        # 0.0 to 1.0
-let random_int = random_int(1, 100);  # 1 to 100
+let random_num = Math.random();   # 0.0 to 1.0
 
 # Time
 print(clock());  # Current time in seconds since epoch
