@@ -715,6 +715,8 @@ impl TuiRepl {
     }
 
     fn handle_paste(&mut self, text: &str) {
+        // Normalize line endings
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
         let lines: Vec<&str> = text.lines().collect();
         if lines.is_empty() {
             return;
@@ -728,53 +730,16 @@ impl TuiRepl {
             return;
         }
 
-        // Multi-line paste: compute block balance over the whole pasted text
-        // and execute as a single unit
-        let full_code = if self.input.is_multiline {
-            // Already in multiline mode — append pasted text to buffer
-            let mut buf = self.input.multiline_buffer.clone();
-            for line in &lines {
-                buf.push('\n');
-                buf.push_str(line);
-            }
-            // Recompute balance for the whole buffer
-            let balance: i32 = buf.lines().map(repl_common::count_block_balance).sum();
-            if balance <= 0 {
-                self.input.multiline_buffer = buf;
-                self.execute_multiline();
-                return;
-            }
-            // Still unbalanced — keep in multiline mode
-            self.input.multiline_buffer = buf;
-            self.input.brace_balance = balance;
+        // Multi-line paste: feed each line as if the user typed it + pressed Enter
+        for line in &lines {
+            // Set the current line buffer to this line
             self.input.line = LineBuffer::new();
-            return;
-        } else {
-            // Not yet in multiline mode — check if paste is self-contained
-            let balance: i32 = lines
-                .iter()
-                .map(|l| repl_common::count_block_balance(l))
-                .sum();
-            if balance <= 0 {
-                // Self-contained block — execute directly
-                text.to_string()
-            } else {
-                // Incomplete block — enter multiline mode with the pasted text
-                self.input.is_multiline = true;
-                self.input.multiline_buffer = text.to_string();
-                self.input.brace_balance = balance;
-                self.input.multiline_indent =
-                    repl_common::calculate_indent(lines.last().unwrap_or(&""));
-                self.input.line = LineBuffer::new();
-                return;
+            for c in line.chars() {
+                self.input.line.insert(c);
             }
-        };
-
-        // Execute the complete pasted code
-        self.input.add_to_history(&full_code);
-        self.input.add_input(&full_code);
-        self.execute_code(&full_code);
-        self.input.line = LineBuffer::new();
+            // Execute as if Enter was pressed
+            self.execute_current_line();
+        }
     }
 
     fn execute_code(&mut self, code: &str) {

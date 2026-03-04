@@ -162,20 +162,33 @@ impl TypeChecker {
             }
 
             StmtKind::Function(decl) => {
-                self.env.push_scope();
-
-                // Define parameters
-                for param in &decl.params {
-                    let ty = self.resolve_type(&param.type_annotation);
-                    self.env.define(param.name.clone(), ty);
-                }
-
-                // Set expected return type (Any if not annotated)
+                // Resolve parameter types and return type
+                let param_types: Vec<Type> = decl
+                    .params
+                    .iter()
+                    .map(|p| self.resolve_type(&p.type_annotation))
+                    .collect();
                 let return_type = decl
                     .return_type
                     .as_ref()
                     .map(|t| self.resolve_type(t))
                     .unwrap_or(Type::Any);
+
+                // Register function in the OUTER scope so callers (and recursion) can see it
+                let func_type = Type::Function {
+                    params: param_types.clone(),
+                    return_type: Box::new(return_type.clone()),
+                };
+                self.env.define(decl.name.clone(), func_type);
+
+                // Now push inner scope for the body
+                self.env.push_scope();
+
+                // Define parameters
+                for (param, ty) in decl.params.iter().zip(param_types.iter()) {
+                    self.env.define(param.name.clone(), ty.clone());
+                }
+
                 self.env.set_return_type(Some(return_type));
 
                 // Check body

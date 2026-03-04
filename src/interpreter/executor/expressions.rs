@@ -228,7 +228,9 @@ impl Interpreter {
                     .borrow_mut()
                     .assign(name, new_value.clone())
                 {
-                    return Err(RuntimeError::undefined_variable(name, target.span));
+                    self.environment
+                        .borrow_mut()
+                        .define(name.clone(), new_value.clone());
                 }
                 Ok(new_value)
             }

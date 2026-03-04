@@ -116,8 +116,17 @@ impl TypeChecker {
         target: &Expr,
         value: &Expr,
     ) -> TypeResult<Type> {
-        let target_type = self.check_expr(target)?;
         let value_type = self.check_expr(value)?;
+
+        // Auto-define: if target is an undefined variable, define it with the RHS type
+        if let ExprKind::Variable(name) = &target.kind {
+            if self.env.get(name).is_none() {
+                self.env.define(name.clone(), value_type.clone());
+                return Ok(value_type);
+            }
+        }
+
+        let target_type = self.check_expr(target)?;
 
         if !value_type.is_assignable_to(&target_type) {
             return Err(TypeError::mismatch(
