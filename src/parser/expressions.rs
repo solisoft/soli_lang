@@ -1290,14 +1290,13 @@ impl Parser {
         // Fast path: simple identifier (e.g. #{name}) — skip Scanner+Parser
         let trimmed = content.trim();
         if !trimmed.is_empty()
-            && trimmed.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            && trimmed
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
             && !trimmed.bytes().next().unwrap_or(0).is_ascii_digit()
         {
             let span = self.previous_span();
-            return Ok(Expr::new(
-                ExprKind::Variable(trimmed.to_string()),
-                span,
-            ));
+            return Ok(Expr::new(ExprKind::Variable(trimmed.to_string()), span));
         }
 
         // General path: full Scanner+Parser for complex expressions

@@ -554,8 +554,8 @@ impl TuiRepl {
         match output_line {
             OutputLine::Input(text) => {
                 let highlighted = self.highlight_code(text);
-                let is_first = idx == 0
-                    || !matches!(self.input.output_lines[idx - 1], OutputLine::Input(_));
+                let is_first =
+                    idx == 0 || !matches!(self.input.output_lines[idx - 1], OutputLine::Input(_));
                 if is_first {
                     format!("\x1b[90m>>>\x1b[0m {}", highlighted)
                 } else {
@@ -564,8 +564,8 @@ impl TuiRepl {
             }
             OutputLine::Result(text) => {
                 let colored = Self::colorize_result(text);
-                let is_first = idx == 0
-                    || !matches!(self.input.output_lines[idx - 1], OutputLine::Result(_));
+                let is_first =
+                    idx == 0 || !matches!(self.input.output_lines[idx - 1], OutputLine::Result(_));
                 if is_first {
                     format!("\x1b[90m=>\x1b[0m {}", colored)
                 } else {
@@ -605,27 +605,40 @@ impl TuiRepl {
                     let s: String = chars[start..i].iter().collect();
                     result.push_str(&format!("\x1b[92m{}\x1b[0m", s)); // green
                 }
-                c if c.is_ascii_digit() || (c == '-' && i + 1 < len && chars[i + 1].is_ascii_digit()) => {
+                c if c.is_ascii_digit()
+                    || (c == '-' && i + 1 < len && chars[i + 1].is_ascii_digit()) =>
+                {
                     // Number
                     let start = i;
                     if c == '-' {
                         i += 1;
                     }
-                    while i < len && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == 'e' || chars[i] == 'E') {
+                    while i < len
+                        && (chars[i].is_ascii_digit()
+                            || chars[i] == '.'
+                            || chars[i] == 'e'
+                            || chars[i] == 'E')
+                    {
                         i += 1;
                     }
                     let s: String = chars[start..i].iter().collect();
                     result.push_str(&format!("\x1b[94m{}\x1b[0m", s)); // blue
                 }
-                't' if text[i..].starts_with("true") && (i + 4 >= len || !chars[i + 4].is_alphanumeric()) => {
+                't' if text[i..].starts_with("true")
+                    && (i + 4 >= len || !chars[i + 4].is_alphanumeric()) =>
+                {
                     result.push_str("\x1b[95mtrue\x1b[0m"); // magenta
                     i += 4;
                 }
-                'f' if text[i..].starts_with("false") && (i + 5 >= len || !chars[i + 5].is_alphanumeric()) => {
+                'f' if text[i..].starts_with("false")
+                    && (i + 5 >= len || !chars[i + 5].is_alphanumeric()) =>
+                {
                     result.push_str("\x1b[95mfalse\x1b[0m"); // magenta
                     i += 5;
                 }
-                'n' if text[i..].starts_with("null") && (i + 4 >= len || !chars[i + 4].is_alphanumeric()) => {
+                'n' if text[i..].starts_with("null")
+                    && (i + 4 >= len || !chars[i + 4].is_alphanumeric()) =>
+                {
                     result.push_str("\x1b[96mnull\x1b[0m"); // cyan
                     i += 4;
                 }
@@ -638,7 +651,7 @@ impl TuiRepl {
                     i += 1;
                 }
                 ',' => {
-                    result.push_str(&format!("\x1b[37m,\x1b[0m"));
+                    result.push_str("\x1b[37m,\x1b[0m");
                     i += 1;
                 }
                 _ => {

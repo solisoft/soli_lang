@@ -65,10 +65,13 @@ impl Interpreter {
         }
 
         // Pre-allocate with estimated capacity
-        let capacity: usize = parts.iter().map(|p| match p {
-            crate::ast::expr::InterpolatedPart::Literal(s) => s.len(),
-            _ => 16, // estimate for expression results
-        }).sum();
+        let capacity: usize = parts
+            .iter()
+            .map(|p| match p {
+                crate::ast::expr::InterpolatedPart::Literal(s) => s.len(),
+                _ => 16, // estimate for expression results
+            })
+            .sum();
         let mut result = String::with_capacity(capacity);
 
         for part in parts {
