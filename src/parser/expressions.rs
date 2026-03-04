@@ -1287,12 +1287,24 @@ impl Parser {
 
     /// Parse an expression from a string content (for interpolated strings)
     fn parse_expression_from_string(&mut self, content: &str) -> ParseResult<Expr> {
-        // Create a temporary scanner for the content
+        // Fast path: simple identifier (e.g. #{name}) — skip Scanner+Parser
+        let trimmed = content.trim();
+        if !trimmed.is_empty()
+            && trimmed.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            && !trimmed.bytes().next().unwrap_or(0).is_ascii_digit()
+        {
+            let span = self.previous_span();
+            return Ok(Expr::new(
+                ExprKind::Variable(trimmed.to_string()),
+                span,
+            ));
+        }
+
+        // General path: full Scanner+Parser for complex expressions
         use crate::lexer::scanner::Scanner;
         let mut scanner = Scanner::new(content);
         let tokens = scanner.scan_tokens()?;
 
-        // Parse from the tokens
         let mut parser = crate::parser::Parser::new(tokens);
         parser.expression()
     }

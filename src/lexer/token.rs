@@ -64,6 +64,7 @@ pub enum TokenKind {
     Match,
     Case,
     When,
+    Do,
     End,
     Unless,
 
@@ -165,6 +166,7 @@ impl TokenKind {
             "match" => Some(TokenKind::Match),
             "case" => Some(TokenKind::Case),
             "when" => Some(TokenKind::When),
+            "do" => Some(TokenKind::Do),
             "end" => Some(TokenKind::End),
             "unless" => Some(TokenKind::Unless),
             "import" => Some(TokenKind::Import),
@@ -230,6 +232,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Match => write!(f, "match"),
             TokenKind::Case => write!(f, "case"),
             TokenKind::When => write!(f, "when"),
+            TokenKind::Do => write!(f, "do"),
             TokenKind::End => write!(f, "end"),
             TokenKind::Unless => write!(f, "unless"),
             TokenKind::Import => write!(f, "import"),

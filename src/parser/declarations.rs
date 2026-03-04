@@ -376,6 +376,13 @@ impl Parser {
     fn parse_constructor_body(&mut self) -> ParseResult<Vec<Stmt>> {
         if self.match_token(&TokenKind::End) {
             Ok(Vec::new())
+        } else if self.match_token(&TokenKind::Do) {
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::End) && !self.is_at_end() {
+                statements.push(self.statement()?);
+            }
+            self.expect(&TokenKind::End)?;
+            Ok(statements)
         } else if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
             self.advance(); // consume {
             let mut statements = Vec::new();
@@ -581,6 +588,14 @@ impl Parser {
     pub(crate) fn parse_function_body(&mut self) -> ParseResult<Vec<Stmt>> {
         if self.match_token(&TokenKind::End) {
             Ok(Vec::new())
+        } else if self.match_token(&TokenKind::Do) {
+            // do...end block
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::End) && !self.is_at_end() {
+                statements.push(self.statement()?);
+            }
+            self.expect(&TokenKind::End)?;
+            Ok(statements)
         } else if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
             self.advance(); // consume {
             let mut statements = Vec::new();

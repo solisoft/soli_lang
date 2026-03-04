@@ -39,7 +39,7 @@ def authenticate(req: Any) -> Any
             "response": {
                 "status": 401,
                 "headers": {"Content-Type": "application/json"},
-                "body": json_stringify({
+                "body": JSON.stringify({
                     "error": "Unauthorized",
                     "message": "Authentication required"
                 })

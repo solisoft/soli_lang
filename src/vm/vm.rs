@@ -437,7 +437,17 @@ impl Vm {
                         parts.push(self.pop());
                     }
                     parts.reverse();
-                    let result: String = parts.iter().map(|v| format!("{}", v)).collect();
+                    let mut result = String::new();
+                    for v in &parts {
+                        match v {
+                            Value::String(s) => result.push_str(s),
+                            Value::Int(i) => {
+                                use std::fmt::Write;
+                                let _ = write!(result, "{}", i);
+                            }
+                            other => result.push_str(&format!("{}", other)),
+                        }
+                    }
                     self.push(Value::String(result));
                 }
                 Op::Spread => {

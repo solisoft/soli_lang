@@ -57,7 +57,20 @@ impl Interpreter {
         parts: &Vec<crate::ast::expr::InterpolatedPart>,
         _span: Span,
     ) -> RuntimeResult<Value> {
-        let mut result = String::new();
+        // Fast path: single literal (no interpolation)
+        if parts.len() == 1 {
+            if let crate::ast::expr::InterpolatedPart::Literal(s) = &parts[0] {
+                return Ok(Value::String(s.clone()));
+            }
+        }
+
+        // Pre-allocate with estimated capacity
+        let capacity: usize = parts.iter().map(|p| match p {
+            crate::ast::expr::InterpolatedPart::Literal(s) => s.len(),
+            _ => 16, // estimate for expression results
+        }).sum();
+        let mut result = String::with_capacity(capacity);
+
         for part in parts {
             match part {
                 crate::ast::expr::InterpolatedPart::Literal(s) => {
@@ -65,7 +78,15 @@ impl Interpreter {
                 }
                 crate::ast::expr::InterpolatedPart::Expression(expr) => {
                     let value = self.evaluate(expr)?;
-                    result.push_str(&value.to_string());
+                    // Avoid allocation for common types
+                    match &value {
+                        Value::String(s) => result.push_str(s),
+                        Value::Int(n) => {
+                            use std::fmt::Write;
+                            let _ = write!(result, "{}", n);
+                        }
+                        other => result.push_str(&other.to_string()),
+                    }
                 }
             }
         }

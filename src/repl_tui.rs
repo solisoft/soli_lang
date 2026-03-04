@@ -96,6 +96,7 @@ struct InputState {
     history: Vec<String>,
     history_index: usize,
     output_lines: Vec<OutputLine>,
+    flushed_count: usize, // how many output_lines have been flushed to scrollback
 }
 
 impl InputState {
@@ -109,6 +110,7 @@ impl InputState {
             history: Vec::new(),
             history_index: 0,
             output_lines: Vec::new(),
+            flushed_count: 0,
         }
     }
 
@@ -135,8 +137,11 @@ impl InputState {
     }
 
     fn trim_output(&mut self) {
-        if self.output_lines.len() > 100 {
+        if self.output_lines.len() > 500 {
             self.output_lines.remove(0);
+            if self.flushed_count > 0 {
+                self.flushed_count -= 1;
+            }
         }
     }
 
@@ -161,11 +166,8 @@ impl InputState {
 
     fn history_up(&mut self) {
         if !self.history.is_empty() && self.history_index > 0 {
-            if self.history_index == self.history.len() {
-                self.history.push(self.line.as_string());
-            }
             self.history_index -= 1;
-            let hist_line = &self.history[self.history_index];
+            let hist_line = self.history[self.history_index].clone();
             self.line = LineBuffer::new();
             for c in hist_line.chars() {
                 self.line.insert(c);
@@ -174,13 +176,17 @@ impl InputState {
     }
 
     fn history_down(&mut self) {
-        if !self.history.is_empty() && self.history_index < self.history.len() - 1 {
+        if self.history_index < self.history.len().saturating_sub(1) {
             self.history_index += 1;
-            let hist_line = &self.history[self.history_index];
+            let hist_line = self.history[self.history_index].clone();
             self.line = LineBuffer::new();
             for c in hist_line.chars() {
                 self.line.insert(c);
             }
+        } else {
+            // Past the end — clear input
+            self.history_index = self.history.len();
+            self.line = LineBuffer::new();
         }
     }
 }
@@ -287,15 +293,14 @@ impl TuiRepl {
         // Enable bracketed paste so multi-line pastes arrive as a single event
         stdout.queue(EnableBracketedPaste)?;
 
-        // Hide cursor during drawing
-        stdout.queue(cursor::Hide)?;
-        stdout.queue(Clear(ClearType::All))?;
-        stdout.queue(cursor::MoveTo(0, 0))?;
         stdout.flush()?;
 
-        self.input.add_info("Soli - TUI REPL");
-        self.input.add_info("Type .help for available commands.");
-        self.input.add_info("");
+        // Print welcome message as normal scrolling output
+        disable_raw_mode()?;
+        println!("\x1b[90mSoli - TUI REPL\x1b[0m");
+        println!("\x1b[90mType .help for available commands.\x1b[0m");
+        io::stdout().flush()?;
+        enable_raw_mode()?;
 
         self.draw()?;
 
@@ -312,142 +317,116 @@ impl TuiRepl {
                         self.handle_paste(&text);
                         self.draw()?;
                     }
+                    Event::Resize(_, _) => {
+                        self.draw()?;
+                    }
                     _ => {}
                 }
             }
         }
 
+        // Flush any remaining output
+        let _ = self.flush_output();
+
         // Cleanup
         disable_raw_mode()?;
         let mut stdout = io::stdout();
         stdout.queue(DisableBracketedPaste)?;
-        stdout.queue(Clear(ClearType::All))?;
-        stdout.queue(cursor::MoveTo(0, 0))?;
         stdout.queue(Show)?;
         stdout.flush()?;
 
-        println!("Goodbye!");
+        println!("\nGoodbye!");
         self.save_history();
         Ok(())
     }
 
-    fn draw(&self) -> io::Result<()> {
+    /// Print output lines to terminal as normal scrolling text, then clear them.
+    fn flush_output(&mut self) -> io::Result<()> {
+        if self.input.output_lines.is_empty() {
+            return Ok(());
+        }
+
+        let (cols, _) = size()?;
+        let cols = cols as usize;
         let mut stdout = io::stdout();
 
-        // Hide cursor before redrawing
+        // Clear the prompt line first
         stdout.queue(cursor::Hide)?;
+        stdout.write_all(b"\r")?;
+        stdout.queue(Clear(ClearType::CurrentLine))?;
         stdout.flush()?;
 
-        // Get terminal size first
+        // Temporarily leave raw mode to print output correctly
+        disable_raw_mode()?;
+
+        for idx in 0..self.input.output_lines.len() {
+            let formatted = self.format_output_line(idx, cols);
+            let wrapped = Self::wrap_ansi(&formatted, cols);
+            for line in wrapped {
+                println!("{}", line);
+            }
+        }
+        stdout.flush()?;
+        enable_raw_mode()?;
+
+        self.input.output_lines.clear();
+        self.input.flushed_count = 0;
+
+        Ok(())
+    }
+
+    fn draw(&mut self) -> io::Result<()> {
+        let mut stdout = io::stdout();
+
         let (cols, rows) = size()?;
         let cols = cols as usize;
         let rows = rows as usize;
 
-        // Reserve space for input at bottom (3 lines minimum)
-        let input_area_height = if self.input.is_multiline { 10 } else { 3 };
-        let output_height = rows.saturating_sub(input_area_height + 1); // +1 for separator
-
-        // Move to top-left and clear from there
-        stdout.queue(cursor::MoveTo(0, 0))?;
-        stdout.queue(Clear(ClearType::FromCursorDown))?;
-        stdout.flush()?;
-
-        // Draw output area (stick to bottom, just above separator)
-        let num_lines = self.input.output_lines.len().min(output_height);
-        let start_idx = self.input.output_lines.len().saturating_sub(output_height);
-        let start_row = output_height.saturating_sub(num_lines);
-
-        for (i, idx) in (start_idx..self.input.output_lines.len()).enumerate() {
-            let output_line = &self.input.output_lines[idx];
-            let row = (start_row + i) as u16;
-            stdout.queue(cursor::MoveTo(0, row))?;
-
-            let formatted = match output_line {
-                OutputLine::Input(text) => {
-                    // Input with syntax highlighting
-                    // First input line gets >>>, continuations get ...
-                    let highlighted = self.highlight_code(text);
-                    let is_first = idx == 0
-                        || !matches!(self.input.output_lines[idx - 1], OutputLine::Input(_));
-                    if is_first {
-                        format!("\x1b[90m>>>\x1b[0m {}", highlighted)
-                    } else {
-                        format!("\x1b[90m...\x1b[0m {}", highlighted)
-                    }
-                }
-                OutputLine::Result(text) => {
-                    // Result in green: => prefix only on first result line
-                    let is_first = idx == 0
-                        || !matches!(self.input.output_lines[idx - 1], OutputLine::Result(_));
-                    if is_first {
-                        format!("\x1b[92m=> {}\x1b[0m", text)
-                    } else {
-                        format!("\x1b[92m   {}\x1b[0m", text)
-                    }
-                }
-                OutputLine::Error(text) => {
-                    // Error in red
-                    format!("\x1b[91m{}\x1b[0m", text)
-                }
-                OutputLine::Info(text) => {
-                    // Info in dim gray
-                    format!("\x1b[90m{}\x1b[0m", text)
-                }
-            };
-
-            // Truncate if needed (accounting for ANSI codes is complex, so we just write it)
-            stdout.write_all(formatted.as_bytes())?;
-        }
-
-        // Calculate separator row
-        let separator_row = output_height as u16;
-
-        // Draw separator line
-        stdout.queue(cursor::MoveTo(0, separator_row))?;
-        let sep = "─".repeat(cols);
-        stdout.write_all(sep.as_bytes())?;
+        // Get current cursor row
+        let (_, current_row) = cursor::position()?;
 
         let input_text = self.input.line.as_string();
         let cursor_pos = self.input.line.cursor;
 
-        // Track the row where input starts
-        let input_start_row = (output_height + 1) as u16;
+        // Clear from current position down
+        stdout.queue(cursor::Hide)?;
+        stdout.write_all(b"\r")?;
+        stdout.queue(Clear(ClearType::FromCursorDown))?;
 
         let (final_row, final_col) = if self.input.is_multiline {
-            // Show multiline buffer with prompts
             let multiline_lines: Vec<&str> = self.input.multiline_buffer.lines().collect();
-            let mut current_row = input_start_row;
+            let mut row = current_row;
 
-            // Draw the multiline buffer lines with prompts
             for (i, line) in multiline_lines.iter().enumerate() {
                 let prompt = if i == 0 { ">>> " } else { "... " };
-                stdout.queue(cursor::MoveTo(0, current_row))?;
+                stdout.queue(cursor::MoveTo(0, row))?;
                 stdout.write_all(prompt.as_bytes())?;
                 let highlighted = self.highlight_code(line);
                 stdout.write_all(highlighted.as_bytes())?;
-                current_row += 1;
+                row += 1;
+                if row as usize >= rows {
+                    break;
+                }
             }
 
-            // Draw current input line with continuation prompt
-            stdout.queue(cursor::MoveTo(0, current_row))?;
+            stdout.queue(cursor::MoveTo(0, row))?;
             let cont_prompt = "... ";
             stdout.write_all(cont_prompt.as_bytes())?;
             let highlighted = self.highlight_code(&input_text);
             stdout.write_all(highlighted.as_bytes())?;
 
             let cursor_col = cont_prompt.len() + cursor_pos;
-            (current_row, cursor_col as u16)
+            (row, cursor_col as u16)
         } else {
-            // Single line mode
-            stdout.queue(cursor::MoveTo(0, input_start_row))?;
-            let prompt = ">>> ";
+            stdout.queue(cursor::MoveTo(0, current_row))?;
+            let prompt = "\x1b[90m>>>\x1b[0m ";
             stdout.write_all(prompt.as_bytes())?;
 
             let highlighted = self.highlight_code(&input_text);
             stdout.write_all(highlighted.as_bytes())?;
 
-            let cursor_col = prompt.len() + cursor_pos;
-            (input_start_row, cursor_col as u16)
+            let cursor_col = 4 + cursor_pos; // ">>> " is 4 visible chars
+            (current_row, cursor_col as u16)
         };
 
         // Draw completion popup if active
@@ -463,8 +442,6 @@ impl TuiRepl {
                     } else {
                         format!("\x1b[90m {candidate} \x1b[0m")
                     };
-                    // Check if adding this entry would overflow terminal width
-                    // (candidate.len() + 2 for surrounding spaces)
                     let visible_len = candidate.len() + 2;
                     if total_len + visible_len > cols.saturating_sub(4) && i > 0 {
                         hint.push_str("\x1b[90m ...\x1b[0m");
@@ -562,6 +539,287 @@ impl TuiRepl {
             }
             _ => text.to_string(),
         }
+    }
+
+    /// Colorize a REPL result string based on value types.
+    /// Parses the inspect output and applies ANSI colors:
+    /// - Strings (quoted): green
+    /// - Numbers: blue
+    /// - Booleans: magenta
+    /// - null: cyan
+    /// - Hash keys: yellow
+    /// - Brackets/braces: white bold
+    fn format_output_line(&self, idx: usize, _cols: usize) -> String {
+        let output_line = &self.input.output_lines[idx];
+        match output_line {
+            OutputLine::Input(text) => {
+                let highlighted = self.highlight_code(text);
+                let is_first = idx == 0
+                    || !matches!(self.input.output_lines[idx - 1], OutputLine::Input(_));
+                if is_first {
+                    format!("\x1b[90m>>>\x1b[0m {}", highlighted)
+                } else {
+                    format!("\x1b[90m...\x1b[0m {}", highlighted)
+                }
+            }
+            OutputLine::Result(text) => {
+                let colored = Self::colorize_result(text);
+                let is_first = idx == 0
+                    || !matches!(self.input.output_lines[idx - 1], OutputLine::Result(_));
+                if is_first {
+                    format!("\x1b[90m=>\x1b[0m {}", colored)
+                } else {
+                    format!("   {}", colored)
+                }
+            }
+            OutputLine::Error(text) => {
+                format!("\x1b[91m{}\x1b[0m", text)
+            }
+            OutputLine::Info(text) => {
+                format!("\x1b[90m{}\x1b[0m", text)
+            }
+        }
+    }
+
+    fn colorize_result(text: &str) -> String {
+        let mut result = String::new();
+        let chars: Vec<char> = text.chars().collect();
+        let len = chars.len();
+        let mut i = 0;
+
+        while i < len {
+            match chars[i] {
+                '"' => {
+                    // String literal — scan to closing quote
+                    let start = i;
+                    i += 1;
+                    while i < len && chars[i] != '"' {
+                        if chars[i] == '\\' {
+                            i += 1; // skip escaped char
+                        }
+                        i += 1;
+                    }
+                    if i < len {
+                        i += 1; // consume closing "
+                    }
+                    let s: String = chars[start..i].iter().collect();
+                    result.push_str(&format!("\x1b[92m{}\x1b[0m", s)); // green
+                }
+                c if c.is_ascii_digit() || (c == '-' && i + 1 < len && chars[i + 1].is_ascii_digit()) => {
+                    // Number
+                    let start = i;
+                    if c == '-' {
+                        i += 1;
+                    }
+                    while i < len && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == 'e' || chars[i] == 'E') {
+                        i += 1;
+                    }
+                    let s: String = chars[start..i].iter().collect();
+                    result.push_str(&format!("\x1b[94m{}\x1b[0m", s)); // blue
+                }
+                't' if text[i..].starts_with("true") && (i + 4 >= len || !chars[i + 4].is_alphanumeric()) => {
+                    result.push_str("\x1b[95mtrue\x1b[0m"); // magenta
+                    i += 4;
+                }
+                'f' if text[i..].starts_with("false") && (i + 5 >= len || !chars[i + 5].is_alphanumeric()) => {
+                    result.push_str("\x1b[95mfalse\x1b[0m"); // magenta
+                    i += 5;
+                }
+                'n' if text[i..].starts_with("null") && (i + 4 >= len || !chars[i + 4].is_alphanumeric()) => {
+                    result.push_str("\x1b[96mnull\x1b[0m"); // cyan
+                    i += 4;
+                }
+                '[' | ']' | '{' | '}' => {
+                    result.push_str(&format!("\x1b[1;97m{}\x1b[0m", chars[i])); // white bold
+                    i += 1;
+                }
+                ':' => {
+                    result.push_str(&format!("\x1b[37m{}\x1b[0m", chars[i])); // dim white
+                    i += 1;
+                }
+                ',' => {
+                    result.push_str(&format!("\x1b[37m,\x1b[0m"));
+                    i += 1;
+                }
+                _ => {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Wrap a string containing ANSI escape codes into multiple lines of `max_cols` visible width.
+    /// Continuation lines are indented to match the leading whitespace of the original line.
+    /// Active ANSI color is preserved across line breaks.
+    fn wrap_ansi(s: &str, max_cols: usize) -> Vec<String> {
+        if max_cols == 0 {
+            return vec![s.to_string()];
+        }
+
+        // Measure visible width first — if it fits, return as-is
+        let visible_width = Self::visible_len(s);
+        if visible_width <= max_cols {
+            return vec![s.to_string()];
+        }
+
+        // Determine continuation indent: align under the value start
+        // For hash entries like `  "key": "value..."`, align under the opening quote of value
+        // Otherwise fall back to leading whitespace + 2
+        let cont_indent_len = Self::find_value_start_pos(s)
+            .unwrap_or_else(|| Self::count_leading_visible_spaces(s) + 2);
+        let cont_indent = " ".repeat(cont_indent_len);
+        let cont_cols = max_cols.saturating_sub(cont_indent.len());
+        if cont_cols == 0 {
+            return vec![s.to_string()];
+        }
+
+        let mut lines = Vec::new();
+        let mut current_line = String::new();
+        let mut visible = 0;
+        let mut current_color = String::new(); // track last active ANSI code
+        let mut is_first_line = true;
+        let mut chars = s.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                // Capture full ANSI sequence
+                let mut seq = String::from(c);
+                if let Some(&'[') = chars.peek() {
+                    seq.push(chars.next().unwrap());
+                    while let Some(&next) = chars.peek() {
+                        seq.push(chars.next().unwrap());
+                        if next.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                // Track color state (reset clears it)
+                if seq == "\x1b[0m" {
+                    current_color.clear();
+                } else {
+                    current_color = seq.clone();
+                }
+                current_line.push_str(&seq);
+            } else {
+                let line_max = if is_first_line { max_cols } else { cont_cols };
+                if visible >= line_max {
+                    // Close color on current line and start a new one
+                    current_line.push_str("\x1b[0m");
+                    lines.push(current_line);
+                    current_line = String::new();
+                    // Add continuation indent and restore color
+                    current_line.push_str(&cont_indent);
+                    if !current_color.is_empty() {
+                        current_line.push_str(&current_color);
+                    }
+                    visible = 0;
+                    is_first_line = false;
+                }
+                current_line.push(c);
+                visible += 1;
+            }
+        }
+
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+
+        if lines.is_empty() {
+            vec![s.to_string()]
+        } else {
+            lines
+        }
+    }
+
+    /// Count visible characters in a string with ANSI codes.
+    fn visible_len(s: &str) -> usize {
+        let mut count = 0;
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                if let Some(&'[') = chars.peek() {
+                    chars.next();
+                    while let Some(&next) = chars.peek() {
+                        chars.next();
+                        if next.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Count leading visible spaces (skipping ANSI codes at the start).
+    fn count_leading_visible_spaces(s: &str) -> usize {
+        let mut count = 0;
+        let mut chars = s.chars().peekable();
+        while let Some(&c) = chars.peek() {
+            if c == '\x1b' {
+                chars.next();
+                if let Some(&'[') = chars.peek() {
+                    chars.next();
+                    while let Some(&next) = chars.peek() {
+                        chars.next();
+                        if next.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+            } else if c == ' ' {
+                count += 1;
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        count
+    }
+
+    /// Find the visible position where a hash value starts.
+    /// For lines like `  "key": "value"`, returns the position of the opening quote of the value.
+    /// Returns None if the line doesn't look like a hash entry.
+    fn find_value_start_pos(s: &str) -> Option<usize> {
+        let mut visible_pos = 0;
+        let mut chars = s.chars().peekable();
+        let mut found_colon = false;
+
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                // Skip ANSI sequence
+                if let Some(&'[') = chars.peek() {
+                    chars.next();
+                    while let Some(&next) = chars.peek() {
+                        chars.next();
+                        if next.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if !found_colon {
+                if c == ':' {
+                    found_colon = true;
+                }
+                visible_pos += 1;
+            } else {
+                // After colon, skip spaces then return position of first non-space
+                if c == ' ' {
+                    visible_pos += 1;
+                } else {
+                    return Some(visible_pos);
+                }
+            }
+        }
+        None
     }
 
     fn handle_key(&mut self, key: event::KeyEvent) -> bool {
@@ -691,9 +949,13 @@ impl TuiRepl {
                 self.input.enter_multiline();
                 self.input.add_info("      (enter .break to cancel)");
             } else {
+                // Flush previous output before new execution
+                let _ = self.flush_output();
                 // Execute and show input + result
                 self.input.add_input(&line);
                 self.execute_code(&line);
+                // Flush results to scrollback immediately
+                let _ = self.flush_output();
             }
 
             self.input.line = LineBuffer::new();
@@ -708,10 +970,15 @@ impl TuiRepl {
         self.input.brace_balance = 0;
         self.input.line = LineBuffer::new();
 
+        // Flush previous output before new execution
+        let _ = self.flush_output();
+
         // Show the executed code as input
         self.input.add_input(&code);
 
         self.execute_code(&code);
+        // Flush results to scrollback immediately
+        let _ = self.flush_output();
     }
 
     fn handle_paste(&mut self, text: &str) {
@@ -745,10 +1012,13 @@ impl TuiRepl {
     fn execute_code(&mut self, code: &str) {
         let source = repl_common::prepare_source(code);
 
+        let start = std::time::Instant::now();
+
         // Capture stdout during execution
         match BufferRedirect::stdout() {
             Ok(mut buf) => {
                 let exec_result = self.run_interpreter(&source);
+                let elapsed = start.elapsed();
 
                 // Read captured output
                 let mut output = String::new();
@@ -763,13 +1033,30 @@ impl TuiRepl {
                 if let Err(e) = exec_result {
                     self.input.add_error(&e);
                 }
+
+                // Add elapsed time after result
+                self.input.add_info(&Self::format_elapsed(elapsed));
             }
             _ => {
                 // Fallback if stdout capture fails
-                if let Err(e) = self.run_interpreter(&source) {
+                let exec_result = self.run_interpreter(&source);
+                let elapsed = start.elapsed();
+                if let Err(e) = exec_result {
                     self.input.add_error(&e);
                 }
+                self.input.add_info(&Self::format_elapsed(elapsed));
             }
+        }
+    }
+
+    fn format_elapsed(elapsed: std::time::Duration) -> String {
+        let micros = elapsed.as_micros();
+        if micros < 1000 {
+            format!("{}µs", micros)
+        } else if micros < 1_000_000 {
+            format!("{:.1}ms", micros as f64 / 1000.0)
+        } else {
+            format!("{:.2}s", elapsed.as_secs_f64())
         }
     }
 

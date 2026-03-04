@@ -54,4 +54,38 @@ pub fn register_json_class(env: &mut Environment) {
     };
 
     env.define("JSON".to_string(), Value::Class(Rc::new(json_class)));
+
+    // Legacy standalone aliases: json_stringify() and json_parse()
+    env.define(
+        "json_stringify".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "json_stringify",
+            Some(1),
+            |args| {
+                let json_str = stringify_to_string(&args[0])
+                    .map_err(|e| format!("JSON serialization error: {}", e))?;
+                Ok(Value::String(json_str))
+            },
+        )),
+    );
+
+    env.define(
+        "json_parse".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "json_parse",
+            Some(1),
+            |mut args| {
+                let json_str = match args.swap_remove(0) {
+                    Value::String(s) => s,
+                    other => {
+                        return Err(format!(
+                            "json_parse() expects string, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                parse_json(&json_str)
+            },
+        )),
+    );
 }
