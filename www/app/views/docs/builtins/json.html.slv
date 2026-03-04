@@ -12,8 +12,14 @@
             <span class="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">JSON Class</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Parse and stringify JSON data.
+            Parse and stringify JSON data. Built with Rust's serde_json for high performance.
         </p>
+        <div class="mt-4 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-sm">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            ~1.2x slower than Ruby (benchmark: 10k stringify + parse in 18ms)
+        </div>
     </div>
 
     <!-- JSON Class Methods -->

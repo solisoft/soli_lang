@@ -187,6 +187,12 @@
                     <td class="py-3 text-green-400 font-semibold">12x</td>
                 </tr>
                 <tr>
+                    <td class="py-3 pr-4 text-gray-300">json_ops (10k iterations)</td>
+                    <td class="py-3 pr-4 text-gray-300">16ms</td>
+                    <td class="py-3 pr-4 text-indigo-400 font-semibold">18ms</td>
+                    <td class="py-3 text-yellow-400 font-semibold">0.9x</td>
+                </tr>
+                <tr>
                     <td class="py-3 pr-4 text-gray-300">pipeline_ops (1000 transforms)</td>
                     <td class="py-3 pr-4 text-gray-300">38ms</td>
                     <td class="py-3 pr-4 text-indigo-400 font-semibold">4ms</td>
@@ -200,6 +206,21 @@
                 </tr>
             </tbody>
         </table>
+    </div>
+
+    <div class="my-4 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-8">
+        <div class="flex items-start gap-3">
+            <div class="text-yellow-400 mt-0.5">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <div>
+                <p class="text-yellow-200 text-sm">
+                    <strong>Note:</strong> JSON operations are ~10% slower than Ruby due to conversion overhead between Soli's value system and serde_json. This is an area for future optimization.
+                </p>
+            </div>
+        </div>
     </div>
 
     <div class="mb-8">

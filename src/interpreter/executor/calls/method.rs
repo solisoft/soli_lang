@@ -171,7 +171,7 @@ impl Interpreter {
             "first" => self.array_first(items, arguments, span),
             "last" => self.array_last(items, arguments, span),
             "empty?" => self.array_empty(items, arguments, span),
-            "include?" => self.array_include(items, arguments, span),
+            "include?" | "contains" => self.array_include(items, arguments, span),
             "sample" => self.array_sample(items, arguments, span),
             "shuffle" => self.array_shuffle(items, arguments, span),
             "take" => self.array_take(items, arguments, span),
@@ -185,6 +185,7 @@ impl Interpreter {
             "clear" => self.array_clear(items, arguments, span),
             "get" => self.array_get(items, arguments, span),
             "length" => self.array_length(items, arguments, span),
+            "contains" | "include?" => self.array_include(items, arguments, span),
             "to_string" => self.array_to_string(items, arguments, span),
             "join" => self.array_join(items, arguments, span),
             "is_a?" => {
@@ -1079,6 +1080,24 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
         Ok(Value::Int(items.len() as i64))
+    }
+
+    fn array_contains(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let target = &arguments[0];
+        for item in items {
+            if item == target {
+                return Ok(Value::Bool(true));
+            }
+        }
+        Ok(Value::Bool(false))
     }
 
     fn array_to_string(

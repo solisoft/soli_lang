@@ -113,7 +113,9 @@ impl InputState {
     }
 
     fn add_input(&mut self, text: &str) {
-        self.output_lines.push(OutputLine::Input(text.to_string()));
+        for line in text.lines() {
+            self.output_lines.push(OutputLine::Input(line.to_string()));
+        }
         self.trim_output();
     }
 
@@ -362,9 +364,16 @@ impl TuiRepl {
 
             let formatted = match output_line {
                 OutputLine::Input(text) => {
-                    // Input with syntax highlighting and >>> prefix
+                    // Input with syntax highlighting
+                    // First input line gets >>>, continuations get ...
                     let highlighted = self.highlight_code(text);
-                    format!("\x1b[90m>>>\x1b[0m {}", highlighted)
+                    let is_first = idx == 0
+                        || !matches!(self.input.output_lines[idx - 1], OutputLine::Input(_));
+                    if is_first {
+                        format!("\x1b[90m>>>\x1b[0m {}", highlighted)
+                    } else {
+                        format!("\x1b[90m...\x1b[0m {}", highlighted)
+                    }
                 }
                 OutputLine::Result(text) => {
                     // Result in green: => prefix only on first result line

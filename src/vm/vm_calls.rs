@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
-use crate::interpreter::value::{Class, Function, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, Function, HashKey, Instance, NativeFunction, Value};
 use crate::span::Span;
 
 use super::chunk::Constant;
@@ -204,16 +204,101 @@ impl Vm {
 
     fn call_builtin_method(
         &mut self,
-        _method_name: &str,
-        _argc: usize,
+        method_name: &str,
+        argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        // Built-in methods on arrays/hashes/strings are handled by native functions
-        // The method resolver should have already bound them
-        Err(RuntimeError::new(
-            "Built-in method dispatch not yet implemented in VM",
-            span,
-        ))
+        let receiver = self.pop();
+
+        match &receiver {
+            Value::Array(arr) => {
+                let result = {
+                    let items = arr.borrow();
+                    match method_name {
+                        "length" | "len" => Value::Int(items.len() as i64),
+                        "contains" | "include?" => {
+                            if argc != 1 {
+                                return Err(RuntimeError::wrong_arity(1, argc, span));
+                            }
+                            let target = self.pop();
+                            let found = items.iter().any(|v| v == &target);
+                            Value::Bool(found)
+                        }
+                        "empty?" => Value::Bool(items.is_empty()),
+                        "first" => items.first().cloned().unwrap_or(Value::Null),
+                        "last" => items.last().cloned().unwrap_or(Value::Null),
+                        "reverse" => {
+                            let mut reversed = items.clone();
+                            reversed.reverse();
+                            Value::Array(Rc::new(RefCell::new(reversed)))
+                        }
+                        _ => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: "Array".to_string(),
+                                property: method_name.to_string(),
+                                span,
+                            })
+                        }
+                    }
+                };
+                self.push(result);
+                Ok(())
+            }
+            Value::String(s) => {
+                let result = match method_name {
+                    "length" | "len" => Value::Int(s.len() as i64),
+                    _ => {
+                        return Err(RuntimeError::NoSuchProperty {
+                            value_type: "String".to_string(),
+                            property: method_name.to_string(),
+                            span,
+                        })
+                    }
+                };
+                self.push(result);
+                Ok(())
+            }
+            Value::Hash(hash) => {
+                let result = {
+                    let mut borrow = hash.borrow_mut();
+                    match method_name {
+                        "length" | "len" => Value::Int(borrow.len() as i64),
+                        "keys" => {
+                            let keys: Vec<Value> = borrow
+                                .keys()
+                                .filter_map(|k| match k {
+                                    HashKey::String(s) => Some(Value::String(s.clone())),
+                                    _ => None,
+                                })
+                                .collect();
+                            Value::Array(Rc::new(RefCell::new(keys)))
+                        }
+                        "values" => {
+                            let values: Vec<Value> = borrow.values().cloned().collect();
+                            Value::Array(Rc::new(RefCell::new(values)))
+                        }
+                        "clear" => {
+                            borrow.clear();
+                            Value::Null
+                        }
+                        _ => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: "Hash".to_string(),
+                                property: method_name.to_string(),
+                                span,
+                            })
+                        }
+                    }
+                };
+                self.push(result);
+                Ok(())
+            }
+            _ => Err(RuntimeError::NoSuchProperty {
+                value_type: receiver.type_name(),
+                property: method_name.to_string(),
+                span,
+            }),
+        }
     }
 
     /// Call a global function by name (used by server integration).

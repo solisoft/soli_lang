@@ -92,8 +92,8 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(inner_type.clone()),
             }),
-            "empty?" | "include?" => Ok(Type::Function {
-                params: vec![],
+            "empty?" | "include?" | "contains" => Ok(Type::Function {
+                params: vec![inner_type.clone()],
                 return_type: Box::new(Type::Bool),
             }),
             "take" | "drop" => Ok(Type::Function {
