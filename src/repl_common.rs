@@ -120,8 +120,35 @@ pub fn should_print_result(source: &str) -> bool {
         && !trimmed.starts_with("print(")
         && !trimmed.starts_with("println(")
         && !trimmed.starts_with(".")
+        && !trimmed.starts_with('#')
+        && !trimmed.starts_with("//")
         && !trimmed.starts_with("try")
         && !trimmed.starts_with("import ")
+}
+
+/// Strip trailing comment from a line (respects strings).
+fn strip_trailing_comment(s: &str) -> &str {
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut prev = '\0';
+    for (i, c) in s.char_indices() {
+        match c {
+            '"' if !in_single && prev != '\\' => in_double = !in_double,
+            '\'' if !in_double && prev != '\\' => in_single = !in_single,
+            '#' | '/' if !in_double && !in_single => {
+                if c == '#' {
+                    return s[..i].trim_end();
+                }
+                // Check for //
+                if c == '/' && s[i + 1..].starts_with('/') {
+                    return s[..i].trim_end();
+                }
+            }
+            _ => {}
+        }
+        prev = c;
+    }
+    s
 }
 
 /// Prepare REPL source for execution: auto-wrap in `print()` or append `;` as needed.
@@ -131,7 +158,11 @@ pub fn prepare_source(code: &str) -> String {
     let passthrough = trimmed.ends_with('}') || trimmed.ends_with(';') || trimmed.ends_with("end");
 
     if should_print_result(code) && !passthrough {
-        format!("print({});", trimmed)
+        let expr = strip_trailing_comment(trimmed);
+        if expr.is_empty() {
+            return format!("{};", trimmed);
+        }
+        format!("println(({}).inspect);", expr)
     } else if !passthrough
         && !trimmed.starts_with("let ")
         && !trimmed.starts_with("fn ")

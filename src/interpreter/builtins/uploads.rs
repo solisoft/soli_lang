@@ -1,7 +1,6 @@
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, NativeFunction, Value};
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -75,7 +74,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
             let files = parse_multipart_data(&body, &boundary)?;
 
             let file_values: Vec<Value> = files.into_iter().map(|file| {
-                let mut file_map: IndexMap<HashKey, Value> = IndexMap::new();
+                let mut file_map: HashPairs = HashPairs::default();
                 file_map.insert(HashKey::String("filename".to_string()), Value::String(file.filename));
                 file_map.insert(HashKey::String("content_type".to_string()), Value::String(file.content_type));
                 file_map.insert(HashKey::String("size".to_string()), Value::Int(file.size as i64));
@@ -143,7 +142,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
 
             let result = upload_blob_to_solidb(&solidb_addr, &collection, &target_file)?;
 
-            let mut result_hash: IndexMap<HashKey, Value> = IndexMap::new();
+            let mut result_hash: HashPairs = HashPairs::default();
             result_hash.insert(
                 HashKey::String("blob_id".to_string()),
                 Value::String(result.blob_id),
@@ -194,7 +193,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
                 for file in files {
                     match upload_blob_to_solidb(&solidb_addr, &collection, &file) {
                         Ok(result) => {
-                            let mut result_hash: IndexMap<HashKey, Value> = IndexMap::new();
+                            let mut result_hash: HashPairs = HashPairs::default();
                             result_hash.insert(
                                 HashKey::String("blob_id".to_string()),
                                 Value::String(result.blob_id),
@@ -218,7 +217,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
                             results.push(Value::Hash(Rc::new(RefCell::new(result_hash))));
                         }
                         Err(e) => {
-                            let mut error_hash: IndexMap<HashKey, Value> = IndexMap::new();
+                            let mut error_hash: HashPairs = HashPairs::default();
                             error_hash
                                 .insert(HashKey::String("error".to_string()), Value::String(e));
                             error_hash.insert(

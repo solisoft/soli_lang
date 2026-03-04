@@ -170,6 +170,8 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("IMPORT       {:>5} ({})", idx, name));
         }
+        Op::JsonParse => out.push_str("JSON_PARSE"),
+        Op::JsonStringify => out.push_str("JSON_STRINGIFY"),
     }
 }
 

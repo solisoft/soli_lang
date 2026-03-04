@@ -3,9 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
-
-use crate::interpreter::value::{HashKey, NativeFunction, Value};
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 use super::create_error;
 use super::rules::ValidationRule;
@@ -62,7 +60,7 @@ impl Validator {
         let validator_rc = Rc::new(RefCell::new(self.clone()));
 
         // Create a hash with chainable methods
-        let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut pairs: HashPairs = HashPairs::default();
         pairs.insert(
             HashKey::String("__validator__".to_string()),
             Value::Bool(true),

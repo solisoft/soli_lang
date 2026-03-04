@@ -11,10 +11,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
-
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 
 pub use coercion::coerce_value;
 pub use rules::*;
@@ -132,11 +130,11 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
 
     let data_hash = match data {
         Value::Hash(h) => h.borrow().clone(),
-        Value::Null => IndexMap::new(),
+        Value::Null => HashPairs::default(),
         _ => return Err("validate() expects data to be a hash or null".to_string()),
     };
 
-    let mut validated_data: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut validated_data: HashPairs = HashPairs::default();
     let mut errors: Vec<Value> = Vec::new();
 
     // Build a map from data for faster lookup
@@ -175,7 +173,7 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
 
     // Build result hash
     let is_valid = errors.is_empty();
-    let mut result_pairs: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut result_pairs: HashPairs = HashPairs::default();
     result_pairs.insert(HashKey::String("valid".to_string()), Value::Bool(is_valid));
     result_pairs.insert(
         HashKey::String("data".to_string()),
@@ -293,7 +291,7 @@ fn validate_array_elements(array: &Value, element_schema: &Value) -> Result<Valu
 
 /// Create an error hash.
 fn create_error(field: &str, message: &str, code: &str) -> Value {
-    let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut pairs: HashPairs = HashPairs::default();
     pairs.insert(
         HashKey::String("field".to_string()),
         Value::String(field.to_string()),
@@ -312,7 +310,7 @@ fn create_error(field: &str, message: &str, code: &str) -> Value {
 /// Prefix an error with a field name for nested validation.
 fn prefix_error(prefix: &str, error: &Value) -> Value {
     if let Value::Hash(h) = error {
-        let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut pairs: HashPairs = HashPairs::default();
         for (k, v) in h.borrow().iter() {
             if let HashKey::String(key) = k {
                 if key == "field" {

@@ -131,6 +131,36 @@ print(user["profile"]["email"]);  # "alice@example.com"</code></pre>
                 </div>
             </section>
 
+            <section id="dot-access" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#dot-access" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Dot Notation</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Access values using dot notation. Shorthand for bracket access. Works with nested hashes too.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+
+# Dot notation access
+print(person.name);   # "Alice"
+print(person.age);    # 30
+
+# Access nested values
+let user = {"profile": {"email": "alice@example.com"}}
+print(user.profile.email);  # "alice@example.com"
+
+# Dot notation also allows method chaining
+let data = {"items": [1, 2, 3]}
+print(data.items.length);  # 3
+
+# Safe navigation with &. (returns null if any part is null)
+let user = {"profile": null}
+print(user&.profile&.email);  # null (no error)
+print(user&.profile&.email || "no email");  # "no email"</code></pre>
+                </div>
+            </section>
+
             <section id="modifying" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#modifying" class="group flex items-center gap-2 mb-3">
@@ -142,161 +172,25 @@ print(user["profile"]["email"]);  # "alice@example.com"</code></pre>
                     <p class="text-gray-400 mb-3">Hashes are mutable - you can add, update, or remove key-value pairs.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
 
-# Update existing key
+# Update existing key (bracket notation)
 person["age"] = 31
 
-# Add new key
+# Add new key (bracket notation)
 person["email"] = "alice@example.com"
 
-# Remove a key (using delete function)
-delete(person, "age")
-print(person);  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
+# Update or add with dot notation (both work!)
+person.age = 32
+person.city = "NYC"
+
+# Remove a key (using delete method)
+person.delete("email")
+print(person);  # {"name": "Alice", "age": 32, "city": "NYC"}</code></pre>
                 </div>
             </section>
         </div>
     </section>
 
-    <!-- Built-in Functions -->
-    <section id="section-functions" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-            </span>
-            Built-in Functions
-        </h2>
-
-        <div class="space-y-6">
-            <section id="def-len" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-len" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">len(hash)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns the number of key-value pairs in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30, "city": "NYC"}
-print(len(person));  # 3
-
-let empty = {}
-print(len(empty));   # 0</code></pre>
-                </div>
-            </section>
-
-            <section id="def-keys" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-keys" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">keys(hash)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns an array of all keys in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
-let k = keys(person)
-print(k);  # ["name", "age"]</code></pre>
-                </div>
-            </section>
-
-            <section id="def-values" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-values" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">values(hash)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns an array of all values in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
-let v = values(person)
-print(v);  # ["Alice", 30]</code></pre>
-                </div>
-            </section>
-
-            <section id="def-entries" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-entries" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">entries(hash)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns an array of [key, value] pairs.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
-let e = entries(person)
-print(e);  # [["name", "Alice"], ["age", 30]]</code></pre>
-                </div>
-            </section>
-
-            <section id="def-has-key" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-has-key" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">has_key(hash, key)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Check if a key exists in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
-
-print(has_key(person, "name"));   # true
-print(has_key(person, "email"));  # false</code></pre>
-                </div>
-            </section>
-
-            <section id="def-delete" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-delete" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">delete(hash, key)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Remove a key-value pair from the hash (modifies in place).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30, "city": "NYC"}
-delete(person, "age")
-print(person);  # {"name": "Alice", "city": "NYC"}</code></pre>
-                </div>
-            </section>
-
-            <section id="def-merge" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-merge" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">merge(h1, h2)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Merge two hashes. Values from the second hash take precedence.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let defaults = {"theme": "light", "lang": "en"}
-let user_prefs = {"theme": "dark"}
-
-let merged = merge(defaults, user_prefs)
-print(merged);  # {"theme": "dark", "lang": "en"}</code></pre>
-                </div>
-            </section>
-
-            <section id="def-clear" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-clear" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">clear(hash)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Remove all key-value pairs from the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
-clear(person)
-print(person);  # {}
-print(len(person));  # 0</code></pre>
-                </div>
-            </section>
-        </div>
-    </section>
-
-    <!-- Hash Methods -->
+    <!-- Hash Instance Methods -->
     <section id="section-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
             <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
@@ -308,6 +202,133 @@ print(len(person));  # 0</code></pre>
         </h2>
 
         <div class="space-y-6">
+            <section id="method-len" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-len" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.length</code> / <code class="text-lg font-mono text-indigo-400">.len</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the number of key-value pairs in the hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30, "city": "NYC"}
+print(person.length);  # 3
+print(person.len);     # 3
+
+let empty = {}
+print(empty.length);   # 0</code></pre>
+                </div>
+            </section>
+
+            <section id="method-keys" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-keys" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.keys</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns an array of all keys in the hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+let k = person.keys
+print(k);  # ["name", "age"]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-values" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-values" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.values</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns an array of all values in the hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+let v = person.values
+print(v);  # ["Alice", 30]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-entries" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-entries" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.entries</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns an array of [key, value] pairs.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+let e = person.entries
+print(e);  # [["name", "Alice"], ["age", 30]]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-has-key" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-has-key" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.has_key(key)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if a key exists in the hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+
+print(person.has_key("name"));   # true
+print(person.has_key("email"));  # false</code></pre>
+                </div>
+            </section>
+
+            <section id="method-delete" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-delete" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.delete(key)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Remove a key-value pair from the hash (modifies in place).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30, "city": "NYC"}
+person.delete("age")
+print(person);  # {"name": "Alice", "city": "NYC"}</code></pre>
+                </div>
+            </section>
+
+            <section id="method-merge" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-merge" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.merge(hash)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Merge another hash. Values from the other hash take precedence. Returns a new hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let defaults = {"theme": "light", "lang": "en"}
+let user_prefs = {"theme": "dark"}
+
+let merged = defaults.merge(user_prefs)
+print(merged);  # {"theme": "dark", "lang": "en"}</code></pre>
+                </div>
+            </section>
+
+            <section id="method-clear" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-clear" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.clear</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Remove all key-value pairs from the hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let person = {"name": "Alice", "age": 30}
+person.clear
+print(person);    # {}
+print(person.len);  # 0</code></pre>
+                </div>
+            </section>
+
             <section id="method-get-fetch" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-get-fetch" class="group flex items-center gap-2 mb-3">
@@ -364,17 +385,18 @@ parameters.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85, "Charlie": 95}
 
 # map - transform entries, return new hash
-let curved = scores.map(def(k, v) [k, v + 5])
+let curved = scores.map(|k, v| [k, v + 5])
 # {"Alice": 95, "Bob": 90, "Charlie": 100}
 
+# Trailing block syntax (equivalent)
+let curved = scores.map |k, v| [k, v + 5] end
+
 # filter - keep matching entries
-let high = scores.filter(def(k, v)
-v >= 90)
+let high = scores.filter(|k, v| v >= 90)
 # {"Alice": 90, "Charlie": 95}
 
 # each - iterate for side effects
-scores.each(def(k, v)
-print(k + ": " + str(v)))
+scores.each |k, v| print(k + ": " + str(v)) end
 # Output: Alice: 90
 #         Bob: 85
 #         Charlie: 95</code></pre>
@@ -393,13 +415,14 @@ print(k + ": " + str(v)))
 <pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85}
 
 # Transform values
-let doubled = scores.transform_values(def(v)
-v * 2)
+let doubled = scores.transform_values(|v| v * 2)
 # {"Alice": 180, "Bob": 170}
 
+# Trailing block syntax
+let doubled = scores.transform_values |v| v * 2 end
+
 # Transform keys
-let upper_keys = scores.transform_keys(def(k)
-upcase(k))
+let upper_keys = scores.transform_keys(|k| upcase(k))
 # {"ALICE": 90, "BOB": 85}</code></pre>
                 </div>
             </section>
@@ -417,14 +440,15 @@ parameters.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85, "Charlie": 95}
 
 # select - keep where function returns true
-let high = scores.select(def(k, v)
-v >= 90)
+let high = scores.select(|k, v| v >= 90)
 # {"Alice": 90, "Charlie": 95}
 
 # reject - remove where function returns true
-let not_high = scores.reject(def(k, v)
-v >= 90)
-# {"Bob": 85}</code></pre>
+let not_high = scores.reject(|k, v| v >= 90)
+# {"Bob": 85}
+
+# Trailing block syntax
+let high = scores.select |k, v| v >= 90 end</code></pre>
                 </div>
             </section>
 
@@ -715,6 +739,26 @@ let v = h.values   # [1, 2]</code></pre>
                     <p class="text-gray-400 mb-3">Creates a new empty Hash instance.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new
 h.length  # 0</code></pre>
+                </div>
+            </section>
+
+            <section id="hash-introspection" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#hash-introspection" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.class / .inspect / .nil? / .is_a? / .blank? / .present?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Type introspection methods available on all types. Empty hashes are blank.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice"}
+h.class          # "hash"
+h.inspect        # "{\"name\": \"Alice\"}"
+h.nil?           # false
+h.is_a?("hash")  # true
+h.blank?         # false
+h.present?       # true
+{}.blank?        # true</code></pre>
                 </div>
             </section>
         </div>

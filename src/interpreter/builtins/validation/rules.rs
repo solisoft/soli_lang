@@ -3,10 +3,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
 use regex::Regex;
 
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::{HashKey, HashPairs, Value};
 
 use super::create_error;
 
@@ -228,7 +227,7 @@ impl ValidationRule {
             }
         };
 
-        let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut pairs: HashPairs = HashPairs::default();
         pairs.insert(
             HashKey::String("type".to_string()),
             Value::String(rule_type.to_string()),

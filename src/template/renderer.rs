@@ -358,12 +358,11 @@ fn is_truthy(value: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interpreter::value::HashKey;
+    use crate::interpreter::value::{HashKey, HashPairs};
     use crate::template::parser::parse_template;
-    use indexmap::IndexMap;
 
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
-        let hash: IndexMap<HashKey, Value> = pairs
+        let hash: HashPairs = pairs
             .into_iter()
             .map(|(k, v)| (HashKey::String(k.to_string()), v))
             .collect();

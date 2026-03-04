@@ -4,8 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::interpreter::value::{HashKey, StrKey, Value};
-use indexmap::IndexMap;
+use crate::interpreter::value::{HashPairs, StrKey, Value};
 
 /// A runtime environment containing variable bindings.
 #[derive(Debug, Clone)]
@@ -16,7 +15,7 @@ pub struct Environment {
     /// Optional data hash for template rendering.
     /// Checked during get() before walking the enclosing chain.
     /// Avoids copying all data fields into the HashMap.
-    data_hash: Option<Rc<RefCell<IndexMap<HashKey, Value>>>>,
+    data_hash: Option<Rc<RefCell<HashPairs>>>,
 }
 
 impl Environment {
@@ -54,7 +53,7 @@ impl Environment {
     /// avoiding the need to copy all data fields into the values HashMap.
     pub fn with_enclosing_and_data(
         enclosing: Rc<RefCell<Environment>>,
-        data_hash: Rc<RefCell<IndexMap<HashKey, Value>>>,
+        data_hash: Rc<RefCell<HashPairs>>,
     ) -> Self {
         Self {
             values: HashMap::new(),
@@ -67,7 +66,7 @@ impl Environment {
     /// Reset this environment for reuse in template rendering.
     /// Clears local variables (keeps HashMap capacity) and updates the data hash.
     #[inline]
-    pub fn reset_for_reuse(&mut self, data_hash: Option<Rc<RefCell<IndexMap<HashKey, Value>>>>) {
+    pub fn reset_for_reuse(&mut self, data_hash: Option<Rc<RefCell<HashPairs>>>) {
         self.values.clear();
         self.data_hash = data_hash;
     }

@@ -4,14 +4,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
-
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, NativeFunction, Value};
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 use super::test_server::get_test_server_port;
-
-type HashPairs = IndexMap<HashKey, Value>;
 
 thread_local! {
     #[allow(clippy::missing_const_for_thread_local)]
@@ -272,12 +268,12 @@ fn http_request(
 
     let body = response.text().map_err(|e| e.to_string())?;
 
-    let mut header_pairs: HashPairs = IndexMap::new();
+    let mut header_pairs: HashPairs = HashPairs::default();
     for (name, value) in response_headers {
         header_pairs.insert(HashKey::String(name), Value::String(value));
     }
 
-    let mut response_hash: HashPairs = IndexMap::new();
+    let mut response_hash: HashPairs = HashPairs::default();
     response_hash.insert(
         HashKey::String("status".to_string()),
         Value::Int(status as i64),

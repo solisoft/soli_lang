@@ -7,11 +7,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
 use regex::RegexBuilder;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 
 /// Maximum regex complexity (nesting level) to prevent ReDoS.
 const REGEX_NEST_LIMIT: u32 = 10;
@@ -56,7 +55,7 @@ pub fn register_regex_class(env: &mut Environment) {
                 (Value::String(pattern), Value::String(s)) => {
                     let re = create_safe_regex(pattern)?;
                     if let Some(m) = re.find(s) {
-                        let mut matches: IndexMap<HashKey, Value> = IndexMap::new();
+                        let mut matches: HashPairs = HashPairs::default();
                         matches.insert(
                             HashKey::String("match".to_string()),
                             Value::String(m.as_str().to_string()),
@@ -93,7 +92,7 @@ pub fn register_regex_class(env: &mut Environment) {
                     let matches: Vec<Value> = re
                         .find_iter(s)
                         .map(|m| {
-                            let mut match_hash: IndexMap<HashKey, Value> = IndexMap::new();
+                            let mut match_hash: HashPairs = HashPairs::default();
                             match_hash.insert(
                                 HashKey::String("match".to_string()),
                                 Value::String(m.as_str().to_string()),
@@ -180,7 +179,7 @@ pub fn register_regex_class(env: &mut Environment) {
                 (Value::String(pattern), Value::String(s)) => {
                     let re = create_safe_regex(pattern)?;
                     if let Some(caps) = re.captures(s) {
-                        let mut result: IndexMap<HashKey, Value> = IndexMap::new();
+                        let mut result: HashPairs = HashPairs::default();
                         result.insert(
                             HashKey::String("match".to_string()),
                             Value::String(

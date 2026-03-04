@@ -42,6 +42,30 @@ fn run_vm(source: &str) {
             }),
         ),
     );
+    vm.globals.insert(
+        "clock".to_string(),
+        solilang::interpreter::value::Value::NativeFunction(
+            solilang::interpreter::value::NativeFunction::new("clock", Some(0), |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                Ok(solilang::interpreter::value::Value::Float(
+                    duration.as_secs_f64(),
+                ))
+            }),
+        ),
+    );
+    vm.globals.insert(
+        "str".to_string(),
+        solilang::interpreter::value::Value::NativeFunction(
+            solilang::interpreter::value::NativeFunction::new("str", Some(1), |args| {
+                let resolved = args.into_iter().next().unwrap();
+                Ok(solilang::interpreter::value::Value::String(format!(
+                    "{}",
+                    resolved
+                )))
+            }),
+        ),
+    );
     vm.execute(&module.main).expect("vm runtime error");
 }
 
@@ -129,6 +153,26 @@ fn compilation_overhead(c: &mut Criterion) {
     group.finish();
 }
 
+fn json_ops_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("json_ops_comparison");
+    let source = load_program("json_ops");
+
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
+
+    group.finish();
+}
+
+fn json_ops_large_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("json_ops_large_comparison");
+    let source = load_program("json_ops_large");
+
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     fibonacci_comparison,
@@ -136,6 +180,8 @@ criterion_group!(
     loop_comparison,
     fib_scaling_comparison,
     compilation_overhead,
+    json_ops_comparison,
+    json_ops_large_comparison,
 );
 
 criterion_main!(benches);

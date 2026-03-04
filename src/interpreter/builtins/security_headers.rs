@@ -1,6 +1,5 @@
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, NativeFunction, Value};
-use indexmap::IndexMap;
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -511,7 +510,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 let config = SECURITY_HEADERS_CONFIG
                     .read()
                     .map_err(|e| format!("Security headers error: {}", e))?;
-                let mut headers: IndexMap<HashKey, Value> = IndexMap::new();
+                let mut headers: HashPairs = HashPairs::default();
 
                 if let Some(ref csp) = config.csp {
                     headers.insert(

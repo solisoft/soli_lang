@@ -8,9 +8,11 @@ use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
+use ahash::RandomState as AHasher;
 use indexmap::IndexMap;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
+use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 
 use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt, TypeAnnotation};
 use crate::interpreter::builtins::model::QueryBuilder;
@@ -159,7 +161,7 @@ pub fn hash_from_pairs<I>(pairs: I) -> Value
 where
     I: IntoIterator<Item = (String, Value)>,
 {
-    let map: IndexMap<HashKey, Value> = pairs
+    let map: HashPairs = pairs
         .into_iter()
         .map(|(k, v)| (HashKey::String(k), v))
         .collect();
@@ -168,8 +170,11 @@ where
 
 /// Helper function to create an empty hash Value.
 pub fn empty_hash() -> Value {
-    Value::Hash(Rc::new(RefCell::new(IndexMap::new())))
+    Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
 }
+
+/// Type alias for hash map storage — uses ahash for 3-5x faster hashing than SipHash.
+pub type HashPairs = IndexMap<HashKey, Value, AHasher>;
 
 /// A runtime value in Solilang.
 #[derive(Debug, Clone)]
@@ -188,8 +193,8 @@ pub enum Value {
     Null,
     /// Array value
     Array(Rc<RefCell<Vec<Value>>>),
-    /// Hash/Map value (ordered, O(1) lookup using IndexMap)
-    Hash(Rc<RefCell<IndexMap<HashKey, Value>>>),
+    /// Hash/Map value (ordered, O(1) lookup using IndexMap with ahash)
+    Hash(Rc<RefCell<HashPairs>>),
     /// Function value (closure)
     Function(Rc<Function>),
     /// Native/builtin function
@@ -868,14 +873,14 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
         HttpFutureKind::Json => {
             // Parse JSON string into Value
             match serde_json::from_str::<serde_json::Value>(raw_data) {
-                Ok(json) => json_to_value(&json),
+                Ok(json) => json_to_value(json),
                 Err(e) => Err(format!("Failed to parse JSON: {}", e)),
             }
         }
         HttpFutureKind::FullResponse => {
             // Parse the JSON-encoded full response
             match serde_json::from_str::<serde_json::Value>(raw_data) {
-                Ok(json) => json_to_value(&json),
+                Ok(json) => json_to_value(json),
                 Err(e) => Err(format!("Failed to parse response: {}", e)),
             }
         }
@@ -890,7 +895,7 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
             match serde_json::from_str::<SystemResultJson>(raw_data) {
                 Ok(data) => {
                     // Create a simple hash with the result data using IndexMap
-                    let mut hash: IndexMap<HashKey, Value> = IndexMap::new();
+                    let mut hash: HashPairs = HashPairs::default();
                     hash.insert(
                         HashKey::String("stdout".to_string()),
                         Value::String(data.stdout),
@@ -911,8 +916,50 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
     }
 }
 
-/// Convert a serde_json::Value to a Soli Value.
-pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
+/// Convert a serde_json::Value to a Soli Value (consuming — moves strings instead of cloning).
+pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
+    match json {
+        serde_json::Value::Null => Ok(Value::Null),
+        serde_json::Value::Bool(b) => Ok(Value::Bool(b)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(Value::Int(i))
+            } else if let Some(f) = n.as_f64() {
+                Ok(Value::Float(f))
+            } else {
+                Err("Invalid JSON number".to_string())
+            }
+        }
+        serde_json::Value::String(s) => {
+            // Try to parse as decimal first
+            if let Ok(d) = s.parse::<Decimal>() {
+                let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
+                Ok(Value::Decimal(DecimalValue(d, precision)))
+            } else {
+                Ok(Value::String(s))
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            let len = arr.len();
+            let mut items = Vec::with_capacity(len);
+            for v in arr {
+                items.push(json_to_value(v)?);
+            }
+            Ok(Value::Array(Rc::new(RefCell::new(items))))
+        }
+        serde_json::Value::Object(obj) => {
+            let len = obj.len();
+            let mut map = HashPairs::with_capacity_and_hasher(len, AHasher::default());
+            for (k, v) in obj {
+                map.insert(HashKey::String(k), json_to_value(v)?);
+            }
+            Ok(Value::Hash(Rc::new(RefCell::new(map))))
+        }
+    }
+}
+
+/// Convert a serde_json::Value reference to a Soli Value (clones strings).
+pub fn json_to_value_ref(json: &serde_json::Value) -> Result<Value, String> {
     match json {
         serde_json::Value::Null => Ok(Value::Null),
         serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
@@ -928,7 +975,6 @@ pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
         serde_json::Value::String(s) => {
             // Try to parse as decimal first
             if let Ok(d) = s.parse::<Decimal>() {
-                // Count decimal places
                 let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
                 Ok(Value::Decimal(DecimalValue(d, precision)))
             } else {
@@ -936,13 +982,18 @@ pub fn json_to_value(json: &serde_json::Value) -> Result<Value, String> {
             }
         }
         serde_json::Value::Array(arr) => {
-            let items: Result<Vec<Value>, String> = arr.iter().map(json_to_value).collect();
-            Ok(Value::Array(Rc::new(RefCell::new(items?))))
+            let len = arr.len();
+            let mut items = Vec::with_capacity(len);
+            for v in arr {
+                items.push(json_to_value_ref(v)?);
+            }
+            Ok(Value::Array(Rc::new(RefCell::new(items))))
         }
         serde_json::Value::Object(obj) => {
-            let mut map = IndexMap::new();
+            let len = obj.len();
+            let mut map = HashPairs::with_capacity_and_hasher(len, AHasher::default());
             for (k, v) in obj {
-                map.insert(HashKey::String(k.clone()), json_to_value(v)?);
+                map.insert(HashKey::String(k.clone()), json_to_value_ref(v)?);
             }
             Ok(Value::Hash(Rc::new(RefCell::new(map))))
         }
@@ -962,13 +1013,17 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
         Value::Null => Ok(serde_json::Value::Null),
         Value::Array(arr) => {
             let borrow = arr.borrow();
-            let vec: Result<Vec<serde_json::Value>, String> =
-                borrow.iter().map(value_to_json).collect();
-            vec.map(serde_json::Value::Array)
+            let len = borrow.len();
+            let mut vec = Vec::with_capacity(len);
+            for v in borrow.iter() {
+                vec.push(value_to_json(v)?);
+            }
+            Ok(serde_json::Value::Array(vec))
         }
         Value::Hash(hash) => {
             let borrow = hash.borrow();
-            let mut map = serde_json::Map::new();
+            let len = borrow.len();
+            let mut map = serde_json::Map::with_capacity(len);
             for (k, v) in borrow.iter() {
                 if let HashKey::String(key) = k {
                     map.insert(key.clone(), value_to_json(v)?);
@@ -978,13 +1033,275 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
         }
         Value::Instance(inst) => {
             let borrow = inst.borrow();
-            let mut map = serde_json::Map::new();
+            let len = borrow.fields.len();
+            let mut map = serde_json::Map::with_capacity(len);
             for (k, v) in borrow.fields.iter() {
                 map.insert(k.clone(), value_to_json(v)?);
             }
             Ok(serde_json::Value::Object(map))
         }
         _ => Err(format!("Cannot convert {} to JSON", value.type_name())),
+    }
+}
+
+/// Write a JSON-escaped string (RFC 8259) directly to a buffer.
+#[inline]
+fn write_json_string(s: &str, buf: &mut String) {
+    buf.push('"');
+    // Fast path: if no byte needs escaping, push the whole string at once
+    if !s
+        .as_bytes()
+        .iter()
+        .any(|&b| b < 0x20 || b == b'"' || b == b'\\')
+    {
+        buf.push_str(s);
+    } else {
+        write_json_string_escaped(s, buf);
+    }
+    buf.push('"');
+}
+
+#[cold]
+fn write_json_string_escaped(s: &str, buf: &mut String) {
+    let bytes = s.as_bytes();
+    let mut start = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        let escape = match b {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0x08 => "\\b",
+            0x0C => "\\f",
+            b if b < 0x20 => {
+                if start < i {
+                    buf.push_str(&s[start..i]);
+                }
+                let hex = [
+                    b'\\',
+                    b'u',
+                    b'0',
+                    b'0',
+                    HEX_DIGITS[(b >> 4) as usize],
+                    HEX_DIGITS[(b & 0x0F) as usize],
+                ];
+                // SAFETY: hex is always valid ASCII/UTF-8
+                buf.push_str(unsafe { std::str::from_utf8_unchecked(&hex) });
+                start = i + 1;
+                continue;
+            }
+            _ => {
+                continue;
+            }
+        };
+        if start < i {
+            buf.push_str(&s[start..i]);
+        }
+        buf.push_str(escape);
+        start = i + 1;
+    }
+    if start < bytes.len() {
+        buf.push_str(&s[start..]);
+    }
+}
+
+const HEX_DIGITS: [u8; 16] = *b"0123456789abcdef";
+
+/// Recursively serialize a Value directly to a JSON string buffer.
+fn stringify_value(value: &Value, buf: &mut String) -> Result<(), String> {
+    match value {
+        Value::Null => buf.push_str("null"),
+        Value::Bool(true) => buf.push_str("true"),
+        Value::Bool(false) => buf.push_str("false"),
+        Value::Int(n) => {
+            let mut b = itoa::Buffer::new();
+            buf.push_str(b.format(*n));
+        }
+        Value::Float(f) => {
+            if !f.is_finite() {
+                return Err("Cannot convert non-finite float to JSON".to_string());
+            }
+            let mut b = ryu::Buffer::new();
+            buf.push_str(b.format(*f));
+        }
+        Value::Decimal(d) => write_json_string(&d.to_string(), buf),
+        Value::String(s) => write_json_string(s, buf),
+        Value::Array(arr) => {
+            buf.push('[');
+            let borrow = arr.borrow();
+            for (i, v) in borrow.iter().enumerate() {
+                if i > 0 {
+                    buf.push(',');
+                }
+                stringify_value(v, buf)?;
+            }
+            buf.push(']');
+        }
+        Value::Hash(hash) => {
+            buf.push('{');
+            let borrow = hash.borrow();
+            let mut first = true;
+            for (k, v) in borrow.iter() {
+                if let HashKey::String(key) = k {
+                    if !first {
+                        buf.push(',');
+                    }
+                    first = false;
+                    write_json_string(key, buf);
+                    buf.push(':');
+                    stringify_value(v, buf)?;
+                }
+            }
+            buf.push('}');
+        }
+        Value::Instance(inst) => {
+            buf.push('{');
+            let borrow = inst.borrow();
+            let mut first = true;
+            for (k, v) in borrow.fields.iter() {
+                if !first {
+                    buf.push(',');
+                }
+                first = false;
+                write_json_string(k, buf);
+                buf.push(':');
+                stringify_value(v, buf)?;
+            }
+            buf.push('}');
+        }
+        _ => return Err(format!("Cannot convert {} to JSON", value.type_name())),
+    }
+    Ok(())
+}
+
+/// Serialize a Value directly to a JSON string — no intermediate serde_json::Value.
+pub fn stringify_to_string(value: &Value) -> Result<String, String> {
+    let mut buf = String::with_capacity(256);
+    stringify_value(value, &mut buf)?;
+    Ok(buf)
+}
+
+/// Direct JSON parsing — builds Value without intermediate serde_json::Value tree.
+pub fn parse_json(s: &str) -> Result<Value, String> {
+    let mut deserializer = serde_json::Deserializer::from_str(s);
+    let value = ValueDeserializeSeed
+        .deserialize(&mut deserializer)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    deserializer
+        .end()
+        .map_err(|e| format!("Trailing JSON content: {}", e))?;
+    Ok(value)
+}
+
+struct ValueDeserializeSeed;
+
+impl<'de> DeserializeSeed<'de> for ValueDeserializeSeed {
+    type Value = Value;
+
+    #[inline]
+    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+        deserializer.deserialize_any(ValueVisitor)
+    }
+}
+
+struct ValueVisitor;
+
+impl<'de> Visitor<'de> for ValueVisitor {
+    type Value = Value;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("any JSON value")
+    }
+
+    #[inline]
+    fn visit_bool<E: de::Error>(self, v: bool) -> Result<Value, E> {
+        Ok(Value::Bool(v))
+    }
+
+    #[inline]
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Value, E> {
+        Ok(Value::Int(v))
+    }
+
+    #[inline]
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Value, E> {
+        Ok(Value::Int(v as i64))
+    }
+
+    #[inline]
+    fn visit_f64<E: de::Error>(self, v: f64) -> Result<Value, E> {
+        Ok(Value::Float(v))
+    }
+
+    #[inline]
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Value, E> {
+        Ok(Value::String(v.to_owned()))
+    }
+
+    #[inline]
+    fn visit_string<E: de::Error>(self, v: String) -> Result<Value, E> {
+        Ok(Value::String(v))
+    }
+
+    #[inline]
+    fn visit_none<E: de::Error>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    #[inline]
+    fn visit_unit<E: de::Error>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
+        let mut items = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+        while let Some(v) = seq.next_element_seed(ValueDeserializeSeed)? {
+            items.push(v);
+        }
+        Ok(Value::Array(Rc::new(RefCell::new(items))))
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
+        let mut pairs =
+            HashPairs::with_capacity_and_hasher(map.size_hint().unwrap_or(0), AHasher::default());
+        while let Some(k) = map.next_key_seed(HashKeySeed)? {
+            let v = map.next_value_seed(ValueDeserializeSeed)?;
+            pairs.insert(k, v);
+        }
+        Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
+    }
+}
+
+/// Deserialize JSON object keys directly into HashKey (avoids intermediate String).
+struct HashKeySeed;
+
+impl<'de> DeserializeSeed<'de> for HashKeySeed {
+    type Value = HashKey;
+
+    #[inline]
+    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<HashKey, D::Error> {
+        deserializer.deserialize_str(HashKeyVisitor)
+    }
+}
+
+struct HashKeyVisitor;
+
+impl<'de> Visitor<'de> for HashKeyVisitor {
+    type Value = HashKey;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a string key")
+    }
+
+    #[inline]
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<HashKey, E> {
+        Ok(HashKey::String(v.to_owned()))
+    }
+
+    #[inline]
+    fn visit_string<E: de::Error>(self, v: String) -> Result<HashKey, E> {
+        Ok(HashKey::String(v))
     }
 }
 
@@ -1145,7 +1462,7 @@ mod decimal_tests {
     #[test]
     fn test_json_to_value_decimal_string() {
         let json = serde_json::Value::String("19.99".to_string());
-        let result = json_to_value(&json);
+        let result = json_to_value(json);
 
         assert!(result.is_ok());
         let value = result.unwrap();
@@ -1161,7 +1478,7 @@ mod decimal_tests {
     #[test]
     fn test_json_to_value_decimal_string_precision() {
         let json = serde_json::Value::String("0.0675".to_string());
-        let result = json_to_value(&json);
+        let result = json_to_value(json);
 
         assert!(result.is_ok());
         let value = result.unwrap();
@@ -1178,7 +1495,7 @@ mod decimal_tests {
     #[test]
     fn test_json_to_value_decimal_integer_string() {
         let json = serde_json::Value::String("100".to_string());
-        let result = json_to_value(&json);
+        let result = json_to_value(json);
 
         assert!(result.is_ok());
         let value = result.unwrap();
@@ -1274,7 +1591,7 @@ mod decimal_tests {
 
         for (input, expected_precision) in test_cases {
             let json = serde_json::Value::String(input.to_string());
-            let result = json_to_value(&json);
+            let result = json_to_value(json);
 
             assert!(result.is_ok(), "Failed for input: {}", input);
             let value = result.unwrap();
@@ -1299,7 +1616,7 @@ mod decimal_tests {
 
         for input in zero_values {
             let json = serde_json::Value::String(input.to_string());
-            let result = json_to_value(&json);
+            let result = json_to_value(json);
 
             assert!(result.is_ok(), "Failed for zero input: {}", input);
             let value = result.unwrap();
@@ -1322,7 +1639,7 @@ mod decimal_tests {
     #[test]
     fn test_decimal_negative_values() {
         let json = serde_json::Value::String("-19.99".to_string());
-        let result = json_to_value(&json);
+        let result = json_to_value(json);
 
         assert!(result.is_ok());
         let value = result.unwrap();
@@ -1338,7 +1655,7 @@ mod decimal_tests {
     #[test]
     fn test_decimal_large_values() {
         let json = serde_json::Value::String("9999999999.99".to_string());
-        let result = json_to_value(&json);
+        let result = json_to_value(json);
 
         assert!(result.is_ok());
         let value = result.unwrap();
@@ -1359,7 +1676,7 @@ mod decimal_tests {
             serde_json::Value::String("30.75".to_string()),
         ]);
 
-        let result = json_to_value(&json);
+        let result = json_to_value(json);
 
         assert!(result.is_ok());
         let value = result.unwrap();
@@ -1391,7 +1708,7 @@ mod decimal_tests {
         );
         let json = serde_json::Value::Object(map);
 
-        let result = json_to_value(&json);
+        let result = json_to_value(json);
 
         assert!(result.is_ok());
         let value = result.unwrap();
@@ -1504,7 +1821,7 @@ mod return_type_tests {
             key_type: Box::new(key_ty),
             value_type: Box::new(val_ty),
         });
-        let hash = Value::Hash(Rc::new(RefCell::new(IndexMap::new())));
+        let hash = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
         assert!(value_matches_type(&hash, &ty));
         assert!(!value_matches_type(&Value::Int(1), &ty));
     }

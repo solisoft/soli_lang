@@ -190,6 +190,47 @@ impl Parser {
             TokenKind::Or => self.parse_lambda_empty_params(start_span),
             TokenKind::Arrow => self.parse_stabby_lambda(start_span),
 
+            // &:method_name → |__it| __it.method_name
+            TokenKind::Ampersand => {
+                self.expect(&TokenKind::Colon)?;
+                // Parse method name, allowing ? suffix (e.g., empty?, nil?)
+                let method_name = self.expect_identifier()?;
+                let method_name = if self.match_token(&TokenKind::Question) {
+                    format!("{}?", method_name)
+                } else {
+                    method_name
+                };
+                let span = start_span.merge(&self.previous_span());
+                let param = crate::ast::stmt::Parameter {
+                    name: "__it".to_string(),
+                    type_annotation: TypeAnnotation::new(
+                        crate::ast::types::TypeKind::Named("Any".to_string()),
+                        start_span,
+                    ),
+                    default_value: None,
+                    span: start_span,
+                };
+                let body_expr = Expr::new(
+                    ExprKind::Member {
+                        object: Box::new(Expr::new(
+                            ExprKind::Variable("__it".to_string()),
+                            start_span,
+                        )),
+                        name: method_name,
+                    },
+                    span,
+                );
+                let body_stmt = Stmt::new(StmtKind::Expression(body_expr), span);
+                Ok(Expr::new(
+                    ExprKind::Lambda {
+                        params: vec![param],
+                        return_type: None,
+                        body: vec![body_stmt],
+                    },
+                    span,
+                ))
+            }
+
             // Allow 'await' keyword to be used as a function call: await(future)
             TokenKind::Await => Ok(Expr::new(
                 ExprKind::Variable("await".to_string()),
@@ -600,8 +641,15 @@ impl Parser {
 
             // Call
             TokenKind::LeftParen => {
-                let arguments = self.parse_arguments()?;
+                let mut arguments = self.parse_arguments()?;
                 self.expect(&TokenKind::RightParen)?;
+
+                // Check for trailing block: obj.method(args) |params| body end
+                if self.check(&TokenKind::Pipe) {
+                    let block = self.parse_trailing_block()?;
+                    arguments.push(Argument::Positional(block));
+                }
+
                 let span = start_span.merge(&self.previous_span());
                 Ok(Expr::new(
                     ExprKind::Call {
@@ -615,14 +663,35 @@ impl Parser {
             // Member access
             TokenKind::Dot => {
                 let name = self.expect_identifier()?;
-                let span = start_span.merge(&self.previous_span());
-                Ok(Expr::new(
-                    ExprKind::Member {
-                        object: Box::new(left),
-                        name,
-                    },
-                    span,
-                ))
+                let member_span = start_span.merge(&self.previous_span());
+
+                // Check for trailing block: obj.method |params| body end
+                if self.check(&TokenKind::Pipe) {
+                    let block = self.parse_trailing_block()?;
+                    let span = start_span.merge(&self.previous_span());
+                    let member = Expr::new(
+                        ExprKind::Member {
+                            object: Box::new(left),
+                            name,
+                        },
+                        member_span,
+                    );
+                    Ok(Expr::new(
+                        ExprKind::Call {
+                            callee: Box::new(member),
+                            arguments: vec![Argument::Positional(block)],
+                        },
+                        span,
+                    ))
+                } else {
+                    Ok(Expr::new(
+                        ExprKind::Member {
+                            object: Box::new(left),
+                            name,
+                        },
+                        member_span,
+                    ))
+                }
             }
 
             // Safe navigation: obj&.field
@@ -742,6 +811,15 @@ impl Parser {
         }
 
         Ok(arguments)
+    }
+
+    /// Parse a trailing block: `|params| body end` as a lambda expression.
+    fn parse_trailing_block(&mut self) -> ParseResult<Expr> {
+        let start_span = self.current_span();
+        self.advance(); // consume |
+        let params = self.parse_lambda_params_list(&TokenKind::Pipe)?;
+        self.expect(&TokenKind::Pipe)?;
+        self.finish_parsing_lambda(params, start_span)
     }
 
     fn parse_lambda(&mut self, start_span: crate::span::Span) -> ParseResult<Expr> {

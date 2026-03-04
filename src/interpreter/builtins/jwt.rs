@@ -7,13 +7,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use indexmap::IndexMap;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, NativeFunction, Value};
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 /// JWT claims structure.
 #[derive(Debug, Serialize, Deserialize)]
@@ -180,7 +179,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 Ok(token_data) => {
                     // Convert claims to Soli Value
                     let claims = token_data.claims;
-                    let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+                    let mut pairs: HashPairs = HashPairs::default();
 
                     if let Some(sub) = claims.sub {
                         pairs.insert(HashKey::String("sub".to_string()), Value::String(sub));
@@ -194,14 +193,14 @@ pub fn register_jwt_builtins(env: &mut Environment) {
 
                     // Add custom data
                     for (key, value) in claims.data {
-                        pairs.insert(HashKey::String(key), json_to_value(&value)?);
+                        pairs.insert(HashKey::String(key), json_to_value(value)?);
                     }
 
                     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
                 }
                 Err(e) => {
                     // Return error hash instead of throwing
-                    let mut error_pairs: IndexMap<HashKey, Value> = IndexMap::new();
+                    let mut error_pairs: HashPairs = HashPairs::default();
                     error_pairs.insert(HashKey::String("error".to_string()), Value::Bool(true));
                     error_pairs.insert(
                         HashKey::String("message".to_string()),
@@ -239,7 +238,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             ) {
                 Ok(token_data) => {
                     let claims = token_data.claims;
-                    let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+                    let mut pairs: HashPairs = HashPairs::default();
 
                     if let Some(sub) = claims.sub {
                         pairs.insert(HashKey::String("sub".to_string()), Value::String(sub));
@@ -252,13 +251,13 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                     }
 
                     for (key, value) in claims.data {
-                        pairs.insert(HashKey::String(key), json_to_value(&value)?);
+                        pairs.insert(HashKey::String(key), json_to_value(value)?);
                     }
 
                     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
                 }
                 Err(e) => {
-                    let mut error_pairs: IndexMap<HashKey, Value> = IndexMap::new();
+                    let mut error_pairs: HashPairs = HashPairs::default();
                     error_pairs.insert(HashKey::String("error".to_string()), Value::Bool(true));
                     error_pairs.insert(
                         HashKey::String("message".to_string()),

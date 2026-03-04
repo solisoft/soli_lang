@@ -1,10 +1,9 @@
 //! Validation types and execution logic.
 
-use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::{HashKey, HashPairs, Value};
 
 use super::core::{class_name_to_collection, MODEL_REGISTRY};
 use super::crud::exec_with_auto_collection;
@@ -49,7 +48,7 @@ impl ValidationError {
     }
 
     pub fn to_value(&self) -> Value {
-        let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+        let mut pairs: HashPairs = HashPairs::default();
         pairs.insert(
             HashKey::String("field".into()),
             Value::String(self.field.clone()),
@@ -220,7 +219,7 @@ pub fn build_validation_result(
     errors: Vec<ValidationError>,
     record: Option<Value>,
 ) -> Value {
-    let mut pairs: IndexMap<HashKey, Value> = IndexMap::new();
+    let mut pairs: HashPairs = HashPairs::default();
     pairs.insert(HashKey::String("valid".into()), Value::Bool(valid));
 
     if !valid {

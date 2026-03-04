@@ -168,9 +168,17 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
 
     query.push_str(" COLLECT WITH COUNT INTO cnt RETURN cnt");
 
-    if bind_vars_str.is_empty() {
+    let result = if bind_vars_str.is_empty() {
         exec_auto_collection(query, &collection)
     } else {
         exec_auto_collection_with_binds(query, bind_vars_str, &collection)
+    };
+
+    // Unwrap the single-element array: [count] → count
+    if let Value::Array(arr) = &result {
+        if let Some(val) = arr.borrow().first() {
+            return val.clone();
+        }
     }
+    result
 }

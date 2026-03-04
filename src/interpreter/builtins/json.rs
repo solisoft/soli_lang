@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::interpreter::value::{parse_json, stringify_to_string, Class, NativeFunction, Value};
 
 /// Register the JSON class with static methods.
 pub fn register_json_class(env: &mut Environment) {
@@ -14,9 +14,9 @@ pub fn register_json_class(env: &mut Environment) {
     // JSON.parse(string) - Parse JSON string to Value
     json_static_methods.insert(
         "parse".to_string(),
-        Rc::new(NativeFunction::new("JSON.parse", Some(1), |args| {
-            let json_str = match &args[0] {
-                Value::String(s) => s.clone(),
+        Rc::new(NativeFunction::new("JSON.parse", Some(1), |mut args| {
+            let json_str = match args.swap_remove(0) {
+                Value::String(s) => s,
                 other => {
                     return Err(format!(
                         "JSON.parse() expects string, got {}",
@@ -24,9 +24,7 @@ pub fn register_json_class(env: &mut Environment) {
                     ))
                 }
             };
-            let json = serde_json::from_str::<serde_json::Value>(&json_str)
-                .map_err(|e| format!("Failed to parse JSON: {}", e))?;
-            crate::interpreter::value::json_to_value(&json)
+            parse_json(&json_str)
         })),
     );
 
@@ -34,9 +32,7 @@ pub fn register_json_class(env: &mut Environment) {
     json_static_methods.insert(
         "stringify".to_string(),
         Rc::new(NativeFunction::new("JSON.stringify", Some(1), |args| {
-            let json = crate::interpreter::value::value_to_json(&args[0])
-                .map_err(|e| format!("JSON serialization error: {}", e))?;
-            let json_str = serde_json::to_string(&json)
+            let json_str = stringify_to_string(&args[0])
                 .map_err(|e| format!("JSON serialization error: {}", e))?;
             Ok(Value::String(json_str))
         })),

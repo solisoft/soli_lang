@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::interpreter::builtins::template::inject_template_helpers;
-use crate::interpreter::value::json_to_value;
+use crate::interpreter::value::json_to_value_ref;
 use crate::template::parser::parse_template;
 use crate::template::renderer::render_nodes;
 use uuid::Uuid;
@@ -159,7 +159,7 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
     let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
 
     // Convert JSON state to interpreter Value
-    let data = json_to_value(state)?;
+    let data = json_to_value_ref(state)?;
 
     // Inject template helpers (range, public_path, html_escape, etc.)
     inject_template_helpers(&data);

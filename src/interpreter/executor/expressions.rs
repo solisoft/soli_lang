@@ -5,7 +5,7 @@
 use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::Value;
 use crate::span::Span;
 
 use std::cell::RefCell;
@@ -245,6 +245,11 @@ impl Interpreter {
                         inst.borrow_mut().set(name.clone(), new_value.clone());
                         Ok(new_value)
                     }
+                    Value::Hash(hash) => {
+                        let key = crate::interpreter::value::HashKey::String(name.clone());
+                        hash.borrow_mut().insert(key, new_value.clone());
+                        Ok(new_value)
+                    }
                     Value::Class(class) => {
                         if class.static_const_fields.contains(name.as_str()) {
                             return Err(RuntimeError::type_error(
@@ -371,7 +376,8 @@ impl Interpreter {
             }
         };
 
-        let mut result: indexmap::IndexMap<HashKey, Value> = indexmap::IndexMap::new();
+        let mut result: crate::interpreter::value::HashPairs =
+            crate::interpreter::value::HashPairs::default();
         for item in items {
             let mut loop_env = Environment::with_enclosing(self.environment.clone());
             loop_env.define(variable.to_string(), item);
@@ -491,67 +497,5 @@ impl Interpreter {
 
 /// Check if a built-in method can be called with zero arguments.
 fn is_zero_arg_builtin_method(method_name: &str, receiver: &Value) -> bool {
-    match receiver {
-        Value::Array(_) => matches!(
-            method_name,
-            "length"
-                | "first"
-                | "last"
-                | "empty?"
-                | "reverse"
-                | "uniq"
-                | "compact"
-                | "flatten"
-                | "sort"
-                | "shuffle"
-                | "sample"
-                | "sum"
-                | "min"
-                | "max"
-                | "pop"
-                | "clear"
-                | "to_string"
-        ),
-        Value::String(_) => matches!(
-            method_name,
-            "length"
-                | "len"
-                | "to_string"
-                | "upcase"
-                | "uppercase"
-                | "downcase"
-                | "lowercase"
-                | "trim"
-                | "empty?"
-                | "chomp"
-                | "lstrip"
-                | "rstrip"
-                | "squeeze"
-                | "capitalize"
-                | "swapcase"
-                | "reverse"
-                | "hex"
-                | "oct"
-                | "ord"
-                | "chr"
-                | "bytes"
-                | "chars"
-                | "lines"
-                | "bytesize"
-        ),
-        Value::Hash(_) => matches!(
-            method_name,
-            "length"
-                | "keys"
-                | "values"
-                | "entries"
-                | "empty?"
-                | "clear"
-                | "invert"
-                | "compact"
-                | "to_string"
-        ),
-        Value::QueryBuilder(_) => matches!(method_name, "all" | "first" | "count"),
-        _ => false,
-    }
+    super::calls::method_registry::is_zero_arg_method(method_name, receiver)
 }

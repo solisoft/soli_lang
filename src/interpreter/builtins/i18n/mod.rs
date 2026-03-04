@@ -12,10 +12,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
-
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 
 fn get_locale() -> String {
     helpers::get_locale()
@@ -75,13 +73,13 @@ pub fn register_i18n_class(env: &mut Environment) {
                 get_locale()
             };
 
-            let translations: IndexMap<HashKey, Value> = if args.len() > 2 {
+            let translations: HashPairs = if args.len() > 2 {
                 match &args[2] {
                     Value::Hash(h) => h.borrow().clone(),
                     _ => return Err("I18n.translate translations must be a Hash".to_string()),
                 }
             } else {
-                IndexMap::new()
+                HashPairs::default()
             };
 
             // Simple translation lookup
@@ -134,13 +132,13 @@ pub fn register_i18n_class(env: &mut Environment) {
                 get_locale()
             };
 
-            let translations: IndexMap<HashKey, Value> = if args.len() > 3 {
+            let translations: HashPairs = if args.len() > 3 {
                 match &args[3] {
                     Value::Hash(h) => h.borrow().clone(),
                     _ => return Err("I18n.plural translations must be a Hash".to_string()),
                 }
             } else {
-                IndexMap::new()
+                HashPairs::default()
             };
 
             // Simple pluralization: use _zero for 0, _one for 1, _other for plural

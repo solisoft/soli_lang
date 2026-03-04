@@ -326,12 +326,12 @@ pub fn translate_expr(expr: &Expr) -> ExprKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interpreter::value::HashKey;
+    use crate::interpreter::value::{HashKey, HashPairs};
     use std::cell::RefCell;
     use std::rc::Rc;
 
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
-        let mut map = indexmap::IndexMap::new();
+        let mut map = HashPairs::default();
         for (k, v) in pairs {
             map.insert(HashKey::String(k.to_string()), v);
         }

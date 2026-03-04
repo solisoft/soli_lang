@@ -3,13 +3,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
 use serde_json;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, NativeFunction, Value};
-
-type HashPairs = IndexMap<HashKey, Value>;
+use crate::interpreter::value::{json_to_value, HashKey, HashPairs, NativeFunction, Value};
 
 pub fn register_response_helpers(env: &mut Environment) {
     env.define(
@@ -274,7 +271,7 @@ fn extract_all_headers(response: &Value) -> Result<Value, String> {
                     }
                 }
             }
-            Ok(Value::Hash(Rc::new(RefCell::new(IndexMap::new()))))
+            Ok(Value::Hash(Rc::new(RefCell::new(HashPairs::default()))))
         }
         _ => Err("res_headers() expects hash argument".to_string()),
     }
@@ -320,33 +317,5 @@ fn extract_string(value: &Value, context: &str) -> Result<String, String> {
     match value {
         Value::String(s) => Ok(s.clone()),
         _ => Err(format!("{} expects string argument", context)),
-    }
-}
-
-fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
-    match json {
-        serde_json::Value::Null => Ok(Value::Null),
-        serde_json::Value::Bool(b) => Ok(Value::Bool(b)),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(Value::Int(i))
-            } else if let Some(f) = n.as_f64() {
-                Ok(Value::Float(f))
-            } else {
-                Ok(Value::Float(n.as_f64().unwrap_or_default()))
-            }
-        }
-        serde_json::Value::String(s) => Ok(Value::String(s)),
-        serde_json::Value::Array(arr) => {
-            let values: Result<Vec<Value>, String> = arr.into_iter().map(json_to_value).collect();
-            Ok(Value::Array(Rc::new(RefCell::new(values?))))
-        }
-        serde_json::Value::Object(obj) => {
-            let mut pairs: HashPairs = IndexMap::new();
-            for (k, v) in obj {
-                pairs.insert(HashKey::String(k), json_to_value(v)?);
-            }
-            Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
-        }
     }
 }

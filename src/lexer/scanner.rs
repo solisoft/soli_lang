@@ -161,7 +161,7 @@ impl<'a> Scanner<'a> {
                 } else if self.match_char('.') {
                     Ok(self.make_token(TokenKind::SafeNavigation))
                 } else {
-                    Err(LexerError::unexpected_char(c, self.current_span()))
+                    Ok(self.make_token(TokenKind::Ampersand))
                 }
             }
             '|' => {

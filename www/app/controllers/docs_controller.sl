@@ -178,6 +178,22 @@ fn language_modules(req)
     render_docs("docs/language/modules", "Modules", "language", "modules")
 end
 
+fn language_integers(req)
+    render_docs("docs/language/integers", "Integers", "language", "integers")
+end
+
+fn language_floats(req)
+    render_docs("docs/language/floats", "Floats", "language", "floats")
+end
+
+fn language_booleans(req)
+    render_docs("docs/language/booleans", "Booleans", "language", "booleans")
+end
+
+fn language_null(req)
+    render_docs("docs/language/null", "Null", "language", "null")
+end
+
 fn language_decimal(req)
     render_docs("docs/language/decimal", "Decimal", "language", "decimal")
 end

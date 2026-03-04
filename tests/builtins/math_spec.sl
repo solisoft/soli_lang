@@ -3,34 +3,34 @@
 // ============================================================================
 
 describe("Math Functions", fn() {
-    test("abs() returns absolute value", fn() {
-        assert_eq(abs(-5), 5);
-        assert_eq(abs(5), 5);
-        assert_eq(abs(-3.14), 3.14);
+    test(".abs returns absolute value", fn() {
+        assert_eq((-5).abs, 5);
+        assert_eq(5.abs, 5);
+        assert_eq((-3.14).abs, 3.14);
     });
 
-    test("min() returns minimum value", fn() {
-        assert_eq(min(3, 5), 3);
-        assert_eq(min(10, 2), 2);
-        assert_eq(min(-1, 1), -1);
+    test("[].min returns minimum value", fn() {
+        assert_eq([3, 5].min, 3);
+        assert_eq([10, 2].min, 2);
+        assert_eq([-1, 1].min, -1);
     });
 
-    test("max() returns maximum value", fn() {
-        assert_eq(max(3, 5), 5);
-        assert_eq(max(10, 2), 10);
-        assert_eq(max(-1, 1), 1);
+    test("[].max returns maximum value", fn() {
+        assert_eq([3, 5].max, 5);
+        assert_eq([10, 2].max, 10);
+        assert_eq([-1, 1].max, 1);
     });
 
-    test("sqrt() returns square root", fn() {
-        assert_eq(sqrt(4), 2.0);
-        assert_eq(sqrt(9), 3.0);
-        assert_eq(sqrt(2), 1.4142135623730951);
+    test(".sqrt returns square root", fn() {
+        assert_eq(4.sqrt, 2.0);
+        assert_eq(9.sqrt, 3.0);
+        assert_eq(2.sqrt, 1.4142135623730951);
     });
 
-    test("pow() returns power", fn() {
-        assert_eq(pow(2, 3), 8.0);
-        assert_eq(pow(10, 2), 100.0);
-        assert_eq(pow(2, 0), 1.0);
+    test(".pow() returns power", fn() {
+        assert_eq(2.pow(3), 8);
+        assert_eq(10.pow(2), 100);
+        assert_eq(2.pow(0), 1);
     });
 
     test("floor() rounds down", fn() {

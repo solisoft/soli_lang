@@ -11,7 +11,7 @@ fn create_hash(n: Int) -> Hash {
 
 fn hash_sum(h: Hash) -> Int {
     let total = 0;
-    let vals = values(h);
+    let vals = h.values();
     for (v in vals) {
         total = total + v;
     }
