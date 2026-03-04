@@ -131,6 +131,23 @@ impl Interpreter {
             // Assignment
             ExprKind::Assign { target, value } => self.evaluate_assign(target, value),
 
+            // Compound assignment: +=, -=, *=, /=, %=
+            ExprKind::CompoundAssign {
+                target,
+                operator,
+                value,
+            } => self.evaluate_compound_assign(target, *operator, value, expr.span),
+
+            // Postfix increment: x++
+            ExprKind::PostfixIncrement(target) => {
+                self.evaluate_postfix_increment(target, expr.span)
+            }
+
+            // Postfix decrement: x--
+            ExprKind::PostfixDecrement(target) => {
+                self.evaluate_postfix_decrement(target, expr.span)
+            }
+
             // Lambda
             ExprKind::Lambda {
                 params,
@@ -279,6 +296,118 @@ impl Interpreter {
                 "invalid assignment target",
                 target.span,
             )),
+        }
+    }
+
+    /// Evaluate compound assignment (+=, -=, *=, /=, %=).
+    fn evaluate_compound_assign(
+        &mut self,
+        target: &Expr,
+        op: crate::ast::expr::CompoundOp,
+        value: &Expr,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        use crate::ast::expr::CompoundOp;
+
+        let current = self.evaluate(target)?;
+        let rhs = self.evaluate(value)?;
+
+        let result = match op {
+            CompoundOp::Add => {
+                self.evaluate_binary_values(&current, crate::ast::BinaryOp::Add, &rhs, span)?
+            }
+            CompoundOp::Subtract => {
+                self.evaluate_binary_values(&current, crate::ast::BinaryOp::Subtract, &rhs, span)?
+            }
+            CompoundOp::Multiply => {
+                self.evaluate_binary_values(&current, crate::ast::BinaryOp::Multiply, &rhs, span)?
+            }
+            CompoundOp::Divide => {
+                self.evaluate_binary_values(&current, crate::ast::BinaryOp::Divide, &rhs, span)?
+            }
+            CompoundOp::Modulo => {
+                self.evaluate_binary_values(&current, crate::ast::BinaryOp::Modulo, &rhs, span)?
+            }
+        };
+
+        self.assign_to_target(target, result.clone(), span)?;
+        Ok(result)
+    }
+
+    /// Evaluate postfix increment (x++): returns old value, increments variable.
+    fn evaluate_postfix_increment(&mut self, target: &Expr, span: Span) -> RuntimeResult<Value> {
+        let old_value = self.evaluate(target)?;
+        let one = Value::Int(1);
+        let new_value =
+            self.evaluate_binary_values(&old_value, crate::ast::BinaryOp::Add, &one, span)?;
+        self.assign_to_target(target, new_value, span)?;
+        Ok(old_value)
+    }
+
+    /// Evaluate postfix decrement (x--): returns old value, decrements variable.
+    fn evaluate_postfix_decrement(&mut self, target: &Expr, span: Span) -> RuntimeResult<Value> {
+        let old_value = self.evaluate(target)?;
+        let one = Value::Int(1);
+        let new_value =
+            self.evaluate_binary_values(&old_value, crate::ast::BinaryOp::Subtract, &one, span)?;
+        self.assign_to_target(target, new_value, span)?;
+        Ok(old_value)
+    }
+
+    /// Assign a value to a target expression (variable, member, or index).
+    fn assign_to_target(&mut self, target: &Expr, value: Value, span: Span) -> RuntimeResult<()> {
+        match &target.kind {
+            ExprKind::Variable(name) => {
+                if self.environment.borrow().is_const(name) {
+                    return Err(RuntimeError::type_error(
+                        format!("cannot reassign constant '{}'", name),
+                        target.span,
+                    ));
+                }
+                if !self.environment.borrow_mut().assign(name, value.clone()) {
+                    self.environment.borrow_mut().define(name.clone(), value);
+                }
+                Ok(())
+            }
+            ExprKind::Member { object, name } => {
+                let obj_val = self.evaluate(object)?;
+                match obj_val {
+                    Value::Instance(inst) => {
+                        if inst.borrow().class.const_fields.contains(name.as_str()) {
+                            return Err(RuntimeError::type_error(
+                                format!("cannot reassign const field '{}'", name),
+                                target.span,
+                            ));
+                        }
+                        inst.borrow_mut().set(name.clone(), value);
+                        Ok(())
+                    }
+                    Value::Hash(hash) => {
+                        let key = crate::interpreter::value::HashKey::String(name.clone());
+                        hash.borrow_mut().insert(key, value);
+                        Ok(())
+                    }
+                    Value::Class(class) => {
+                        if class.static_const_fields.contains(name.as_str()) {
+                            return Err(RuntimeError::type_error(
+                                format!("cannot reassign static const field '{}'", name),
+                                target.span,
+                            ));
+                        }
+                        class.static_fields.borrow_mut().insert(name.clone(), value);
+                        Ok(())
+                    }
+                    _ => Err(RuntimeError::type_error(
+                        format!("cannot set property on {}", obj_val.type_name()),
+                        target.span,
+                    )),
+                }
+            }
+            ExprKind::Index { object, index } => {
+                self.evaluate_index_assign(object, index, value, span)?;
+                Ok(())
+            }
+            _ => Err(RuntimeError::type_error("invalid assignment target", span)),
         }
     }
 

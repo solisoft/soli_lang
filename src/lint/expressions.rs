@@ -179,6 +179,15 @@ impl Linter {
             ExprKind::Await(inner) | ExprKind::Spread(inner) | ExprKind::Throw(inner) => {
                 self.lint_expr(inner);
             }
+
+            ExprKind::CompoundAssign { target, value, .. } => {
+                self.lint_expr(target);
+                self.lint_expr(value);
+            }
+
+            ExprKind::PostfixIncrement(target) | ExprKind::PostfixDecrement(target) => {
+                self.lint_expr(target);
+            }
         }
     }
 

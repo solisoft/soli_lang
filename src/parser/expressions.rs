@@ -639,6 +639,58 @@ impl Parser {
                 }
             }
 
+            // Compound assignment: +=, -=, *=, /=, %=
+            TokenKind::PlusEqual
+            | TokenKind::MinusEqual
+            | TokenKind::StarEqual
+            | TokenKind::SlashEqual
+            | TokenKind::PercentEqual => {
+                let op = match &token.kind {
+                    TokenKind::PlusEqual => CompoundOp::Add,
+                    TokenKind::MinusEqual => CompoundOp::Subtract,
+                    TokenKind::StarEqual => CompoundOp::Multiply,
+                    TokenKind::SlashEqual => CompoundOp::Divide,
+                    TokenKind::PercentEqual => CompoundOp::Modulo,
+                    _ => unreachable!(),
+                };
+                let value = self.parse_precedence(Precedence::Assignment)?;
+                let span = start_span.merge(&value.span);
+
+                match &left.kind {
+                    ExprKind::Variable(_) | ExprKind::Member { .. } | ExprKind::Index { .. } => {
+                        Ok(Expr::new(
+                            ExprKind::CompoundAssign {
+                                target: Box::new(left),
+                                operator: op,
+                                value: Box::new(value),
+                            },
+                            span,
+                        ))
+                    }
+                    _ => Err(ParserError::invalid_assignment_target(left.span)),
+                }
+            }
+
+            // Postfix increment/decrement: x++, x--
+            TokenKind::PlusPlus => {
+                let span = start_span.merge(&token.span);
+                match &left.kind {
+                    ExprKind::Variable(_) | ExprKind::Member { .. } | ExprKind::Index { .. } => {
+                        Ok(Expr::new(ExprKind::PostfixIncrement(Box::new(left)), span))
+                    }
+                    _ => Err(ParserError::invalid_assignment_target(left.span)),
+                }
+            }
+            TokenKind::MinusMinus => {
+                let span = start_span.merge(&token.span);
+                match &left.kind {
+                    ExprKind::Variable(_) | ExprKind::Member { .. } | ExprKind::Index { .. } => {
+                        Ok(Expr::new(ExprKind::PostfixDecrement(Box::new(left)), span))
+                    }
+                    _ => Err(ParserError::invalid_assignment_target(left.span)),
+                }
+            }
+
             // Call
             TokenKind::LeftParen => {
                 let mut arguments = self.parse_arguments()?;

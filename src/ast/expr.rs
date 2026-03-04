@@ -124,6 +124,19 @@ pub enum ExprKind {
     /// Assignment expression: x = 5
     Assign { target: Box<Expr>, value: Box<Expr> },
 
+    /// Compound assignment: x += 1, x -= 1, x *= 2, x /= 2, x %= 3
+    CompoundAssign {
+        target: Box<Expr>,
+        operator: CompoundOp,
+        value: Box<Expr>,
+    },
+
+    /// Postfix increment: x++ (returns old value, then increments)
+    PostfixIncrement(Box<Expr>),
+
+    /// Postfix decrement: x-- (returns old value, then decrements)
+    PostfixDecrement(Box<Expr>),
+
     /// Logical and: a && b
     LogicalAnd { left: Box<Expr>, right: Box<Expr> },
 
@@ -270,6 +283,28 @@ impl std::fmt::Display for BinaryOp {
             BinaryOp::Greater => write!(f, ">"),
             BinaryOp::GreaterEqual => write!(f, ">="),
             BinaryOp::Range => write!(f, ".."),
+        }
+    }
+}
+
+/// Compound assignment operators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompoundOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+}
+
+impl std::fmt::Display for CompoundOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompoundOp::Add => write!(f, "+="),
+            CompoundOp::Subtract => write!(f, "-="),
+            CompoundOp::Multiply => write!(f, "*="),
+            CompoundOp::Divide => write!(f, "/="),
+            CompoundOp::Modulo => write!(f, "%="),
         }
     }
 }

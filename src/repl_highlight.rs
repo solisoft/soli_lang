@@ -72,7 +72,8 @@ impl SyntaxHighlighter {
             Plus | Minus | Star | Slash | Percent | Equal | EqualEqual | BangEqual | Less
             | LessEqual | Greater | GreaterEqual | Bang | And | Or | Pipeline | Pipe
             | NullishCoalescing | SafeNavigation | DoubleColon | Arrow | FatArrow | Spread
-            | Range => text.red().to_string(),
+            | Range | PlusPlus | MinusMinus | PlusEqual | MinusEqual | StarEqual | SlashEqual
+            | PercentEqual => text.red().to_string(),
 
             LeftParen | RightParen | LeftBrace | RightBrace | LeftBracket | RightBracket
             | Comma | Dot | Colon | Semicolon | Question => text.white().bold().to_string(),

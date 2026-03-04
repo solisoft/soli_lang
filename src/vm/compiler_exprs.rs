@@ -193,6 +193,59 @@ impl Compiler {
                 self.compile_expr(inner)?;
                 self.emit(Op::Throw, line);
             }
+            ExprKind::CompoundAssign {
+                target,
+                operator,
+                value,
+            } => {
+                // Desugar: target op= value  →  target = target op value
+                use crate::ast::expr::CompoundOp;
+                let bin_op = match operator {
+                    CompoundOp::Add => BinaryOp::Add,
+                    CompoundOp::Subtract => BinaryOp::Subtract,
+                    CompoundOp::Multiply => BinaryOp::Multiply,
+                    CompoundOp::Divide => BinaryOp::Divide,
+                    CompoundOp::Modulo => BinaryOp::Modulo,
+                };
+                let desugared_value = Expr::new(
+                    ExprKind::Binary {
+                        left: Box::new((**target).clone()),
+                        operator: bin_op,
+                        right: Box::new((**value).clone()),
+                    },
+                    expr.span,
+                );
+                self.compile_assign(target, &desugared_value, line)?;
+            }
+            ExprKind::PostfixIncrement(target) => {
+                // Compile: push old value, then assign target = target + 1
+                self.compile_expr(target)?; // old value on stack (return value)
+                let one = Expr::new(ExprKind::IntLiteral(1), expr.span);
+                let new_val = Expr::new(
+                    ExprKind::Binary {
+                        left: Box::new((**target).clone()),
+                        operator: BinaryOp::Add,
+                        right: Box::new(one),
+                    },
+                    expr.span,
+                );
+                self.compile_assign(target, &new_val, line)?;
+                self.emit(Op::Pop, line); // pop the assign result, keeping old value
+            }
+            ExprKind::PostfixDecrement(target) => {
+                self.compile_expr(target)?;
+                let one = Expr::new(ExprKind::IntLiteral(1), expr.span);
+                let new_val = Expr::new(
+                    ExprKind::Binary {
+                        left: Box::new((**target).clone()),
+                        operator: BinaryOp::Subtract,
+                        right: Box::new(one),
+                    },
+                    expr.span,
+                );
+                self.compile_assign(target, &new_val, line)?;
+                self.emit(Op::Pop, line);
+            }
         }
         Ok(())
     }

@@ -44,7 +44,12 @@ impl Precedence {
 
 pub fn get_precedence(kind: &TokenKind) -> Precedence {
     match kind {
-        TokenKind::Equal => Precedence::Assignment,
+        TokenKind::Equal
+        | TokenKind::PlusEqual
+        | TokenKind::MinusEqual
+        | TokenKind::StarEqual
+        | TokenKind::SlashEqual
+        | TokenKind::PercentEqual => Precedence::Assignment,
         TokenKind::Question => Precedence::Ternary,
         TokenKind::NullishCoalescing => Precedence::NullishCoalescing,
         TokenKind::Or => Precedence::Or,
@@ -61,7 +66,9 @@ pub fn get_precedence(kind: &TokenKind) -> Precedence {
         | TokenKind::Dot
         | TokenKind::SafeNavigation
         | TokenKind::DoubleColon
-        | TokenKind::LeftBracket => Precedence::Call,
+        | TokenKind::LeftBracket
+        | TokenKind::PlusPlus
+        | TokenKind::MinusMinus => Precedence::Call,
         _ => Precedence::None,
     }
 }

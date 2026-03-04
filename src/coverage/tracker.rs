@@ -605,6 +605,13 @@ impl CoverageTracker {
                 }
             }
             SdqlBlock { .. } => {}
+            CompoundAssign { target, value, .. } => {
+                self.collect_lines_from_expr(path, lines, target);
+                self.collect_lines_from_expr(path, lines, value);
+            }
+            PostfixIncrement(target) | PostfixDecrement(target) => {
+                self.collect_lines_from_expr(path, lines, target);
+            }
         }
     }
 }

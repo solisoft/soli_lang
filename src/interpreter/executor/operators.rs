@@ -29,21 +29,30 @@ impl Interpreter {
             .resolve()
             .map_err(|e| RuntimeError::new(e, span))?;
 
+        self.evaluate_binary_values(&left_val, op, &right_val, span)
+    }
+
+    /// Evaluate a binary operation on already-evaluated values.
+    pub(crate) fn evaluate_binary_values(
+        &self,
+        left_val: &Value,
+        op: BinaryOp,
+        right_val: &Value,
+        span: Span,
+    ) -> RuntimeResult<Value> {
         match op {
-            BinaryOp::Add => self.eval_add(&left_val, &right_val, span),
-            BinaryOp::Subtract => self.eval_subtract(&left_val, &right_val, span),
-            BinaryOp::Multiply => self.eval_multiply(&left_val, &right_val, span),
-            BinaryOp::Divide => self.eval_divide(&left_val, &right_val, span),
-            BinaryOp::Modulo => self.eval_modulo(&left_val, &right_val, span),
-            BinaryOp::Equal => Ok(Value::Bool(left_val == right_val)),
-            BinaryOp::NotEqual => Ok(Value::Bool(left_val != right_val)),
-            BinaryOp::Less => self.compare_values(&left_val, &right_val, span, |a, b| a < b),
-            BinaryOp::LessEqual => self.compare_values(&left_val, &right_val, span, |a, b| a <= b),
-            BinaryOp::Greater => self.compare_values(&left_val, &right_val, span, |a, b| a > b),
-            BinaryOp::GreaterEqual => {
-                self.compare_values(&left_val, &right_val, span, |a, b| a >= b)
-            }
-            BinaryOp::Range => self.eval_range(&left_val, &right_val, span),
+            BinaryOp::Add => self.eval_add(left_val, right_val, span),
+            BinaryOp::Subtract => self.eval_subtract(left_val, right_val, span),
+            BinaryOp::Multiply => self.eval_multiply(left_val, right_val, span),
+            BinaryOp::Divide => self.eval_divide(left_val, right_val, span),
+            BinaryOp::Modulo => self.eval_modulo(left_val, right_val, span),
+            BinaryOp::Equal => Ok(Value::Bool(*left_val == *right_val)),
+            BinaryOp::NotEqual => Ok(Value::Bool(*left_val != *right_val)),
+            BinaryOp::Less => self.compare_values(left_val, right_val, span, |a, b| a < b),
+            BinaryOp::LessEqual => self.compare_values(left_val, right_val, span, |a, b| a <= b),
+            BinaryOp::Greater => self.compare_values(left_val, right_val, span, |a, b| a > b),
+            BinaryOp::GreaterEqual => self.compare_values(left_val, right_val, span, |a, b| a >= b),
+            BinaryOp::Range => self.eval_range(left_val, right_val, span),
         }
     }
 

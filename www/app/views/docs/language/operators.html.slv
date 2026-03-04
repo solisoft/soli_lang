@@ -12,7 +12,7 @@
             <span class="bg-gradient-to-r from-pink-400 to-rose-400 bg-clip-text text-transparent">Operators</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Arithmetic, comparison, logical, and string operators in Soli.
+            Arithmetic, comparison, logical, compound assignment, and increment/decrement operators in Soli.
         </p>
     </div>
 
@@ -234,6 +234,119 @@ let numbers = 1..5;  # [1, 2, 3, 4]
 # Use in for loops
 for (i in 0..10) {
     print(i);  # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+}</code></pre>
+    </section>
+
+    <!-- Compound Assignment Operators -->
+    <section id="section-compound" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+            </span>
+            Compound Assignment Operators
+        </h2>
+        <p class="text-gray-400 mb-4">Compound assignment operators combine an arithmetic operation with assignment. They modify the variable in-place.</p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="py-2 px-4 text-gray-400 font-medium">Operator</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Description</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Equivalent</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr id="op-plus-equal" class="scroll-mt-20">
+                        <td class="py-2 px-4"><a href="#op-plus-equal" class="text-indigo-400 font-mono hover:text-indigo-300">+=</a></td>
+                        <td class="py-2 px-4 text-gray-400">Add and assign</td>
+                        <td class="py-2 px-4 text-gray-500">a += b is a = a + b</td>
+                    </tr>
+                    <tr id="op-minus-equal" class="scroll-mt-20">
+                        <td class="py-2 px-4"><a href="#op-minus-equal" class="text-indigo-400 font-mono hover:text-indigo-300">-=</a></td>
+                        <td class="py-2 px-4 text-gray-400">Subtract and assign</td>
+                        <td class="py-2 px-4 text-gray-500">a -= b is a = a - b</td>
+                    </tr>
+                    <tr id="op-star-equal" class="scroll-mt-20">
+                        <td class="py-2 px-4"><a href="#op-star-equal" class="text-indigo-400 font-mono hover:text-indigo-300">*=</a></td>
+                        <td class="py-2 px-4 text-gray-400">Multiply and assign</td>
+                        <td class="py-2 px-4 text-gray-500">a *= b is a = a * b</td>
+                    </tr>
+                    <tr id="op-slash-equal" class="scroll-mt-20">
+                        <td class="py-2 px-4"><a href="#op-slash-equal" class="text-indigo-400 font-mono hover:text-indigo-300">/=</a></td>
+                        <td class="py-2 px-4 text-gray-400">Divide and assign</td>
+                        <td class="py-2 px-4 text-gray-500">a /= b is a = a / b</td>
+                    </tr>
+                    <tr id="op-percent-equal" class="scroll-mt-20">
+                        <td class="py-2 px-4"><a href="#op-percent-equal" class="text-indigo-400 font-mono hover:text-indigo-300">%=</a></td>
+                        <td class="py-2 px-4 text-gray-400">Modulo and assign</td>
+                        <td class="py-2 px-4 text-gray-500">a %= b is a = a % b</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <pre data-filename="Example"><code class="language-soli text-sm">let score = 0
+score += 10       # score is now 10
+score -= 3        # score is now 7
+score *= 2        # score is now 14
+score /= 7        # score is now 2
+score %= 2        # score is now 0
+
+# Also works with floats
+let price = 19.99
+price *= 0.9      # apply 10% discount
+
+# String concatenation with +=
+let msg = "Hello"
+msg += " World"   # msg is now "Hello World"</code></pre>
+    </section>
+
+    <!-- Postfix Increment / Decrement Operators -->
+    <section id="section-postfix" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+            </span>
+            Increment &amp; Decrement
+        </h2>
+        <p class="text-gray-400 mb-4">Postfix <code class="text-indigo-400">++</code> and <code class="text-indigo-400">--</code> operators modify a variable by 1 and return the <strong class="text-white">old</strong> value.</p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="py-2 px-4 text-gray-400 font-medium">Operator</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Description</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Returns</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr id="op-increment" class="scroll-mt-20">
+                        <td class="py-2 px-4"><a href="#op-increment" class="text-indigo-400 font-mono hover:text-indigo-300">++</a></td>
+                        <td class="py-2 px-4 text-gray-400">Postfix increment</td>
+                        <td class="py-2 px-4 text-gray-500">Old value (before increment)</td>
+                    </tr>
+                    <tr id="op-decrement" class="scroll-mt-20">
+                        <td class="py-2 px-4"><a href="#op-decrement" class="text-indigo-400 font-mono hover:text-indigo-300">--</a></td>
+                        <td class="py-2 px-4 text-gray-400">Postfix decrement</td>
+                        <td class="py-2 px-4 text-gray-500">Old value (before decrement)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
+i++            # i is now 1
+i++            # i is now 2
+
+let old = i--  # old is 2, i is now 1
+
+# Common pattern: loop counter
+let n = 0
+while (n < 5) {
+    println(n)
+    n++
 }</code></pre>
     </section>
 

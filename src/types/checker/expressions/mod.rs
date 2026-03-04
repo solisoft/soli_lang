@@ -107,6 +107,17 @@ impl TypeChecker {
 
             // SDBQL query block - returns array of documents
             ExprKind::SdqlBlock { .. } => Ok(Type::Any),
+
+            // Compound assignment returns the computed value type
+            ExprKind::CompoundAssign { target, value, .. } => {
+                self.check_expr(target)?;
+                self.check_expr(value)
+            }
+
+            // Postfix increment/decrement returns the original numeric type
+            ExprKind::PostfixIncrement(target) | ExprKind::PostfixDecrement(target) => {
+                self.check_expr(target)
+            }
         }
     }
 

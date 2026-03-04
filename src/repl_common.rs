@@ -151,6 +151,38 @@ fn strip_trailing_comment(s: &str) -> &str {
     s
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_multiline_for() {
+        assert!(detect_multiline_needed("for i in range(1, 10)"));
+        assert!(detect_multiline_needed("for (i in range(1, 10))"));
+        assert!(detect_multiline_needed("for i in 0..10"));
+        assert!(detect_multiline_needed("if true"));
+        assert!(detect_multiline_needed("while x > 0"));
+        assert!(detect_multiline_needed("fn foo()"));
+    }
+
+    #[test]
+    fn test_no_multiline_for_simple() {
+        assert!(!detect_multiline_needed("let x = 1"));
+        assert!(!detect_multiline_needed("println(1)"));
+        assert!(!detect_multiline_needed("x += 1"));
+        assert!(!detect_multiline_needed("x++"));
+    }
+
+    #[test]
+    fn test_count_block_balance() {
+        assert_eq!(count_block_balance("{"), 1);
+        assert_eq!(count_block_balance("}"), -1);
+        assert_eq!(count_block_balance("end"), -1);
+        assert_eq!(count_block_balance("for i in range(1, 10)"), 1);
+        assert_eq!(count_block_balance("println(i)"), 0);
+    }
+}
+
 /// Prepare REPL source for execution: auto-wrap in `print()` or append `;` as needed.
 pub fn prepare_source(code: &str) -> String {
     let trimmed = code.trim();

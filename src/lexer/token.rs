@@ -100,6 +100,13 @@ pub enum TokenKind {
     Or,
     Pipeline,          // |>
     Pipe,              // |
+    PlusPlus,          // ++
+    MinusMinus,        // --
+    PlusEqual,         // +=
+    MinusEqual,        // -=
+    StarEqual,         // *=
+    SlashEqual,        // /=
+    PercentEqual,      // %=
     NullishCoalescing, // ??
     SafeNavigation,    // &.
     Ampersand,         // &
@@ -262,6 +269,13 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Or => write!(f, "||"),
             TokenKind::Pipeline => write!(f, "|>"),
             TokenKind::Pipe => write!(f, "|"),
+            TokenKind::PlusPlus => write!(f, "++"),
+            TokenKind::MinusMinus => write!(f, "--"),
+            TokenKind::PlusEqual => write!(f, "+="),
+            TokenKind::MinusEqual => write!(f, "-="),
+            TokenKind::StarEqual => write!(f, "*="),
+            TokenKind::SlashEqual => write!(f, "/="),
+            TokenKind::PercentEqual => write!(f, "%="),
             TokenKind::NullishCoalescing => write!(f, "??"),
             TokenKind::SafeNavigation => write!(f, "&."),
             TokenKind::Ampersand => write!(f, "&"),

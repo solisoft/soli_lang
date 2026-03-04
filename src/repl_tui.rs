@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use crossterm::{
     cursor::{self, Show},
-    event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyModifiers},
+    event::{
+        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyModifiers,
+        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    },
     terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType},
     QueueableCommand,
 };
@@ -292,8 +295,18 @@ impl TuiRepl {
 
         // Enable bracketed paste so multi-line pastes arrive as a single event
         stdout.queue(EnableBracketedPaste)?;
-
         stdout.flush()?;
+
+        // Enable keyboard enhancement (kitty protocol) so Shift+Enter is distinguishable
+        // from plain Enter. Only attempt if the terminal supports it.
+        let keyboard_enhanced =
+            crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+        if keyboard_enhanced {
+            let _ = stdout.queue(PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES,
+            ));
+            let _ = stdout.flush();
+        }
 
         // Print welcome message as normal scrolling output
         disable_raw_mode()?;
@@ -331,6 +344,9 @@ impl TuiRepl {
         // Cleanup
         disable_raw_mode()?;
         let mut stdout = io::stdout();
+        if keyboard_enhanced {
+            let _ = stdout.queue(PopKeyboardEnhancementFlags);
+        }
         stdout.queue(DisableBracketedPaste)?;
         stdout.queue(Show)?;
         stdout.flush()?;
@@ -388,14 +404,30 @@ impl TuiRepl {
         let input_text = self.input.line.as_string();
         let cursor_pos = self.input.line.cursor;
 
-        // Clear from current position down
         stdout.queue(cursor::Hide)?;
-        stdout.write_all(b"\r")?;
-        stdout.queue(Clear(ClearType::FromCursorDown))?;
 
         let (final_row, final_col) = if self.input.is_multiline {
             let multiline_lines: Vec<&str> = self.input.multiline_buffer.lines().collect();
-            let mut row = current_row;
+            // Total lines needed: buffer lines + 1 for the current input line
+            let total_lines_needed = multiline_lines.len() + 1;
+
+            // Move cursor UP to the start of the multiline content before clearing.
+            // current_row points to the continuation prompt (bottom of multiline),
+            // so we need to go back up by multiline_lines.len() rows.
+            let start_row = current_row.saturating_sub(multiline_lines.len() as u16);
+            stdout.queue(cursor::MoveTo(0, start_row))?;
+            stdout.queue(Clear(ClearType::FromCursorDown))?;
+
+            // Scroll up if we don't have enough room below start_row
+            let mut row = start_row;
+            let available = rows.saturating_sub(row as usize);
+            if total_lines_needed > available {
+                let scroll = total_lines_needed - available;
+                for _ in 0..scroll {
+                    stdout.queue(crossterm::terminal::ScrollUp(1))?;
+                }
+                row = row.saturating_sub(scroll as u16);
+            }
 
             for (i, line) in multiline_lines.iter().enumerate() {
                 let prompt = if i == 0 { ">>> " } else { "... " };
@@ -418,6 +450,9 @@ impl TuiRepl {
             let cursor_col = cont_prompt.len() + cursor_pos;
             (row, cursor_col as u16)
         } else {
+            // Single-line mode: clear from current position down
+            stdout.write_all(b"\r")?;
+            stdout.queue(Clear(ClearType::FromCursorDown))?;
             stdout.queue(cursor::MoveTo(0, current_row))?;
             let prompt = "\x1b[90m>>>\x1b[0m ";
             stdout.write_all(prompt.as_bytes())?;
@@ -527,7 +562,8 @@ impl TuiRepl {
             Plus | Minus | Star | Slash | Percent | Equal | EqualEqual | BangEqual | Less
             | LessEqual | Greater | GreaterEqual | Bang | And | Or | Pipeline | Pipe
             | NullishCoalescing | SafeNavigation | DoubleColon | Arrow | FatArrow | Spread
-            | Range => {
+            | Range | PlusPlus | MinusMinus | PlusEqual | MinusEqual | StarEqual | SlashEqual
+            | PercentEqual => {
                 format!("\x1b[91m{}\x1b[0m", text) // Bright red
             }
             LeftParen | RightParen | LeftBrace | RightBrace | LeftBracket | RightBracket
@@ -866,7 +902,9 @@ impl TuiRepl {
                 self.input.line.delete();
             }
             KeyCode::Enter => {
-                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    || key.modifiers.contains(KeyModifiers::ALT)
+                {
                     self.input.line.insert('\n');
                 } else {
                     self.execute_current_line();

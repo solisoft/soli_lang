@@ -112,15 +112,45 @@ impl<'a> Scanner<'a> {
                     Ok(self.make_token(TokenKind::Question))
                 }
             }
-            '+' => Ok(self.make_token(TokenKind::Plus)),
-            '*' => Ok(self.make_token(TokenKind::Star)),
-            '/' => Ok(self.make_token(TokenKind::Slash)),
-            '%' => Ok(self.make_token(TokenKind::Percent)),
+            '+' => {
+                if self.match_char('+') {
+                    Ok(self.make_token(TokenKind::PlusPlus))
+                } else if self.match_char('=') {
+                    Ok(self.make_token(TokenKind::PlusEqual))
+                } else {
+                    Ok(self.make_token(TokenKind::Plus))
+                }
+            }
+            '*' => {
+                if self.match_char('=') {
+                    Ok(self.make_token(TokenKind::StarEqual))
+                } else {
+                    Ok(self.make_token(TokenKind::Star))
+                }
+            }
+            '/' => {
+                if self.match_char('=') {
+                    Ok(self.make_token(TokenKind::SlashEqual))
+                } else {
+                    Ok(self.make_token(TokenKind::Slash))
+                }
+            }
+            '%' => {
+                if self.match_char('=') {
+                    Ok(self.make_token(TokenKind::PercentEqual))
+                } else {
+                    Ok(self.make_token(TokenKind::Percent))
+                }
+            }
 
             // Two-character tokens
             '-' => {
                 if self.match_char('>') {
                     Ok(self.make_token(TokenKind::Arrow))
+                } else if self.match_char('-') {
+                    Ok(self.make_token(TokenKind::MinusMinus))
+                } else if self.match_char('=') {
+                    Ok(self.make_token(TokenKind::MinusEqual))
                 } else {
                     Ok(self.make_token(TokenKind::Minus))
                 }
@@ -1192,5 +1222,63 @@ mod tests {
                 TokenKind::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn test_compound_assignment_operators() {
+        assert_eq!(
+            scan("+= -= *= /= %="),
+            vec![
+                TokenKind::PlusEqual,
+                TokenKind::MinusEqual,
+                TokenKind::StarEqual,
+                TokenKind::SlashEqual,
+                TokenKind::PercentEqual,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_increment_decrement_operators() {
+        assert_eq!(
+            scan("++ --"),
+            vec![TokenKind::PlusPlus, TokenKind::MinusMinus, TokenKind::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_compound_vs_simple_operators() {
+        // Ensure single operators still work after adding compound variants
+        assert_eq!(
+            scan("+ - * / %"),
+            vec![
+                TokenKind::Plus,
+                TokenKind::Minus,
+                TokenKind::Star,
+                TokenKind::Slash,
+                TokenKind::Percent,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_compound_in_context() {
+        assert_eq!(
+            scan("a += 1"),
+            vec![
+                TokenKind::Identifier("a".to_string()),
+                TokenKind::PlusEqual,
+                TokenKind::IntLiteral(1),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_arrow_still_works() {
+        // Ensure -> is not broken by -= addition
+        assert_eq!(scan("->"), vec![TokenKind::Arrow, TokenKind::Eof]);
     }
 }
