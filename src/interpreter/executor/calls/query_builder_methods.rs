@@ -28,6 +28,7 @@ impl Interpreter {
             "all" => self.qb_all(qb, arguments, span),
             "first" => self.qb_first(qb, arguments, span),
             "count" => self.qb_count(qb, arguments, span),
+            "to_query" => self.qb_to_query(qb, arguments, span),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "QueryBuilder".to_string(),
                 property: method_name.to_string(),
@@ -212,5 +213,22 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
         Ok(execute_query_builder_count(&qb.borrow()))
+    }
+
+    fn qb_to_query(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if !arguments.is_empty() {
+            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+        }
+        let (query, bind_vars) = qb.borrow().build_query();
+        if bind_vars.is_empty() {
+            Ok(Value::String(query))
+        } else {
+            Ok(Value::String(format!("{} | bind_vars: {:?}", query, bind_vars)))
+        }
     }
 }

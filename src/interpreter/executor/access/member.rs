@@ -108,6 +108,15 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         // Universal methods on instances
         match name {
+            "inspect" => {
+                let inst_ref = inst.borrow();
+                return Ok(Value::String(format!("<{} instance>", inst_ref.class.name)));
+            }
+            "class" => {
+                let inst_ref = inst.borrow();
+                return Ok(Value::String(inst_ref.class.name.clone()));
+            }
+            "nil?" => return Ok(Value::Bool(false)),
             "blank?" => return Ok(Value::Bool(false)),
             "present?" => return Ok(Value::Bool(true)),
             _ => {}
@@ -216,6 +225,18 @@ impl Interpreter {
         if let Some(value) = find_static_field(class, name) {
             return Ok(value);
         }
+
+        // Universal methods on class values
+        match name {
+            "inspect" => return Ok(Value::String(format!("<class {}>", class.name))),
+            "class" => return Ok(Value::String("class".to_string())),
+            "nil?" => return Ok(Value::Bool(false)),
+            "blank?" => return Ok(Value::Bool(false)),
+            "present?" => return Ok(Value::Bool(true)),
+            "to_s" | "to_string" => return Ok(Value::String(format!("<class {}>", class.name))),
+            _ => {}
+        }
+
         Err(RuntimeError::NoSuchProperty {
             value_type: class.name.clone(),
             property: name.to_string(),
@@ -383,7 +404,8 @@ impl Interpreter {
         }
         // Handle QueryBuilder methods for chaining
         match name {
-            "where" | "order" | "limit" | "offset" | "all" | "first" | "count" | "is_a?" => {
+            "where" | "order" | "limit" | "offset" | "all" | "first" | "count" | "to_query"
+            | "is_a?" => {
                 Ok(Value::Method(ValueMethod {
                     receiver: Box::new(obj_val),
                     method_name: name.to_string(),

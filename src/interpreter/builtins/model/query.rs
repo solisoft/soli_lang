@@ -64,9 +64,15 @@ impl QueryBuilder {
         let mut query = format!("FOR doc IN {}", collection_str);
 
         if let Some(filter) = &self.filter {
-            // Translate Soli operators to SDBQL operators
-            let sdbql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
-            query.push_str(&format!(" FILTER {}", sdbql_filter));
+            // Translate Soli operators to AQL operators
+            let aql_filter = filter
+                .replace(" && ", " AND ")
+                .replace(" || ", " OR ");
+            // Replace single `=` with `==` for AQL comparison, but leave `!=`, `>=`, `<=` intact
+            let aql_filter = Self::normalize_equality_ops(&aql_filter);
+            // Auto-prefix bare field names with `doc.`
+            let aql_filter = Self::prefix_bare_fields(&aql_filter);
+            query.push_str(&format!(" FILTER {}", aql_filter));
         }
 
         if let Some((field, direction)) = &self.order_by {
@@ -103,6 +109,129 @@ impl QueryBuilder {
             .collect();
 
         (query, bind_vars_str)
+    }
+
+    /// Replace standalone `=` with `==` for AQL, preserving `!=`, `>=`, `<=`, `==`, and `===`.
+    pub(crate) fn normalize_equality_ops(filter: &str) -> String {
+        let bytes = filter.as_bytes();
+        let len = bytes.len();
+        let mut result = String::with_capacity(len + 8);
+        let mut i = 0;
+        while i < len {
+            if bytes[i] == b'=' {
+                let prev = if i > 0 { bytes[i - 1] } else { b' ' };
+                let next = if i + 1 < len { bytes[i + 1] } else { b' ' };
+                if prev == b'!' || prev == b'>' || prev == b'<' {
+                    // Part of !=, >=, <= — pass through
+                    result.push('=');
+                } else if next == b'=' {
+                    // Already == (or ===) — pass through both and skip next
+                    result.push('=');
+                    result.push('=');
+                    i += 2;
+                    // Skip any further = (e.g. ===)
+                    while i < len && bytes[i] == b'=' {
+                        result.push('=');
+                        i += 1;
+                    }
+                    continue;
+                } else {
+                    // Standalone = → expand to ==
+                    result.push_str("==");
+                }
+            } else {
+                result.push(bytes[i] as char);
+            }
+            i += 1;
+        }
+        result
+    }
+
+    /// Prefix bare identifiers with `doc.` so users can write `username == @u`
+    /// instead of `doc.username == @u`. Skips `@`-prefixed bind vars, `doc.`-prefixed
+    /// fields, AQL keywords, string literals, and numeric literals.
+    pub(crate) fn prefix_bare_fields(filter: &str) -> String {
+        let aql_keywords: &[&str] = &[
+            "AND", "OR", "NOT", "IN", "LIKE", "null", "true", "false", "NONE", "ANY", "ALL",
+        ];
+        let mut result = String::with_capacity(filter.len() + 16);
+        let chars: Vec<char> = filter.chars().collect();
+        let len = chars.len();
+        let mut i = 0;
+
+        while i < len {
+            let c = chars[i];
+
+            // Skip string literals
+            if c == '"' || c == '\'' {
+                let quote = c;
+                result.push(c);
+                i += 1;
+                while i < len && chars[i] != quote {
+                    if chars[i] == '\\' && i + 1 < len {
+                        result.push(chars[i]);
+                        i += 1;
+                    }
+                    result.push(chars[i]);
+                    i += 1;
+                }
+                if i < len {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+                continue;
+            }
+
+            // Skip bind vars (@name)
+            if c == '@' {
+                result.push(c);
+                i += 1;
+                while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+                continue;
+            }
+
+            // Collect identifiers
+            if c.is_alphabetic() || c == '_' {
+                let start = i;
+                while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                    i += 1;
+                }
+                let word: String = chars[start..i].iter().collect();
+
+                // Check if already `doc.` prefixed or is a keyword
+                if word == "doc" && i < len && chars[i] == '.' {
+                    // Already doc.field — pass through doc. and the field name
+                    result.push_str("doc.");
+                    i += 1; // skip the dot
+                    let field_start = i;
+                    while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                        i += 1;
+                    }
+                    let field: String = chars[field_start..i].iter().collect();
+                    result.push_str(&field);
+                    continue;
+                } else if aql_keywords.iter().any(|kw| kw.eq_ignore_ascii_case(&word))
+                {
+                    result.push_str(&word);
+                } else if i < len && chars[i] == '.' {
+                    // Has a dot qualifier (e.g. `obj.field`) — pass through as-is
+                    result.push_str(&word);
+                } else {
+                    // Bare field name → prefix with doc.
+                    result.push_str("doc.");
+                    result.push_str(&word);
+                }
+                continue;
+            }
+
+            result.push(c);
+            i += 1;
+        }
+
+        result
     }
 }
 
@@ -163,7 +292,12 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
         .collect();
 
     if let Some(filter) = &qb.filter {
-        query.push_str(&format!(" FILTER {}", filter));
+        let aql_filter = filter
+            .replace(" && ", " AND ")
+            .replace(" || ", " OR ");
+        let aql_filter = QueryBuilder::normalize_equality_ops(&aql_filter);
+        let aql_filter = QueryBuilder::prefix_bare_fields(&aql_filter);
+        query.push_str(&format!(" FILTER {}", aql_filter));
     }
 
     query.push_str(" COLLECT WITH COUNT INTO cnt RETURN cnt");

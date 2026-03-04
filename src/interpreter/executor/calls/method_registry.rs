@@ -1252,6 +1252,11 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "bool",
     },
     MethodDef {
+        name: "to_query",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "where",
         zero_arg: false,
         ret: "",
