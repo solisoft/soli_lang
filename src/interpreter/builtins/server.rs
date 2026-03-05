@@ -748,15 +748,12 @@ pub struct ParsedBody {
     pub files: Option<Value>,
 }
 
-/// Parse a JSON string into a Soli Value.
+/// Parse a JSON string into a Soli Value using sonic-rs SIMD-accelerated parser.
 pub fn parse_json_body(body: &str) -> Option<Value> {
     if body.is_empty() {
         return None;
     }
-    match serde_json::from_str::<serde_json::Value>(body) {
-        Ok(json) => json_to_value(json).ok(),
-        Err(_) => None,
-    }
+    crate::interpreter::value::parse_json(body).ok()
 }
 
 /// Parse a URL-encoded form body into a Soli Value (Hash).
@@ -774,9 +771,6 @@ pub fn parse_form_urlencoded_body(body: &str) -> Option<Value> {
         .collect();
     Some(Value::Hash(Rc::new(RefCell::new(pairs))))
 }
-
-// Use centralized json_to_value from value module
-use crate::interpreter::value::json_to_value;
 
 /// Build a request hash from HTTP request data.
 /// Uses thread-local cached keys to avoid repeated String allocations.

@@ -179,6 +179,40 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count</code></p
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.count</code></td>
                     <td class="py-3 px-4 text-gray-400">Count all documents</td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.includes(rel, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load relations (returns QueryBuilder)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.join(rel, filter?, binds?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Filter by related existence (returns QueryBuilder)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Relationship DSL</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_many(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a one-to-many relationship</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_one(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a one-to-one relationship</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">belongs_to(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare an inverse relationship</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -218,8 +252,20 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count</code></p
                     <td class="py-3 px-4 text-gray-400">Execute, return first result</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes(rel, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load relations via subqueries</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.join(rel, filter?, binds?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Filter by existence of related records</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.count</code></td>
                     <td class="py-3 px-4 text-gray-400">Execute, return count</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.to_query</code></td>
+                    <td class="py-3 px-4 text-gray-400">Return the generated SDBQL string (for debugging)</td>
                 </tr>
             </tbody>
         </table>
@@ -371,7 +417,106 @@ end</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Relationships</h2>
-    <p class="text-gray-400 mb-6">Implement relationships using model methods:</p>
+    <p class="text-gray-400 mb-6">Declare associations using the built-in DSL:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class User < Model
+    has_many("posts")
+    has_one("profile")
+end
+
+class Post < Model
+    belongs_to("user")
+    has_many("comments")
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Naming Conventions</h3>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Declaration</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Related Class</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Collection</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Foreign Key</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_many("posts")</code></td>
+                    <td class="py-3 px-4 text-gray-400">Post</td>
+                    <td class="py-3 px-4 text-gray-400">posts</td>
+                    <td class="py-3 px-4 text-gray-400">user_id</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_one("profile")</code></td>
+                    <td class="py-3 px-4 text-gray-400">Profile</td>
+                    <td class="py-3 px-4 text-gray-400">profiles</td>
+                    <td class="py-3 px-4 text-gray-400">user_id</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">belongs_to("user")</code></td>
+                    <td class="py-3 px-4 text-gray-400">User</td>
+                    <td class="py-3 px-4 text-gray-400">users</td>
+                    <td class="py-3 px-4 text-gray-400">user_id</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-6">Override defaults with an options hash:</p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Post < Model
+    belongs_to("author", { "class_name": "User", "foreign_key": "author_id" })
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Eager Loading (includes)</h3>
+    <p class="text-gray-400 mb-4">Preload related records to avoid N+1 queries. Uses LET subqueries with MERGE:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Load users with their posts and profiles in a single query
+let users = User.includes("posts", "profile").all
+
+# Combine with where clauses
+let active = User.where("active = @a", { "a": true }).includes("posts").first
+
+# Inspect the generated query
+print(User.includes("posts").to_query)
+# => FOR doc IN users LET _rel_posts = (...) RETURN MERGE(doc, {posts: _rel_posts})</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
+        <p class="text-indigo-300 text-sm">
+            <code>has_many</code> includes return an array. <code>has_one</code> and <code>belongs_to</code> includes return a single document (via <code>FIRST()</code>).
+        </p>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Join Filtering</h3>
+    <p class="text-gray-400 mb-4">Filter records by the existence of related records. Unlike <code>includes</code>, <code>join</code> does <strong class="text-white">not</strong> preload the related data:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Find users who have at least one post
+let users_with_posts = User.join("posts").all
+
+# Find users who have published posts
+let count = User.join("posts", "published = @p", { "p": true }).count
+
+# Chain with other query methods
+let recent = User.join("posts").order("created_at", "desc").limit(10).all</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Manual Relationships</h3>
+    <p class="text-gray-400 mb-4">You can also implement relationships as custom methods for more control:</p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
@@ -382,7 +527,6 @@ end</code></pre>
 end
 
 class User < Model
-    # Returns a QueryBuilder for chaining
     def posts
         Post.where("doc.author_id == @id", { "id": this.id })
     end
@@ -427,6 +571,14 @@ queries:</p>
                     <td class="py-3 px-4"><code class="text-indigo-300">User.count</code></td>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users COLLECT WITH COUNT INTO count RETURN count</code></td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.includes("posts")</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.join("posts")</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER LENGTH(FOR rel IN posts FILTER rel.user_id == doc._key LIMIT 1 RETURN 1) > 0 RETURN doc</code></td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -438,6 +590,7 @@ queries:</p>
             <li><code>FILTER expression</code> instead of <code>WHERE</code></li>
             <li><code>SORT doc.field ASC/DESC</code> instead of <code>ORDER BY</code></li>
             <li><code>@variable</code> syntax for bind parameters</li>
+            <li><code>LET</code> subqueries + <code>MERGE</code> for eager loading</li>
         </ul>
     </div>
 
@@ -447,6 +600,9 @@ queries:</p>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># app/models/user.sl
 class User < Model
+    has_many("posts")
+    has_one("profile")
+
     validates("email", { "presence": true, "uniqueness": true })
     validates("name", { "presence": true, "min_length": 2 })
 
@@ -454,10 +610,6 @@ class User < Model
 
     def normalize_email
         this.email = this.email.downcase()
-end
-
-    def posts
-        Post.where("doc.user_id == @id", { "id": this.id })
     end
 
     def is_adult -> Bool
@@ -465,28 +617,46 @@ end
     end
 end
 
+# app/models/post.sl
+class Post < Model
+    belongs_to("user")
+    has_many("comments")
+
+    validates("title", { "presence": true, "min_length": 3 })
+end
+
 # Usage in controller
 class UsersController < Controller
     def index(req: Any)
-        let users = User.all
+        # Eager load posts and profiles to avoid N+1 queries
+        let users = User.includes("posts", "profile").all
         render("users/index", { "users": users })
     end
 
     def show(req: Any)
         let id = req["params"]["id"]
-        let user = User.find(id)
-        let posts = user.posts().order("created_at", "desc").limit(5).all
-        render("users/show", { "user": user, "posts": posts })
+        let user = User.includes("posts").find(id)
+        render("users/show", { "user": user })
+    end
+
+    def active(req: Any)
+        # Find active users who have at least one post
+        let users = User.join("posts")
+            .where("active = @a", { "a": true })
+            .order("created_at", "desc")
+            .limit(10)
+            .all
+        render("users/active", { "users": users })
     end
 
     def create(req: Any)
-let result = User.create({
+        let result = User.create({
             "name": req["params"]["name"],
             "email": req["params"]["email"]
         })
         if result["valid"]
             return redirect("/users/" + result["record"]["id"])
-else
+        else
             render("users/new", { "errors": result["errors"] })
         end
     end
@@ -507,7 +677,9 @@ end</code></pre>
             <li><strong>Add validations</strong> - Validate data before it reaches the database</li>
             <li><strong>Use callbacks wisely</strong> - Keep them focused and avoid heavy operations</li>
             <li><strong>Add custom methods</strong> - Encapsulate business logic in model methods</li>
-            <li><strong>Use relationships</strong> - Create methods that return related models</li>
+            <li><strong>Declare relationships</strong> - Use <code>has_many</code>, <code>has_one</code>, <code>belongs_to</code> for associations</li>
+            <li><strong>Use <code>includes</code> for eager loading</strong> - Avoid N+1 queries when accessing related data</li>
+            <li><strong>Use <code>join</code> for filtering</strong> - When you only need to filter by existence, not preload</li>
             <li><strong>Use migrations in production</strong> - Define indexes and schema for optimal performance</li>
         </ul>
     </div>

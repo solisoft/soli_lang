@@ -803,6 +803,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "int",
     },
     MethodDef {
+        name: "parse_json",
+        zero_arg: true,
+        ret: "hash",
+    },
+    MethodDef {
         name: "to_s",
         zero_arg: true,
         ret: "string",
@@ -1016,6 +1021,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "to_json",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "to_string",
         zero_arg: true,
         ret: "string",
@@ -1169,6 +1179,11 @@ pub const HASH_METHODS: &[MethodDef] = &[
         ret: "hash",
     },
     MethodDef {
+        name: "to_json",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "to_string",
         zero_arg: true,
         ret: "string",
@@ -1217,6 +1232,11 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "includes",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
         name: "inspect",
         zero_arg: true,
         ret: "string",
@@ -1225,6 +1245,11 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         name: "is_a?",
         zero_arg: false,
         ret: "bool",
+    },
+    MethodDef {
+        name: "join",
+        zero_arg: false,
+        ret: "",
     },
     MethodDef {
         name: "limit",

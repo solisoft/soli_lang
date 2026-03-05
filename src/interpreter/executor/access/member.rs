@@ -335,7 +335,7 @@ impl Interpreter {
             | "sort_by" | "reverse" | "uniq" | "compact" | "flatten" | "first" | "last"
             | "empty?" | "include?" | "contains" | "sample" | "shuffle" | "take" | "drop"
             | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string"
-            | "join" | "is_a?" => Ok(Value::Method(ValueMethod {
+            | "to_json" | "join" | "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
@@ -369,8 +369,8 @@ impl Interpreter {
         match name {
             "length" | "len" | "map" | "filter" | "each" | "get" | "fetch" | "invert"
             | "transform_values" | "transform_keys" | "select" | "reject" | "slice" | "except"
-            | "compact" | "dig" | "to_string" | "keys" | "values" | "has_key" | "delete"
-            | "merge" | "entries" | "clear" | "set" | "empty?" | "is_a?" => {
+            | "compact" | "dig" | "to_string" | "to_json" | "keys" | "values" | "has_key"
+            | "delete" | "merge" | "entries" | "clear" | "set" | "empty?" | "is_a?" => {
                 Ok(Value::Method(ValueMethod {
                     receiver: Box::new(obj_val),
                     method_name: name.to_string(),
@@ -404,13 +404,11 @@ impl Interpreter {
         }
         // Handle QueryBuilder methods for chaining
         match name {
-            "where" | "order" | "limit" | "offset" | "all" | "first" | "count" | "to_query"
-            | "is_a?" => {
-                Ok(Value::Method(ValueMethod {
-                    receiver: Box::new(obj_val),
-                    method_name: name.to_string(),
-                }))
-            }
+            "where" | "order" | "limit" | "offset" | "includes" | "join" | "all" | "first"
+            | "count" | "to_query" | "is_a?" => Ok(Value::Method(ValueMethod {
+                receiver: Box::new(obj_val),
+                method_name: name.to_string(),
+            })),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "QueryBuilder".to_string(),
                 property: name.to_string(),
@@ -457,7 +455,7 @@ impl Interpreter {
             | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
             | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
             | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"
-            | "truncate"
+            | "truncate" | "parse_json"
             // Universal method with args
             | "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),

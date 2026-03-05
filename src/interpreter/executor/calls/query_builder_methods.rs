@@ -25,6 +25,8 @@ impl Interpreter {
             "order" => self.qb_order(qb, arguments, span),
             "limit" => self.qb_limit(qb, arguments, span),
             "offset" => self.qb_offset(qb, arguments, span),
+            "includes" => self.qb_includes(qb, arguments, span),
+            "join" => self.qb_join(qb, arguments, span),
             "all" => self.qb_all(qb, arguments, span),
             "first" => self.qb_first(qb, arguments, span),
             "count" => self.qb_count(qb, arguments, span),
@@ -179,6 +181,105 @@ impl Interpreter {
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 
+    fn qb_includes(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() {
+            return Err(RuntimeError::type_error(
+                "includes() requires at least one relation name",
+                span,
+            ));
+        }
+
+        let mut new_qb = qb.borrow().clone();
+        let class_name = crate::interpreter::symbol_string(new_qb.class_name)
+            .unwrap_or("unknown")
+            .to_string();
+
+        for arg in &arguments {
+            let rel_name = match arg {
+                Value::String(s) => s.clone(),
+                _ => {
+                    return Err(RuntimeError::type_error(
+                        "includes() expects string relation names",
+                        span,
+                    ))
+                }
+            };
+            let rel = crate::interpreter::builtins::model::get_relation(&class_name, &rel_name)
+                .ok_or_else(|| RuntimeError::General {
+                    message: format!("No relation '{}' defined on {}", rel_name, class_name),
+                    span,
+                })?;
+            new_qb.add_include(rel_name, rel);
+        }
+
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    fn qb_join(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() || arguments.len() > 3 {
+            return Err(RuntimeError::type_error(
+                "join() expects 1-3 arguments: relation name, optional filter, optional bind vars",
+                span,
+            ));
+        }
+
+        let rel_name = match &arguments[0] {
+            Value::String(s) => s.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "join() expects string relation name",
+                    span,
+                ))
+            }
+        };
+
+        let mut new_qb = qb.borrow().clone();
+        let class_name = crate::interpreter::symbol_string(new_qb.class_name)
+            .unwrap_or("unknown")
+            .to_string();
+
+        let rel = crate::interpreter::builtins::model::get_relation(&class_name, &rel_name)
+            .ok_or_else(|| RuntimeError::General {
+                message: format!("No relation '{}' defined on {}", rel_name, class_name),
+                span,
+            })?;
+
+        let filter = match arguments.get(1) {
+            Some(Value::String(s)) => Some(s.clone()),
+            _ => None,
+        };
+
+        let bind_vars = match arguments.get(2) {
+            Some(Value::Hash(hash)) => {
+                let mut map = std::collections::HashMap::new();
+                for (k, v) in hash.borrow().iter() {
+                    if let crate::interpreter::value::HashKey::String(key) = k {
+                        map.insert(
+                            key.clone(),
+                            crate::interpreter::builtins::model::value_to_json(v)
+                                .map_err(|e| RuntimeError::General { message: e, span })?,
+                        );
+                    }
+                }
+                map
+            }
+            _ => std::collections::HashMap::new(),
+        };
+
+        new_qb.add_join(rel_name, rel, filter, bind_vars);
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
     fn qb_all(
         &mut self,
         qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
@@ -228,7 +329,10 @@ impl Interpreter {
         if bind_vars.is_empty() {
             Ok(Value::String(query))
         } else {
-            Ok(Value::String(format!("{} | bind_vars: {:?}", query, bind_vars)))
+            Ok(Value::String(format!(
+                "{} | bind_vars: {:?}",
+                query, bind_vars
+            )))
         }
     }
 }

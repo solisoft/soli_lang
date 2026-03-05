@@ -204,6 +204,17 @@ impl ClassType {
         }
         None
     }
+
+    /// Check if this class extends Model (directly or transitively).
+    pub fn extends_model(&self) -> bool {
+        if self.name == "Model" {
+            return true;
+        }
+        if let Some(ref super_) = self.superclass {
+            return super_.name == "Model" || super_.extends_model();
+        }
+        false
+    }
 }
 
 /// Field information.

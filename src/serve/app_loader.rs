@@ -77,8 +77,6 @@ pub(crate) fn load_middleware(
         return Ok(());
     }
 
-    println!("Loading middleware:");
-
     for middleware_path in middleware_files {
         // Track file for hot reload
         file_tracker.track(&middleware_path);
@@ -109,24 +107,6 @@ pub(crate) fn load_middleware(
                     ),
                     span: Span::default(),
                 })?;
-
-            let flags = if global_only {
-                " [global_only]".to_string()
-            } else if scope_only {
-                " [scope_only]".to_string()
-            } else {
-                "".to_string()
-            };
-            println!(
-                "  [{}] {} (order: {}){}",
-                middleware_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown"),
-                func_name,
-                order,
-                flags
-            );
 
             register_middleware_with_options(
                 &func_name,

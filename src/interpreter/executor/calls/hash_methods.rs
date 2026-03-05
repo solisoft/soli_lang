@@ -38,6 +38,12 @@ impl Interpreter {
             "dig" => self.hash_dig(entries, arguments, span),
             "length" | "len" => self.hash_length(entries, arguments, span),
             "to_string" => self.hash_to_string(entries, arguments, span),
+            "to_json" => {
+                match crate::interpreter::value::stringify_hash_entries_to_string(entries) {
+                    Ok(json) => Ok(Value::String(json)),
+                    Err(e) => Err(RuntimeError::General { message: e, span }),
+                }
+            }
             "keys" => self.hash_keys(entries, arguments, span),
             "values" => self.hash_values(entries, arguments, span),
             "has_key" => self.hash_has_key(entries, arguments, span),

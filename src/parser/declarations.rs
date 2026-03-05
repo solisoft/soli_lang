@@ -302,6 +302,9 @@ impl Parser {
                 "after_update",
                 "before_delete",
                 "after_delete",
+                "has_many",
+                "has_one",
+                "belongs_to",
             ];
             if class_level_names.contains(&name.as_str()) {
                 // Look ahead for left paren

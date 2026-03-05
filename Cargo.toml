@@ -1,6 +1,6 @@
 [package]
 name = "solilang"
-version = "0.37.2"
+version = "0.38.0"
 edition = "2021"
 description = "A dynamically-typed, class-based OOP language with optional type annotations and pipeline operators"
 authors = ["Solilang Team"]
@@ -41,6 +41,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "coo
 ureq = { version = "2.9", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sonic-rs = "0.3"
 itoa = "1"
 ryu = "1"
 

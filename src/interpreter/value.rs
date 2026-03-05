@@ -12,7 +12,7 @@ use ahash::RandomState as AHasher;
 use indexmap::IndexMap;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
-use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
+use serde::ser::{SerializeMap, SerializeSeq};
 
 use crate::ast::{Expr, FunctionDecl, MethodDecl, Parameter, Stmt, TypeAnnotation};
 use crate::interpreter::builtins::model::QueryBuilder;
@@ -1044,264 +1044,377 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
     }
 }
 
-/// Write a JSON-escaped string (RFC 8259) directly to a buffer.
-#[inline]
-fn write_json_string(s: &str, buf: &mut String) {
-    buf.push('"');
-    // Fast path: if no byte needs escaping, push the whole string at once
-    if !s
-        .as_bytes()
-        .iter()
-        .any(|&b| b < 0x20 || b == b'"' || b == b'\\')
-    {
-        buf.push_str(s);
-    } else {
-        write_json_string_escaped(s, buf);
-    }
-    buf.push('"');
-}
-
-#[cold]
-fn write_json_string_escaped(s: &str, buf: &mut String) {
-    let bytes = s.as_bytes();
-    let mut start = 0;
-    for (i, &b) in bytes.iter().enumerate() {
-        let escape = match b {
-            b'"' => "\\\"",
-            b'\\' => "\\\\",
-            b'\n' => "\\n",
-            b'\r' => "\\r",
-            b'\t' => "\\t",
-            0x08 => "\\b",
-            0x0C => "\\f",
-            b if b < 0x20 => {
-                if start < i {
-                    buf.push_str(&s[start..i]);
+/// Implement serde::Serialize for Value to leverage serde_json's optimized writer.
+impl serde::Serialize for Value {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Value::Null => serializer.serialize_unit(),
+            Value::Bool(b) => serializer.serialize_bool(*b),
+            Value::Int(n) => serializer.serialize_i64(*n),
+            Value::Float(f) => serializer.serialize_f64(*f),
+            Value::Decimal(d) => serializer.serialize_str(&d.to_string()),
+            Value::String(s) => serializer.serialize_str(s),
+            Value::Array(arr) => {
+                let borrow = arr.borrow();
+                let mut seq = serializer.serialize_seq(Some(borrow.len()))?;
+                for v in borrow.iter() {
+                    seq.serialize_element(v)?;
                 }
-                let hex = [
-                    b'\\',
-                    b'u',
-                    b'0',
-                    b'0',
-                    HEX_DIGITS[(b >> 4) as usize],
-                    HEX_DIGITS[(b & 0x0F) as usize],
-                ];
-                // SAFETY: hex is always valid ASCII/UTF-8
-                buf.push_str(unsafe { std::str::from_utf8_unchecked(&hex) });
-                start = i + 1;
-                continue;
+                seq.end()
             }
-            _ => {
-                continue;
-            }
-        };
-        if start < i {
-            buf.push_str(&s[start..i]);
-        }
-        buf.push_str(escape);
-        start = i + 1;
-    }
-    if start < bytes.len() {
-        buf.push_str(&s[start..]);
-    }
-}
-
-const HEX_DIGITS: [u8; 16] = *b"0123456789abcdef";
-
-/// Recursively serialize a Value directly to a JSON string buffer.
-fn stringify_value(value: &Value, buf: &mut String) -> Result<(), String> {
-    match value {
-        Value::Null => buf.push_str("null"),
-        Value::Bool(true) => buf.push_str("true"),
-        Value::Bool(false) => buf.push_str("false"),
-        Value::Int(n) => {
-            let mut b = itoa::Buffer::new();
-            buf.push_str(b.format(*n));
-        }
-        Value::Float(f) => {
-            if !f.is_finite() {
-                return Err("Cannot convert non-finite float to JSON".to_string());
-            }
-            let mut b = ryu::Buffer::new();
-            buf.push_str(b.format(*f));
-        }
-        Value::Decimal(d) => write_json_string(&d.to_string(), buf),
-        Value::String(s) => write_json_string(s, buf),
-        Value::Array(arr) => {
-            buf.push('[');
-            let borrow = arr.borrow();
-            for (i, v) in borrow.iter().enumerate() {
-                if i > 0 {
-                    buf.push(',');
-                }
-                stringify_value(v, buf)?;
-            }
-            buf.push(']');
-        }
-        Value::Hash(hash) => {
-            buf.push('{');
-            let borrow = hash.borrow();
-            let mut first = true;
-            for (k, v) in borrow.iter() {
-                if let HashKey::String(key) = k {
-                    if !first {
-                        buf.push(',');
+            Value::Hash(hash) => {
+                let borrow = hash.borrow();
+                let mut map = serializer.serialize_map(Some(borrow.len()))?;
+                for (k, v) in borrow.iter() {
+                    if let HashKey::String(key) = k {
+                        map.serialize_entry(key, v)?;
                     }
-                    first = false;
-                    write_json_string(key, buf);
-                    buf.push(':');
-                    stringify_value(v, buf)?;
                 }
+                map.end()
             }
-            buf.push('}');
-        }
-        Value::Instance(inst) => {
-            buf.push('{');
-            let borrow = inst.borrow();
-            let mut first = true;
-            for (k, v) in borrow.fields.iter() {
-                if !first {
-                    buf.push(',');
+            Value::Instance(inst) => {
+                let borrow = inst.borrow();
+                let mut map = serializer.serialize_map(Some(borrow.fields.len()))?;
+                for (k, v) in borrow.fields.iter() {
+                    map.serialize_entry(k, v)?;
                 }
-                first = false;
-                write_json_string(k, buf);
-                buf.push(':');
-                stringify_value(v, buf)?;
+                map.end()
             }
-            buf.push('}');
+            _ => Err(serde::ser::Error::custom(format!(
+                "Cannot convert {} to JSON",
+                self.type_name()
+            ))),
         }
-        _ => return Err(format!("Cannot convert {} to JSON", value.type_name())),
     }
-    Ok(())
 }
 
-/// Serialize a Value directly to a JSON string — no intermediate serde_json::Value.
+/// Serialize a Value to a JSON string using sonic-rs SIMD-accelerated writer.
+#[inline]
 pub fn stringify_to_string(value: &Value) -> Result<String, String> {
-    let mut buf = String::with_capacity(256);
-    stringify_value(value, &mut buf)?;
-    Ok(buf)
+    let bytes = sonic_rs::to_vec(value).map_err(|e| e.to_string())?;
+    // SAFETY: JSON serializers always produce valid UTF-8
+    Ok(unsafe { String::from_utf8_unchecked(bytes) })
 }
 
-/// Direct JSON parsing — builds Value without intermediate serde_json::Value tree.
+/// Serialize an array slice to JSON without cloning into a Value.
+#[inline]
+pub fn stringify_array_to_string(items: &[Value]) -> Result<String, String> {
+    let bytes = sonic_rs::to_vec(items).map_err(|e| e.to_string())?;
+    Ok(unsafe { String::from_utf8_unchecked(bytes) })
+}
+
+/// Wrapper for serializing hash entries (slice of key-value pairs) directly.
+pub struct HashEntrySlice<'a>(pub &'a [(HashKey, Value)]);
+
+impl serde::Serialize for HashEntrySlice<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (k, v) in self.0 {
+            if let HashKey::String(key) = k {
+                map.serialize_entry(key, v)?;
+            }
+        }
+        map.end()
+    }
+}
+
+/// Serialize hash entries to JSON without cloning into a Value.
+#[inline]
+pub fn stringify_hash_entries_to_string(entries: &[(HashKey, Value)]) -> Result<String, String> {
+    let bytes = sonic_rs::to_vec(&HashEntrySlice(entries)).map_err(|e| e.to_string())?;
+    Ok(unsafe { String::from_utf8_unchecked(bytes) })
+}
+
+/// Fast i64 parsing — avoids the overhead of str::parse for the common case.
+#[inline(always)]
+fn fast_parse_i64(b: &[u8]) -> Value {
+    let (neg, start) = if b[0] == b'-' { (true, 1) } else { (false, 0) };
+    let mut n: i64 = 0;
+    let mut i = start;
+    while i < b.len() {
+        let d = (b[i] - b'0') as i64;
+        match n.checked_mul(10).and_then(|n| n.checked_add(d)) {
+            Some(v) => n = v,
+            None => {
+                // Overflow — fall back to f64
+                let s = unsafe { std::str::from_utf8_unchecked(b) };
+                return Value::Float(s.parse::<f64>().unwrap_or(0.0));
+            }
+        }
+        i += 1;
+    }
+    Value::Int(if neg { -n } else { n })
+}
+
+/// Hand-rolled JSON parser — builds Value directly in one pass.
+/// No serde, no intermediate tree, no trait dispatch overhead.
 pub fn parse_json(s: &str) -> Result<Value, String> {
-    let mut deserializer = serde_json::Deserializer::from_str(s);
-    let value = ValueDeserializeSeed
-        .deserialize(&mut deserializer)
-        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
-    deserializer
-        .end()
-        .map_err(|e| format!("Trailing JSON content: {}", e))?;
+    let bytes = s.as_bytes();
+    let mut pos = 0;
+    let value = parse_value(bytes, &mut pos)?;
+    skip_ws(bytes, &mut pos);
+    if pos < bytes.len() {
+        return Err(format!("Trailing content at position {}", pos));
+    }
     Ok(value)
 }
 
-struct ValueDeserializeSeed;
-
-impl<'de> DeserializeSeed<'de> for ValueDeserializeSeed {
-    type Value = Value;
-
-    #[inline]
-    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
-        deserializer.deserialize_any(ValueVisitor)
+/// Parse JSON from bytes.
+pub fn parse_json_bytes(bytes: &[u8]) -> Result<Value, String> {
+    let mut pos = 0;
+    let value = parse_value(bytes, &mut pos)?;
+    skip_ws(bytes, &mut pos);
+    if pos < bytes.len() {
+        return Err(format!("Trailing content at position {}", pos));
     }
+    Ok(value)
 }
 
-struct ValueVisitor;
-
-impl<'de> Visitor<'de> for ValueVisitor {
-    type Value = Value;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("any JSON value")
-    }
-
-    #[inline]
-    fn visit_bool<E: de::Error>(self, v: bool) -> Result<Value, E> {
-        Ok(Value::Bool(v))
-    }
-
-    #[inline]
-    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Value, E> {
-        Ok(Value::Int(v))
-    }
-
-    #[inline]
-    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Value, E> {
-        Ok(Value::Int(v as i64))
-    }
-
-    #[inline]
-    fn visit_f64<E: de::Error>(self, v: f64) -> Result<Value, E> {
-        Ok(Value::Float(v))
-    }
-
-    #[inline]
-    fn visit_str<E: de::Error>(self, v: &str) -> Result<Value, E> {
-        Ok(Value::String(v.to_owned()))
-    }
-
-    #[inline]
-    fn visit_string<E: de::Error>(self, v: String) -> Result<Value, E> {
-        Ok(Value::String(v))
-    }
-
-    #[inline]
-    fn visit_none<E: de::Error>(self) -> Result<Value, E> {
-        Ok(Value::Null)
-    }
-
-    #[inline]
-    fn visit_unit<E: de::Error>(self) -> Result<Value, E> {
-        Ok(Value::Null)
-    }
-
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
-        let mut items = Vec::with_capacity(seq.size_hint().unwrap_or(0));
-        while let Some(v) = seq.next_element_seed(ValueDeserializeSeed)? {
-            items.push(v);
+#[inline(always)]
+fn skip_ws(b: &[u8], pos: &mut usize) {
+    while *pos < b.len() {
+        match b[*pos] {
+            b' ' | b'\t' | b'\n' | b'\r' => *pos += 1,
+            _ => break,
         }
-        Ok(Value::Array(Rc::new(RefCell::new(items))))
     }
+}
 
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
-        let mut pairs =
-            HashPairs::with_capacity_and_hasher(map.size_hint().unwrap_or(0), AHasher::default());
-        while let Some(k) = map.next_key_seed(HashKeySeed)? {
-            let v = map.next_value_seed(ValueDeserializeSeed)?;
-            pairs.insert(k, v);
+#[inline(always)]
+fn peek(b: &[u8], pos: &mut usize) -> Result<u8, String> {
+    skip_ws(b, pos);
+    if *pos < b.len() {
+        Ok(b[*pos])
+    } else {
+        Err("Unexpected end of JSON".to_string())
+    }
+}
+
+fn parse_value(b: &[u8], pos: &mut usize) -> Result<Value, String> {
+    match peek(b, pos)? {
+        b'"' => parse_string(b, pos).map(Value::String),
+        b'{' => parse_object(b, pos),
+        b'[' => parse_array(b, pos),
+        b't' => parse_literal(b, pos, b"true", Value::Bool(true)),
+        b'f' => parse_literal(b, pos, b"false", Value::Bool(false)),
+        b'n' => parse_literal(b, pos, b"null", Value::Null),
+        b'-' | b'0'..=b'9' => parse_number(b, pos),
+        c => Err(format!(
+            "Unexpected character '{}' at position {}",
+            c as char, *pos
+        )),
+    }
+}
+
+#[inline]
+fn parse_literal(
+    b: &[u8],
+    pos: &mut usize,
+    expected: &[u8],
+    value: Value,
+) -> Result<Value, String> {
+    if b[*pos..].starts_with(expected) {
+        *pos += expected.len();
+        Ok(value)
+    } else {
+        Err(format!("Invalid literal at position {}", *pos))
+    }
+}
+
+fn parse_number(b: &[u8], pos: &mut usize) -> Result<Value, String> {
+    let start = *pos;
+    let mut is_float = false;
+
+    if *pos < b.len() && b[*pos] == b'-' {
+        *pos += 1;
+    }
+    if *pos >= b.len() || !b[*pos].is_ascii_digit() {
+        return Err(format!("Invalid number at position {}", start));
+    }
+    if b[*pos] == b'0' {
+        *pos += 1;
+    } else {
+        while *pos < b.len() && b[*pos].is_ascii_digit() {
+            *pos += 1;
         }
-        Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
+    }
+    if *pos < b.len() && b[*pos] == b'.' {
+        is_float = true;
+        *pos += 1;
+        if *pos >= b.len() || !b[*pos].is_ascii_digit() {
+            return Err(format!("Invalid number at position {}", start));
+        }
+        while *pos < b.len() && b[*pos].is_ascii_digit() {
+            *pos += 1;
+        }
+    }
+    if *pos < b.len() && (b[*pos] == b'e' || b[*pos] == b'E') {
+        is_float = true;
+        *pos += 1;
+        if *pos < b.len() && (b[*pos] == b'+' || b[*pos] == b'-') {
+            *pos += 1;
+        }
+        if *pos >= b.len() || !b[*pos].is_ascii_digit() {
+            return Err(format!("Invalid number at position {}", start));
+        }
+        while *pos < b.len() && b[*pos].is_ascii_digit() {
+            *pos += 1;
+        }
+    }
+
+    // SAFETY: We only advanced past ASCII digits, '.', 'e', 'E', '+', '-'
+    let num_str = unsafe { std::str::from_utf8_unchecked(&b[start..*pos]) };
+
+    if is_float {
+        num_str
+            .parse::<f64>()
+            .map(Value::Float)
+            .map_err(|e| format!("Invalid float: {}", e))
+    } else {
+        // Fast path: hand-rolled i64 parse for common case
+        Ok(fast_parse_i64(num_str.as_bytes()))
     }
 }
 
-/// Deserialize JSON object keys directly into HashKey (avoids intermediate String).
-struct HashKeySeed;
+fn parse_string(b: &[u8], pos: &mut usize) -> Result<String, String> {
+    *pos += 1; // skip opening '"'
+    let start = *pos;
 
-impl<'de> DeserializeSeed<'de> for HashKeySeed {
-    type Value = HashKey;
+    // Fast path: scan for end quote with no escapes using memchr-style scan
+    while *pos < b.len() {
+        let c = b[*pos];
+        if c == b'"' {
+            // No escapes found — direct allocation from slice
+            let s = unsafe { String::from_utf8_unchecked(b[start..*pos].to_vec()) };
+            *pos += 1;
+            return Ok(s);
+        }
+        if c == b'\\' {
+            break; // has escapes, use slow path
+        }
+        *pos += 1;
+    }
 
-    #[inline]
-    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<HashKey, D::Error> {
-        deserializer.deserialize_str(HashKeyVisitor)
+    // Slow path: build string with escape handling
+    let mut result = String::from(unsafe { std::str::from_utf8_unchecked(&b[start..*pos]) });
+    while *pos < b.len() {
+        match b[*pos] {
+            b'"' => {
+                *pos += 1;
+                return Ok(result);
+            }
+            b'\\' => {
+                *pos += 1;
+                if *pos >= b.len() {
+                    return Err("Unterminated string escape".to_string());
+                }
+                match b[*pos] {
+                    b'"' => result.push('"'),
+                    b'\\' => result.push('\\'),
+                    b'/' => result.push('/'),
+                    b'n' => result.push('\n'),
+                    b'r' => result.push('\r'),
+                    b't' => result.push('\t'),
+                    b'b' => result.push('\u{08}'),
+                    b'f' => result.push('\u{0C}'),
+                    b'u' => {
+                        *pos += 1;
+                        let cp = parse_hex4(b, pos)?;
+                        if (0xD800..=0xDBFF).contains(&cp) {
+                            // High surrogate — expect \uXXXX low surrogate
+                            if *pos + 1 < b.len() && b[*pos] == b'\\' && b[*pos + 1] == b'u' {
+                                *pos += 2;
+                                let low = parse_hex4(b, pos)?;
+                                if !(0xDC00..=0xDFFF).contains(&low) {
+                                    return Err("Invalid surrogate pair".to_string());
+                                }
+                                let cp =
+                                    0x10000 + ((cp as u32 - 0xD800) << 10) + (low as u32 - 0xDC00);
+                                result.push(char::from_u32(cp).ok_or("Invalid Unicode")?);
+                            } else {
+                                return Err("Missing low surrogate".to_string());
+                            }
+                        } else {
+                            result.push(
+                                char::from_u32(cp as u32).ok_or("Invalid Unicode codepoint")?,
+                            );
+                        }
+                        continue; // parse_hex4 already advanced pos
+                    }
+                    c => return Err(format!("Invalid escape \\{}", c as char)),
+                }
+                *pos += 1;
+            }
+            _ => {
+                result.push(b[*pos] as char);
+                *pos += 1;
+            }
+        }
+    }
+    Err("Unterminated string".to_string())
+}
+
+#[inline]
+fn parse_hex4(b: &[u8], pos: &mut usize) -> Result<u16, String> {
+    if *pos + 4 > b.len() {
+        return Err("Invalid \\u escape".to_string());
+    }
+    let hex = unsafe { std::str::from_utf8_unchecked(&b[*pos..*pos + 4]) };
+    let val = u16::from_str_radix(hex, 16).map_err(|_| "Invalid hex in \\u escape".to_string())?;
+    *pos += 4;
+    Ok(val)
+}
+
+fn parse_array(b: &[u8], pos: &mut usize) -> Result<Value, String> {
+    *pos += 1; // skip '['
+    if peek(b, pos)? == b']' {
+        *pos += 1;
+        return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
+    }
+    let mut items = Vec::with_capacity(8);
+    loop {
+        items.push(parse_value(b, pos)?);
+        match peek(b, pos)? {
+            b',' => *pos += 1,
+            b']' => {
+                *pos += 1;
+                return Ok(Value::Array(Rc::new(RefCell::new(items))));
+            }
+            _ => return Err(format!("Expected ',' or ']' at position {}", *pos)),
+        }
     }
 }
 
-struct HashKeyVisitor;
-
-impl<'de> Visitor<'de> for HashKeyVisitor {
-    type Value = HashKey;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("a string key")
+fn parse_object(b: &[u8], pos: &mut usize) -> Result<Value, String> {
+    *pos += 1; // skip '{'
+    if peek(b, pos)? == b'}' {
+        *pos += 1;
+        return Ok(Value::Hash(Rc::new(RefCell::new(HashPairs::with_hasher(
+            AHasher::default(),
+        )))));
     }
-
-    #[inline]
-    fn visit_str<E: de::Error>(self, v: &str) -> Result<HashKey, E> {
-        Ok(HashKey::String(v.to_owned()))
-    }
-
-    #[inline]
-    fn visit_string<E: de::Error>(self, v: String) -> Result<HashKey, E> {
-        Ok(HashKey::String(v))
+    // Pre-allocate for typical JSON objects (6 fields)
+    let mut pairs = HashPairs::with_capacity_and_hasher(6, AHasher::default());
+    loop {
+        if peek(b, pos)? != b'"' {
+            return Err(format!("Expected string key at position {}", *pos));
+        }
+        let key = parse_string(b, pos)?;
+        if peek(b, pos)? != b':' {
+            return Err(format!("Expected ':' at position {}", *pos));
+        }
+        *pos += 1;
+        let value = parse_value(b, pos)?;
+        pairs.insert(HashKey::String(key), value);
+        match peek(b, pos)? {
+            b',' => *pos += 1,
+            b'}' => {
+                *pos += 1;
+                return Ok(Value::Hash(Rc::new(RefCell::new(pairs))));
+            }
+            _ => return Err(format!("Expected ',' or '}}' at position {}", *pos)),
+        }
     }
 }
 

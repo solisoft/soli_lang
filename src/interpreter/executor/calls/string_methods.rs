@@ -87,6 +87,12 @@ impl Interpreter {
             "join" => Ok(Value::String(s.to_string())),
             "empty?" => self.string_empty(s, arguments, span),
             "include?" => self.string_include(s, arguments, span),
+            "parse_json" => match crate::interpreter::value::parse_json(s) {
+                Ok(value) => Ok(value),
+                Err(_) => Ok(Value::Hash(Rc::new(RefCell::new(
+                    indexmap::IndexMap::with_hasher(ahash::RandomState::new()),
+                )))),
+            },
             "is_a?" => {
                 if arguments.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));

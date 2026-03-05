@@ -81,6 +81,49 @@
 //! - `before_create`, `after_create`
 //! - `before_update`, `after_update`
 //! - `before_delete`, `after_delete`
+//!
+//! # Relationships
+//!
+//! Declare associations using `has_many`, `has_one`, and `belongs_to`:
+//!
+//! ```soli
+//! class User extends Model {
+//!     has_many("posts")
+//!     has_one("profile")
+//! }
+//!
+//! class Post extends Model {
+//!     belongs_to("user")
+//!     has_many("comments")
+//! }
+//! ```
+//!
+//! Naming conventions (overridable via options hash):
+//! - `has_many("posts")` → class `Post`, collection `posts`, FK `user_id`
+//! - `has_one("profile")` → class `Profile`, collection `profiles`, FK `user_id`
+//! - `belongs_to("user")` → class `User`, collection `users`, FK `user_id`
+//!
+//! # Eager Loading (includes)
+//!
+//! Preload related records to avoid N+1 queries:
+//!
+//! ```soli
+//! User.includes("posts", "profile").all()
+//! User.where("active = @a", { "a": true }).includes("posts").first()
+//! ```
+//!
+//! Generated SDBQL uses LET subqueries + MERGE:
+//! - `User.includes("posts")` →
+//!   `FOR doc IN users LET _rel_posts = (...) RETURN MERGE(doc, {posts: _rel_posts})`
+//!
+//! # Join Filtering
+//!
+//! Filter by existence of related records (no preloading):
+//!
+//! ```soli
+//! User.join("posts").all()                                 // users who have posts
+//! User.join("posts", "published = @p", { "p": true }).count()  // users with published posts
+//! ```
 
 pub mod callbacks;
 pub mod core;
@@ -99,7 +142,12 @@ pub use crud::{
     exec_auto_collection_with_binds, exec_db_json, json_to_value,
 };
 pub use query::{
-    execute_query_builder, execute_query_builder_count, execute_query_builder_first, QueryBuilder,
+    execute_query_builder, execute_query_builder_count, execute_query_builder_first, IncludeClause,
+    JoinClause, QueryBuilder,
+};
+pub use relations::{
+    build_relation, classify, get_relation, get_relations, register_relation, singularize,
+    RelationDef, RelationType,
 };
 pub use validation::{
     build_validation_result, register_validation, run_validations, ValidationError, ValidationRule,

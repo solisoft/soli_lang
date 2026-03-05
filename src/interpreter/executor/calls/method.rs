@@ -186,6 +186,10 @@ impl Interpreter {
             "get" => self.array_get(items, arguments, span),
             "length" => self.array_length(items, arguments, span),
             "to_string" => self.array_to_string(items, arguments, span),
+            "to_json" => match crate::interpreter::value::stringify_array_to_string(items) {
+                Ok(json) => Ok(Value::String(json)),
+                Err(e) => Err(RuntimeError::General { message: e, span }),
+            },
             "join" => self.array_join(items, arguments, span),
             "is_a?" => {
                 if arguments.len() != 1 {

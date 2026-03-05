@@ -7,7 +7,7 @@ mod statements;
 use crate::ast::*;
 use crate::error::TypeError;
 use crate::types::environment::TypeEnvironment;
-use crate::types::type_repr::Type;
+use crate::types::type_repr::{ClassType, Type};
 
 pub(crate) type TypeResult<T> = Result<T, TypeError>;
 
@@ -19,8 +19,12 @@ pub struct TypeChecker {
 
 impl TypeChecker {
     pub fn new() -> Self {
+        let mut env = TypeEnvironment::new();
+        // Register Model as a built-in class so subclasses can inherit from it.
+        // Model's methods are native_static_methods resolved at runtime.
+        env.define_class(ClassType::new("Model".to_string()));
         Self {
-            env: TypeEnvironment::new(),
+            env,
             errors: Vec::new(),
         }
     }

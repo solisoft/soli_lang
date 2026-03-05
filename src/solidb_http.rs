@@ -129,16 +129,16 @@ impl SoliDBClient {
             request = request.basic_auth(u, Some(p));
         }
 
-        request = request.header("Accept", "application/json");
+        request = request.header("Accept", "application/msgpack");
 
         if let Some(b) = body {
-            let json_bytes = serde_json::to_vec(b).map_err(|e| SoliDBError {
+            let msgpack_bytes = rmp_serde::to_vec(b).map_err(|e| SoliDBError {
                 message: format!("Failed to serialize request body: {}", e),
                 code: None,
             })?;
             request = request
-                .header("Content-Type", "application/json")
-                .body(json_bytes);
+                .header("Content-Type", "application/msgpack")
+                .body(msgpack_bytes);
         }
 
         let path_owned = path.to_string();
@@ -188,6 +188,8 @@ impl SoliDBClient {
             if content_type.contains("msgpack") {
                 deserialize_msgpack(&bytes)
             } else {
+                // JSON fallback — use serde_json to parse into serde_json::Value
+                // (needed because SoliDB client returns serde_json::Value, not our Value)
                 serde_json::from_slice(&bytes).map_err(|e| SoliDBError {
                     message: format!(
                         "Failed to parse response: {} - Body: {}",

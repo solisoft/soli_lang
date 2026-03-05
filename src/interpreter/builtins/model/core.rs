@@ -11,6 +11,9 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
 use super::callbacks::{register_callback, ModelCallbacks};
+use super::relations::{
+    build_relation, get_relation, register_relation, RelationDef, RelationType,
+};
 use super::validation::{register_validation, ValidationRule};
 
 /// Metadata for a model class (validations, callbacks).
@@ -18,6 +21,7 @@ use super::validation::{register_validation, ValidationRule};
 pub struct ModelMetadata {
     pub validations: Vec<ValidationRule>,
     pub callbacks: ModelCallbacks,
+    pub relations: Vec<RelationDef>,
 }
 
 /// Cached database configuration to avoid repeated env::var() lookups.
@@ -403,6 +407,155 @@ impl Model {
         }
 
         // ====================================================================
+        // Relation DSL Methods
+        // ====================================================================
+
+        // has_many(name) or has_many(name, options)
+        for (rel_method, rel_type) in &[
+            ("has_many", RelationType::HasMany),
+            ("has_one", RelationType::HasOne),
+            ("belongs_to", RelationType::BelongsTo),
+        ] {
+            let method_label = format!("Model.{}", rel_method);
+            let rel_type = rel_type.clone();
+            native_static_methods.insert(
+                rel_method.to_string(),
+                Rc::new(NativeFunction::new(&method_label, None, move |args| {
+                    let class_name = get_class_name_from_class(&args)?;
+                    let name = match args.get(1) {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(other) => {
+                            return Err(format!(
+                                "relation expects string name, got {}",
+                                other.type_name()
+                            ))
+                        }
+                        None => return Err("relation requires a name argument".to_string()),
+                    };
+
+                    // Optional config hash for overrides
+                    let mut class_override: Option<String> = None;
+                    let mut fk_override: Option<String> = None;
+                    if let Some(Value::Hash(hash)) = args.get(2) {
+                        use crate::interpreter::value::HashKey;
+                        for (k, v) in hash.borrow().iter() {
+                            if let HashKey::String(key) = k {
+                                match key.as_str() {
+                                    "class_name" => {
+                                        if let Value::String(s) = v {
+                                            class_override = Some(s.clone());
+                                        }
+                                    }
+                                    "foreign_key" => {
+                                        if let Value::String(s) = v {
+                                            fk_override = Some(s.clone());
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+
+                    let relation = build_relation(
+                        &class_name,
+                        &name,
+                        rel_type.clone(),
+                        class_override.as_deref(),
+                        fk_override.as_deref(),
+                    );
+                    register_relation(&class_name, relation);
+                    Ok(Value::Null)
+                })),
+            );
+        }
+
+        // ====================================================================
+        // Query Chain Starters: includes, join
+        // ====================================================================
+
+        // Model.includes("posts", "profile") - eager load relations
+        use super::query::QueryBuilder;
+        native_static_methods.insert(
+            "includes".to_string(),
+            Rc::new(NativeFunction::new("Model.includes", None, |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let collection = class_name_to_collection(&class_name);
+
+                let mut qb = QueryBuilder::new(class_name.clone(), collection);
+
+                for arg in &args[1..] {
+                    let rel_name = match arg {
+                        Value::String(s) => s.clone(),
+                        other => {
+                            return Err(format!(
+                                "includes() expects string relation names, got {}",
+                                other.type_name()
+                            ))
+                        }
+                    };
+                    let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
+                        format!("No relation '{}' defined on {}", rel_name, class_name)
+                    })?;
+                    qb.add_include(rel_name, rel);
+                }
+
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Model.join("posts") or Model.join("posts", "published = @p", { p: true })
+        native_static_methods.insert(
+            "join".to_string(),
+            Rc::new(NativeFunction::new("Model.join", None, |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let collection = class_name_to_collection(&class_name);
+
+                let rel_name = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(other) => {
+                        return Err(format!(
+                            "join() expects string relation name, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("join() requires a relation name".to_string()),
+                };
+
+                let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
+                    format!("No relation '{}' defined on {}", rel_name, class_name)
+                })?;
+
+                let filter = match args.get(2) {
+                    Some(Value::String(s)) => Some(s.clone()),
+                    _ => None,
+                };
+
+                let bind_vars = match args.get(3) {
+                    Some(Value::Hash(hash)) => {
+                        use crate::interpreter::value::HashKey;
+                        let mut map = std::collections::HashMap::new();
+                        for (k, v) in hash.borrow().iter() {
+                            if let HashKey::String(key) = k {
+                                map.insert(
+                                    key.clone(),
+                                    crate::interpreter::value::value_to_json(v)?,
+                                );
+                            }
+                        }
+                        map
+                    }
+                    _ => std::collections::HashMap::new(),
+                };
+
+                let mut qb = QueryBuilder::new(class_name, collection);
+                qb.add_join(rel_name, rel, filter, bind_vars);
+
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // ====================================================================
         // CRUD Methods
         // ====================================================================
 
@@ -507,7 +660,6 @@ impl Model {
         );
 
         // Model.where(filter, bind_vars) - Returns a QueryBuilder for chaining
-        use super::query::QueryBuilder;
         use std::collections::HashMap as StdHashMap;
         native_static_methods.insert(
             "where".to_string(),
@@ -880,6 +1032,65 @@ pub fn register_model_builtins(env: &mut Environment) {
                     Ok(Value::Null)
                 },
             )),
+        );
+    }
+
+    // Relation DSL global functions: has_many, has_one, belongs_to
+    for (rel_method, rel_type) in &[
+        ("has_many", RelationType::HasMany),
+        ("has_one", RelationType::HasOne),
+        ("belongs_to", RelationType::BelongsTo),
+    ] {
+        let method_name = rel_method.to_string();
+        let rel_type = rel_type.clone();
+        env.define(
+            method_name.clone(),
+            Value::NativeFunction(NativeFunction::new(&method_name, None, move |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let name = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(other) => {
+                        return Err(format!(
+                            "relation expects string name, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("relation requires a name argument".to_string()),
+                };
+
+                let mut class_override: Option<String> = None;
+                let mut fk_override: Option<String> = None;
+                if let Some(Value::Hash(hash)) = args.get(2) {
+                    use crate::interpreter::value::HashKey;
+                    for (k, v) in hash.borrow().iter() {
+                        if let HashKey::String(key) = k {
+                            match key.as_str() {
+                                "class_name" => {
+                                    if let Value::String(s) = v {
+                                        class_override = Some(s.clone());
+                                    }
+                                }
+                                "foreign_key" => {
+                                    if let Value::String(s) = v {
+                                        fk_override = Some(s.clone());
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                let relation = build_relation(
+                    &class_name,
+                    &name,
+                    rel_type.clone(),
+                    class_override.as_deref(),
+                    fk_override.as_deref(),
+                );
+                register_relation(&class_name, relation);
+                Ok(Value::Null)
+            })),
         );
     }
 }

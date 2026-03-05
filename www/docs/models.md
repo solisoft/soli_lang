@@ -114,11 +114,23 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 |--------|-------------|
 | `Model.create(data)` | Insert a new document |
 | `Model.find(id)` | Get document by ID |
-| `Model.where(filter, bind_vars)` | Query with SDBQL filter |
+| `Model.where(filter, bind_vars)` | Query with SDBQL filter (returns QueryBuilder) |
 | `Model.all()` | Get all documents |
 | `Model.update(id, data)` | Update a document |
 | `Model.delete(id)` | Delete a document |
 | `Model.count()` | Count all documents |
+| `Model.includes(rel, ...)` | Eager load relations (returns QueryBuilder) |
+| `Model.join(rel, filter?, binds?)` | Filter by related existence (returns QueryBuilder) |
+| `Model.order(field, dir?)` | Order results (returns QueryBuilder) |
+| `Model.limit(n)` | Limit results (returns QueryBuilder) |
+
+## Relationship DSL
+
+| Method | Description |
+|--------|-------------|
+| `has_many(name)` | Declare a one-to-many relationship |
+| `has_one(name)` | Declare a one-to-one relationship |
+| `belongs_to(name)` | Declare an inverse relationship |
 
 ## QueryBuilder Methods
 
@@ -128,9 +140,12 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `.order(field, direction)` | Set sort order ("asc" or "desc") |
 | `.limit(n)` | Limit results to n documents |
 | `.offset(n)` | Skip first n documents |
+| `.includes(rel, ...)` | Eager load relations via subqueries |
+| `.join(rel, filter?, binds?)` | Filter by existence of related records |
 | `.all()` | Execute query, return all results |
 | `.first()` | Execute query, return first result |
 | `.count()` | Execute query, return count |
+| `.to_query` | Return the generated SDBQL string (for debugging) |
 
 ## Validations
 
@@ -210,17 +225,88 @@ end
 
 ## Relationships
 
-Implement relationships using model methods:
+Declare associations using the built-in DSL:
+
+```soli
+class User extends Model
+    has_many("posts")
+    has_one("profile")
+end
+
+class Post extends Model
+    belongs_to("user")
+    has_many("comments")
+end
+```
+
+### Naming Conventions
+
+The DSL applies Rails-style naming conventions automatically:
+
+| Declaration | Related Class | Collection | Foreign Key |
+|-------------|--------------|------------|-------------|
+| `has_many("posts")` | `Post` | `posts` | `user_id` (owner + `_id`) |
+| `has_one("profile")` | `Profile` | `profiles` | `user_id` (owner + `_id`) |
+| `belongs_to("user")` | `User` | `users` | `user_id` (name + `_id`) |
+
+Override defaults with an options hash:
 
 ```soli
 class Post extends Model
-    fn author()        User.find(this.author_id)
+    belongs_to("author", { "class_name": "User", "foreign_key": "author_id" })
+end
+```
+
+### Eager Loading (includes)
+
+Preload related records to avoid N+1 queries. Uses LET subqueries with MERGE:
+
+```soli
+# Load users with their posts and profiles in a single query
+let users = User.includes("posts", "profile").all()
+
+# Combine with where clauses
+let active = User.where("active = @a", { "a": true }).includes("posts").first()
+
+# Inspect the generated query
+print(User.includes("posts").to_query)
+# => FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})
+```
+
+- `has_many` includes return an array of related documents
+- `has_one` and `belongs_to` includes return a single document (via `FIRST()`)
+
+### Join Filtering
+
+Filter records by the existence of related records. Unlike `includes`, `join` does **not** preload the related data — it only filters:
+
+```soli
+# Find users who have at least one post
+let users_with_posts = User.join("posts").all()
+
+# Find users who have published posts
+let count = User.join("posts", "published = @p", { "p": true }).count()
+
+# Chain with other query methods
+let recent = User.join("posts").order("created_at", "desc").limit(10).all()
+```
+
+This is equivalent to ActiveRecord's `joins` — use `includes` when you need the related data, and `join` when you only need to filter by existence.
+
+### Manual Relationships
+
+You can also implement relationships as custom methods for more control:
+
+```soli
+class Post extends Model
+    fn author()
+        User.find(this.author_id)
     end
 end
 
 class User extends Model
-    # Returns a QueryBuilder for chaining
-    fn posts()        Post.where("doc.author_id == @id", { "id": this.id })
+    fn posts()
+        Post.where("doc.author_id == @id", { "id": this.id })
     end
 end
 ```
@@ -254,31 +340,35 @@ Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:
 | Method | Generated SDBQL |
 |--------|-----------------|
 | `User.all()` | `FOR doc IN users RETURN doc` |
-| `User.where("doc.age >= @age", {"age": 18})` | `FOR doc IN users FILTER doc.age >= @age RETURN doc` |
+| `User.where("age >= @age", {"age": 18})` | `FOR doc IN users FILTER doc.age >= @age RETURN doc` |
 | `.order("name", "asc")` | `... SORT doc.name ASC RETURN doc` |
 | `.limit(10).offset(20)` | `... LIMIT 20, 10 RETURN doc` |
 | `User.count()` | `FOR doc IN users COLLECT WITH COUNT INTO count RETURN count` |
+| `User.includes("posts")` | `FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})` |
+| `User.join("posts")` | `FOR doc IN users FILTER LENGTH(FOR rel IN posts FILTER rel.user_id == doc._key LIMIT 1 RETURN 1) > 0 RETURN doc` |
 
 SDBQL uses:
 - `FOR doc IN collection` instead of `SELECT * FROM`
 - `FILTER expression` instead of `WHERE`
 - `SORT doc.field ASC/DESC` instead of `ORDER BY`
 - `@variable` syntax for bind parameters
+- `LET` subqueries + `MERGE` for eager loading
 
 ## Complete Example
 
 ```soli
 # app/models/user.sl
 class User extends Model
+    has_many("posts")
+    has_one("profile")
+
     validates("email", { "presence": true, "uniqueness": true })
     validates("name", { "presence": true, "min_length": 2 })
 
     before_save("normalize_email")
 
-    fn normalize_email()        this.email = this.email.downcase();
-    end
-
-    fn posts()        Post.where("doc.user_id == @id", { "id": this.id })
+    fn normalize_email()
+        this.email = this.email.downcase();
     end
 
     fn is_adult() -> Bool
@@ -286,29 +376,41 @@ class User extends Model
     end
 end
 
-# app/models/blog_post.sl
-class BlogPost extends Model
-    validates("title", { "presence": true, "min_length": 3 })
+# app/models/post.sl
+class Post extends Model
+    belongs_to("user")
+    has_many("comments")
 
-    fn author()        User.find(this.user_id)
-    end
+    validates("title", { "presence": true, "min_length": 3 })
+end
+
+# app/models/profile.sl
+class Profile extends Model
+    belongs_to("user")
 end
 
 # Usage in controller
 class UsersController extends Controller
     fn index(req)
-        let users = User.all();
+        # Eager load posts and profiles to avoid N+1 queries
+        let users = User.includes("posts", "profile").all();
         render("users/index", { "users": users })
     end
 
     fn show(req)
         let id = req["params"]["id"];
-        let user = User.find(id);
-        let posts = user.posts().order("created_at", "desc").limit(5).all();
-        render("users/show", {
-            "user": user,
-            "posts": posts
-        })
+        let user = User.includes("posts").find(id);
+        render("users/show", { "user": user })
+    end
+
+    fn active(req)
+        # Find active users who have at least one post
+        let users = User.join("posts")
+            .where("active = @a", { "a": true })
+            .order("created_at", "desc")
+            .limit(10)
+            .all();
+        render("users/active", { "users": users })
     end
 
     fn create(req)
@@ -365,8 +467,10 @@ end)
 3. **Add validations** - Validate data before it reaches the database
 4. **Use callbacks wisely** - Keep them focused and avoid heavy operations
 5. **Add custom methods** - Encapsulate business logic in model methods
-6. **Use relationships** - Create methods that return related models
-7. **Use migrations in production** - Define indexes and schema for optimal performance
+6. **Declare relationships** - Use `has_many`, `has_one`, `belongs_to` for associations
+7. **Use `includes` for eager loading** - Avoid N+1 queries when accessing related data
+8. **Use `join` for filtering** - When you only need to filter by existence, not preload
+9. **Use migrations in production** - Define indexes and schema for optimal performance
 
 ## Database Migrations
 

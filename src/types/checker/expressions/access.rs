@@ -32,6 +32,11 @@ impl TypeChecker {
                             return_type: Box::new(method.return_type.clone()),
                         });
                     }
+                    // Model subclasses have native_static_methods (where, all, includes, join, etc.)
+                    // that are only known at runtime. Allow any member access on Model subclasses.
+                    if class_def.extends_model() {
+                        return Ok(Type::Any);
+                    }
                 }
                 Err(TypeError::NoSuchMember {
                     type_name: class.name,
@@ -121,7 +126,7 @@ impl TypeChecker {
                 return_type: Box::new(Type::Null),
             }),
             // Universal methods on all types
-            "class" | "inspect" | "to_string" => Ok(Type::Function {
+            "class" | "inspect" | "to_string" | "to_json" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::String),
             }),
@@ -208,7 +213,7 @@ impl TypeChecker {
                 }),
             }),
             // Universal methods on all types
-            "class" | "inspect" | "to_string" => Ok(Type::Function {
+            "class" | "inspect" | "to_string" | "to_json" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::String),
             }),
@@ -273,6 +278,10 @@ impl TypeChecker {
                 return_type: Box::new(Type::String),
             }),
             "chr" | "insert" | "delete" | "substring" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Any),
+            }),
+            "parse_json" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Any),
             }),
