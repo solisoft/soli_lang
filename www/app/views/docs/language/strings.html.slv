@@ -105,7 +105,7 @@ FROM users
 WHERE active = true
 ORDER BY created_at DESC""";</code></pre>
                     <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 mt-3">
-                        <p class="text-yellow-300 text-sm"><strong>Note:</strong> Both syntaxes create raw strings (no escape processing). The leading newline and indentation are preserved as-is. Use <code class="text-yellow-300">trim()</code> to remove leading/trailing whitespace if needed.</p>
+                        <p class="text-yellow-300 text-sm"><strong>Note:</strong> Both syntaxes create raw strings (no escape processing). The leading newline and indentation are preserved as-is. Use <code class="text-yellow-300">.trim</code> to remove leading/trailing whitespace if needed.</p>
                     </div>
                 </div>
             </section>
@@ -130,7 +130,7 @@ let status = "Active: " + true;       # "Active: true"
 # Building strings
 let name = "Alice"
 let age = 30
-let intro = "My name is " + name + " and I am " + str(age) + " years old.";</code></pre>
+let intro = "My name is " + name + " and I am " + age.to_s + " years old."</code></pre>
                 </div>
             </section>
 
@@ -243,190 +243,14 @@ print(str[100]);  # null</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Strings are immutable - methods return new strings rather than modifying the original.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let original = "hello"
-let upper = upcase(original)
-print(original);  # "hello" (unchanged)
-print(upper);     # "HELLO" (new string)
+let upper = original.upcase
+print(original)  # "hello" (unchanged)
+print(upper)     # "HELLO" (new string)
 
 # To "modify", reassign the variable
 let text = "hello"
-text = upcase(text)
-print(text);  # "HELLO"</code></pre>
-                </div>
-            </section>
-        </div>
-    </section>
-
-    <!-- Built-in Functions -->
-    <section id="section-functions" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-            </span>
-            Built-in Functions
-        </h2>
-
-        <div class="space-y-6">
-            <section id="def-len" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-len" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">len(string)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns the number of characters in the string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">print(len("hello"));  # 5
-print(len(""));       # 0
-print(len("Hello, World!"));  # 13</code></pre>
-                </div>
-            </section>
-
-            <section id="def-str" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-str" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">str(value)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Convert any value to its string representation.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">str(42)           # "42"
-str(3.14)         # "3.14"
-str(true)         # "true"
-str(null)         # "null"
-str([1, 2, 3])    # "[1, 2, 3]"
-str({"a": 1})     # "{\"a\": 1}"</code></pre>
-                </div>
-            </section>
-
-            <section id="def-split" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-split" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">split(string, separator)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Splits a string into an array by the specified separator.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">split("a,b,c", ",")         # ["a", "b", "c"]
-split("hello world", " ")   # ["hello", "world"]
-split("one--two--three", "--")  # ["one", "two", "three"]
-
-# Split into characters
-split("hello", "")          # ["h", "e", "l", "l", "o"]</code></pre>
-                </div>
-            </section>
-
-            <section id="def-join" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-join" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">join(array, separator)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Joins array elements into a string with the specified separator.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">join(["a", "b", "c"], ",")      # "a,b,c"
-join(["hello", "world"], " ")   # "hello world"
-join([1, 2, 3], "-")            # "1-2-3"
-join(["one"], ", ")             # "one"</code></pre>
-                </div>
-            </section>
-
-            <section id="def-substring" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-substring" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">substring(string, start, end?)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Extracts a portion of a string from start index to end index (exclusive).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">substring("hello", 0, 2)    # "he"
-substring("hello", 1, 4)    # "ell"
-substring("hello", 2)       # "llo" (to end)
-substring("hello", -3)      # "llo" (negative start)</code></pre>
-                </div>
-            </section>
-
-            <section id="def-contains" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-contains" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">contains(string, substring)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Checks if a string contains the specified substring.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">contains("hello world", "world")  # true
-contains("hello world", "foo")    # false
-contains("hello", "")             # true (empty string always matches)
-contains("", "hello")             # false</code></pre>
-                </div>
-            </section>
-
-            <section id="def-index-of" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-index-of" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">index_of(string, substring)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Finds the position of the first occurrence of a substring. Returns -1 if not found.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">index_of("hello world", "world")  # 6
-index_of("hello world", "o")      # 4 (first occurrence)
-index_of("hello world", "foo")    # -1 (not found)
-index_of("hello", "")             # 0</code></pre>
-                </div>
-            </section>
-
-            <section id="def-upcase-downcase" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-upcase-downcase" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">upcase(string)</code> / <code class="text-lg font-mono text-indigo-400">downcase(string)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Convert a string to uppercase or lowercase.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">upcase("hello")       # "HELLO"
-upcase("Hello World") # "HELLO WORLD"
-
-downcase("HELLO")       # "hello"
-downcase("Hello World") # "hello world"</code></pre>
-                </div>
-            </section>
-
-            <section id="def-trim" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-trim" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">trim(string)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Removes whitespace from both ends of a string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">trim("  hello  ")     # "hello"
-trim("\n\thello\n")   # "hello"
-trim("hello")         # "hello" (no change)</code></pre>
-                </div>
-            </section>
-
-            <section id="def-replace" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#def-replace" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">replace(string, search, replacement)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Replace all occurrences of a substring with another string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">replace("hello world", "world", "Soli")  # "hello Soli"
-replace("aaa", "a", "b")                  # "bbb" (replaces all)
-replace("hello", "x", "y")                # "hello" (no match)</code></pre>
+text = text.upcase
+print(text)  # "HELLO"</code></pre>
                 </div>
             </section>
         </div>
@@ -444,118 +268,41 @@ replace("hello", "x", "y")                # "hello" (no match)</code></pre>
         </h2>
 
         <div class="space-y-6">
-            <section id="method-starts-ends" class="scroll-mt-20 mb-6">
+            <p class="text-gray-400">All string methods are called with dot notation on string values.</p>
+
+            <!-- Size & Info -->
+            <section id="method-length" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#method-starts-ends" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.starts_with(prefix)</code> / <code class="text-lg font-mono text-indigo-400">.ends_with(suffix)</code>
+                    <a href="#method-length" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.length</code> / <code class="text-lg font-mono text-indigo-400">.len</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Check if a string starts or ends with a given substring.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let url = "https://example.com/page"
-
-url.starts_with("https://")  # true
-url.starts_with("http://")   # false
-
-url.ends_with("/page")       # true
-url.ends_with(".html")       # false
-
-# Practical use
-let filename = "report.pdf"
-if (filename.ends_with(".pdf"))
-    print("PDF file detected")
-end</code></pre>
+                    <p class="text-gray-400 mb-3">Returns the number of characters in the string.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".length  # 5
+"".len          # 0</code></pre>
                 </div>
             </section>
 
-            <section id="method-chars" class="scroll-mt-20 mb-6">
+            <section id="method-bytesize" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#method-chars" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.chars()</code>
+                    <a href="#method-bytesize" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.bytesize</code> / <code class="text-lg font-mono text-indigo-400">.bytes</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Convert string to an array of individual characters.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let str = "hello"
-let chars = str.chars()
-print(chars);  # ["h", "e", "l", "l", "o"]
-
-# Iterate over characters
-for (c in "Soli".chars())
-    print(c)
-end
-# Output: S, o, l, i</code></pre>
-                </div>
-            </section>
-
-            <section id="method-reverse" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#method-reverse" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.reverse</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Return a new string with characters in reverse order.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"hello".reverse   # "olleh"
-"Soli".reverse    # "iloS"
-"12345".reverse   # "54321"
-
-# Check palindrome
-def is_palindrome(s: String) -> Bool
-    let cleaned = downcase(s)
-cleaned == cleaned.reverse
-end
-print(is_palindrome("racecar"));  # true</code></pre>
-                </div>
-            </section>
-
-            <section id="method-repeat" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#method-repeat" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.repeat(n)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Repeat a string n times.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"ab".repeat(3)      # "ababab"
-"-".repeat(10)      # "----------"
-"ha".repeat(0)      # ""
-
-# Create separator line
-let separator = "=".repeat(40)
-print(separator);  # ========================================</code></pre>
-                </div>
-            </section>
-
-            <section id="method-pad" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#method-pad" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.pad_start(length, char?)</code> / <code class="text-lg font-mono text-indigo-400">.pad_end(length, char?)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Pad a string to a specified length with a character (default is space).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"42".pad_start(5, "0")     # "00042"
-"5".pad_start(3)           # "  5" (default space)
-
-"hi".pad_end(5, ".")       # "hi..."
-"test".pad_end(8)          # "test    "
-
-# Format numbers
-let price = str(9.99)
-print(price.pad_start(10));  # "      9.99"</code></pre>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">bytesize</code> returns the number of bytes (UTF-8). <code class="text-indigo-300">bytes</code> returns the byte values as an array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".bytesize  # 5
+"hello".bytes     # [104, 101, 108, 108, 111]</code></pre>
                 </div>
             </section>
 
             <section id="method-empty-blank" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-empty-blank" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.empty?()</code> / <code class="text-lg font-mono text-indigo-400">.blank?()</code> / <code class="text-lg font-mono text-indigo-400">.present?()</code>
+                        <code class="text-lg font-mono text-indigo-400">.empty?</code> / <code class="text-lg font-mono text-indigo-400">.blank?</code> / <code class="text-lg font-mono text-indigo-400">.present?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -572,6 +319,361 @@ print(price.pad_start(10));  # "      9.99"</code></pre>
 "hello".present?  # true
 "".present?       # false
 "   ".present?    # false</code></pre>
+                </div>
+            </section>
+
+            <section id="method-inspect" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-inspect" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.inspect</code> / <code class="text-lg font-mono text-indigo-400">.class</code> / <code class="text-lg font-mono text-indigo-400">.is_a?(type)</code> / <code class="text-lg font-mono text-indigo-400">.nil?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Introspection methods for debugging and type checking.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".inspect           # "\"hello\""
+"hello".class             # "String"
+"hello".is_a?("String")  # true
+"hello".nil?              # false</code></pre>
+                </div>
+            </section>
+
+            <!-- Case -->
+            <section id="method-case" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-case" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.upcase</code> / <code class="text-lg font-mono text-indigo-400">.downcase</code> / <code class="text-lg font-mono text-indigo-400">.capitalize</code> / <code class="text-lg font-mono text-indigo-400">.swapcase</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Case conversion methods. <code class="text-indigo-300">uppercase</code> and <code class="text-indigo-300">lowercase</code> are aliases for <code class="text-indigo-300">upcase</code> and <code class="text-indigo-300">downcase</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".upcase       # "HELLO"
+"HELLO".downcase     # "hello"
+"hello".capitalize   # "Hello"
+"Hello World".swapcase  # "hELLO wORLD"
+
+# Aliases
+"hello".uppercase    # "HELLO"
+"HELLO".lowercase    # "hello"</code></pre>
+                </div>
+            </section>
+
+            <!-- Search -->
+            <section id="method-contains" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-contains" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.contains(substr)</code> / <code class="text-lg font-mono text-indigo-400">.include?(substr)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Checks if the string contains a substring. <code class="text-indigo-300">include?</code> is an alias.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello world".contains("world")  # true
+"hello world".contains("foo")    # false
+"hello".include?("ell")          # true</code></pre>
+                </div>
+            </section>
+
+            <section id="method-starts-ends" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-starts-ends" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.starts_with(prefix)</code> / <code class="text-lg font-mono text-indigo-400">.ends_with(suffix)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if a string starts or ends with a given substring. Also available as <code class="text-indigo-300">starts_with?</code> and <code class="text-indigo-300">ends_with?</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"https://example.com".starts_with("https://")  # true
+"report.pdf".ends_with(".pdf")                  # true
+
+# With ? suffix (alias)
+"hello".starts_with?("he")  # true
+"hello".ends_with?("lo")    # true</code></pre>
+                </div>
+            </section>
+
+            <section id="method-index-of" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-index-of" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.index_of(substr)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the index of the first occurrence of a substring, or -1 if not found.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello world".index_of("world")  # 6
+"hello world".index_of("o")      # 4
+"hello world".index_of("foo")    # -1</code></pre>
+                </div>
+            </section>
+
+            <section id="method-count" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-count" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.count(substr)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Counts the number of occurrences of a substring.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".count("l")       # 2
+"banana".count("ana")    # 1
+"hello".count("x")       # 0</code></pre>
+                </div>
+            </section>
+
+            <section id="method-match-scan" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-match-scan" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.match(pattern)</code> / <code class="text-lg font-mono text-indigo-400">.scan(pattern)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">match</code> returns the first regex match. <code class="text-indigo-300">scan</code> returns all matches as an array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello 42 world 7".match(r"\d+")   # "42"
+"hello 42 world 7".scan(r"\d+")    # ["42", "7"]</code></pre>
+                </div>
+            </section>
+
+            <!-- Transform -->
+            <section id="method-trim" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-trim" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.trim</code> / <code class="text-lg font-mono text-indigo-400">.lstrip</code> / <code class="text-lg font-mono text-indigo-400">.rstrip</code> / <code class="text-lg font-mono text-indigo-400">.chomp</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Whitespace removal. <code class="text-indigo-300">trim</code> removes both sides, <code class="text-indigo-300">lstrip</code>/<code class="text-indigo-300">rstrip</code> remove left/right only, <code class="text-indigo-300">chomp</code> removes trailing newlines.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"  hello  ".trim     # "hello"
+"  hello  ".lstrip   # "hello  "
+"  hello  ".rstrip   # "  hello"
+"hello\n".chomp      # "hello"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-squeeze" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-squeeze" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.squeeze</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Collapses runs of repeated characters into a single character.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"aaabbbccc".squeeze     # "abc"
+"hello    world".squeeze  # "helo world"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-reverse" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-reverse" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.reverse</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns a new string with characters in reverse order.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".reverse   # "olleh"
+"12345".reverse   # "54321"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-replace" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-replace" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.replace(search, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.gsub(pattern, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.sub(pattern, replacement)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">replace</code> replaces all occurrences. <code class="text-indigo-300">gsub</code> replaces all regex matches. <code class="text-indigo-300">sub</code> replaces first regex match only.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello world".replace("world", "Soli")  # "hello Soli"
+"aaa".replace("a", "b")                 # "bbb"
+
+"hello 42 world 7".gsub(r"\d+", "X")   # "hello X world X"
+"hello 42 world 7".sub(r"\d+", "X")    # "hello X world 7"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-tr" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-tr" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.tr(from, to)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Translates characters: replaces each character in <code class="text-indigo-300">from</code> with the corresponding character in <code class="text-indigo-300">to</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".tr("aeiou", "*")      # "h*ll*"
+"hello".tr("el", "ip")        # "hippo"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-delete" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-delete" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.delete(chars)</code> / <code class="text-lg font-mono text-indigo-400">.delete_prefix(prefix)</code> / <code class="text-lg font-mono text-indigo-400">.delete_suffix(suffix)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">delete</code> removes all occurrences of specified characters. <code class="text-indigo-300">delete_prefix</code>/<code class="text-indigo-300">delete_suffix</code> remove a specific prefix or suffix.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".delete("lo")                    # "he"
+"Hello, World!".delete_prefix("Hello, ")  # "World!"
+"report.pdf".delete_suffix(".pdf")       # "report"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-insert" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-insert" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.insert(index, string)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Inserts a string at the specified index position.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"helo".insert(3, "l")    # "hello"
+"world".insert(0, "hello ")  # "hello world"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-truncate" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-truncate" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.truncate(length)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Truncates the string to the specified length.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello world".truncate(5)  # "hello"
+"hi".truncate(10)          # "hi"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-substring" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-substring" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.substring(start, end?)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Extracts a portion of the string from start index to end index (exclusive).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".substring(0, 2)   # "he"
+"hello".substring(2)      # "llo"
+"hello".substring(-3)     # "llo"</code></pre>
+                </div>
+            </section>
+
+            <!-- Split & Join -->
+            <section id="method-split" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-split" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.split(separator)</code> / <code class="text-lg font-mono text-indigo-400">.join(separator)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">split</code> splits a string into an array. <code class="text-indigo-300">join</code> joins characters back with a separator.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"a,b,c".split(",")        # ["a", "b", "c"]
+"hello world".split(" ")  # ["hello", "world"]
+"hello".split("")         # ["h", "e", "l", "l", "o"]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-chars" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-chars" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.chars</code> / <code class="text-lg font-mono text-indigo-400">.lines</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">chars</code> splits into individual characters. <code class="text-indigo-300">lines</code> splits by newlines.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".chars                    # ["h", "e", "l", "l", "o"]
+"line1\nline2\nline3".lines      # ["line1", "line2", "line3"]
+
+for (c in "Soli".chars)
+    print(c)
+end</code></pre>
+                </div>
+            </section>
+
+            <section id="method-partition" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-partition" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.partition(separator)</code> / <code class="text-lg font-mono text-indigo-400">.rpartition(separator)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Splits into 3 parts: [before, separator, after]. <code class="text-indigo-300">rpartition</code> searches from the right.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello-world-test".partition("-")   # ["hello", "-", "world-test"]
+"hello-world-test".rpartition("-")  # ["hello-world", "-", "test"]</code></pre>
+                </div>
+            </section>
+
+            <!-- Padding -->
+            <section id="method-pad" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-pad" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.lpad(width, char?)</code> / <code class="text-lg font-mono text-indigo-400">.rpad(width, char?)</code> / <code class="text-lg font-mono text-indigo-400">.center(width, char?)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Pad a string to a specified width. <code class="text-indigo-300">ljust</code>/<code class="text-indigo-300">rjust</code> are aliases for <code class="text-indigo-300">rpad</code>/<code class="text-indigo-300">lpad</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"42".lpad(5, "0")      # "00042"
+"hi".rpad(5, ".")      # "hi..."
+"hi".center(7, "-")    # "--hi---"
+
+# Default pad char is space
+"5".lpad(3)            # "  5"
+"hi".rpad(5)           # "hi   "</code></pre>
+                </div>
+            </section>
+
+            <!-- Char encoding -->
+            <section id="method-ord-chr" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-ord-chr" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.ord</code> / <code class="text-lg font-mono text-indigo-400">.chr</code> / <code class="text-lg font-mono text-indigo-400">.hex</code> / <code class="text-lg font-mono text-indigo-400">.oct</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Character encoding conversions. <code class="text-indigo-300">ord</code> returns the Unicode code point, <code class="text-indigo-300">chr</code> returns the character, <code class="text-indigo-300">hex</code>/<code class="text-indigo-300">oct</code> convert to hexadecimal/octal representation.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"A".ord    # 65
+"A".hex    # "41"
+"A".oct    # "101"</code></pre>
+                </div>
+            </section>
+
+            <!-- Conversion -->
+            <section id="method-conversion" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-conversion" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.to_i</code> / <code class="text-lg font-mono text-indigo-400">.to_f</code> / <code class="text-lg font-mono text-indigo-400">.to_s</code> / <code class="text-lg font-mono text-indigo-400">.to_string</code> / <code class="text-lg font-mono text-indigo-400">.parse_json</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Type conversion methods. <code class="text-indigo-300">to_int</code>/<code class="text-indigo-300">to_float</code> are aliases for <code class="text-indigo-300">to_i</code>/<code class="text-indigo-300">to_f</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"42".to_i        # 42
+"3.14".to_f      # 3.14
+42.to_s          # "42"
+[1,2,3].to_string  # "[1, 2, 3]"
+
+# Parse JSON
+'{"name":"Alice"}'.parse_json  # {"name": "Alice"}
+"[1,2,3]".parse_json           # [1, 2, 3]
+"not json".parse_json          # {}</code></pre>
                 </div>
             </section>
         </div>
@@ -667,23 +769,18 @@ sanitize_html("&lt;p&gt;Hello&lt;/p&gt;&lt;object data='file.swf'&gt;&lt;/object
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Parse CSV line
 let csv_line = "Alice,30,Engineer"
-let fields = split(csv_line, ",")
-let name = fields[0];    # "Alice"
-let age = int(fields[1]); # 30
-let job = fields[2];     # "Engineer"
-
-# Format currency
-def format_currency(amount: Float) -> String
-    let formatted = str(amount)    "$" + formatted
-end
+let fields = csv_line.split(",")
+let name = fields[0]      # "Alice"
+let age = fields[1].to_i  # 30
+let job = fields[2]       # "Engineer"
 
 # Parse URL query string
 def parse_query(query: String) -> Hash
     let result = {}
-    let pairs = split(query, "&")
+    let pairs = query.split("&")
     for (pair in pairs)
-        let parts = split(pair, "=")
-        if (len(parts) == 2)
+        let parts = pair.split("=")
+        if (parts.length == 2)
             result[parts[0]] = parts[1]
         end
     end
@@ -704,21 +801,21 @@ let params = parse_query("name=Alice&age=30")
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic email validation
 def is_valid_email(email: String) -> Bool
-    contains(email, "@") && contains(email, ".")
+    email.contains("@") && email.contains(".")
 end
 
 # Check minimum length
-def has_min_length(str: String, min: Int) -> Bool
-    len(str) >= min
+def has_min_length(s: String, min: Int) -> Bool
+    s.length >= min
 end
 
 # Check if string is numeric
-def is_numeric(str: String) -> Bool
-    if (str.empty?())
+def is_numeric(s: String) -> Bool
+    if (s.empty?)
         return false
     end
-    for (c in str.chars())
-        if (!contains("0123456789", c))
+    for (c in s.chars)
+        if (!"0123456789".contains(c))
             return false
         end
     end
@@ -727,8 +824,8 @@ end
 
 # Validate username
 def is_valid_username(username: String) -> Bool
-    let trimmed = trim(username)
-len(trimmed) >= 3 && len(trimmed) <= 20
+    let trimmed = username.trim
+    trimmed.length >= 3 && trimmed.length <= 20
 end</code></pre>
                 </div>
             </section>
@@ -742,13 +839,13 @@ end</code></pre>
                         </svg>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Simple template replacement
-def template(str: String, vars: Hash) -> String
-    let result = str
+def template(text: String, vars: Hash) -> String
+    let result = text
     for (pair in entries(vars))
         let key = pair[0]
         let value = pair[1]
-        result = replace(result, "{{" + key + "}}", str(value))
-end
+        result = result.replace("{{" + key + "}}", value.to_string)
+    end
     result
 end
 
@@ -760,206 +857,6 @@ let output = template(tmpl, {"name": "Alice", "count": 5})
 def build_link(url: String, text: String) -> String
     "<a href=\"" + html_escape(url) + "\">" + html_escape(text) + "</a>"
 end</code></pre>
-                </div>
-            </section>
-        </div>
-    </section>
-
-    <!-- String Class Methods -->
-    <section id="section-string-class" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-            </span>
-            String Class Methods
-        </h2>
-
-        <div class="space-y-6">
-            <p class="text-gray-400">String literals are automatically wrapped in a String class instance that provides methods for manipulation and transformation. Each string value has access to these methods via dot notation.</p>
-
-            <section id="string-to-string" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-to-string" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">to_string()</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns the string value. Called automatically in REPL to display string values.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let greeting = "Hello, World!"
-# In REPL, displays: Hello, World!
-# Equivalent to: greeting.to_string()</code></pre>
-                </div>
-            </section>
-
-            <section id="string-parse-json" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-parse-json" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">parse_json</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Parses the string as JSON and returns the corresponding value. Returns an empty hash <code class="text-indigo-300">{}</code> if the JSON is invalid.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let json = '{"name":"Alice","age":30}'
-let data = json.parse_json
-data["name"]  # "Alice"
-data["age"]   # 30
-
-let arr = "[1,2,3]".parse_json  # [1, 2, 3]
-
-# Invalid JSON returns empty hash
-let bad = "not json".parse_json  # {}</code></pre>
-                </div>
-            </section>
-
-            <section id="string-length" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-length" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">length()</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns the number of characters in the string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello")
-let len = s.length  # 5</code></pre>
-                </div>
-            </section>
-
-            <section id="string-upcase-downcase" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-upcase-downcase" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">upcase() / downcase()</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Converts the string to uppercase or lowercase.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("Hello World")
-s.upcase   # "HELLO WORLD"
-s.downcase # "hello world"</code></pre>
-                </div>
-            </section>
-
-            <section id="string-trim" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-trim" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">trim()</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Removes leading and trailing whitespace.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("  hello  ")
-s.trim  # "hello"</code></pre>
-                </div>
-            </section>
-
-            <section id="string-contains-starts-ends" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-contains-starts-ends" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">contains(substr) / starts_with(prefix) / ends_with(suffix)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Check if string contains, starts with, or ends with a substring.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("Hello, World!")s.contains("World");    # true
-s.starts_with("Hello"); # true
-s.ends_with("!");       # true</code></pre>
-                </div>
-            </section>
-
-            <section id="string-split" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-split" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">split(delimiter)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Splits the string by delimiter and returns an array of parts.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("a,b,c")
-let parts = s.split(",");  # ["a", "b", "c"]</code></pre>
-                </div>
-            </section>
-
-            <section id="string-new" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-new" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">String.new(value)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Creates a new String instance from various value types.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">                        String.new(42);        # "42"
-String.new(3.14);      # "3.14"
-String.new(true);      # "true"
-String.new([1, 2, 3]); # "[1, 2, 3]"</code></pre>
-                </div>
-            </section>
-
-            <section id="string-index-of" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-index-of" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">index_of(substr)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Returns the index of the first occurrence of substring, or -1 if not found.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world")s.index_of("world");  # 6
-s.index_of("hello");  # 0
-s.index_of("foo");    # -1</code></pre>
-                </div>
-            </section>
-
-            <section id="string-substring" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-substring" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">substring(start, end)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Extracts a substring from start to end (exclusive).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world")
-s.substring(0, 5).to_string   # "hello"
-s.substring(6, 11).to_string  # "world"</code></pre>
-                </div>
-            </section>
-
-            <section id="string-replace" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-replace" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">replace(from, to)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Replaces all occurrences of 'from' with 'to'.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hello world")
-s.replace("world", "soli").to_string  # "hello soli"</code></pre>
-                </div>
-            </section>
-
-            <section id="string-lpad-rpad" class="scroll-mt-20 mb-6">
-                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                    <a href="#string-lpad-rpad" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">lpad(width, pad_char?) / rpad(width, pad_char?)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 mb-3">Pads the string to reach the specified width.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let s = String.new("hi")
-s.lpad(5).to_string     # "   hi"
-s.rpad(5).to_string     # "hi   "
-s.lpad(5, "*").to_string # "***hi"</code></pre>
                 </div>
             </section>
         </div>

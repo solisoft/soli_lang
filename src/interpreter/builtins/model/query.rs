@@ -13,6 +13,9 @@ use super::relations::{RelationDef, RelationType};
 pub struct IncludeClause {
     pub relation_name: String,
     pub relation: RelationDef,
+    pub filter: Option<String>,
+    pub bind_vars: HashMap<String, serde_json::Value>,
+    pub fields: Option<Vec<String>>,
 }
 
 /// A join-filter clause for a relation (existence check).
@@ -37,6 +40,7 @@ pub struct QueryBuilder {
     pub offset_val: Option<usize>,
     pub includes: Vec<IncludeClause>,
     pub joins: Vec<JoinClause>,
+    pub select_fields: Option<Vec<String>>,
 }
 
 impl QueryBuilder {
@@ -53,6 +57,7 @@ impl QueryBuilder {
             offset_val: None,
             includes: Vec::new(),
             joins: Vec::new(),
+            select_fields: None,
         }
     }
 
@@ -78,11 +83,30 @@ impl QueryBuilder {
         self.offset_val = Some(offset);
     }
 
-    pub fn add_include(&mut self, relation_name: String, relation: RelationDef) {
+    pub fn add_include(
+        &mut self,
+        relation_name: String,
+        relation: RelationDef,
+        filter: Option<String>,
+        bind_vars: HashMap<String, serde_json::Value>,
+        fields: Option<Vec<String>>,
+    ) {
+        // Merge include bind vars into the main bind_vars
+        for (k, v) in &bind_vars {
+            self.bind_vars
+                .insert(crate::interpreter::get_symbol(k), v.clone());
+        }
         self.includes.push(IncludeClause {
             relation_name,
             relation,
+            filter,
+            bind_vars,
+            fields,
         });
+    }
+
+    pub fn set_select(&mut self, fields: Vec<String>) {
+        self.select_fields = Some(fields);
     }
 
     pub fn add_join(
@@ -151,29 +175,41 @@ impl QueryBuilder {
             let rel = &inc.relation;
             let var_name = format!("_rel_{}", inc.relation_name);
 
-            match rel.relation_type {
-                RelationType::HasMany => {
-                    // FK on related model: rel.{fk} == doc._key
-                    query.push_str(&format!(
-                        " LET {} = (FOR rel IN {} FILTER rel.{} == doc._key RETURN rel)",
-                        var_name, rel.collection, rel.foreign_key
-                    ));
-                }
-                RelationType::HasOne => {
-                    // FK on related model, LIMIT 1
-                    query.push_str(&format!(
-                        " LET {} = (FOR rel IN {} FILTER rel.{} == doc._key LIMIT 1 RETURN rel)",
-                        var_name, rel.collection, rel.foreign_key
-                    ));
+            let fk_condition = match rel.relation_type {
+                RelationType::HasMany | RelationType::HasOne => {
+                    format!("rel.{} == doc._key", rel.foreign_key)
                 }
                 RelationType::BelongsTo => {
-                    // FK on owner model: doc.{fk} == rel._key
-                    query.push_str(&format!(
-                        " LET {} = (FOR rel IN {} FILTER rel._key == doc.{} LIMIT 1 RETURN rel)",
-                        var_name, rel.collection, rel.foreign_key
-                    ));
+                    format!("rel._key == doc.{}", rel.foreign_key)
                 }
-            }
+            };
+
+            let filter_condition = if let Some(extra) = &inc.filter {
+                let normalized = Self::normalize_equality_ops(extra);
+                let prefixed = Self::prefix_bare_fields_with_alias(&normalized, "rel");
+                format!("{} AND {}", fk_condition, prefixed)
+            } else {
+                fk_condition
+            };
+
+            let return_clause = match &inc.fields {
+                Some(fields) => {
+                    let pairs: Vec<String> =
+                        fields.iter().map(|f| format!("{}: rel.{}", f, f)).collect();
+                    format!("RETURN {{{}}}", pairs.join(", "))
+                }
+                None => "RETURN rel".to_string(),
+            };
+
+            let limit_clause = match rel.relation_type {
+                RelationType::HasMany => "",
+                RelationType::HasOne | RelationType::BelongsTo => " LIMIT 1",
+            };
+
+            query.push_str(&format!(
+                " LET {} = (FOR rel IN {} FILTER {}{} {})",
+                var_name, rel.collection, filter_condition, limit_clause, return_clause
+            ));
         }
 
         if let Some((field, direction)) = &self.order_by {
@@ -194,9 +230,19 @@ impl QueryBuilder {
             }
         }
 
-        // RETURN clause — with MERGE if includes are present
+        // RETURN clause — with optional select projection and MERGE for includes
+        let doc_return = match &self.select_fields {
+            Some(fields) => {
+                let mut pairs: Vec<String> =
+                    fields.iter().map(|f| format!("{}: doc.{}", f, f)).collect();
+                pairs.push("_key: doc._key".to_string());
+                format!("{{{}}}", pairs.join(", "))
+            }
+            None => "doc".to_string(),
+        };
+
         if self.includes.is_empty() {
-            query.push_str(" RETURN doc");
+            query.push_str(&format!(" RETURN {}", doc_return));
         } else {
             let merge_fields: Vec<String> = self
                 .includes
@@ -214,7 +260,8 @@ impl QueryBuilder {
                 })
                 .collect();
             query.push_str(&format!(
-                " RETURN MERGE(doc, {{{}}})",
+                " RETURN MERGE({}, {{{}}})",
+                doc_return,
                 merge_fields.join(", ")
             ));
         }
@@ -489,7 +536,7 @@ mod tests {
     fn test_includes_has_many() {
         let mut qb = make_qb("User", "users");
         let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
-        qb.add_include("posts".to_string(), rel);
+        qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
             query,
@@ -501,7 +548,7 @@ mod tests {
     fn test_includes_has_one() {
         let mut qb = make_qb("User", "users");
         let rel = build_relation("User", "profile", RelationType::HasOne, None, None);
-        qb.add_include("profile".to_string(), rel);
+        qb.add_include("profile".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
             query,
@@ -513,7 +560,7 @@ mod tests {
     fn test_includes_belongs_to() {
         let mut qb = make_qb("Post", "posts");
         let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None);
-        qb.add_include("user".to_string(), rel);
+        qb.add_include("user".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
             query,
@@ -526,8 +573,14 @@ mod tests {
         let mut qb = make_qb("User", "users");
         let posts_rel = build_relation("User", "posts", RelationType::HasMany, None, None);
         let profile_rel = build_relation("User", "profile", RelationType::HasOne, None, None);
-        qb.add_include("posts".to_string(), posts_rel);
-        qb.add_include("profile".to_string(), profile_rel);
+        qb.add_include("posts".to_string(), posts_rel, None, HashMap::new(), None);
+        qb.add_include(
+            "profile".to_string(),
+            profile_rel,
+            None,
+            HashMap::new(),
+            None,
+        );
         let (query, _) = qb.build_query();
         assert!(query.contains("LET _rel_posts ="));
         assert!(query.contains("LET _rel_profile ="));
@@ -569,7 +622,7 @@ mod tests {
     fn test_includes_with_where() {
         let mut qb = make_qb("User", "users");
         let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
-        qb.add_include("posts".to_string(), rel);
+        qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
         qb.set_filter("active = @a".to_string(), bind_vars);
@@ -587,5 +640,119 @@ mod tests {
         qb.add_join("user".to_string(), rel, None, HashMap::new());
         let (query, _) = qb.build_query();
         assert!(query.contains("doc.user_id == rel._key"));
+    }
+
+    #[test]
+    fn test_filtered_include_has_many() {
+        let mut qb = make_qb("User", "users");
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
+        qb.add_include(
+            "posts".to_string(),
+            rel,
+            Some("published = @p".to_string()),
+            bind_vars,
+            None,
+        );
+        let (query, binds) = qb.build_query();
+        assert!(query.contains("rel.user_id == doc._key AND rel.published == @p"));
+        assert!(query.contains("RETURN rel)"));
+        assert!(binds.contains_key("p"));
+    }
+
+    #[test]
+    fn test_filtered_include_has_one() {
+        let mut qb = make_qb("User", "users");
+        let rel = build_relation("User", "profile", RelationType::HasOne, None, None);
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
+        qb.add_include(
+            "profile".to_string(),
+            rel,
+            Some("active = @a".to_string()),
+            bind_vars,
+            None,
+        );
+        let (query, binds) = qb.build_query();
+        assert!(query.contains("rel.user_id == doc._key AND rel.active == @a"));
+        assert!(query.contains("LIMIT 1 RETURN rel)"));
+        assert!(binds.contains_key("a"));
+    }
+
+    #[test]
+    fn test_filtered_include_belongs_to() {
+        let mut qb = make_qb("Post", "posts");
+        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None);
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
+        qb.add_include(
+            "user".to_string(),
+            rel,
+            Some("active = @a".to_string()),
+            bind_vars,
+            None,
+        );
+        let (query, binds) = qb.build_query();
+        assert!(query.contains("rel._key == doc.user_id AND rel.active == @a"));
+        assert!(query.contains("LIMIT 1 RETURN rel)"));
+        assert!(binds.contains_key("a"));
+    }
+
+    #[test]
+    fn test_include_with_fields() {
+        let mut qb = make_qb("User", "users");
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        qb.add_include(
+            "posts".to_string(),
+            rel,
+            None,
+            HashMap::new(),
+            Some(vec!["title".to_string(), "body".to_string()]),
+        );
+        let (query, _) = qb.build_query();
+        assert!(query.contains("RETURN {title: rel.title, body: rel.body})"));
+    }
+
+    #[test]
+    fn test_filtered_include_with_fields() {
+        let mut qb = make_qb("User", "users");
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
+        qb.add_include(
+            "posts".to_string(),
+            rel,
+            Some("published = @p".to_string()),
+            bind_vars,
+            Some(vec!["title".to_string()]),
+        );
+        let (query, binds) = qb.build_query();
+        assert!(query.contains("rel.user_id == doc._key AND rel.published == @p"));
+        assert!(query.contains("RETURN {title: rel.title})"));
+        assert!(binds.contains_key("p"));
+    }
+
+    #[test]
+    fn test_select_fields() {
+        let mut qb = make_qb("User", "users");
+        qb.set_select(vec!["name".to_string(), "email".to_string()]);
+        let (query, _) = qb.build_query();
+        assert_eq!(
+            query,
+            "FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}"
+        );
+    }
+
+    #[test]
+    fn test_select_with_includes() {
+        let mut qb = make_qb("User", "users");
+        qb.set_select(vec!["name".to_string(), "email".to_string()]);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
+        let (query, _) = qb.build_query();
+        assert!(query.contains(
+            "RETURN MERGE({name: doc.name, email: doc.email, _key: doc._key}, {posts: _rel_posts})"
+        ));
     }
 }

@@ -32,13 +32,17 @@
 let x = null
 let typed: Null = null
 
+# nil is an alias for null
+let y = nil      # same as null
+print(y)         # null
+
 # Uninitialized variables
-let y
-print(y)        # null
+let z
+print(z)         # null
 
 # Missing hash keys return null
 let h = {"name": "Alice"}
-print(h["age"]) # null
+print(h["age"])  # null
 
 # Safe navigation to avoid errors on null
 let user = null

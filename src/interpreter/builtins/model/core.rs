@@ -476,6 +476,7 @@ impl Model {
 
         // Model.includes("posts", "profile") - eager load relations
         use super::query::QueryBuilder;
+        use crate::interpreter::value::HashKey;
         native_static_methods.insert(
             "includes".to_string(),
             Rc::new(NativeFunction::new("Model.includes", None, |args| {
@@ -483,13 +484,56 @@ impl Model {
                 let collection = class_name_to_collection(&class_name);
 
                 let mut qb = QueryBuilder::new(class_name.clone(), collection);
+                let arguments = &args[1..];
 
-                for arg in &args[1..] {
-                    let rel_name = match arg {
+                if arguments.len() == 1 && matches!(&arguments[0], Value::Hash(_)) {
+                    // Pattern B: hash arg → { "posts": ["title", "body"] }
+                    if let Value::Hash(hash) = &arguments[0] {
+                        for (k, v) in hash.borrow().iter() {
+                            let rel_name = match k {
+                                HashKey::String(s) => s.clone(),
+                                _ => continue,
+                            };
+                            let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
+                                format!("No relation '{}' defined on {}", rel_name, class_name)
+                            })?;
+                            let fields = match v {
+                                Value::Array(arr) => {
+                                    let names: Vec<String> = arr
+                                        .borrow()
+                                        .iter()
+                                        .filter_map(|v| {
+                                            if let Value::String(s) = v {
+                                                Some(s.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect();
+                                    if names.is_empty() {
+                                        None
+                                    } else {
+                                        Some(names)
+                                    }
+                                }
+                                _ => None,
+                            };
+                            qb.add_include(
+                                rel_name,
+                                rel,
+                                None,
+                                std::collections::HashMap::new(),
+                                fields,
+                            );
+                        }
+                    }
+                } else if arguments.len() >= 2 && matches!(arguments.last(), Some(Value::Hash(_))) {
+                    // Pattern C: filtered include
+                    let rel_name = match &arguments[0] {
                         Value::String(s) => s.clone(),
                         other => {
                             return Err(format!(
-                                "includes() expects string relation names, got {}",
+                                "includes() expects string relation name, got {}",
                                 other.type_name()
                             ))
                         }
@@ -497,12 +541,99 @@ impl Model {
                     let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                         format!("No relation '{}' defined on {}", rel_name, class_name)
                     })?;
-                    qb.add_include(rel_name, rel);
+
+                    let filter = if arguments.len() >= 3 {
+                        match &arguments[1] {
+                            Value::String(s) => Some(s.clone()),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+
+                    let options_hash = match arguments.last() {
+                        Some(Value::Hash(h)) => h.borrow(),
+                        _ => unreachable!(),
+                    };
+
+                    let mut bind_vars = std::collections::HashMap::new();
+                    let mut fields: Option<Vec<String>> = None;
+
+                    for (k, v) in options_hash.iter() {
+                        if let HashKey::String(key) = k {
+                            if key == "fields" {
+                                if let Value::Array(arr) = v {
+                                    let names: Vec<String> = arr
+                                        .borrow()
+                                        .iter()
+                                        .filter_map(|v| {
+                                            if let Value::String(s) = v {
+                                                Some(s.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect();
+                                    if !names.is_empty() {
+                                        fields = Some(names);
+                                    }
+                                }
+                            } else {
+                                bind_vars.insert(
+                                    key.clone(),
+                                    crate::interpreter::value::value_to_json(v)?,
+                                );
+                            }
+                        }
+                    }
+
+                    qb.add_include(rel_name, rel, filter, bind_vars, fields);
+                } else {
+                    // Pattern A: all strings → multi-relation unfiltered
+                    for arg in arguments {
+                        let rel_name = match arg {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "includes() expects string relation names, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
+                            format!("No relation '{}' defined on {}", rel_name, class_name)
+                        })?;
+                        qb.add_include(rel_name, rel, None, std::collections::HashMap::new(), None);
+                    }
                 }
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
         );
+
+        // Model.select("name", "email") / Model.fields("name", "email") - field selection
+        let select_fn = Rc::new(NativeFunction::new("Model.select", None, |args| {
+            let class_name = get_class_name_from_class(&args)?;
+            let collection = class_name_to_collection(&class_name);
+
+            let mut qb = QueryBuilder::new(class_name, collection);
+            let mut fields = Vec::new();
+            for arg in &args[1..] {
+                match arg {
+                    Value::String(s) => fields.push(s.clone()),
+                    other => {
+                        return Err(format!(
+                            "select() expects string field names, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            }
+            qb.set_select(fields);
+            Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+        }));
+        native_static_methods.insert("select".to_string(), select_fn.clone());
+        native_static_methods.insert("fields".to_string(), select_fn);
 
         // Model.join("posts") or Model.join("posts", "published = @p", { p: true })
         native_static_methods.insert(
@@ -563,7 +694,6 @@ impl Model {
         use super::crud::{exec_insert, json_to_value};
         use super::validation::{build_validation_result, run_validations};
         use crate::interpreter::value::value_to_json;
-        use crate::interpreter::value::HashKey;
         native_static_methods.insert(
             "create".to_string(),
             Rc::new(NativeFunction::new("Model.create", Some(2), |args| {

@@ -26,6 +26,7 @@ impl Interpreter {
             "limit" => self.qb_limit(qb, arguments, span),
             "offset" => self.qb_offset(qb, arguments, span),
             "includes" => self.qb_includes(qb, arguments, span),
+            "select" | "fields" => self.qb_select(qb, arguments, span),
             "join" => self.qb_join(qb, arguments, span),
             "all" => self.qb_all(qb, arguments, span),
             "first" => self.qb_first(qb, arguments, span),
@@ -199,12 +200,60 @@ impl Interpreter {
             .unwrap_or("unknown")
             .to_string();
 
-        for arg in &arguments {
-            let rel_name = match arg {
+        if arguments.len() == 1 && matches!(&arguments[0], Value::Hash(_)) {
+            // Pattern B: hash arg → { "posts": ["title", "body"] }
+            if let Value::Hash(hash) = &arguments[0] {
+                for (k, v) in hash.borrow().iter() {
+                    let rel_name = match k {
+                        crate::interpreter::value::HashKey::String(s) => s.clone(),
+                        _ => continue,
+                    };
+                    let rel =
+                        crate::interpreter::builtins::model::get_relation(&class_name, &rel_name)
+                            .ok_or_else(|| RuntimeError::General {
+                            message: format!(
+                                "No relation '{}' defined on {}",
+                                rel_name, class_name
+                            ),
+                            span,
+                        })?;
+                    let fields = match v {
+                        Value::Array(arr) => {
+                            let field_names: Vec<String> = arr
+                                .borrow()
+                                .iter()
+                                .filter_map(|v| {
+                                    if let Value::String(s) = v {
+                                        Some(s.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            if field_names.is_empty() {
+                                None
+                            } else {
+                                Some(field_names)
+                            }
+                        }
+                        _ => None,
+                    };
+                    new_qb.add_include(
+                        rel_name,
+                        rel,
+                        None,
+                        std::collections::HashMap::new(),
+                        fields,
+                    );
+                }
+            }
+        } else if arguments.len() >= 2 && matches!(arguments.last(), Some(Value::Hash(_))) {
+            // Pattern C: positional filtered include
+            let rel_name = match &arguments[0] {
                 Value::String(s) => s.clone(),
                 _ => {
                     return Err(RuntimeError::type_error(
-                        "includes() expects string relation names",
+                        "includes() expects string relation name as first argument",
                         span,
                     ))
                 }
@@ -214,9 +263,106 @@ impl Interpreter {
                     message: format!("No relation '{}' defined on {}", rel_name, class_name),
                     span,
                 })?;
-            new_qb.add_include(rel_name, rel);
+
+            let filter = if arguments.len() >= 3 {
+                match &arguments[1] {
+                    Value::String(s) => Some(s.clone()),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
+            let options_hash = match arguments.last() {
+                Some(Value::Hash(h)) => h.borrow(),
+                _ => unreachable!(),
+            };
+
+            let mut bind_vars = std::collections::HashMap::new();
+            let mut fields: Option<Vec<String>> = None;
+
+            for (k, v) in options_hash.iter() {
+                if let crate::interpreter::value::HashKey::String(key) = k {
+                    if key == "fields" {
+                        if let Value::Array(arr) = v {
+                            let field_names: Vec<String> = arr
+                                .borrow()
+                                .iter()
+                                .filter_map(|v| {
+                                    if let Value::String(s) = v {
+                                        Some(s.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            if !field_names.is_empty() {
+                                fields = Some(field_names);
+                            }
+                        }
+                    } else {
+                        bind_vars.insert(
+                            key.clone(),
+                            crate::interpreter::builtins::model::value_to_json(v)
+                                .map_err(|e| RuntimeError::General { message: e, span })?,
+                        );
+                    }
+                }
+            }
+
+            new_qb.add_include(rel_name, rel, filter, bind_vars, fields);
+        } else {
+            // Pattern A: all strings → multi-relation unfiltered
+            for arg in &arguments {
+                let rel_name = match arg {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "includes() expects string relation names",
+                            span,
+                        ))
+                    }
+                };
+                let rel = crate::interpreter::builtins::model::get_relation(&class_name, &rel_name)
+                    .ok_or_else(|| RuntimeError::General {
+                        message: format!("No relation '{}' defined on {}", rel_name, class_name),
+                        span,
+                    })?;
+                new_qb.add_include(rel_name, rel, None, std::collections::HashMap::new(), None);
+            }
         }
 
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    fn qb_select(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() {
+            return Err(RuntimeError::type_error(
+                "select() requires at least one field name",
+                span,
+            ));
+        }
+
+        let mut fields = Vec::new();
+        for arg in &arguments {
+            match arg {
+                Value::String(s) => fields.push(s.clone()),
+                _ => {
+                    return Err(RuntimeError::type_error(
+                        "select() expects string field names",
+                        span,
+                    ))
+                }
+            }
+        }
+
+        let mut new_qb = qb.borrow().clone();
+        new_qb.set_select(fields);
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 

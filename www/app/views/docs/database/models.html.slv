@@ -71,12 +71,11 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
 let user = User.find("user123")
 # Find all
 let users = User.all
-# Find with SDBQL filter
-# Note: where()
-returns a QueryBuilder - call .all to get results
-let adults = User.where("doc.age >= @age", { "age": 18 }).all
+# Find with filter
+# Note: where() returns a QueryBuilder - call .all to get results
+let adults = User.where("age >= @age", { "age": 18 }).all
 # Complex conditions
-let results = User.where("doc.age >= @min AND doc.role == @role", {
+let results = User.where("age >= @min AND role == @role", {
     "min": 21,
     "role": "admin"
 }).all</code></pre>
@@ -115,8 +114,8 @@ let results = User.where("doc.age >= @min AND doc.role == @role", {
 
     <pre><code class="language-soli text-sm"># Start with .where()
 let results = User
-    .where("doc.age >= @age", { "age": 18 })
-    .where("doc.active == @active", { "active": true })
+    .where("age >= @age", { "age": 18 })
+    .where("active == @active", { "active": true })
     .order("created_at", "desc")
     .limit(10)
     .offset(20)
@@ -129,9 +128,9 @@ let recent = User.order("created_at", "desc").limit(5).all
 let sample = User.limit(3).all
 
 # Get first result only
-let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first
+let first = User.where("email == @email", { "email": "alice@example.com" }).first
 # Count with conditions
-let count = User.where("doc.role == @role", { "role": "admin" }).count</code></pre>
+let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Static Methods Reference</h2>
     <div class="overflow-x-auto mb-12">
@@ -182,6 +181,22 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count</code></p
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.includes(rel, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Eager load relations (returns QueryBuilder)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.includes(rel, filter, binds)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load with filter condition (returns QueryBuilder)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.includes({ rel: [fields] })</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load with field selection (returns QueryBuilder)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.select(field, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Select specific fields (returns QueryBuilder)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.fields(field, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Alias for <code>select()</code> (returns QueryBuilder)</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.join(rel, filter?, binds?)</code></td>
@@ -254,6 +269,22 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count</code></p
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.includes(rel, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Eager load relations via subqueries</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes(rel, filter, binds)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load with filter and optional <code>"fields"</code> key</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes({ rel: [fields] })</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load with field projection</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.select(field, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Select specific fields on the main collection</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.fields(field, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Alias for <code>.select()</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.join(rel, filter?, binds?)</code></td>
@@ -515,6 +546,70 @@ let recent = User.join("posts").order("created_at", "desc").limit(10).all</code>
         </div>
     </div>
 
+    <h3 class="text-lg font-semibold text-white mb-4">Filtered Includes</h3>
+    <p class="text-gray-400 mb-4">Filter included relations to load only matching related records:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Only load published posts for each user
+let users = User.includes("posts", "published = @p", { "p": true }).all
+
+# Combine a filter with field projection using the "fields" key
+let users = User.includes("posts", "published = @p", {
+    "p": true,
+    "fields": ["title", "body"]
+}).all
+# => ... RETURN {title: rel.title, body: rel.body} ...</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Includes with Field Projection</h3>
+    <p class="text-gray-400 mb-4">Use a hash argument to select specific fields on included relations (without filtering):</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Only load title and body from posts
+let users = User.includes({ "posts": ["title", "body"] }).all</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Chaining Multiple Includes</h3>
+    <p class="text-gray-400 mb-4">Chain <code>.includes()</code> calls to eagerly load multiple relations with different options:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Filtered posts + unfiltered profile
+let users = User.includes("posts", "published = @p", { "p": true })
+    .includes("profile")
+    .all</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Field Selection (select / fields)</h3>
+    <p class="text-gray-400 mb-4">Use <code>.select()</code> (or its alias <code>.fields()</code>) to return only specific fields. <code>_key</code> is always included automatically:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Only return name and email
+let users = User.select("name", "email").all
+# => FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}
+
+# .fields() is an alias
+let users = User.fields("name", "email").all
+
+# Combine with other query methods
+let users = User.where("active = @a", { "a": true })
+    .select("name", "email")
+    .order("name")
+    .limit(10)
+    .all
+
+# Combine with includes
+let users = User.select("name", "email").includes("posts").all
+# => ... RETURN MERGE({name: doc.name, email: doc.email, _key: doc._key}, {posts: _rel_posts})</code></pre>
+        </div>
+    </div>
+
     <h3 class="text-lg font-semibold text-white mb-4">Manual Relationships</h3>
     <p class="text-gray-400 mb-4">You can also implement relationships as custom methods for more control:</p>
 
@@ -528,7 +623,7 @@ end
 
 class User < Model
     def posts
-        Post.where("doc.author_id == @id", { "id": this.id })
+        Post.where("author_id == @id", { "id": this.id })
     end
 end</code></pre>
         </div>
@@ -552,7 +647,7 @@ queries:</p>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users RETURN doc</code></td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">User.where("doc.age >= @age", {"age": 18})</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.where("age >= @age", {"age": 18})</code></td>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER doc.age >= @age RETURN doc</code></td>
                 </tr>
                 <tr>
@@ -576,6 +671,18 @@ queries:</p>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})</code></td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes("posts", "published = @p", {"p": true})</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... FILTER rel.user_id == doc._key AND rel.published == @p RETURN rel ...</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes({"posts": ["title"]})</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... RETURN {title: rel.title} ...</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.select("name", "email")</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}</code></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">User.join("posts")</code></td>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER LENGTH(FOR rel IN posts FILTER rel.user_id == doc._key LIMIT 1 RETURN 1) > 0 RETURN doc</code></td>
                 </tr>
@@ -592,6 +699,100 @@ queries:</p>
             <li><code>@variable</code> syntax for bind parameters</li>
             <li><code>LET</code> subqueries + <code>MERGE</code> for eager loading</li>
         </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
+    <p class="text-gray-400 mb-4">When the ORM doesn't cover your use case, you can run raw SDBQL queries directly.</p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Using db.query()</h3>
+    <p class="text-gray-400 mb-4">Use <code>db.query()</code> with <code>@param</code> bind parameters for safe, parameterized queries:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Read with named parameters
+let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
+    "age": 18
+})
+
+# Insert
+db.query("INSERT { name: @name, email: @email } INTO users", {
+    "name": "Bob",
+    "email": "bob@example.com"
+})
+
+# Update
+db.query("UPDATE @key WITH { name: @name } IN users", {
+    "key": user_id,
+    "name": "Alice Smith"
+})
+
+# Delete
+db.query("REMOVE @key IN users", { "key": user_id })</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Using @sdql{} Query Block</h3>
+    <p class="text-gray-400 mb-4">The <code>@sdql{}</code> syntax provides inline interpolation with <code>#{expression}</code> for more readable multi-line queries:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Simple query with interpolation
+let users = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{age}
+    RETURN u
+}
+
+# Multiple interpolations
+let results = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{min_age} AND u.city == #{city}
+    SORT u.name ASC
+    LIMIT #{limit}
+    RETURN u
+}
+
+# Insert with interpolation
+@sdql{
+    INSERT {
+        name: #{name},
+        email: #{email},
+        created_at: NOW()
+    } INTO users
+}
+
+# Update
+@sdql{ UPDATE #{user_id} IN users SET { last_login: NOW() } }
+
+# Delete
+@sdql{ REMOVE #{user_id} IN users }</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">When to Use Each</h3>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Approach</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Use Case</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Standard CRUD, relations, eager loading &mdash; use the ORM first</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">db.query()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Parameterized queries with <code>@param</code> bind variables</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">@sdql{}</code></td>
+                    <td class="py-3 px-4 text-gray-400">Inline interpolation with <code>#{expr}</code> for readable multi-line queries</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>

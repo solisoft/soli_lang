@@ -120,6 +120,10 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `Model.delete(id)` | Delete a document |
 | `Model.count()` | Count all documents |
 | `Model.includes(rel, ...)` | Eager load relations (returns QueryBuilder) |
+| `Model.includes(rel, filter, binds)` | Eager load with filter condition (returns QueryBuilder) |
+| `Model.includes({ rel: [fields] })` | Eager load with field selection (returns QueryBuilder) |
+| `Model.select(field, ...)` | Select specific fields (returns QueryBuilder) |
+| `Model.fields(field, ...)` | Alias for `select()` (returns QueryBuilder) |
 | `Model.join(rel, filter?, binds?)` | Filter by related existence (returns QueryBuilder) |
 | `Model.order(field, dir?)` | Order results (returns QueryBuilder) |
 | `Model.limit(n)` | Limit results (returns QueryBuilder) |
@@ -141,6 +145,10 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `.limit(n)` | Limit results to n documents |
 | `.offset(n)` | Skip first n documents |
 | `.includes(rel, ...)` | Eager load relations via subqueries |
+| `.includes(rel, filter, binds)` | Eager load with filter and optional `"fields"` key |
+| `.includes({ rel: [fields] })` | Eager load with field projection |
+| `.select(field, ...)` | Select specific fields on the main collection |
+| `.fields(field, ...)` | Alias for `.select()` |
 | `.join(rel, filter?, binds?)` | Filter by existence of related records |
 | `.all()` | Execute query, return all results |
 | `.first()` | Execute query, return first result |
@@ -293,6 +301,81 @@ let recent = User.join("posts").order("created_at", "desc").limit(10).all()
 
 This is equivalent to ActiveRecord's `joins` — use `includes` when you need the related data, and `join` when you only need to filter by existence.
 
+### Filtered Includes
+
+Filter included relations to load only matching related records:
+
+```soli
+# Only load published posts for each user
+let users = User.includes("posts", "published = @p", { "p": true }).all()
+
+# Inspect the generated query
+print(User.includes("posts", "published = @p", { "p": true }).to_query)
+# => ... LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key AND rel.published == @p RETURN rel) ...
+```
+
+Combine a filter with field projection using the `"fields"` key in the bind hash:
+
+```soli
+# Only load title and body of published posts
+let users = User.includes("posts", "published = @p", {
+    "p": true,
+    "fields": ["title", "body"]
+}).all()
+# => ... RETURN {title: rel.title, body: rel.body} ...
+```
+
+### Includes with Field Projection
+
+Use a hash argument to select specific fields on included relations (without filtering):
+
+```soli
+# Only load title and body from posts
+let users = User.includes({ "posts": ["title", "body"] }).all()
+# => ... LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN {title: rel.title, body: rel.body}) ...
+```
+
+### Chaining Multiple Includes
+
+Chain `.includes()` calls to eagerly load multiple relations with different options:
+
+```soli
+# Filtered posts + unfiltered profile
+let users = User.includes("posts", "published = @p", { "p": true })
+    .includes("profile")
+    .all()
+```
+
+### Field Selection (select / fields)
+
+Use `.select()` (or its alias `.fields()`) to return only specific fields from the main collection. `_key` is always included automatically for identity:
+
+```soli
+# Only return name and email
+let users = User.select("name", "email").all()
+# => FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}
+
+# .fields() is an alias
+let users = User.fields("name", "email").all()
+# => same query
+
+# Combine with other query methods
+let users = User.where("active = @a", { "a": true })
+    .select("name", "email")
+    .order("name")
+    .limit(10)
+    .all()
+
+# Combine with includes
+let users = User.select("name", "email").includes("posts").all()
+# => ... RETURN MERGE({name: doc.name, email: doc.email, _key: doc._key}, {posts: _rel_posts})
+
+# Full combo: select + filtered includes with field projection
+let users = User.select("name")
+    .includes("posts", "published = @p", { "p": true, "fields": ["title"] })
+    .all()
+```
+
 ### Manual Relationships
 
 You can also implement relationships as custom methods for more control:
@@ -345,6 +428,9 @@ Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:
 | `.limit(10).offset(20)` | `... LIMIT 20, 10 RETURN doc` |
 | `User.count()` | `FOR doc IN users COLLECT WITH COUNT INTO count RETURN count` |
 | `User.includes("posts")` | `FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})` |
+| `User.includes("posts", "published = @p", {"p": true})` | `... FILTER rel.user_id == doc._key AND rel.published == @p RETURN rel ...` |
+| `User.includes({"posts": ["title"]})` | `... RETURN {title: rel.title} ...` |
+| `User.select("name", "email")` | `FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}` |
 | `User.join("posts")` | `FOR doc IN users FILTER LENGTH(FOR rel IN posts FILTER rel.user_id == doc._key LIMIT 1 RETURN 1) > 0 RETURN doc` |
 
 SDBQL uses:

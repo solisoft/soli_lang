@@ -1227,6 +1227,11 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "int",
     },
     MethodDef {
+        name: "fields",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
         name: "first",
         zero_arg: true,
         ret: "",
@@ -1275,6 +1280,11 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         name: "present?",
         zero_arg: true,
         ret: "bool",
+    },
+    MethodDef {
+        name: "select",
+        zero_arg: false,
+        ret: "",
     },
     MethodDef {
         name: "to_query",

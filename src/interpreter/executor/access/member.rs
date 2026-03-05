@@ -404,8 +404,8 @@ impl Interpreter {
         }
         // Handle QueryBuilder methods for chaining
         match name {
-            "where" | "order" | "limit" | "offset" | "includes" | "join" | "all" | "first"
-            | "count" | "to_query" | "is_a?" => Ok(Value::Method(ValueMethod {
+            "where" | "order" | "limit" | "offset" | "includes" | "join" | "select" | "fields"
+            | "all" | "first" | "count" | "to_query" | "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),

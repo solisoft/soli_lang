@@ -160,7 +160,7 @@ impl TokenKind {
             "static" => Some(TokenKind::Static),
             "true" => Some(TokenKind::BoolLiteral(true)),
             "false" => Some(TokenKind::BoolLiteral(false)),
-            "null" => Some(TokenKind::Null),
+            "null" | "nil" => Some(TokenKind::Null),
             "try" => Some(TokenKind::Try),
             "catch" => Some(TokenKind::Catch),
             "finally" => Some(TokenKind::Finally),
