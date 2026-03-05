@@ -13,7 +13,7 @@ pub const METHOD_UNKNOWN: MethodId = u16::MAX;
 /// Returns METHOD_UNKNOWN for unrecognized names (e.g., user-defined methods on classes).
 pub fn resolve_method_id(name: &str) -> MethodId {
     match name {
-        "len" => 0,
+        "len" | "size" => 0,
         "length" => 1,
         "empty?" => 2,
         "bytesize" => 3,
@@ -21,7 +21,7 @@ pub fn resolve_method_id(name: &str) -> MethodId {
         "uppercase" => 5,
         "downcase" => 6,
         "lowercase" => 7,
-        "trim" => 8,
+        "trim" | "strip" => 8,
         "lstrip" => 9,
         "rstrip" => 10,
         "capitalize" => 11,

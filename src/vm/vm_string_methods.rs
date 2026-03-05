@@ -29,11 +29,11 @@ impl Vm {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::String(s.to_lowercase()))
             }
-            "len" | "length" => {
+            "len" | "length" | "size" => {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::Int(s.len() as i64))
             }
-            "trim" => {
+            "trim" | "strip" => {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::String(s.trim().to_string()))
             }

@@ -658,6 +658,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "int",
     },
     MethodDef {
+        name: "size",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
         name: "lines",
         zero_arg: true,
         ret: "array",
@@ -828,6 +833,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
+        name: "strip",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "truncate",
         zero_arg: false,
         ret: "string",
@@ -942,6 +952,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
     },
     MethodDef {
         name: "length",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "size",
         zero_arg: true,
         ret: "int",
     },
@@ -1135,6 +1150,11 @@ pub const HASH_METHODS: &[MethodDef] = &[
     },
     MethodDef {
         name: "length",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "size",
         zero_arg: true,
         ret: "int",
     },

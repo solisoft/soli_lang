@@ -274,13 +274,14 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-length" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-length" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.length</code> / <code class="text-lg font-mono text-indigo-400">.len</code>
+                        <code class="text-lg font-mono text-indigo-400">.length</code> / <code class="text-lg font-mono text-indigo-400">.len</code> / <code class="text-lg font-mono text-indigo-400">.size</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of characters in the string.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".length  # 5
+"hello".size    # 5
 "".len          # 0</code></pre>
                 </div>
             </section>
@@ -441,13 +442,14 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-trim" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-trim" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.trim</code> / <code class="text-lg font-mono text-indigo-400">.lstrip</code> / <code class="text-lg font-mono text-indigo-400">.rstrip</code> / <code class="text-lg font-mono text-indigo-400">.chomp</code>
+                        <code class="text-lg font-mono text-indigo-400">.trim</code> / <code class="text-lg font-mono text-indigo-400">.strip</code> / <code class="text-lg font-mono text-indigo-400">.lstrip</code> / <code class="text-lg font-mono text-indigo-400">.rstrip</code> / <code class="text-lg font-mono text-indigo-400">.chomp</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Whitespace removal. <code class="text-indigo-300">trim</code> removes both sides, <code class="text-indigo-300">lstrip</code>/<code class="text-indigo-300">rstrip</code> remove left/right only, <code class="text-indigo-300">chomp</code> removes trailing newlines.</p>
+                    <p class="text-gray-400 mb-3">Whitespace removal. <code class="text-indigo-300">trim</code> (alias <code class="text-indigo-300">strip</code>) removes both sides, <code class="text-indigo-300">lstrip</code>/<code class="text-indigo-300">rstrip</code> remove left/right only, <code class="text-indigo-300">chomp</code> removes trailing newlines.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"  hello  ".trim     # "hello"
+"  hello  ".strip    # "hello"  (alias)
 "  hello  ".lstrip   # "hello  "
 "  hello  ".rstrip   # "  hello"
 "hello\n".chomp      # "hello"</code></pre>

@@ -331,11 +331,11 @@ impl Interpreter {
             _ => {}
         }
         match name {
-            "length" | "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?" | "sort"
-            | "sort_by" | "reverse" | "uniq" | "compact" | "flatten" | "first" | "last"
-            | "empty?" | "include?" | "contains" | "sample" | "shuffle" | "take" | "drop"
-            | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string"
-            | "to_json" | "join" | "is_a?" => Ok(Value::Method(ValueMethod {
+            "length" | "size" | "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?"
+            | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "flatten" | "first"
+            | "last" | "empty?" | "include?" | "contains" | "sample" | "shuffle" | "take"
+            | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get"
+            | "to_string" | "to_json" | "join" | "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
@@ -367,7 +367,7 @@ impl Interpreter {
         }
         // First check if it's a known method
         match name {
-            "length" | "len" | "map" | "filter" | "each" | "get" | "fetch" | "invert"
+            "length" | "len" | "size" | "map" | "filter" | "each" | "get" | "fetch" | "invert"
             | "transform_values" | "transform_keys" | "select" | "reject" | "slice" | "except"
             | "compact" | "dig" | "to_string" | "to_json" | "keys" | "values" | "has_key"
             | "delete" | "merge" | "entries" | "clear" | "set" | "empty?" | "is_a?" => {
@@ -445,8 +445,8 @@ impl Interpreter {
         }
         match name {
             // Core string methods
-            "length" | "len" | "to_s" | "to_string" | "to_i" | "to_int" | "to_f" | "to_float"
-            | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "contains" | "starts_with"
+            "length" | "len" | "size" | "to_s" | "to_string" | "to_i" | "to_int" | "to_f" | "to_float"
+            | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "strip" | "contains" | "starts_with"
             | "ends_with" | "split" | "index_of" | "substring" | "replace" | "lpad"
             | "rpad" | "join" | "empty?"
             // Ruby-style methods

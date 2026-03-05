@@ -1063,11 +1063,10 @@ impl TuiRepl {
     fn execute_code(&mut self, code: &str) {
         let source = repl_common::prepare_source(code);
 
-        let start = std::time::Instant::now();
-
         // Capture stdout during execution
         match BufferRedirect::stdout() {
             Ok(mut buf) => {
+                let start = std::time::Instant::now();
                 let exec_result = self.run_interpreter(&source);
                 let elapsed = start.elapsed();
 
@@ -1090,6 +1089,7 @@ impl TuiRepl {
             }
             _ => {
                 // Fallback if stdout capture fails
+                let start = std::time::Instant::now();
                 let exec_result = self.run_interpreter(&source);
                 let elapsed = start.elapsed();
                 if let Err(e) = exec_result {

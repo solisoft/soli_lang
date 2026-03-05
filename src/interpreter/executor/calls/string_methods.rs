@@ -50,7 +50,7 @@ impl Interpreter {
             "hex" => self.string_hex(s, arguments, span),
             "oct" => self.string_oct(s, arguments, span),
             "truncate" => self.string_truncate(s, arguments, span),
-            "length" | "len" => self.string_length(s, arguments, span),
+            "length" | "len" | "size" => self.string_length(s, arguments, span),
             "to_s" | "to_string" => Ok(Value::String(s.to_string())),
             "to_i" | "to_int" => {
                 let trimmed = s.trim();
@@ -74,7 +74,7 @@ impl Interpreter {
             }
             "upcase" | "uppercase" => Ok(Value::String(s.to_uppercase())),
             "downcase" | "lowercase" => Ok(Value::String(s.to_lowercase())),
-            "trim" => Ok(Value::String(s.trim().to_string())),
+            "trim" | "strip" => Ok(Value::String(s.trim().to_string())),
             "contains" => self.string_contains(s, arguments, span),
             "starts_with" => self.string_starts_with(s, arguments, span),
             "ends_with" => self.string_ends_with(s, arguments, span),

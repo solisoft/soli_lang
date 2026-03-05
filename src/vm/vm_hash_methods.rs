@@ -45,7 +45,7 @@ impl Vm {
             }
 
             // --- Non-mutating methods ---
-            "length" | "len" => {
+            "length" | "len" | "size" => {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
