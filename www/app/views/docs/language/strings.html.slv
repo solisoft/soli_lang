@@ -681,9 +681,9 @@ end
 def parse_query(query: String) -> Hash
     let result = {}
     let pairs = split(query, "&")
-for (pair in pairs)
+    for (pair in pairs)
         let parts = split(pair, "=")
-if (len(parts) == 2)
+        if (len(parts) == 2)
             result[parts[0]] = parts[1]
         end
     end
@@ -791,6 +791,27 @@ end</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let greeting = "Hello, World!"
 # In REPL, displays: Hello, World!
 # Equivalent to: greeting.to_string()</code></pre>
+                </div>
+            </section>
+
+            <section id="string-parse-json" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#string-parse-json" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">parse_json</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Parses the string as JSON and returns the corresponding value. Returns an empty hash <code class="text-indigo-300">{}</code> if the JSON is invalid.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let json = '{"name":"Alice","age":30}'
+let data = json.parse_json
+data["name"]  # "Alice"
+data["age"]   # 30
+
+let arr = "[1,2,3]".parse_json  # [1, 2, 3]
+
+# Invalid JSON returns empty hash
+let bad = "not json".parse_json  # {}</code></pre>
                 </div>
             </section>
 

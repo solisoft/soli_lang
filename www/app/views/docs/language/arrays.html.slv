@@ -372,7 +372,8 @@ print(arr);       # [1, 2, 3, 4, 5] (original unchanged)</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Remove duplicate elements. Returns a new array with unique values.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 2, 3, 3, 3, 4]
-let unique = arr.uniqprint(unique);  # [1, 2, 3, 4]</code></pre>
+let unique = arr.uniq
+print(unique)  # [1, 2, 3, 4]</code></pre>
                 </div>
             </section>
 
@@ -386,7 +387,8 @@ let unique = arr.uniqprint(unique);  # [1, 2, 3, 4]</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Remove null values from the array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, 2, null, 3, null]
-let cleaned = arr.compactprint(cleaned);  # [1, 2, 3]</code></pre>
+let cleaned = arr.compact
+print(cleaned)  # [1, 2, 3]</code></pre>
                 </div>
             </section>
 
@@ -400,7 +402,8 @@ let cleaned = arr.compactprint(cleaned);  # [1, 2, 3]</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Flatten nested arrays. Optionally specify depth.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let nested = [[1, 2], [3, 4], [5, 6]]
-let flat = nested.flattenprint(flat);  # [1, 2, 3, 4, 5, 6]
+let flat = nested.flatten
+print(flat);  # [1, 2, 3, 4, 5, 6]
 
 # Flatten only 1 level deep
 let deep = [[1, 2], [[3, 4]]]
@@ -465,10 +468,12 @@ print(empty.present?);    # false</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
 
 # Get random element
-let random = arr.sampleprint(random);  # Random element (e.g., 3)
+let random = arr.sample
+print(random);  # Random element (e.g., 3)
 
 # Shuffle array
-let shuffled = arr.shuffleprint(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
+let shuffled = arr.shuffle
+print(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
                 </div>
             </section>
 
@@ -609,6 +614,23 @@ print(result2);  # 90</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
 # In REPL, displays: [1, 2, 3]
 # Equivalent to: arr.to_string()</code></pre>
+                </div>
+            </section>
+
+            <section id="array-to-json" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-to-json" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">to_json</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Serializes the array to a JSON string.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, "hello", true, null]
+arr.to_json  # '[1,"hello",true,null]'
+
+let nested = [{name: "Alice"}, {name: "Bob"}]
+nested.to_json  # '[{"name":"Alice"},{"name":"Bob"}]'</code></pre>
                 </div>
             </section>
 
