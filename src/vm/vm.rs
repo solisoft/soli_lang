@@ -1,7 +1,7 @@
 //! The bytecode virtual machine — stack-based execution engine.
 
+use ahash::AHashMap as HashMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
@@ -75,7 +75,7 @@ pub struct Vm {
     /// Output buffer for print statements (for testing/capture).
     pub output: Vec<String>,
     /// Handlers that failed VM execution — skip VM for these and use interpreter directly.
-    pub failed_handlers: std::collections::HashSet<String>,
+    pub failed_handlers: ahash::AHashSet<String>,
 }
 
 impl Vm {
@@ -88,7 +88,7 @@ impl Vm {
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
             output: Vec::new(),
-            failed_handlers: std::collections::HashSet::new(),
+            failed_handlers: ahash::AHashSet::new(),
         }
     }
 
@@ -106,101 +106,149 @@ impl Vm {
         self.run()
     }
 
+    /// Get the current source span (only call on error paths).
+    #[cold]
+    fn current_span(&self) -> Span {
+        let frame = self.frames.last().unwrap();
+        let ip = frame.ip.saturating_sub(1);
+        let line = frame
+            .closure
+            .proto
+            .chunk
+            .lines
+            .get(ip)
+            .copied()
+            .unwrap_or(0);
+        Span::new(0, 0, line, 0)
+    }
+
+    /// Read a string constant as &str without cloning (for use within a scoped borrow).
+    #[inline]
+    fn read_string_constant_owned(&self, idx: u16) -> String {
+        let frame = self.frames.last().unwrap();
+        match &frame.closure.proto.chunk.constants[idx as usize] {
+            Constant::String(s) => s.clone(),
+            _ => String::new(),
+        }
+    }
+
     /// Run the dispatch loop.
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
         loop {
-            let frame_idx = self.frames.len() - 1;
-            let frame = &self.frames[frame_idx];
-            let ip = frame.ip;
-
-            if ip >= frame.closure.proto.chunk.code.len() {
-                return Ok(Value::Null);
-            }
-
-            let op = frame.closure.proto.chunk.code[ip];
-            let line = frame
-                .closure
-                .proto
-                .chunk
-                .lines
-                .get(ip)
-                .copied()
-                .unwrap_or(0);
-            let span = Span::new(0, 0, line, 0);
-
-            // Advance IP
-            self.frames[frame_idx].ip += 1;
+            // Fetch opcode and advance IP in a scoped borrow
+            let op = {
+                let frame = self.frames.last_mut().unwrap();
+                let ip = frame.ip;
+                if ip >= frame.closure.proto.chunk.code.len() {
+                    return Ok(Value::Null);
+                }
+                let op = frame.closure.proto.chunk.code[ip];
+                frame.ip = ip + 1;
+                op
+            };
+            // self is now fully available for mutation
 
             match op {
                 Op::Constant(idx) => {
-                    let constant =
-                        &self.frames[frame_idx].closure.proto.chunk.constants[idx as usize];
-                    let value = constant_to_value(constant);
-                    self.push(value);
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[idx as usize];
+                    // Inline fast path for the most common constant types
+                    let value = match constant {
+                        Constant::Int(n) => Value::Int(*n),
+                        Constant::Float(n) => Value::Float(*n),
+                        Constant::Bool(b) => Value::Bool(*b),
+                        Constant::Null => Value::Null,
+                        _ => constant_to_value(constant),
+                    };
+                    self.stack.push(value);
                 }
-                Op::Null => self.push(Value::Null),
-                Op::True => self.push(Value::Bool(true)),
-                Op::False => self.push(Value::Bool(false)),
+                Op::Null => self.stack.push(Value::Null),
+                Op::True => self.stack.push(Value::Bool(true)),
+                Op::False => self.stack.push(Value::Bool(false)),
 
                 Op::Pop => {
-                    self.pop();
+                    self.stack.pop();
                 }
                 Op::Dup => {
-                    let val = self.peek(0).clone();
-                    self.push(val);
+                    let val = self.stack.last().unwrap().clone();
+                    self.stack.push(val);
                 }
 
                 Op::GetLocal(slot) => {
-                    let base = self.frames[frame_idx].stack_base;
-                    let val = self.stack[base + slot as usize].clone();
-                    self.push(val);
+                    let base = self.frames.last().unwrap().stack_base;
+                    let idx = base + slot as usize;
+                    let val = self.stack[idx].clone();
+                    self.stack.push(val);
                 }
                 Op::SetLocal(slot) => {
-                    let val = self.peek(0).clone();
-                    let base = self.frames[frame_idx].stack_base;
+                    let val = self.stack.last().unwrap().clone();
+                    let base = self.frames.last().unwrap().stack_base;
                     self.stack[base + slot as usize] = val;
                 }
                 Op::GetGlobal(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    match self.globals.get(&name) {
-                        Some(val) => self.push(val.clone()),
+                    // Avoid cloning the string constant for lookup
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        let name = match &frame.closure.proto.chunk.constants[idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
+                        self.globals.get(name).cloned()
+                    };
+                    match val {
+                        Some(v) => self.stack.push(v),
                         None => {
-                            return Err(RuntimeError::undefined_variable(name, span));
+                            let name = self.read_string_constant_owned(idx);
+                            return Err(RuntimeError::undefined_variable(
+                                name,
+                                self.current_span(),
+                            ));
                         }
                     }
                 }
                 Op::SetGlobal(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let val = self.peek(0).clone();
-                    match self.globals.entry(name.clone()) {
-                        std::collections::hash_map::Entry::Occupied(mut e) => {
-                            e.insert(val);
+                    let val = self.stack.last().unwrap().clone();
+                    // Avoid cloning the string constant for lookup
+                    let found = {
+                        let frame = self.frames.last().unwrap();
+                        let name = match &frame.closure.proto.chunk.constants[idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
+                        if let Some(entry) = self.globals.get_mut(name) {
+                            *entry = val;
+                            true
+                        } else {
+                            false
                         }
-                        std::collections::hash_map::Entry::Vacant(_) => {
-                            return Err(RuntimeError::undefined_variable(name, span));
-                        }
+                    };
+                    if !found {
+                        let name = self.read_string_constant_owned(idx);
+                        return Err(RuntimeError::undefined_variable(name, self.current_span()));
                     }
                 }
                 Op::DefineGlobal(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let val = self.pop();
+                    let name = self.read_string_constant_owned(idx);
+                    let val = self.stack.pop().unwrap();
                     self.globals.insert(name, val);
                 }
 
                 Op::GetUpvalue(idx) => {
                     let val = {
-                        let upvalue = &self.frames[frame_idx].closure.upvalues[idx as usize];
+                        let frame = self.frames.last().unwrap();
+                        let upvalue = &frame.closure.upvalues[idx as usize];
                         let uv = upvalue.borrow();
                         match &*uv {
                             Upvalue::Open(slot) => self.stack[*slot].clone(),
                             Upvalue::Closed(val) => val.clone(),
                         }
                     };
-                    self.push(val);
+                    self.stack.push(val);
                 }
                 Op::SetUpvalue(idx) => {
-                    let val = self.peek(0).clone();
-                    let upvalue = self.frames[frame_idx].closure.upvalues[idx as usize].clone();
+                    let val = self.stack.last().unwrap().clone();
+                    let upvalue =
+                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
                     let mut uv = upvalue.borrow_mut();
                     match &mut *uv {
                         Upvalue::Open(slot) => {
@@ -214,142 +262,492 @@ impl Vm {
                 Op::CloseUpvalue => {
                     let slot = self.stack.len() - 1;
                     self.close_upvalues(slot);
-                    self.pop();
+                    self.stack.pop();
                 }
 
-                // --- Arithmetic ---
+                // --- Arithmetic (inlined fast paths for Int) ---
                 Op::Add => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_add(a, b, span)?;
-                    self.push(result);
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => Value::Int(x + y),
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
+                        (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 + y),
+                        (Value::Float(x), Value::Int(y)) => Value::Float(x + *y as f64),
+                        (Value::String(x), Value::String(y)) => {
+                            let mut s = String::with_capacity(x.len() + y.len());
+                            s.push_str(x);
+                            s.push_str(y);
+                            Value::String(s)
+                        }
+                        _ => self.op_add(a, b, self.current_span())?,
+                    };
+                    self.stack.push(result);
                 }
                 Op::Subtract => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_subtract(a, b, span)?;
-                    self.push(result);
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => Value::Int(x - y),
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x - y),
+                        (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 - y),
+                        (Value::Float(x), Value::Int(y)) => Value::Float(x - *y as f64),
+                        _ => {
+                            let span = self.current_span();
+                            self.op_subtract(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
                 }
                 Op::Multiply => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_multiply(a, b, span)?;
-                    self.push(result);
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => Value::Int(x * y),
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x * y),
+                        (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 * y),
+                        (Value::Float(x), Value::Int(y)) => Value::Float(x * *y as f64),
+                        _ => {
+                            let span = self.current_span();
+                            self.op_multiply(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
                 }
                 Op::Divide => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_divide(a, b, span)?;
-                    self.push(result);
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => {
+                            if *y == 0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            Value::Int(x / y)
+                        }
+                        (Value::Float(x), Value::Float(y)) => {
+                            if *y == 0.0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            Value::Float(x / y)
+                        }
+                        _ => {
+                            let span = self.current_span();
+                            self.op_divide(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
                 }
                 Op::Modulo => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_modulo(a, b, span)?;
-                    self.push(result);
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => {
+                            if *y == 0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            Value::Int(x % y)
+                        }
+                        _ => {
+                            let span = self.current_span();
+                            self.op_modulo(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
                 }
                 Op::Negate => {
                     let val = self.pop();
                     match val {
-                        Value::Int(n) => self.push(Value::Int(-n)),
-                        Value::Float(n) => self.push(Value::Float(-n)),
+                        Value::Int(n) => self.stack.push(Value::Int(-n)),
+                        Value::Float(n) => self.stack.push(Value::Float(-n)),
                         _ => {
                             return Err(RuntimeError::type_error(
                                 format!("Cannot negate {}", val.type_name()),
-                                span,
+                                self.current_span(),
                             ));
                         }
                     }
                 }
 
-                // --- Comparison ---
+                // --- Comparison (inlined fast paths for Int) ---
                 Op::Equal => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    self.push(Value::Bool(a == b));
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => x == y,
+                        (Value::Bool(x), Value::Bool(y)) => x == y,
+                        _ => a == b,
+                    };
+                    self.stack.push(Value::Bool(result));
                 }
                 Op::NotEqual => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    self.push(Value::Bool(a != b));
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => x != y,
+                        (Value::Bool(x), Value::Bool(y)) => x != y,
+                        _ => a != b,
+                    };
+                    self.stack.push(Value::Bool(result));
                 }
                 Op::Less => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_compare_less(&a, &b, span)?;
-                    self.push(Value::Bool(result));
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => *x < *y,
+                        (Value::Float(x), Value::Float(y)) => *x < *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less(&a, &b, span)?
+                        }
+                    };
+                    self.stack.push(Value::Bool(result));
                 }
                 Op::LessEqual => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_compare_less_equal(&a, &b, span)?;
-                    self.push(Value::Bool(result));
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => *x <= *y,
+                        (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less_equal(&a, &b, span)?
+                        }
+                    };
+                    self.stack.push(Value::Bool(result));
                 }
                 Op::Greater => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_compare_less(&b, &a, span)?;
-                    self.push(Value::Bool(result));
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => *x > *y,
+                        (Value::Float(x), Value::Float(y)) => *x > *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less(&b, &a, span)?
+                        }
+                    };
+                    self.stack.push(Value::Bool(result));
                 }
                 Op::GreaterEqual => {
-                    let b = self.pop();
-                    let a = self.pop();
-                    let result = self.op_compare_less_equal(&b, &a, span)?;
-                    self.push(Value::Bool(result));
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => *x >= *y,
+                        (Value::Float(x), Value::Float(y)) => *x >= *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less_equal(&b, &a, span)?
+                        }
+                    };
+                    self.stack.push(Value::Bool(result));
                 }
 
                 Op::Not => {
-                    let val = self.pop();
-                    self.push(Value::Bool(!val.is_truthy()));
+                    let val = self.stack.last().unwrap();
+                    let truthy = val.is_truthy();
+                    *self.stack.last_mut().unwrap() = Value::Bool(!truthy);
                 }
 
                 // --- Control flow ---
                 Op::Jump(offset) => {
-                    self.frames[frame_idx].ip += offset as usize;
+                    self.frames.last_mut().unwrap().ip += offset as usize;
                 }
                 Op::JumpIfFalse(offset) => {
-                    let val = self.pop();
+                    let val = self.stack.pop().unwrap();
                     if !val.is_truthy() {
-                        self.frames[frame_idx].ip += offset as usize;
+                        self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
                 Op::Loop(offset) => {
-                    self.frames[frame_idx].ip -= offset as usize;
+                    self.frames.last_mut().unwrap().ip -= offset as usize;
                 }
                 Op::JumpIfFalseNoPop(offset) => {
-                    if !self.peek(0).is_truthy() {
-                        self.frames[frame_idx].ip += offset as usize;
+                    if !self.stack.last().unwrap().is_truthy() {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
                 Op::JumpIfTrueNoPop(offset) => {
-                    if self.peek(0).is_truthy() {
-                        self.frames[frame_idx].ip += offset as usize;
+                    if self.stack.last().unwrap().is_truthy() {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
                 Op::NullishJump(offset) => {
-                    if !matches!(self.peek(0), Value::Null) {
-                        self.frames[frame_idx].ip += offset as usize;
+                    if !matches!(self.stack.last().unwrap(), Value::Null) {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
 
                 // --- Functions ---
                 Op::Call(argc) => {
+                    let span = self.current_span();
                     self.call_value(argc as usize, span)?;
                 }
+                Op::CallGlobal(name_idx, argc) => {
+                    // Combined GetGlobal + Call: lookup global, push, and call in one step
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        let name = match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
+                        self.globals.get(name).cloned()
+                    };
+                    match val {
+                        Some(func) => {
+                            // Insert the function below the arguments
+                            let insert_pos = self.stack.len() - argc as usize;
+                            self.stack.insert(insert_pos, func);
+                            let span = self.current_span();
+                            self.call_value(argc as usize, span)?;
+                        }
+                        None => {
+                            let name = self.read_string_constant_owned(name_idx);
+                            return Err(RuntimeError::undefined_variable(
+                                name,
+                                self.current_span(),
+                            ));
+                        }
+                    }
+                }
+                Op::CallMethod(name_idx, argc) => {
+                    let argc = argc as usize;
+                    let receiver_idx = self.stack.len() - 1 - argc;
+
+                    // Borrow method name from constant pool (no clone)
+                    let name: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    // SAFETY: name points into the constant pool which is alive for
+                    // the entire execution of this frame. We never mutate constants.
+                    let name: &str = unsafe { &*name };
+
+                    // Fast path: dispatch on receiver type without cloning
+                    match &self.stack[receiver_idx] {
+                        Value::String(_) => {
+                            // Ultra-fast path: inline common zero-arg string methods
+                            let result = if argc == 0 {
+                                let s: &str = match &self.stack[receiver_idx] {
+                                    Value::String(s) => s.as_str(),
+                                    _ => unreachable!(),
+                                };
+                                match name {
+                                    "len" | "length" => Some(Value::Int(s.len() as i64)),
+                                    "empty?" => Some(Value::Bool(s.is_empty())),
+                                    "bytesize" => Some(Value::Int(s.len() as i64)),
+                                    "upcase" | "uppercase" => Some(Value::String(s.to_uppercase())),
+                                    "downcase" | "lowercase" => {
+                                        Some(Value::String(s.to_lowercase()))
+                                    }
+                                    "trim" => Some(Value::String(s.trim().to_string())),
+                                    "reverse" => Some(Value::String(s.chars().rev().collect())),
+                                    "nil?" => Some(Value::Bool(false)),
+                                    "class" => Some(Value::String("string".to_string())),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            };
+                            if let Some(result) = result {
+                                self.stack.truncate(receiver_idx);
+                                self.stack.push(result);
+                            } else {
+                                // General path: borrow string and args from stack
+                                let result = {
+                                    let s: &str = match &self.stack[receiver_idx] {
+                                        Value::String(s) => s.as_str(),
+                                        _ => unreachable!(),
+                                    };
+                                    let args =
+                                        &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                                    let span = self.current_span();
+                                    self.vm_call_string_method(s, name, args, span)?
+                                };
+                                self.stack.truncate(receiver_idx);
+                                self.stack.push(result);
+                            }
+                        }
+                        Value::Instance(_) | Value::Class(_) | Value::VmClosure(_) => {
+                            // Slow path: use GetProperty + Call semantics
+                            let span = self.current_span();
+                            let object = self.stack[receiver_idx].clone();
+                            let method_val = self.op_get_property(&object, name, span)?;
+                            self.stack[receiver_idx] = method_val;
+                            self.call_value(argc, span)?;
+                        }
+                        Value::Array(_) => {
+                            // Fast path for common zero-arg array methods
+                            let result = if argc == 0 {
+                                let arr = match &self.stack[receiver_idx] {
+                                    Value::Array(a) => a,
+                                    _ => unreachable!(),
+                                };
+                                match name {
+                                    "length" | "len" => Some(Value::Int(arr.borrow().len() as i64)),
+                                    "empty?" => Some(Value::Bool(arr.borrow().is_empty())),
+                                    "first" => {
+                                        Some(arr.borrow().first().cloned().unwrap_or(Value::Null))
+                                    }
+                                    "last" => {
+                                        Some(arr.borrow().last().cloned().unwrap_or(Value::Null))
+                                    }
+                                    "nil?" => Some(Value::Bool(false)),
+                                    "class" => Some(Value::String("array".to_string())),
+                                    "blank?" => Some(Value::Bool(arr.borrow().is_empty())),
+                                    "present?" => Some(Value::Bool(!arr.borrow().is_empty())),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            };
+                            if let Some(result) = result {
+                                self.stack.truncate(receiver_idx);
+                                self.stack.push(result);
+                            } else {
+                                let arr = match &self.stack[receiver_idx] {
+                                    Value::Array(a) => a.clone(),
+                                    _ => unreachable!(),
+                                };
+                                let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                                let span = self.current_span();
+                                let result = self.vm_call_array_method(&arr, name, args, span)?;
+                                self.stack.truncate(receiver_idx);
+                                self.stack.push(result);
+                            }
+                        }
+                        Value::Hash(_) => {
+                            // Fast path for common zero-arg hash methods
+                            let result = if argc == 0 {
+                                let hash = match &self.stack[receiver_idx] {
+                                    Value::Hash(h) => h,
+                                    _ => unreachable!(),
+                                };
+                                match name {
+                                    "length" | "len" => {
+                                        Some(Value::Int(hash.borrow().len() as i64))
+                                    }
+                                    "empty?" => Some(Value::Bool(hash.borrow().is_empty())),
+                                    "nil?" => Some(Value::Bool(false)),
+                                    "class" => Some(Value::String("hash".to_string())),
+                                    "blank?" => Some(Value::Bool(hash.borrow().is_empty())),
+                                    "present?" => Some(Value::Bool(!hash.borrow().is_empty())),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            };
+                            if let Some(result) = result {
+                                self.stack.truncate(receiver_idx);
+                                self.stack.push(result);
+                            } else {
+                                let hash = match &self.stack[receiver_idx] {
+                                    Value::Hash(h) => h.clone(),
+                                    _ => unreachable!(),
+                                };
+                                let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                                let span = self.current_span();
+                                let result = self.vm_call_hash_method(&hash, name, args, span)?;
+                                self.stack.truncate(receiver_idx);
+                                self.stack.push(result);
+                            }
+                        }
+                        _ => {
+                            let span = self.current_span();
+                            let object = self.stack[receiver_idx].clone();
+                            let method_val = self.op_get_property(&object, name, span)?;
+                            self.stack[receiver_idx] = method_val;
+                            self.call_value(argc, span)?;
+                        }
+                    }
+                }
+                Op::CallMethodById(name_idx, argc, method_id) => {
+                    let argc = argc as usize;
+                    let receiver_idx = self.stack.len() - 1 - argc;
+                    // Fast path: zero-arg methods on primitives — pure integer dispatch
+                    if argc == 0 {
+                        let result = match &self.stack[receiver_idx] {
+                            Value::String(s) => {
+                                super::method_table::string_method_zero_arg(s.as_str(), method_id)
+                            }
+                            Value::Array(a) => {
+                                super::method_table::array_method_zero_arg(a, method_id)
+                            }
+                            Value::Hash(h) => {
+                                super::method_table::hash_method_zero_arg(h, method_id)
+                            }
+                            _ => None,
+                        };
+                        if let Some(result) = result {
+                            self.stack[receiver_idx] = result;
+                            // No args to truncate since argc == 0
+                            continue;
+                        }
+                    }
+
+                    // Medium path: known method ID with args — use string dispatch
+                    // (still avoids the name clone since we borrow from constants)
+                    let name: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let name: &str = unsafe { &*name };
+
+                    match &self.stack[receiver_idx] {
+                        Value::String(_) => {
+                            let result = {
+                                let s: &str = match &self.stack[receiver_idx] {
+                                    Value::String(s) => s.as_str(),
+                                    _ => unreachable!(),
+                                };
+                                let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                                let span = self.current_span();
+                                self.vm_call_string_method(s, name, args, span)?
+                            };
+                            self.stack.truncate(receiver_idx);
+                            self.stack.push(result);
+                        }
+                        Value::Array(_) => {
+                            let arr = match &self.stack[receiver_idx] {
+                                Value::Array(a) => a.clone(),
+                                _ => unreachable!(),
+                            };
+                            let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                            let span = self.current_span();
+                            let result = self.vm_call_array_method(&arr, name, args, span)?;
+                            self.stack.truncate(receiver_idx);
+                            self.stack.push(result);
+                        }
+                        Value::Hash(_) => {
+                            let hash = match &self.stack[receiver_idx] {
+                                Value::Hash(h) => h.clone(),
+                                _ => unreachable!(),
+                            };
+                            let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                            let span = self.current_span();
+                            let result = self.vm_call_hash_method(&hash, name, args, span)?;
+                            self.stack.truncate(receiver_idx);
+                            self.stack.push(result);
+                        }
+                        _ => {
+                            // Class instances, closures: fall back to property dispatch
+                            let span = self.current_span();
+                            let object = self.stack[receiver_idx].clone();
+                            let method_val = self.op_get_property(&object, name, span)?;
+                            self.stack[receiver_idx] = method_val;
+                            self.call_value(argc, span)?;
+                        }
+                    }
+                }
                 Op::Closure(idx) => {
-                    let constant =
-                        &self.frames[frame_idx].closure.proto.chunk.constants[idx as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[idx as usize];
                     if let Constant::Function(proto) = constant {
                         let proto = proto.clone();
-                        let mut upvalues = Vec::new();
+                        let mut upvalues = Vec::with_capacity(proto.upvalue_descriptors.len());
 
                         for desc in &proto.upvalue_descriptors {
                             if desc.is_local {
-                                let slot = self.frames[frame_idx].stack_base + desc.index as usize;
+                                let base = self.frames.last().unwrap().stack_base;
+                                let slot = base + desc.index as usize;
                                 let upvalue = self.capture_upvalue(slot);
                                 upvalues.push(upvalue);
                             } else {
-                                let upvalue = self.frames[frame_idx].closure.upvalues
+                                let upvalue = self.frames.last().unwrap().closure.upvalues
                                     [desc.index as usize]
                                     .clone();
                                 upvalues.push(upvalue);
@@ -357,15 +755,17 @@ impl Vm {
                         }
 
                         let closure = VmClosure::new(proto, upvalues);
-                        self.push(Value::VmClosure(Rc::new(closure)));
+                        self.stack.push(Value::VmClosure(Rc::new(closure)));
                     }
                 }
                 Op::Return => {
                     let result = self.pop();
                     let frame = self.frames.pop().unwrap();
 
-                    // Close any open upvalues in this frame
-                    self.close_upvalues(frame.stack_base);
+                    // Close upvalues only if there are any open ones in this frame's range
+                    if !self.open_upvalues.is_empty() {
+                        self.close_upvalues(frame.stack_base);
+                    }
 
                     // Restore the stack
                     self.stack.truncate(frame.stack_base);
@@ -374,24 +774,25 @@ impl Vm {
                         return Ok(result);
                     }
 
-                    self.push(result);
+                    self.stack.push(result);
                 }
 
                 // --- Collections ---
                 Op::Array(n) => {
-                    let mut elements = Vec::with_capacity(n as usize);
-                    for _ in 0..n {
-                        elements.push(self.pop());
-                    }
-                    elements.reverse();
-                    self.push(Value::Array(Rc::new(RefCell::new(elements))));
+                    let len = self.stack.len();
+                    let start = len - n as usize;
+                    let mut elements = self.stack.split_off(start);
+                    // split_off preserves order, no reverse needed
+                    let _ = &mut elements; // ensure move
+                    self.stack
+                        .push(Value::Array(Rc::new(RefCell::new(elements))));
                 }
                 Op::Hash(n) => {
                     let mut map = HashPairs::default();
                     let mut pairs = Vec::with_capacity(n as usize);
                     for _ in 0..n {
-                        let value = self.pop();
-                        let key = self.pop();
+                        let value = self.stack.pop().unwrap();
+                        let key = self.stack.pop().unwrap();
                         pairs.push((key, value));
                     }
                     pairs.reverse();
@@ -400,46 +801,42 @@ impl Vm {
                             map.insert(hash_key, value);
                         }
                     }
-                    self.push(Value::Hash(Rc::new(RefCell::new(map))));
+                    self.stack.push(Value::Hash(Rc::new(RefCell::new(map))));
                 }
                 Op::Range => {
-                    let end = self.pop();
-                    let start = self.pop();
+                    let (start, end) = self.pop2();
                     match (&start, &end) {
                         (Value::Int(a), Value::Int(b)) => {
                             let arr: Vec<Value> = (*a..=*b).map(Value::Int).collect();
-                            self.push(Value::Array(Rc::new(RefCell::new(arr))));
+                            self.stack.push(Value::Array(Rc::new(RefCell::new(arr))));
                         }
                         _ => {
                             return Err(RuntimeError::type_error(
                                 "Range requires integer operands",
-                                span,
+                                self.current_span(),
                             ));
                         }
                     }
                 }
                 Op::GetIndex => {
-                    let index = self.pop();
-                    let object = self.pop();
-                    let result = self.op_get_index(&object, &index, span)?;
-                    self.push(result);
+                    let index = self.stack.pop().unwrap();
+                    let object = self.stack.pop().unwrap();
+                    let result = self.op_get_index(&object, &index, self.current_span())?;
+                    self.stack.push(result);
                 }
                 Op::SetIndex => {
-                    let value = self.pop();
-                    let index = self.pop();
-                    let object = self.pop();
-                    self.op_set_index(&object, &index, value, span)?;
-                    self.push(object);
+                    let value = self.stack.pop().unwrap();
+                    let index = self.stack.pop().unwrap();
+                    let object = self.stack.pop().unwrap();
+                    self.op_set_index(&object, &index, value, self.current_span())?;
+                    self.stack.push(object);
                 }
                 Op::BuildString(n) => {
-                    let mut parts = Vec::with_capacity(n as usize);
-                    for _ in 0..n {
-                        parts.push(self.pop());
-                    }
-                    parts.reverse();
+                    let len = self.stack.len();
+                    let start = len - n as usize;
                     let mut result = String::new();
-                    for v in &parts {
-                        match v {
+                    for i in start..len {
+                        match &self.stack[i] {
                             Value::String(s) => result.push_str(s),
                             Value::Int(i) => {
                                 use std::fmt::Write;
@@ -448,95 +845,96 @@ impl Vm {
                             other => result.push_str(&format!("{}", other)),
                         }
                     }
-                    self.push(Value::String(result));
+                    self.stack.truncate(start);
+                    self.stack.push(Value::String(result));
                 }
                 Op::Spread => {
                     // Spread is handled by the array/hash/call compilation
-                    // At runtime, it's a no-op on the value itself
                 }
 
                 // --- Properties ---
                 Op::GetProperty(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let object = self.pop();
+                    let name = self.read_string_constant_owned(idx);
+                    let object = self.stack.pop().unwrap();
+                    let span = self.current_span();
                     let result = self.op_get_property(&object, &name, span)?;
-                    self.push(result);
+                    self.stack.push(result);
                 }
                 Op::SetProperty(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let value = self.pop();
-                    let object = self.peek(0).clone();
+                    let name = self.read_string_constant_owned(idx);
+                    let value = self.stack.pop().unwrap();
+                    let object = self.stack.last().unwrap().clone();
+                    let span = self.current_span();
                     self.op_set_property(&object, &name, value.clone(), span)?;
-                    // Leave object on stack, but push the value as the result
-                    self.pop(); // pop object
-                    self.push(value);
+                    self.stack.pop(); // pop object
+                    self.stack.push(value);
                 }
 
                 // --- Classes ---
                 Op::Class(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
+                    let name = self.read_string_constant_owned(idx);
                     let class = Class {
                         name,
                         ..Default::default()
                     };
-                    self.push(Value::Class(Rc::new(class)));
+                    self.stack.push(Value::Class(Rc::new(class)));
                 }
                 Op::Inherit => {
-                    let superclass_val = self.pop();
-                    let subclass_val = self.peek(0).clone();
+                    let superclass_val = self.stack.pop().unwrap();
+                    let subclass_val = self.stack.last().unwrap().clone();
+                    let span = self.current_span();
                     self.op_inherit(&subclass_val, &superclass_val, span)?;
                 }
                 Op::Method(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let method = self.pop();
-                    let class = self.peek(0).clone();
+                    let name = self.read_string_constant_owned(idx);
+                    let method = self.stack.pop().unwrap();
+                    let class = self.stack.last().unwrap().clone();
+                    let span = self.current_span();
                     self.op_add_method(&class, &name, method, false, span)?;
                 }
                 Op::StaticMethod(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let method = self.pop();
-                    let class = self.peek(0).clone();
+                    let name = self.read_string_constant_owned(idx);
+                    let method = self.stack.pop().unwrap();
+                    let class = self.stack.last().unwrap().clone();
+                    let span = self.current_span();
                     self.op_add_method(&class, &name, method, true, span)?;
                 }
                 Op::New(argc) => {
+                    let span = self.current_span();
                     self.op_new(argc as usize, span)?;
                 }
                 Op::GetThis => {
-                    let base = self.frames[frame_idx].stack_base;
+                    let base = self.frames.last().unwrap().stack_base;
                     let this = self.stack[base].clone();
-                    self.push(this);
+                    self.stack.push(this);
                 }
                 Op::GetSuper(idx) => {
-                    let _name = self.read_string_constant(frame_idx, idx);
-                    let _this = self.pop();
-                    // Super method resolution happens at runtime
-                    self.push(Value::Null); // placeholder
+                    let _name = self.read_string_constant_owned(idx);
+                    let _this = self.stack.pop().unwrap();
+                    self.stack.push(Value::Null);
                 }
                 Op::Field(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let init_value = self.pop();
-                    // Store field initializer on the class (will be used during construction)
-                    // For now, this is handled by the constructor compilation
+                    let name = self.read_string_constant_owned(idx);
+                    let init_value = self.stack.pop().unwrap();
                     let _ = (name, init_value);
                 }
                 Op::StaticField(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let value = self.pop();
-                    let class = self.peek(0).clone();
+                    let name = self.read_string_constant_owned(idx);
+                    let value = self.stack.pop().unwrap();
+                    let class = self.stack.last().unwrap().clone();
                     if let Value::Class(ref cls) = class {
                         cls.static_fields.borrow_mut().insert(name, value);
                     }
                 }
                 Op::ConstField(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let init_value = self.pop();
-                    // Const field initializer handled by constructor compilation
+                    let name = self.read_string_constant_owned(idx);
+                    let init_value = self.stack.pop().unwrap();
                     let _ = (name, init_value);
                 }
                 Op::StaticConstField(idx) => {
-                    let name = self.read_string_constant(frame_idx, idx);
-                    let value = self.pop();
-                    let class = self.peek(0).clone();
+                    let name = self.read_string_constant_owned(idx);
+                    let value = self.stack.pop().unwrap();
+                    let class = self.stack.last().unwrap().clone();
                     if let Value::Class(ref cls) = class {
                         cls.static_fields.borrow_mut().insert(name, value);
                     }
@@ -544,9 +942,10 @@ impl Vm {
 
                 // --- Exceptions ---
                 Op::TryBegin(catch_offset, finally_offset) => {
+                    let frame = self.frames.last().unwrap();
                     let handler = ExceptionHandler {
-                        catch_ip: self.frames[frame_idx].ip + catch_offset as usize - 1,
-                        finally_ip: self.frames[frame_idx].ip + finally_offset as usize - 1,
+                        catch_ip: frame.ip + catch_offset as usize - 1,
+                        finally_ip: frame.ip + finally_offset as usize - 1,
                         stack_depth: self.stack.len(),
                         frame_depth: self.frames.len(),
                     };
@@ -556,86 +955,200 @@ impl Vm {
                     self.exception_handlers.pop();
                 }
                 Op::Throw => {
-                    let value = self.pop();
+                    let value = self.stack.pop().unwrap();
+                    let span = self.current_span();
                     self.throw_exception(value, span)?;
                 }
 
                 // --- Iterators ---
                 Op::GetIter => {
-                    let iterable = self.pop();
+                    let iterable = self.stack.pop().unwrap();
+                    let span = self.current_span();
                     let state = self.create_iterator(iterable, span)?;
                     self.iter_stack.push(state);
                 }
                 Op::ForIter(exit_offset) => {
                     let next_val = self.iter_next();
                     if let Some(val) = next_val {
-                        self.push(val);
+                        self.stack.push(val);
                     } else {
                         self.iter_stack.pop();
-                        self.frames[frame_idx].ip += exit_offset as usize;
+                        self.frames.last_mut().unwrap().ip += exit_offset as usize;
                     }
                 }
 
                 // --- I/O ---
                 Op::Print(n) => {
-                    let mut parts = Vec::with_capacity(n as usize);
-                    for _ in 0..n {
-                        parts.push(self.pop());
-                    }
-                    parts.reverse();
-                    let output: String = parts
+                    let len = self.stack.len();
+                    let start = len - n as usize;
+                    let output: String = self.stack[start..len]
                         .iter()
                         .map(|v| format!("{}", v))
                         .collect::<Vec<_>>()
                         .join(" ");
+                    self.stack.truncate(start);
                     println!("{}", output);
                     self.output.push(output);
-                    self.push(Value::Null);
+                    self.stack.push(Value::Null);
                 }
 
-                Op::NamedArg(_) => {
-                    // Named arg markers are handled by the Call dispatch
-                    // If we encounter one here, just push a marker value
-                    // This shouldn't happen in normal execution
-                }
+                Op::Nop => {}
+                Op::NamedArg(_) => {}
 
                 Op::Import(idx) => {
-                    let _path = self.read_string_constant(frame_idx, idx);
-                    // Import is handled at the higher level (module loader)
-                    // The VM just sees the imported globals after module resolution
+                    let _path = self.read_string_constant_owned(idx);
+                }
+
+                // --- Combined compare+jump ---
+                Op::TestLessEqualJump(offset) => {
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => *x <= *y,
+                        (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less_equal(&a, &b, span)?
+                        }
+                    };
+                    if !result {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+                Op::TestLessJump(offset) => {
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => *x < *y,
+                        (Value::Float(x), Value::Float(y)) => *x < *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less(&a, &b, span)?
+                        }
+                    };
+                    if !result {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+
+                // --- Super-instructions ---
+                Op::IncrLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let idx = base + slot as usize;
+                    if let Value::Int(n) = self.stack[idx] {
+                        self.stack[idx] = Value::Int(n + 1);
+                    } else {
+                        // Fallback: treat as GetLocal + Constant(1) + Add + SetLocal + Pop
+                        let val = self.stack[idx].clone();
+                        let result = match val {
+                            Value::Float(n) => Value::Float(n + 1.0),
+                            _ => {
+                                let span = self.current_span();
+                                self.op_add(val, Value::Int(1), span)?
+                            }
+                        };
+                        self.stack[idx] = result;
+                    }
+                }
+                Op::DecrLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let idx = base + slot as usize;
+                    if let Value::Int(n) = self.stack[idx] {
+                        self.stack[idx] = Value::Int(n - 1);
+                    } else {
+                        let val = self.stack[idx].clone();
+                        let result = match val {
+                            Value::Float(n) => Value::Float(n - 1.0),
+                            _ => {
+                                let span = self.current_span();
+                                self.op_subtract(val, Value::Int(1), span)?
+                            }
+                        };
+                        self.stack[idx] = result;
+                    }
+                }
+                Op::AddLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => Value::Int(x + y),
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
+                        _ => {
+                            let a = a.clone();
+                            let b = b.clone();
+                            let span = self.current_span();
+                            self.op_add(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::LessEqualLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => *x <= *y,
+                        (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less_equal(a, b, span)?
+                        }
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::AddLocalConst(slot, const_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => Value::Int(x + y),
+                        (Value::Float(x), Constant::Float(y)) => Value::Float(x + y),
+                        _ => {
+                            let a = local.clone();
+                            let b = constant_to_value(constant);
+                            let span = self.current_span();
+                            self.op_add(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::SetLocalPop(slot) => {
+                    let val = self.pop();
+                    let base = self.frames.last().unwrap().stack_base;
+                    self.stack[base + slot as usize] = val;
                 }
 
                 // --- JSON ---
                 Op::JsonParse => {
-                    let json_str = match self.pop() {
+                    let json_str = match self.stack.pop().unwrap() {
                         Value::String(s) => s,
                         other => {
                             return Err(RuntimeError::new(
                                 format!("JSON.parse() expects string, got {}", other.type_name()),
-                                span,
+                                self.current_span(),
                             ))
                         }
                     };
                     match crate::interpreter::value::parse_json(&json_str) {
-                        Ok(value) => self.push(value),
+                        Ok(value) => self.stack.push(value),
                         Err(e) => {
                             return Err(RuntimeError::new(
                                 format!("Failed to parse JSON: {}", e),
-                                span,
+                                self.current_span(),
                             ))
                         }
                     }
                 }
                 Op::JsonStringify => {
-                    let value = self.pop();
+                    let value = self.stack.pop().unwrap();
                     match crate::interpreter::value::stringify_to_string(&value) {
                         Ok(json_str) => {
-                            self.push(Value::String(json_str));
+                            self.stack.push(Value::String(json_str));
                         }
                         Err(e) => {
                             return Err(RuntimeError::new(
                                 format!("Cannot convert to JSON: {}", e),
-                                span,
+                                self.current_span(),
                             ))
                         }
                     }
@@ -646,27 +1159,36 @@ impl Vm {
 
     // --- Stack operations ---
 
-    #[inline]
+    #[inline(always)]
     pub fn push(&mut self, value: Value) {
         self.stack.push(value);
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn pop(&mut self) -> Value {
-        self.stack.pop().unwrap_or(Value::Null)
+        // Safety: VM maintains stack invariants — pop is only called when stack is non-empty
+        unsafe {
+            let new_len = self.stack.len() - 1;
+            self.stack.set_len(new_len);
+            std::ptr::read(self.stack.as_ptr().add(new_len))
+        }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn peek(&self, distance: usize) -> &Value {
-        &self.stack[self.stack.len() - 1 - distance]
+        unsafe { self.stack.get_unchecked(self.stack.len() - 1 - distance) }
     }
 
-    // --- Helpers ---
-
-    fn read_string_constant(&self, frame_idx: usize, idx: u16) -> String {
-        match &self.frames[frame_idx].closure.proto.chunk.constants[idx as usize] {
-            Constant::String(s) => s.clone(),
-            _ => String::new(),
+    /// Pop two values from the stack (b first, then a).
+    #[inline(always)]
+    fn pop2(&mut self) -> (Value, Value) {
+        unsafe {
+            let new_len = self.stack.len() - 2;
+            let ptr = self.stack.as_ptr();
+            let a = std::ptr::read(ptr.add(new_len));
+            let b = std::ptr::read(ptr.add(new_len + 1));
+            self.stack.set_len(new_len);
+            (a, b)
         }
     }
 

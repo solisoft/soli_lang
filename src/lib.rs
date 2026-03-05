@@ -96,6 +96,113 @@ pub fn run_with_path(
     Ok(())
 }
 
+/// Run a Solilang program through the bytecode VM (faster execution).
+pub fn run_file_vm(path: &std::path::Path, type_check: bool) -> Result<(), SolilangError> {
+    let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {
+        message: format!("Failed to read file '{}': {}", path.display(), e),
+        span: span::Span::new(0, 0, 1, 1),
+    })?;
+
+    run_vm(&source, Some(path), type_check)
+}
+
+/// Run a Solilang program through the bytecode VM.
+pub fn run_vm(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    type_check: bool,
+) -> Result<(), SolilangError> {
+    // Lexing
+    let tokens = lexer::Scanner::new(source).scan_tokens()?;
+
+    // Parsing
+    let mut program = parser::Parser::new(tokens).parse()?;
+
+    // Module resolution
+    if let Some(path) = source_path.filter(|_| has_imports(&program)) {
+        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let mut resolver = module::ModuleResolver::new(base_dir);
+        program = resolver
+            .resolve(program, path)
+            .map_err(|e| error::RuntimeError::General {
+                message: format!("Module resolution error: {}", e),
+                span: span::Span::new(0, 0, 1, 1),
+            })?;
+    }
+
+    // Type checking
+    if type_check {
+        let mut checker = types::TypeChecker::new();
+        if let Err(errors) = checker.check(&program) {
+            return Err(errors.into_iter().next().unwrap().into());
+        }
+    }
+
+    // Compile to bytecode
+    let module = vm::Compiler::compile(&program).map_err(|e| error::RuntimeError::General {
+        message: format!("Compile error: {}", e),
+        span: span::Span::new(0, 0, 1, 1),
+    })?;
+
+    // Execute in VM
+    let mut vm_instance = vm::Vm::new();
+
+    // Register builtins
+    use interpreter::value::{NativeFunction, Value as V};
+    vm_instance.globals.insert(
+        "print".to_string(),
+        V::NativeFunction(NativeFunction::new("print", None, |args| {
+            let output: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
+            println!("{}", output.join(" "));
+            Ok(V::Null)
+        })),
+    );
+    vm_instance.globals.insert(
+        "puts".to_string(),
+        V::NativeFunction(NativeFunction::new("puts", None, |args| {
+            let output: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
+            println!("{}", output.join(" "));
+            Ok(V::Null)
+        })),
+    );
+    vm_instance.globals.insert(
+        "len".to_string(),
+        V::NativeFunction(NativeFunction::new("len", Some(1), |args| match &args[0] {
+            V::String(s) => Ok(V::Int(s.len() as i64)),
+            V::Array(arr) => Ok(V::Int(arr.borrow().len() as i64)),
+            V::Hash(hash) => Ok(V::Int(hash.borrow().len() as i64)),
+            _ => Ok(V::Int(0)),
+        })),
+    );
+    vm_instance.globals.insert(
+        "str".to_string(),
+        V::NativeFunction(NativeFunction::new("str", Some(1), |args| {
+            Ok(V::String(format!("{}", args[0])))
+        })),
+    );
+    vm_instance.globals.insert(
+        "type_of".to_string(),
+        V::NativeFunction(NativeFunction::new("type_of", Some(1), |args| {
+            Ok(V::String(args[0].type_name().to_string()))
+        })),
+    );
+    vm_instance.globals.insert(
+        "clock".to_string(),
+        V::NativeFunction(NativeFunction::new("clock", Some(0), |_args| {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default();
+            Ok(V::Float(now.as_secs_f64()))
+        })),
+    );
+
+    // Execute the compiled module
+    vm_instance.execute(&module.main)?;
+
+    Ok(())
+}
+
 /// Run a Solilang program with optional coverage tracking.
 #[cfg(feature = "coverage")]
 pub fn run_with_path_and_coverage(

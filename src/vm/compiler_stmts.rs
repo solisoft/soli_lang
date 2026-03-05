@@ -215,8 +215,8 @@ impl Compiler {
 
         self.end_loop();
 
-        // Pop the iterator
-        self.emit(Op::Pop, line);
+        // Note: no Pop needed for the iterator — GetIter moved it to iter_stack,
+        // and ForIter pops it from iter_stack when exhausted.
 
         self.end_scope(line);
         Ok(())

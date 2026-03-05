@@ -309,7 +309,7 @@ impl Compiler {
     ) -> CompileResult<()> {
         // Special case: print() calls
         if let ExprKind::Variable(name) = &callee.kind {
-            if name == "print" || name == "puts" {
+            if name == "print" || name == "puts" || name == "println" {
                 return self.compile_print(arguments, line);
             }
         }
@@ -324,6 +324,32 @@ impl Compiler {
                         return self.compile_json_stringify(arguments, line);
                     }
                 }
+            }
+        }
+
+        // Optimized path: method calls (obj.method(args)) use CallMethod opcode
+        // to avoid allocating Value::Method intermediary.
+        if let ExprKind::Member { object, name } = &callee.kind {
+            let all_positional = arguments
+                .iter()
+                .all(|a| matches!(a, Argument::Positional(_)));
+            if all_positional && arguments.len() <= 255 {
+                self.compile_expr(object)?;
+                let mut argc = 0u8;
+                for arg in arguments {
+                    if let Argument::Positional(expr) = arg {
+                        self.compile_expr(expr)?;
+                        argc += 1;
+                    }
+                }
+                let name_idx = self.add_string_constant(name);
+                let method_id = super::method_table::resolve_method_id(name);
+                if method_id != super::method_table::METHOD_UNKNOWN {
+                    self.emit(Op::CallMethodById(name_idx, argc, method_id), line);
+                } else {
+                    self.emit(Op::CallMethod(name_idx, argc), line);
+                }
+                return Ok(());
             }
         }
 

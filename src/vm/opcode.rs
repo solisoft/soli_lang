@@ -159,4 +159,33 @@ pub enum Op {
     JsonParse,
     /// Stringify value: pops value, pushes string.
     JsonStringify,
+
+    // --- Super-instructions (optimized compound ops) ---
+    /// Increment a local integer by 1: local[slot] += 1
+    /// Replaces: GetLocal(slot), Constant(1), Add, SetLocal(slot), Pop
+    IncrLocal(u16),
+    /// Decrement a local integer by 1: local[slot] -= 1
+    DecrLocal(u16),
+    /// Add two locals and push result: push(local[a] + local[b])
+    AddLocalLocal(u16, u16),
+    /// Compare two locals with <=: push(local[a] <= local[b])
+    LessEqualLocalLocal(u16, u16),
+    /// Get local and add int constant: push(local[slot] + constant_int)
+    AddLocalConst(u16, u16),
+    /// Assign top of stack to local (without extra pop): local[slot] = pop()
+    SetLocalPop(u16),
+    /// Combined LessEqual + JumpIfFalse: pop two, compare <=, jump if false.
+    TestLessEqualJump(u16),
+    /// Combined Less + JumpIfFalse: pop two, compare <, jump if false.
+    TestLessJump(u16),
+    /// Combined GetGlobal + Call: push global function and call it.
+    CallGlobal(u16, u8),
+    /// No-op: does nothing (placeholder after peephole optimization)
+    Nop,
+    /// Combined property access + call: receiver is below args, method name from constant.
+    /// Avoids allocating Value::Method intermediary.
+    CallMethod(u16, u8),
+    /// Like CallMethod but with a resolved method ID for direct dispatch (no string matching).
+    /// Fields: (name_constant_idx, argc, method_id). Falls back to string dispatch for classes.
+    CallMethodById(u16, u8, u16),
 }

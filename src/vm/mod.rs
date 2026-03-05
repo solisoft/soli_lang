@@ -10,13 +10,17 @@ pub mod compiler_exprs;
 pub mod compiler_patterns;
 pub mod compiler_stmts;
 pub mod disassembler;
+pub mod method_table;
 pub mod opcode;
 pub mod upvalue;
 #[allow(clippy::module_inception)]
 pub mod vm;
+pub mod vm_array_methods;
 pub mod vm_calls;
 pub mod vm_classes;
 pub mod vm_exceptions;
+pub mod vm_hash_methods;
+pub mod vm_string_methods;
 
 pub use chunk::{CompiledModule, FunctionProto};
 pub use compiler::Compiler;

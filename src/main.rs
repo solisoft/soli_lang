@@ -101,6 +101,7 @@ enum DbMigrateAction {
 struct Options {
     command: Command,
     no_type_check: bool,
+    use_vm: bool,
 }
 
 fn print_usage() {
@@ -191,6 +192,7 @@ fn parse_args() -> Options {
     let mut options = Options {
         command: Command::Repl,
         no_type_check: false,
+        use_vm: false,
     };
 
     let mut i = 0;
@@ -584,6 +586,7 @@ fn parse_args() -> Options {
                 return options;
             }
             "--no-type-check" => options.no_type_check = true,
+            "--vm" => options.use_vm = true,
             "lint" => {
                 i += 1;
                 let mut path: Option<String> = None;
@@ -923,7 +926,11 @@ fn kill_previous_process(pid_file: &Path) {
 fn run_file(path: &str, options: &Options) {
     let path = std::path::Path::new(path);
 
-    let result = solilang::run_file(path, !options.no_type_check);
+    let result = if options.use_vm {
+        solilang::run_file_vm(path, !options.no_type_check)
+    } else {
+        solilang::run_file(path, !options.no_type_check)
+    };
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);

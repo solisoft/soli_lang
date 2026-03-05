@@ -16,32 +16,33 @@ use super::vm::{CallFrame, Vm};
 impl Vm {
     /// Call a value with the given number of argument slots on the stack.
     /// The callee is below the arguments on the stack.
+    #[inline]
     pub fn call_value(&mut self, argc: usize, span: Span) -> Result<(), RuntimeError> {
         let callee_idx = self.stack.len() - 1 - argc;
-        let callee = self.stack[callee_idx].clone();
 
+        // Fast path: check for VmClosure without cloning (most common case)
+        if let Value::VmClosure(closure) = &self.stack[callee_idx] {
+            let closure = closure.clone(); // Rc clone (cheap counter increment)
+            return self.call_closure(closure, argc, span);
+        }
+
+        // Slow path: clone and dispatch other types
+        let callee = self.stack[callee_idx].clone();
         match callee {
-            Value::VmClosure(closure) => self.call_closure(closure, argc, span),
             Value::NativeFunction(ref native) => self.call_native(native, argc, span),
-            Value::Function(ref func) => {
-                // Tree-walking function called from VM — shouldn't happen in pure VM mode
-                // but needed for interop during transition
-                self.call_native_wrapper(func, argc, span)
-            }
+            Value::Function(ref func) => self.call_native_wrapper(func, argc, span),
             Value::Class(ref class) => self.call_class(class, argc, span),
             Value::Method(ref method) => {
-                // Call a bound method (array.map, etc.)
                 let receiver = (*method.receiver).clone();
                 let method_name = method.method_name.clone();
-                // Replace callee with receiver, look up method, and call
                 self.stack[callee_idx] = receiver;
-                // Delegate to native method dispatch
                 self.call_builtin_method(&method_name, argc, span)
             }
             _ => Err(RuntimeError::not_callable(span)),
         }
     }
 
+    #[inline]
     fn call_closure(
         &mut self,
         closure: Rc<VmClosure>,
@@ -50,7 +51,6 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         let arity = closure.proto.arity as usize;
         let total_params = closure.proto.param_names.len();
-        let _defaults = closure.proto.defaults as usize;
 
         // Check arity: argc must be between required and total
         if argc < arity || argc > total_params {
@@ -58,11 +58,13 @@ impl Vm {
         }
 
         // Fill in default values for missing optional parameters
-        for _i in argc..total_params {
-            self.push(Value::Null); // defaults are null for now
+        if argc < total_params {
+            for _ in argc..total_params {
+                self.push(Value::Null);
+            }
         }
 
-        let stack_base = self.stack.len() - total_params - 1; // -1 for the callee slot
+        let stack_base = self.stack.len() - total_params - 1;
 
         self.frames.push(CallFrame {
             closure,

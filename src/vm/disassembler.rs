@@ -172,6 +172,32 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::JsonParse => out.push_str("JSON_PARSE"),
         Op::JsonStringify => out.push_str("JSON_STRINGIFY"),
+        Op::IncrLocal(slot) => out.push_str(&format!("INCR_LOCAL   {:>5}", slot)),
+        Op::DecrLocal(slot) => out.push_str(&format!("DECR_LOCAL   {:>5}", slot)),
+        Op::AddLocalLocal(a, b) => out.push_str(&format!("ADD_LL       {:>3},{:>3}", a, b)),
+        Op::LessEqualLocalLocal(a, b) => out.push_str(&format!("LE_LL        {:>3},{:>3}", a, b)),
+        Op::AddLocalConst(slot, cidx) => {
+            out.push_str(&format!("ADD_LC       {:>3},{:>3}", slot, cidx))
+        }
+        Op::SetLocalPop(slot) => out.push_str(&format!("SET_LOCAL_POP {:>4}", slot)),
+        Op::TestLessEqualJump(offset) => out.push_str(&format!("TEST_LE_JUMP {:>5}", offset)),
+        Op::TestLessJump(offset) => out.push_str(&format!("TEST_LT_JUMP {:>5}", offset)),
+        Op::CallGlobal(idx, argc) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("CALL_GLOBAL  {:>5} ({}) argc={}", idx, name, argc));
+        }
+        Op::Nop => out.push_str("NOP"),
+        Op::CallMethod(idx, argc) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));
+        }
+        Op::CallMethodById(idx, argc, mid) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_MID     {:>5} ({}) argc={} mid={}",
+                idx, name, argc, mid
+            ));
+        }
     }
 }
 
