@@ -153,9 +153,11 @@ impl ValidationRule {
                         ))
                     }
                 };
-                static EMAIL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-                    regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
-                });
+                static EMAIL_RE: std::sync::LazyLock<regex::Regex> =
+                    std::sync::LazyLock::new(|| {
+                        regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+                            .unwrap()
+                    });
                 let email_re = &*EMAIL_RE;
                 if !email_re.is_match(&s) {
                     return Err(create_error(

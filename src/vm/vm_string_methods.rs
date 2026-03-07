@@ -307,9 +307,8 @@ impl Vm {
                         Ok(Value::String(s.replace(pattern, replacement)))
                     }
                 } else {
-                    let re = crate::regex_cache::get_regex(pattern).map_err(|e| {
-                        RuntimeError::type_error(e, span)
-                    })?;
+                    let re = crate::regex_cache::get_regex(pattern)
+                        .map_err(|e| RuntimeError::type_error(e, span))?;
                     if args.len() == 3 {
                         let limit = match &args[2] {
                             Value::Int(n) if *n >= 0 => *n as usize,
@@ -335,9 +334,8 @@ impl Vm {
                 if !has_regex_metacharacters(pattern) {
                     Ok(Value::String(replacen_str(s, pattern, replacement, 1)))
                 } else {
-                    let re = crate::regex_cache::get_regex(pattern).map_err(|e| {
-                        RuntimeError::type_error(e, span)
-                    })?;
+                    let re = crate::regex_cache::get_regex(pattern)
+                        .map_err(|e| RuntimeError::type_error(e, span))?;
                     Ok(Value::String(re.replacen(s, 1, replacement).to_string()))
                 }
             }

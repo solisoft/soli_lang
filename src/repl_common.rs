@@ -151,6 +151,36 @@ fn strip_trailing_comment(s: &str) -> &str {
     s
 }
 
+/// Prepare REPL source for execution: auto-wrap in `print()` or append `;` as needed.
+pub fn prepare_source(code: &str) -> String {
+    let trimmed = code.trim();
+
+    // Comment-only lines: pass through as-is (wrapping in print() would eat the closing paren)
+    if trimmed.starts_with('#') || trimmed.starts_with("//") {
+        return code.to_string();
+    }
+
+    let passthrough = trimmed.ends_with('}') || trimmed.ends_with(';') || trimmed.ends_with("end");
+
+    if should_print_result(code) && !passthrough {
+        let expr = strip_trailing_comment(trimmed);
+        if expr.is_empty() {
+            return format!("{};", trimmed);
+        }
+        format!("println(({}).inspect);", expr)
+    } else if !passthrough
+        && !trimmed.starts_with("let ")
+        && !trimmed.starts_with("fn ")
+        && !trimmed.starts_with("def ")
+        && !trimmed.starts_with("class ")
+        && !trimmed.starts_with("const ")
+    {
+        format!("{};", trimmed)
+    } else {
+        code.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,35 +210,5 @@ mod tests {
         assert_eq!(count_block_balance("end"), -1);
         assert_eq!(count_block_balance("for i in range(1, 10)"), 1);
         assert_eq!(count_block_balance("println(i)"), 0);
-    }
-}
-
-/// Prepare REPL source for execution: auto-wrap in `print()` or append `;` as needed.
-pub fn prepare_source(code: &str) -> String {
-    let trimmed = code.trim();
-
-    // Comment-only lines: pass through as-is (wrapping in print() would eat the closing paren)
-    if trimmed.starts_with('#') || trimmed.starts_with("//") {
-        return code.to_string();
-    }
-
-    let passthrough = trimmed.ends_with('}') || trimmed.ends_with(';') || trimmed.ends_with("end");
-
-    if should_print_result(code) && !passthrough {
-        let expr = strip_trailing_comment(trimmed);
-        if expr.is_empty() {
-            return format!("{};", trimmed);
-        }
-        format!("println(({}).inspect);", expr)
-    } else if !passthrough
-        && !trimmed.starts_with("let ")
-        && !trimmed.starts_with("fn ")
-        && !trimmed.starts_with("def ")
-        && !trimmed.starts_with("class ")
-        && !trimmed.starts_with("const ")
-    {
-        format!("{};", trimmed)
-    } else {
-        code.to_string()
     }
 }
