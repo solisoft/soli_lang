@@ -154,7 +154,7 @@ pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<
         // Format validation (regex)
         if let Some(pattern) = &rule.format {
             if let Some(Value::String(s)) = &field_value {
-                if let Ok(re) = regex::Regex::new(pattern) {
+                if let Ok(re) = crate::regex_cache::get_regex(pattern) {
                     if !re.is_match(s) {
                         errors.push(ValidationError::new(&rule.field, "is invalid"));
                     }

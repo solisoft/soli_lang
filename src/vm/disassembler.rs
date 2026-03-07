@@ -160,7 +160,9 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::TryEnd => out.push_str("TRY_END"),
         Op::Throw => out.push_str("THROW"),
         Op::GetIter => out.push_str("GET_ITER"),
+        Op::GetIterRange => out.push_str("GET_ITER_RNG"),
         Op::ForIter(offset) => out.push_str(&format!("FOR_ITER     {:>5}", offset)),
+        Op::ForIterRange(offset) => out.push_str(&format!("FOR_ITER_RNG {:>5}", offset)),
         Op::Print(n) => out.push_str(&format!("PRINT        {:>5}", n)),
         Op::NamedArg(idx) => {
             let name = constant_string(chunk, *idx);

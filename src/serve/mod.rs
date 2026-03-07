@@ -4001,25 +4001,33 @@ fn render_error_page(
     // 4. "error in path/file.html.slv" (no line info, use line 1)
 
     // Try format 1: "at line:col in file.html.slv"
-    let view_pattern1 = regex::Regex::new(
-        r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))",
-    )
-    .ok();
+    static VIEW_PAT1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"at (\d+):(\d+) in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))",
+        ).unwrap()
+    });
     // Try format 2: "in file.html.slv at line:col"
-    let view_pattern2 = regex::Regex::new(
-        r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)) at (\d+):(\d+)",
-    )
-    .ok();
+    static VIEW_PAT2: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)) at (\d+):(\d+)",
+        ).unwrap()
+    });
     // Try format 3: "at file.html.slv:line" (new template renderer format)
-    let view_pattern3 = regex::Regex::new(
-        r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)):(\d+)",
-    )
-    .ok();
+    static VIEW_PAT3: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)):(\d+)",
+        ).unwrap()
+    });
     // Try format 4: "in file.html.slv" (no line number)
-    let view_pattern4 = regex::Regex::new(
-        r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))(?:\s|$)",
-    )
-    .ok();
+    static VIEW_PAT4: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))(?:\s|$)",
+        ).unwrap()
+    });
+    let view_pattern1 = Some(&*VIEW_PAT1);
+    let view_pattern2 = Some(&*VIEW_PAT2);
+    let view_pattern3 = Some(&*VIEW_PAT3);
+    let view_pattern4 = Some(&*VIEW_PAT4);
 
     let mut view_added = false;
 
@@ -4158,24 +4166,36 @@ struct SpanInfo {
 }
 
 fn extract_span_from_error(error_msg: &str) -> SpanInfo {
-    // Try to find file path pattern - supports .sl, .html.slv, .slv, .html.erb, and .erb files
-    // Include @ for paths like /home/user@domain.com/...
-    let file_re = regex::Regex::new(
-        r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl))",
-    )
-    .unwrap();
-    let file = file_re
+    static FILE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl))",
+        ).unwrap()
+    });
+    static AT_FILE_LINE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)):(\d+)",
+        ).unwrap()
+    });
+    static SPAN_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r" at (\d+):(\d+)").unwrap()
+    });
+    static FILE_LINE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl)):(\d+)",
+        ).unwrap()
+    });
+    static LINE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?:at\s+)?line\s*[=:]\s*(\d+)").unwrap()
+    });
+
+    // Try to find file path pattern
+    let file = FILE_RE
         .captures(error_msg)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string());
 
     // Try format "at file.html.slv:line" first (new template renderer format)
-    // This prioritizes view file errors over controller errors
-    let at_file_line_re = regex::Regex::new(
-        r"at ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb)):(\d+)",
-    )
-    .unwrap();
-    if let Some(caps) = at_file_line_re.captures(error_msg) {
+    if let Some(caps) = AT_FILE_LINE_RE.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps
             .get(2)
@@ -4189,9 +4209,7 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     }
 
     // Try to find span format "at line:column" (e.g., "at 11:23")
-    // This is the standard Span display format from error messages
-    let span_re = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
-    if let Some(caps) = span_re.captures(error_msg) {
+    if let Some(caps) = SPAN_RE.captures(error_msg) {
         let line = caps
             .get(1)
             .and_then(|m| m.as_str().parse().ok())
@@ -4204,11 +4222,7 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     }
 
     // Try to find patterns like "file.sl:line" or "file.html.slv:line"
-    let file_line_re = regex::Regex::new(
-        r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl)):(\d+)",
-    )
-    .unwrap();
-    if let Some(caps) = file_line_re.captures(error_msg) {
+    if let Some(caps) = FILE_LINE_RE.captures(error_msg) {
         let file = caps.get(1).map(|m| m.as_str().to_string());
         let line = caps
             .get(2)
@@ -4222,8 +4236,7 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
     }
 
     // Try to find "line X" or "line: X" patterns
-    let line_re = regex::Regex::new(r"(?:at\s+)?line\s*[=:]\s*(\d+)").unwrap();
-    if let Some(caps) = line_re.captures(error_msg) {
+    if let Some(caps) = LINE_RE.captures(error_msg) {
         let line = caps
             .get(1)
             .and_then(|m| m.as_str().parse().ok())
@@ -4244,12 +4257,12 @@ fn extract_span_from_error(error_msg: &str) -> SpanInfo {
 
 /// Extract file path from a stack frame string like "func_name at ./path/file.sl:10"
 fn extract_file_from_frame(frame: &str) -> Option<String> {
-    // Support .sl, .html.slv, .slv, .html.erb, and .erb files (include @ for paths like /home/user@domain.com/...)
-    let file_re = regex::Regex::new(
-        r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl))",
-    )
-    .ok()?;
-    file_re
+    static FILE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl))",
+        ).unwrap()
+    });
+    FILE_RE
         .captures(frame)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string())
@@ -4310,17 +4323,24 @@ pub fn render_dev_error_page(
     let mut frame_index = 0;
 
     // Regex to find file paths with line numbers - supports .sl, .html.slv, .slv, .html.erb, .erb (include @ for paths)
-    let file_regex = regex::Regex::new(
-        r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl)):(\d+)",
-    )
-    .unwrap();
+    static FILE_REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl)):(\d+)",
+        ).unwrap()
+    });
     // Regex to find span info after "at" (line:column)
-    let span_regex = regex::Regex::new(r" at (\d+):(\d+)").unwrap();
+    static SPAN_REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r" at (\d+):(\d+)").unwrap()
+    });
     // Regex to find view files in error messages (e.g., "error in /path/to/file.html.slv")
-    let view_file_regex = regex::Regex::new(
-        r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))",
-    )
-    .unwrap();
+    static VIEW_FILE_REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"in ([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb))",
+        ).unwrap()
+    });
+    let file_regex = &*FILE_REGEX;
+    let span_regex = &*SPAN_REGEX;
+    let view_file_regex = &*VIEW_FILE_REGEX;
 
     for frame in stack_trace.iter() {
         // Skip "Error: ..." entries - they're not actual stack frames

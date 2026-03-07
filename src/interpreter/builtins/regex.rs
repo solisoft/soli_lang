@@ -7,25 +7,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use regex::RegexBuilder;
-
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
-
-/// Maximum regex complexity (nesting level) to prevent ReDoS.
-const REGEX_NEST_LIMIT: u32 = 10;
-
-/// Maximum size of the compiled regex in bytes.
-const REGEX_SIZE_LIMIT: usize = 100_000;
-
-/// Create a regex with safety limits to prevent ReDoS attacks.
-fn create_safe_regex(pattern: &str) -> Result<regex::Regex, String> {
-    RegexBuilder::new(pattern)
-        .nest_limit(REGEX_NEST_LIMIT)
-        .size_limit(REGEX_SIZE_LIMIT)
-        .build()
-        .map_err(|e| format!("Invalid regex pattern: {}", e))
-}
+use crate::regex_cache::get_safe_regex;
 
 pub fn register_regex_class(env: &mut Environment) {
     // Build static methods for Regex class
@@ -39,7 +23,7 @@ pub fn register_regex_class(env: &mut Environment) {
             Some(2),
             |args| match (&args[0], &args[1]) {
                 (Value::String(pattern), Value::String(s)) => {
-                    let re = create_safe_regex(pattern)?;
+                    let re = get_safe_regex(pattern)?;
                     Ok(Value::Bool(re.is_match(s)))
                 }
                 _ => Err("Regex.matches requires (string, string)".to_string()),
@@ -53,7 +37,7 @@ pub fn register_regex_class(env: &mut Environment) {
         Rc::new(NativeFunction::new("Regex.find", Some(2), |args| {
             match (&args[0], &args[1]) {
                 (Value::String(pattern), Value::String(s)) => {
-                    let re = create_safe_regex(pattern)?;
+                    let re = get_safe_regex(pattern)?;
                     if let Some(m) = re.find(s) {
                         let mut matches: HashPairs = HashPairs::default();
                         matches.insert(
@@ -88,7 +72,7 @@ pub fn register_regex_class(env: &mut Environment) {
             Some(2),
             |args| match (&args[0], &args[1]) {
                 (Value::String(pattern), Value::String(s)) => {
-                    let re = create_safe_regex(pattern)?;
+                    let re = get_safe_regex(pattern)?;
                     let matches: Vec<Value> = re
                         .find_iter(s)
                         .map(|m| {
@@ -125,7 +109,7 @@ pub fn register_regex_class(env: &mut Environment) {
             Some(3),
             |args| match (&args[0], &args[1], &args[2]) {
                 (Value::String(pattern), Value::String(s), Value::String(replacement)) => {
-                    let re = create_safe_regex(pattern)?;
+                    let re = get_safe_regex(pattern)?;
                     let result = re.replace(s, replacement.as_str());
                     Ok(Value::String(result.to_string()))
                 }
@@ -142,7 +126,7 @@ pub fn register_regex_class(env: &mut Environment) {
             Some(3),
             |args| match (&args[0], &args[1], &args[2]) {
                 (Value::String(pattern), Value::String(s), Value::String(replacement)) => {
-                    let re = create_safe_regex(pattern)?;
+                    let re = get_safe_regex(pattern)?;
                     let result = re.replace_all(s, replacement.as_str());
                     Ok(Value::String(result.to_string()))
                 }
@@ -157,7 +141,7 @@ pub fn register_regex_class(env: &mut Environment) {
         Rc::new(NativeFunction::new("Regex.split", Some(2), |args| {
             match (&args[0], &args[1]) {
                 (Value::String(pattern), Value::String(s)) => {
-                    let re = create_safe_regex(pattern)?;
+                    let re = get_safe_regex(pattern)?;
                     let parts: Vec<Value> =
                         re.split(s).map(|p| Value::String(p.to_string())).collect();
                     Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
@@ -177,7 +161,7 @@ pub fn register_regex_class(env: &mut Environment) {
             Some(2),
             |args| match (&args[0], &args[1]) {
                 (Value::String(pattern), Value::String(s)) => {
-                    let re = create_safe_regex(pattern)?;
+                    let re = get_safe_regex(pattern)?;
                     if let Some(caps) = re.captures(s) {
                         let mut result: HashPairs = HashPairs::default();
                         result.insert(

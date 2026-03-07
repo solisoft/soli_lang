@@ -16,6 +16,7 @@ pub mod live;
 pub mod migration;
 pub mod module;
 pub mod parser;
+pub mod regex_cache;
 pub mod repl_common;
 pub mod repl_highlight;
 pub mod repl_simple;

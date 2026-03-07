@@ -2,7 +2,6 @@
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, NativeFunction, Value};
-use regex::Regex;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -153,7 +152,7 @@ pub fn register_assertions(env: &mut Environment) {
         "assert_match".to_string(),
         Value::NativeFunction(NativeFunction::new("assert_match", Some(2), |args| {
             if let (Value::String(s), Value::String(pattern)) = (&args[0], &args[1]) {
-                match Regex::new(pattern) {
+                match crate::regex_cache::get_regex(pattern) {
                     Ok(re) if re.is_match(s) => {
                         ASSERTION_COUNT.with(|count| {
                             *count.borrow_mut() += 1;

@@ -3,8 +3,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use regex::Regex;
-
 use crate::interpreter::value::{HashKey, HashPairs, Value};
 
 use super::create_error;
@@ -125,7 +123,7 @@ impl ValidationRule {
                         ))
                     }
                 };
-                match Regex::new(pattern) {
+                match crate::regex_cache::get_regex(pattern) {
                     Ok(re) => {
                         if !re.is_match(&s) {
                             return Err(create_error(
@@ -155,9 +153,10 @@ impl ValidationRule {
                         ))
                     }
                 };
-                // Simple email regex
-                let email_re =
-                    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
+                static EMAIL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+                    regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
+                });
+                let email_re = &*EMAIL_RE;
                 if !email_re.is_match(&s) {
                     return Err(create_error(
                         field_name,
@@ -177,8 +176,10 @@ impl ValidationRule {
                         ))
                     }
                 };
-                // Simple URL regex
-                let url_re = Regex::new(r"^https?://[^\s/$.?#].[^\s]*$").unwrap();
+                static URL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+                    regex::Regex::new(r"^https?://[^\s/$.?#].[^\s]*$").unwrap()
+                });
+                let url_re = &*URL_RE;
                 if !url_re.is_match(&s) {
                     return Err(create_error(
                         field_name,

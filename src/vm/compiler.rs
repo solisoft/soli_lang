@@ -386,6 +386,7 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             | Op::JumpIfTrueNoPop(offset)
             | Op::NullishJump(offset)
             | Op::ForIter(offset)
+            | Op::ForIterRange(offset)
             | Op::TestLessEqualJump(offset)
             | Op::TestLessJump(offset) => {
                 let target = i + 1 + *offset as usize;

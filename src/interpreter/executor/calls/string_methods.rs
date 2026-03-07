@@ -233,8 +233,6 @@ impl Interpreter {
     }
 
     fn string_gsub(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
-        use regex::Regex;
-
         if arguments.len() < 2 || arguments.len() > 3 {
             return Err(RuntimeError::wrong_arity(3, arguments.len(), span));
         }
@@ -267,20 +265,18 @@ impl Interpreter {
                     ))
                 }
             };
-            let re = Regex::new(pattern)
-                .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+            let re = crate::regex_cache::get_regex(pattern)
+                .map_err(|e| RuntimeError::type_error(e, span))?;
             re.replacen(s, limit, &replacement).to_string()
         } else {
-            let re = Regex::new(pattern)
-                .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+            let re = crate::regex_cache::get_regex(pattern)
+                .map_err(|e| RuntimeError::type_error(e, span))?;
             re.replace_all(s, &replacement).to_string()
         };
         Ok(Value::String(result))
     }
 
     fn string_sub(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
-        use regex::Regex;
-
         if arguments.len() != 2 {
             return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
         }
@@ -303,15 +299,13 @@ impl Interpreter {
             }
         };
 
-        let re = Regex::new(pattern)
-            .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+        let re = crate::regex_cache::get_regex(pattern)
+            .map_err(|e| RuntimeError::type_error(e, span))?;
         let result = re.replacen(s, 1, &replacement).to_string();
         Ok(Value::String(result))
     }
 
     fn string_match(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
-        use regex::Regex;
-
         if arguments.len() != 1 {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
@@ -325,8 +319,8 @@ impl Interpreter {
             }
         };
 
-        let re = Regex::new(pattern)
-            .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+        let re = crate::regex_cache::get_regex(pattern)
+            .map_err(|e| RuntimeError::type_error(e, span))?;
         if let Some(captures) = re.captures(s) {
             let mut result = Vec::new();
             for i in 0..captures.len() {
@@ -341,8 +335,6 @@ impl Interpreter {
     }
 
     fn string_scan(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
-        use regex::Regex;
-
         if arguments.len() != 1 {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
@@ -356,8 +348,8 @@ impl Interpreter {
             }
         };
 
-        let re = Regex::new(pattern)
-            .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+        let re = crate::regex_cache::get_regex(pattern)
+            .map_err(|e| RuntimeError::type_error(e, span))?;
         let matches: Vec<Value> = re
             .find_iter(s)
             .map(|m| Value::String(m.as_str().to_string()))

@@ -130,17 +130,74 @@ end</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Response Types</h2>
 
     <div class="space-y-6 mb-12">
-        <pre data-filename="Render View"><code class="language-soli text-sm">render("home/index", { "title": "Welcome" })</code></pre>
+        <section id="fn-render" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-render" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">render(template, data?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Render an HTML view template with optional data.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">render("home/index", { "title": "Welcome" })</code></pre>
+            </div>
+        </section>
 
-        <pre data-filename="Redirect"><code class="language-soli text-sm">redirect("/login")</code></pre>
+        <section id="fn-render_json" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-render_json" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">render_json(data, status?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Render a JSON response with automatic <code class="text-indigo-400">Content-Type: application/json</code> header. Data is automatically serialized to JSON.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">render_json({ "users": users })
+render_json({ "error": "Not found" }, 404)</code></pre>
+            </div>
+        </section>
 
-        <pre data-filename="JSON API"><code class="language-soli text-sm">{
-    "status": 200,
-    "headers": { "Content-Type": "application/json" },
-    "body": json_encode({ "data": posts })
-}</code></pre>
+        <section id="fn-render_text" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-render_text" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">render_text(text, status?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Render a plain text response with automatic <code class="text-indigo-400">Content-Type: text/plain</code> header.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">render_text("pong")
+render_text("Not allowed", 403)</code></pre>
+            </div>
+        </section>
 
-        <pre data-filename="Error"><code class="language-soli text-sm">error(404, "Page Not Found")</code></pre>
+        <section id="fn-redirect" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-redirect" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">redirect(url)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Create a redirect response (302 Found) to the specified URL.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">redirect("/login")
+redirect("/posts/" + post["id"])</code></pre>
+            </div>
+        </section>
+
+        <section id="fn-error" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-error" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">error(status, message)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Return an error response with the given HTTP status code and message.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">error(404, "Page Not Found")
+error(403, "Forbidden")</code></pre>
+            </div>
+        </section>
     </div>
 
     <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20">

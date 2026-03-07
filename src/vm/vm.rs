@@ -967,6 +967,23 @@ impl Vm {
                     let state = self.create_iterator(iterable, span)?;
                     self.iter_stack.push(state);
                 }
+                Op::GetIterRange => {
+                    let (start, end) = self.pop2();
+                    match (&start, &end) {
+                        (Value::Int(a), Value::Int(b)) => {
+                            self.iter_stack.push(IterState::Range {
+                                current: *a,
+                                end: *b,
+                            });
+                        }
+                        _ => {
+                            return Err(RuntimeError::type_error(
+                                "Range requires integer operands",
+                                self.current_span(),
+                            ));
+                        }
+                    }
+                }
                 Op::ForIter(exit_offset) => {
                     let next_val = self.iter_next();
                     if let Some(val) = next_val {
@@ -974,6 +991,22 @@ impl Vm {
                     } else {
                         self.iter_stack.pop();
                         self.frames.last_mut().unwrap().ip += exit_offset as usize;
+                    }
+                }
+                Op::ForIterRange(exit_offset) => {
+                    // Inlined range iteration — no method call, no enum match
+                    let state = self.iter_stack.last_mut().unwrap();
+                    if let IterState::Range { current, end } = state {
+                        if *current <= *end {
+                            let val = Value::Int(*current);
+                            *current += 1;
+                            self.stack.push(val);
+                        } else {
+                            self.iter_stack.pop();
+                            self.frames.last_mut().unwrap().ip += exit_offset as usize;
+                        }
+                    } else {
+                        unreachable!("ForIterRange used with non-range iterator");
                     }
                 }
 

@@ -219,6 +219,21 @@ impl<'a> Scanner<'a> {
             }
             '\'' => self.scan_string(),
 
+            // Raw string literals: r"..." or r'...'
+            'r' => {
+                match self.peek() {
+                    Some('"') => {
+                        self.advance(); // consume "
+                        self.scan_raw_string('"')
+                    }
+                    Some('\'') => {
+                        self.advance(); // consume '
+                        self.scan_raw_string('\'')
+                    }
+                    _ => self.scan_identifier('r'),
+                }
+            }
+
             // Backtick command substitution: `command`
             '`' => self.scan_backtick_string(),
 
@@ -603,6 +618,35 @@ impl<'a> Scanner<'a> {
                     self.advance();
                     self.line += 1;
                     self.column = 1;
+                }
+                Some(c) => {
+                    value.push(c);
+                    self.advance();
+                }
+            }
+        }
+
+        let end_position = self.current_pos;
+        let end_column = self.column;
+        let span = Span::new(start_position, end_position, start_line, end_column);
+
+        Ok(Token::new(TokenKind::StringLiteral(value), span))
+    }
+
+    /// Scan a raw string: r"..." - no escape sequences processed.
+    fn scan_raw_string(&mut self, terminator: char) -> Result<Token, LexerError> {
+        let start_position = self.current_pos;
+        let start_line = self.line;
+        let mut value = String::new();
+
+        loop {
+            match self.peek() {
+                None => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some(c) if c == terminator => {
+                    self.advance();
+                    break;
                 }
                 Some(c) => {
                     value.push(c);

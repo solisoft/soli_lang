@@ -9,11 +9,16 @@
             <span class="text-white">Regex</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-pink-400 to-rose-400 bg-clip-text text-transparent">Regex Functions</span>
+            <span class="bg-gradient-to-r from-pink-400 to-rose-400 bg-clip-text text-transparent">Regex Class</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Regular expression matching, finding, replacing, splitting, and capturing.
+            Regular expression matching, finding, replacing, splitting, and capturing via the <code class="text-pink-400">Regex</code> class.
         </p>
+        <div class="mt-4 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+            <p class="text-yellow-300 text-sm">
+                <strong>Tip:</strong> Use raw strings (e.g., <code class="text-yellow-200">r"\d+"</code>) for regex patterns to avoid escaping backslashes.
+            </p>
+        </div>
     </div>
 
     <!-- Matching -->
@@ -27,10 +32,10 @@
             Pattern Matching
         </h2>
 
-        <section id="def-regex-match" class="scroll-mt-20 mb-6">
+        <section id="def-regex-matches" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-regex-match" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">regex_match(pattern, string)</code>
+                <a href="#def-regex-matches" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Regex.matches(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -40,52 +45,16 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Bool</code> - true if the pattern matches, false otherwise
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_match("^[a-z]+$", "hello")  # true
-regex_match("^[0-9]+$", "hello")  # false
-regex_match("\\d{3}-\\d{4}", "555-1234")  # true</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">Regex.matches(r"^[a-z]+$", "hello")  # true
+Regex.matches(r"^[0-9]+$", "hello")  # false
+Regex.matches(r"\d{3}-\d{4}", "555-1234")  # true</code></pre>
             </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let re = regex_new("^hello (\\w+)")</code></pre>
-
-                <p class="text-gray-400 mb-3">Check if a string matches a pattern.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">if regex_match(re, "hello world") {
-    println("Matched!")
-}</code></pre>
-
-                <p class="text-gray-400 mb-3">Find the first match in a string.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let match = regex_find(re, "hello world")
-println(match[0]) # "hello world"</code></pre>
-
-                <p class="text-gray-400 mb-3">Find all matches in a string.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let matches = regex_find_all(re, "hello world, hello universe")
-println(matches[0][0]) # "hello world"
-println(matches[1][0]) # "hello universe"</code></pre>
-
-                <p class="text-gray-400 mb-3">Replace matches in a string.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let result = regex_replace(re, "hello world", "goodbye $1")
-println(result) # "goodbye world"</code></pre>
-
-                <p class="text-gray-400 mb-3">Replace all matches in a string.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let result = regex_replace_all(re, "hello world, hello universe", "hi $1")
-println(result) # "hi world, hi universe"</code></pre>
-
-                <p class="text-gray-400 mb-3">Split a string by a pattern.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let parts = regex_split(re, "hello world, hello universe")
-println(parts) # ["", ", ", ""]</code></pre>
-
-                <p class="text-gray-400 mb-3">Escape a string for use in a regex.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let escaped = regex_escape("hello.world")
-println(escaped) # "hello\\.world"</code></pre>
         </section>
-    </section>
-
-    <!-- Finding -->
-    <section id="section-finding" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Finding Matches</h2>
 
         <section id="def-regex-find" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-find" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">regex_find(pattern, string)</code>
+                    <code class="text-lg font-mono text-indigo-400">Regex.find(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -95,7 +64,7 @@ println(escaped) # "hello\\.world"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash?</code> - <code>{ "match": String, "start": Int, "end": Int }</code> or null if no match
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let result = regex_find("[0-9]+", "abc123def")
+                <pre data-filename="Example"><code class="language-soli text-sm">let result = Regex.find(r"[0-9]+", "abc123def")
 println(result["match"])  # "123"
 println(result["start"])  # 3
 println(result["end"])    # 6</code></pre>
@@ -105,7 +74,7 @@ println(result["end"])    # 6</code></pre>
         <section id="def-regex-find-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-find-all" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">regex_find_all(pattern, string)</code>
+                    <code class="text-lg font-mono text-indigo-400">Regex.find_all(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -115,7 +84,7 @@ println(result["end"])    # 6</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Array</code> - Array of match objects
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let all = regex_find_all("[0-9]+", "a1b2c3")
+                <pre data-filename="Example"><code class="language-soli text-sm">let all = Regex.find_all(r"[0-9]+", "a1b2c3")
 # [{"match": "1", "start": 1, "end": 2},
 #  {"match": "2", "start": 3, "end": 4},
 #  {"match": "3", "start": 5, "end": 6}]</code></pre>
@@ -130,26 +99,54 @@ println(result["end"])    # 6</code></pre>
         <section id="def-regex-replace" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-replace" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">regex_replace(pattern, string, replacement)</code>
+                    <code class="text-lg font-mono text-indigo-400">Regex.replace(pattern, string, replacement)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Replace the first match.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_replace("[0-9]+", "a1b2", "X")  # "aXb2"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">Regex.replace(r"[0-9]+", "a1b2", "X")  # "aXb2"</code></pre>
             </div>
         </section>
 
         <section id="def-regex-replace-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-replace-all" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">regex_replace_all(pattern, string, replacement)</code>
+                    <code class="text-lg font-mono text-indigo-400">Regex.replace_all(pattern, string, replacement)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Replace all matches.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_replace_all("[0-9]+", "a1b2", "X")  # "aXbX"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">Regex.replace_all(r"[0-9]+", "a1b2", "X")  # "aXbX"</code></pre>
+            </div>
+        </section>
+
+        <!-- String methods -->
+        <section id="def-string-gsub" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-string-gsub" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">string.gsub(pattern, replacement)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Replace all regex matches in a string (convenience method).</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">"hello 42 world 7".gsub(r"\d+", "X")  # "hello X world X"
+"foo bar foo".gsub(r"foo", "baz")     # "baz bar baz"</code></pre>
+            </div>
+        </section>
+
+        <section id="def-string-sub" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-string-sub" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">string.sub(pattern, replacement)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Replace the first regex match in a string.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">"hello 42 world 7".sub(r"\d+", "X")  # "hello X world 7"</code></pre>
             </div>
         </section>
     </section>
@@ -161,28 +158,28 @@ println(result["end"])    # 6</code></pre>
         <section id="def-regex-split" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-split" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">regex_split(pattern, string)</code>
+                    <code class="text-lg font-mono text-indigo-400">Regex.split(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Split a string by a regex pattern.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_split("[,;]", "a,b;c")  # ["a", "b", "c"]
-regex_split("\\s+", "hello   world")  # ["hello", "world"]</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">Regex.split(r"[,;]", "a,b;c")  # ["a", "b", "c"]
+Regex.split(r"\s+", "hello   world")  # ["hello", "world"]</code></pre>
             </div>
         </section>
 
         <section id="def-regex-capture" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-capture" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">regex_capture(pattern, string)</code>
+                    <code class="text-lg font-mono text-indigo-400">Regex.capture(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Capture named groups from a pattern.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let result = regex_capture(
-    "(?P&lt;year&gt;[0-9]{4})-(?P&lt;month&gt;[0-9]{2})-(?P&lt;day&gt;[0-9]{2})",
+                <pre data-filename="Example"><code class="language-soli text-sm">let result = Regex.capture(
+    r"(?P&lt;year&gt;[0-9]{4})-(?P&lt;month&gt;[0-9]{2})-(?P&lt;day&gt;[0-9]{2})",
     "2024-01-15"
 )
 println(result["year"])   # "2024"
@@ -194,14 +191,14 @@ println(result["day"])    # "15"</code></pre>
         <section id="def-regex-escape" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-escape" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">regex_escape(string)</code>
+                    <code class="text-lg font-mono text-indigo-400">Regex.escape(string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Escape special regex characters in a string.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">regex_escape("hello.world")  # "hello\\.world"
-regex_escape("(test)")       # "\\(test\\)"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">Regex.escape("hello.world")  # "hello\\.world"
+Regex.escape("(test)")       # "\\(test\\)"</code></pre>
             </div>
         </section>
     </section>

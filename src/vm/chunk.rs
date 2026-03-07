@@ -120,7 +120,8 @@ impl Chunk {
             | Op::JumpIfFalseNoPop(target)
             | Op::JumpIfTrueNoPop(target)
             | Op::NullishJump(target)
-            | Op::ForIter(target) => {
+            | Op::ForIter(target)
+            | Op::ForIterRange(target) => {
                 *target = jump;
             }
             _ => panic!("Tried to patch non-jump instruction at offset {}", offset),

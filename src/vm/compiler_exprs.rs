@@ -735,11 +735,33 @@ impl Compiler {
         //   2. Get iterator
         //   3. Loop: get next, check done, bind variable, check condition, eval element, push to array
         self.emit(Op::Array(0), line); // empty result array
-        self.compile_expr(iterable)?;
-        self.emit(Op::GetIter, line);
+        let is_range = matches!(
+            &iterable.kind,
+            crate::ast::ExprKind::Binary {
+                operator: crate::ast::BinaryOp::Range,
+                ..
+            }
+        );
+        if let crate::ast::ExprKind::Binary {
+            left,
+            operator: crate::ast::BinaryOp::Range,
+            right,
+        } = &iterable.kind
+        {
+            self.compile_expr(left)?;
+            self.compile_expr(right)?;
+            self.emit(Op::GetIterRange, line);
+        } else {
+            self.compile_expr(iterable)?;
+            self.emit(Op::GetIter, line);
+        }
 
         let loop_start = self.current_offset();
-        let exit_jump = self.emit_jump(Op::ForIter(0), line);
+        let exit_jump = if is_range {
+            self.emit_jump(Op::ForIterRange(0), line)
+        } else {
+            self.emit_jump(Op::ForIter(0), line)
+        };
 
         self.begin_scope();
         // Bind the loop variable
@@ -781,11 +803,33 @@ impl Compiler {
     ) -> CompileResult<()> {
         // Similar to list comprehension but builds a hash
         self.emit(Op::Hash(0), line); // empty result hash
-        self.compile_expr(iterable)?;
-        self.emit(Op::GetIter, line);
+        let is_range = matches!(
+            &iterable.kind,
+            crate::ast::ExprKind::Binary {
+                operator: crate::ast::BinaryOp::Range,
+                ..
+            }
+        );
+        if let crate::ast::ExprKind::Binary {
+            left,
+            operator: crate::ast::BinaryOp::Range,
+            right,
+        } = &iterable.kind
+        {
+            self.compile_expr(left)?;
+            self.compile_expr(right)?;
+            self.emit(Op::GetIterRange, line);
+        } else {
+            self.compile_expr(iterable)?;
+            self.emit(Op::GetIter, line);
+        }
 
         let loop_start = self.current_offset();
-        let exit_jump = self.emit_jump(Op::ForIter(0), line);
+        let exit_jump = if is_range {
+            self.emit_jump(Op::ForIterRange(0), line)
+        } else {
+            self.emit_jump(Op::ForIter(0), line)
+        };
 
         self.begin_scope();
         self.add_local(variable.to_string(), false);

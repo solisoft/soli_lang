@@ -1650,8 +1650,8 @@
     {
       "title": "render_json",
       "type": "function",
-      "category": "HTTP",
-      "path": "/docs/builtins/http#fn-render_json",
+      "category": "Controllers",
+      "path": "/docs/core-concepts/controllers#fn-render_json",
       "signature": "render_json(data, status?)",
       "description": "Render a JSON response with automatic Content-Type header",
       "keywords": ["json", "response", "http", "api", "render"]
@@ -1659,8 +1659,8 @@
     {
       "title": "render_text",
       "type": "function",
-      "category": "HTTP",
-      "path": "/docs/builtins/http#fn-render_text",
+      "category": "Controllers",
+      "path": "/docs/core-concepts/controllers#fn-render_text",
       "signature": "render_text(text, status?)",
       "description": "Render a plain text response with automatic Content-Type header",
       "keywords": ["text", "plain", "response", "http", "render"]
@@ -1668,8 +1668,8 @@
     {
       "title": "redirect",
       "type": "function",
-      "category": "HTTP",
-      "path": "/docs/builtins/http#fn-redirect",
+      "category": "Controllers",
+      "path": "/docs/core-concepts/controllers#fn-redirect",
       "signature": "redirect(url)",
       "description": "Create a redirect response (302 Found) to the specified URL",
       "keywords": ["redirect", "http", "location", "forward"]

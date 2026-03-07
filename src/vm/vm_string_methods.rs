@@ -307,9 +307,8 @@ impl Vm {
                         Ok(Value::String(s.replace(pattern, replacement)))
                     }
                 } else {
-                    use regex::Regex;
-                    let re = Regex::new(pattern).map_err(|e| {
-                        RuntimeError::type_error(format!("invalid regex: {}", e), span)
+                    let re = crate::regex_cache::get_regex(pattern).map_err(|e| {
+                        RuntimeError::type_error(e, span)
                     })?;
                     if args.len() == 3 {
                         let limit = match &args[2] {
@@ -336,9 +335,8 @@ impl Vm {
                 if !has_regex_metacharacters(pattern) {
                     Ok(Value::String(replacen_str(s, pattern, replacement, 1)))
                 } else {
-                    use regex::Regex;
-                    let re = Regex::new(pattern).map_err(|e| {
-                        RuntimeError::type_error(format!("invalid regex: {}", e), span)
+                    let re = crate::regex_cache::get_regex(pattern).map_err(|e| {
+                        RuntimeError::type_error(e, span)
                     })?;
                     Ok(Value::String(re.replacen(s, 1, replacement).to_string()))
                 }
@@ -584,9 +582,8 @@ impl Vm {
             "match" => {
                 check_arity(1, args.len(), span)?;
                 let pattern = expect_string(&args[0], "match", span)?;
-                use regex::Regex;
-                let re = Regex::new(pattern)
-                    .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                let re = crate::regex_cache::get_regex(pattern)
+                    .map_err(|e| RuntimeError::type_error(e, span))?;
                 if let Some(captures) = re.captures(s) {
                     let mut result = Vec::new();
                     for i in 0..captures.len() {
@@ -602,9 +599,8 @@ impl Vm {
             "scan" => {
                 check_arity(1, args.len(), span)?;
                 let pattern = expect_string(&args[0], "scan", span)?;
-                use regex::Regex;
-                let re = Regex::new(pattern)
-                    .map_err(|e| RuntimeError::type_error(format!("invalid regex: {}", e), span))?;
+                let re = crate::regex_cache::get_regex(pattern)
+                    .map_err(|e| RuntimeError::type_error(e, span))?;
                 let matches: Vec<Value> = re
                     .find_iter(s)
                     .map(|m| Value::String(m.as_str().to_string()))

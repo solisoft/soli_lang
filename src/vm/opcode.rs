@@ -138,8 +138,12 @@ pub enum Op {
     // --- Iterators ---
     /// Pop iterable, push iterator state.
     GetIter,
+    /// Pop two ints (start, end), push IterState::Range directly (zero allocation).
+    GetIterRange,
     /// Advance iterator or jump to exit offset.
     ForIter(u16),
+    /// Specialized ForIter for ranges: inline range check + increment, no method call.
+    ForIterRange(u16),
 
     // --- I/O ---
     /// Print N values from the stack.

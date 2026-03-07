@@ -183,12 +183,35 @@ impl Compiler {
         // for x in iter { body } or for x, i in iter { body }
         self.begin_scope();
 
-        self.compile_expr(iterable)?;
-        self.emit(Op::GetIter, line);
+        // Optimize: for x in a..b => GetIterRange + ForIterRange (zero allocation, inlined)
+        let is_range = matches!(
+            &iterable.kind,
+            crate::ast::ExprKind::Binary {
+                operator: crate::ast::BinaryOp::Range,
+                ..
+            }
+        );
+        if let crate::ast::ExprKind::Binary {
+            left,
+            operator: crate::ast::BinaryOp::Range,
+            right,
+        } = &iterable.kind
+        {
+            self.compile_expr(left)?;
+            self.compile_expr(right)?;
+            self.emit(Op::GetIterRange, line);
+        } else {
+            self.compile_expr(iterable)?;
+            self.emit(Op::GetIter, line);
+        }
 
         let loop_start = self.current_offset();
         self.begin_loop(loop_start);
-        let exit_jump = self.emit_jump(Op::ForIter(0), line);
+        let exit_jump = if is_range {
+            self.emit_jump(Op::ForIterRange(0), line)
+        } else {
+            self.emit_jump(Op::ForIter(0), line)
+        };
 
         // Bind the loop variable
         self.add_local(variable.to_string(), false);
