@@ -2,10 +2,16 @@
 
 use std::collections::HashMap;
 
-use crate::interpreter::symbol::SymbolId;
-use crate::interpreter::value::Value;
+use std::rc::Rc;
 
-use super::crud::{exec_auto_collection, exec_auto_collection_with_binds};
+use crate::interpreter::symbol::SymbolId;
+use crate::interpreter::value::{Class, Value};
+
+use super::crud::{
+    exec_auto_collection, exec_auto_collection_as_instances,
+    exec_auto_collection_as_instances_with_binds, exec_auto_collection_with_binds,
+    json_doc_to_instance,
+};
 use super::relations::{RelationDef, RelationType};
 
 /// An eager-load clause for a relation.
@@ -33,6 +39,7 @@ pub struct JoinClause {
 pub struct QueryBuilder {
     pub class_name: SymbolId,
     pub collection: SymbolId,
+    pub class: Option<Rc<Class>>,
     pub filter: Option<String>,
     pub bind_vars: HashMap<SymbolId, serde_json::Value>,
     pub order_by: Option<(SymbolId, SymbolId)>,
@@ -50,6 +57,25 @@ impl QueryBuilder {
         Self {
             class_name: class_id,
             collection: collection_id,
+            class: None,
+            filter: None,
+            bind_vars: HashMap::new(),
+            order_by: None,
+            limit_val: None,
+            offset_val: None,
+            includes: Vec::new(),
+            joins: Vec::new(),
+            select_fields: None,
+        }
+    }
+
+    pub fn new_with_class(class_name: String, collection: String, class: Rc<Class>) -> Self {
+        let class_id = crate::interpreter::get_symbol(&class_name);
+        let collection_id = crate::interpreter::get_symbol(&collection);
+        Self {
+            class_name: class_id,
+            collection: collection_id,
+            class: Some(class),
             filter: None,
             bind_vars: HashMap::new(),
             order_by: None,
@@ -408,21 +434,27 @@ impl QueryBuilder {
     }
 }
 
-/// Execute a QueryBuilder and return results.
+/// Execute a QueryBuilder and return results (as instances if class is available).
 pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
     let (query, bind_vars) = qb.build_query();
 
-    if bind_vars.is_empty() {
+    if let Some(ref class) = qb.class {
+        if bind_vars.is_empty() {
+            exec_auto_collection_as_instances(query, &collection, class)
+        } else {
+            exec_auto_collection_as_instances_with_binds(query, bind_vars, &collection, class)
+        }
+    } else if bind_vars.is_empty() {
         exec_auto_collection(query, &collection)
     } else {
         exec_auto_collection_with_binds(query, bind_vars, &collection)
     }
 }
 
-/// Execute a QueryBuilder for first result only.
+/// Execute a QueryBuilder for first result only (as instance if class is available).
 pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
@@ -431,17 +463,26 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
     qb_with_limit.set_limit(1);
     let (query, bind_vars) = qb_with_limit.build_query();
 
-    let result = if bind_vars.is_empty() {
-        exec_auto_collection(query, &collection)
+    // For first(), we can use raw JSON results + convert single item to instance
+    let raw_result = if bind_vars.is_empty() {
+        super::crud::exec_with_auto_collection(query, None, &collection)
     } else {
-        exec_auto_collection_with_binds(query, bind_vars, &collection)
+        super::crud::exec_with_auto_collection(query, Some(bind_vars), &collection)
     };
 
-    match result {
-        Value::Array(arr) => arr.borrow().iter().next().cloned().unwrap_or(Value::Null),
-        // DB errors return Value::String("Error: ...") - treat as no result
-        Value::String(ref s) if s.starts_with("Error:") => Value::Null,
-        other => other,
+    match raw_result {
+        Ok(results) => {
+            if let Some(doc) = results.first() {
+                if let Some(ref class) = qb.class {
+                    json_doc_to_instance(class, doc)
+                } else {
+                    super::crud::json_to_value(doc)
+                }
+            } else {
+                Value::Null
+            }
+        }
+        Err(_) => Value::Null,
     }
 }
 

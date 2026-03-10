@@ -1,7 +1,7 @@
 //! Database CRUD operations and JSON conversion utilities.
 
 use crate::interpreter::builtins::http_class::get_http_client;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{Class, Instance, Value};
 use crate::serve::get_tokio_handle;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -61,6 +61,59 @@ where
 /// Convert a serde_json::Value reference to a Soli Value (infallible wrapper).
 pub fn json_to_value(json: &serde_json::Value) -> Value {
     crate::interpreter::value::json_to_value_ref(json).unwrap_or(Value::Null)
+}
+
+/// Normalize a document key: "default:users/UUID" → "UUID" (strip everything up to last '/').
+pub fn normalize_key(key: &str) -> &str {
+    key.rsplit('/').next().unwrap_or(key)
+}
+
+/// Convert a JSON document to a class instance with all fields set.
+pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Value {
+    let mut instance = Instance::new(class.clone());
+    if let serde_json::Value::Object(map) = json {
+        for (k, v) in map {
+            instance.set(k.clone(), json_to_value(v));
+        }
+    }
+    Value::Instance(Rc::new(RefCell::new(instance)))
+}
+
+/// Execute query returning class instances with automatic collection creation.
+pub fn exec_auto_collection_as_instances(
+    sdbql: String,
+    collection_name: &str,
+    class: &Rc<Class>,
+) -> Value {
+    match exec_with_auto_collection(sdbql, None, collection_name) {
+        Ok(results) => {
+            let values: Vec<Value> = results
+                .iter()
+                .map(|json| json_doc_to_instance(class, json))
+                .collect();
+            Value::Array(Rc::new(RefCell::new(values)))
+        }
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
+}
+
+/// Execute query with binds returning class instances with automatic collection creation.
+pub fn exec_auto_collection_as_instances_with_binds(
+    sdbql: String,
+    bind_vars: HashMap<String, serde_json::Value>,
+    collection_name: &str,
+    class: &Rc<Class>,
+) -> Value {
+    match exec_with_auto_collection(sdbql, Some(bind_vars), collection_name) {
+        Ok(results) => {
+            let values: Vec<Value> = results
+                .iter()
+                .map(|json| json_doc_to_instance(class, json))
+                .collect();
+            Value::Array(Rc::new(RefCell::new(values)))
+        }
+        Err(e) => Value::String(format!("Error: {}", e)),
+    }
 }
 
 /// Fast async query execution - uses server's tokio runtime.
@@ -352,7 +405,7 @@ pub fn exec_insert(
 
 /// Execute a get with automatic collection creation.
 pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String> {
-    let url = format!("{}/{}", document_base_url(collection), key);
+    let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
     let result = exec_document_request(reqwest::Method::GET, url.clone(), None);
 
     if let Err(ref e) = result {
@@ -371,7 +424,7 @@ pub fn exec_update(
     document: serde_json::Value,
     _merge: bool,
 ) -> Result<serde_json::Value, String> {
-    let url = format!("{}/{}", document_base_url(collection), key);
+    let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
     let result = exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
 
     if let Err(ref e) = result {
@@ -385,7 +438,7 @@ pub fn exec_update(
 
 /// Execute a delete with automatic collection creation.
 pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, String> {
-    let url = format!("{}/{}", document_base_url(collection), key);
+    let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
     let result = exec_document_request(reqwest::Method::DELETE, url.clone(), None);
 
     if let Err(ref e) = result {
@@ -400,4 +453,107 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
 /// Execute a query with automatic collection creation.
 pub fn exec_query(collection: &str, sdbql: String) -> Result<Vec<serde_json::Value>, String> {
     exec_with_auto_collection(sdbql, None, collection)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_key_composite_id() {
+        assert_eq!(normalize_key("default:users/abc123"), "abc123");
+    }
+
+    #[test]
+    fn test_normalize_key_with_multiple_slashes() {
+        assert_eq!(normalize_key("default:some/nested/path/uuid"), "uuid");
+    }
+
+    #[test]
+    fn test_normalize_key_plain_key() {
+        assert_eq!(normalize_key("abc123"), "abc123");
+    }
+
+    #[test]
+    fn test_normalize_key_empty() {
+        assert_eq!(normalize_key(""), "");
+    }
+
+    #[test]
+    fn test_normalize_key_trailing_slash() {
+        assert_eq!(normalize_key("default:users/"), "");
+    }
+
+    #[test]
+    fn test_json_doc_to_instance_creates_instance() {
+        let class = Rc::new(Class::default());
+        let json = serde_json::json!({
+            "_key": "abc-xyz",
+            "_id": "default:test/abc-xyz",
+            "name": "Alice",
+            "active": true
+        });
+        let val = json_doc_to_instance(&class, &json);
+        match val {
+            Value::Instance(inst) => {
+                let inst_ref = inst.borrow();
+                assert_eq!(
+                    inst_ref.get("_key"),
+                    Some(Value::String("abc-xyz".to_string()))
+                );
+                assert_eq!(
+                    inst_ref.get("name"),
+                    Some(Value::String("Alice".to_string()))
+                );
+                assert_eq!(inst_ref.get("active"), Some(Value::Bool(true)));
+            }
+            _ => panic!("Expected Value::Instance"),
+        }
+    }
+
+    #[test]
+    fn test_json_doc_to_instance_with_nested_values() {
+        let class = Rc::new(Class::default());
+        let json = serde_json::json!({
+            "count": 42,
+            "score": 3.14
+        });
+        let val = json_doc_to_instance(&class, &json);
+        match val {
+            Value::Instance(inst) => {
+                let inst_ref = inst.borrow();
+                assert_eq!(inst_ref.get("count"), Some(Value::Int(42)));
+                assert_eq!(inst_ref.get("score"), Some(Value::Float(3.14)));
+            }
+            _ => panic!("Expected Value::Instance"),
+        }
+    }
+
+    #[test]
+    fn test_json_doc_to_instance_with_null_json() {
+        let class = Rc::new(Class::default());
+        let json = serde_json::Value::Null;
+        let val = json_doc_to_instance(&class, &json);
+        match val {
+            Value::Instance(inst) => {
+                assert!(inst.borrow().fields.is_empty());
+            }
+            _ => panic!("Expected Value::Instance"),
+        }
+    }
+
+    #[test]
+    fn test_json_doc_to_instance_preserves_class() {
+        let mut class = Class::default();
+        class.name = "User".to_string();
+        let class = Rc::new(class);
+        let json = serde_json::json!({ "name": "Bob" });
+        let val = json_doc_to_instance(&class, &json);
+        match val {
+            Value::Instance(inst) => {
+                assert_eq!(inst.borrow().class.name, "User");
+            }
+            _ => panic!("Expected Value::Instance"),
+        }
+    }
 }

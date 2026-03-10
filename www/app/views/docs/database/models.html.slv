@@ -29,7 +29,7 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class User < Model end</code></pre>
+            <pre><code class="language-soli text-sm">class User < Model end</code></pre>
         </div>
     </div>
 
@@ -47,6 +47,13 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
         </p>
     </div>
 
+    <div class="my-4 p-3 rounded-lg bg-green-500/10 border border-green-500/20 mb-6">
+        <p class="text-green-300 text-sm">
+            <strong>Class Instances:</strong> All query methods (<code>find</code>, <code>all</code>, <code>where</code>, <code>create</code>, etc.) return proper class instances.
+            For example, <code>User.find(id)</code> returns a <code>User</code> instance, not a raw hash. This enables instance methods like <code>.save()</code>, <code>.update()</code>, and <code>.delete()</code>.
+        </p>
+    </div>
+
     <div class="space-y-8 mb-12">
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
@@ -58,8 +65,12 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
     "name": "Alice",
     "age": 30
 })
-# Returns: { "valid": true, "record": { "id": "...", ... } }
-# Or: { "valid": false, "errors": [...] }</code></pre>
+# Returns: { "valid": true, "record": <User instance> }
+# Or: { "valid": false, "errors": [...] }
+
+let user = result["record"]
+user.name  # => "Alice"
+user._key  # => "abc123" (auto-generated)</code></pre>
         </div>
 
         <div>
@@ -67,13 +78,17 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
                 <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">READ</span>
                 Finding Records
             </h3>
-            <pre><code class="language-soli text-sm"># Find by ID
+            <pre><code class="language-soli text-sm"># Find by ID - returns a User instance
 let user = User.find("user123")
-# Find all
+user.name  # => "Alice"
+
+# Find all - returns array of User instances
 let users = User.all
-# Find with filter
-# Note: where() returns a QueryBuilder - call .all to get results
+users.first.name  # => "Alice"
+
+# Find with filter - returns array of User instances
 let adults = User.where("age >= @age", { "age": 18 }).all
+
 # Complex conditions
 let results = User.where("age >= @min AND role == @role", {
     "min": 21,
@@ -86,10 +101,17 @@ let results = User.where("age >= @min AND role == @role", {
                 <span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs font-mono">UPDATE</span>
                 Updating Records
             </h3>
-            <pre><code class="language-soli text-sm">User.update("user123", {
-    "name": "Alice Smith",
-    "age": 31
-});</code></pre>
+            <pre><code class="language-soli text-sm"># Static method: update by ID
+User.update("user123", { "name": "Alice Smith", "age": 31 })
+
+# Instance method: modify fields and save
+let user = User.find("user123")
+user.name = "Alice Smith"
+user.save()
+
+# Or use .update() to push current fields to DB
+user.name = "Alice Smith"
+user.update()</code></pre>
         </div>
 
         <div>
@@ -97,7 +119,12 @@ let results = User.where("age >= @min AND role == @role", {
                 <span class="px-2 py-1 rounded bg-red-500/20 text-red-400 text-xs font-mono">DELETE</span>
                 Deleting Records
             </h3>
-            <pre><code class="language-soli text-sm">User.delete("user123");</code></pre>
+            <pre><code class="language-soli text-sm"># Static method
+User.delete("user123")
+
+# Instance method
+let user = User.find("user123")
+user.delete()</code></pre>
         </div>
 
         <div>
@@ -107,6 +134,58 @@ let results = User.where("age >= @min AND role == @role", {
             </h3>
             <pre><code class="language-soli text-sm">let total = User.count</code></pre>
         </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Instance Methods</h2>
+    <p class="text-gray-400 mb-6">All model instances have built-in methods for persistence:</p>
+
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.save()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Insert (if new) or update (if existing). Returns the instance with <code>_key</code> populated.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.update()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Persist current non-<code>_</code> fields to DB. Requires <code>_key</code>.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.delete()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Delete the document from DB. Requires <code>_key</code>.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Create a new instance and save it
+let user = User.new()
+user.name = "Bob"
+user.email = "bob@example.com"
+user.save()
+# user._key is now set
+
+# Modify and save again
+user.name = "Robert"
+user.save()
+
+# Delete
+user.delete()</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <p class="text-yellow-300 text-sm">
+            <strong>Read-only fields:</strong> Fields starting with <code>_</code> (<code>_key</code>, <code>_id</code>, <code>_rev</code>, etc.) are read-only on model instances. They are set automatically by the database and cannot be assigned directly.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Query Builder Chaining</h2>
@@ -144,11 +223,11 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
             <tbody class="divide-y divide-white/5">
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.create(data)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Insert a new document</td>
+                    <td class="py-3 px-4 text-gray-400">Insert a new document, returns <code>{ "valid": bool, "record": instance }</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.find(id)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Get document by ID</td>
+                    <td class="py-3 px-4 text-gray-400">Get document by ID, returns instance or <code>null</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.where(filter, bind_vars)</code></td>
@@ -164,7 +243,7 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.all</code></td>
-                    <td class="py-3 px-4 text-gray-400">Get all documents</td>
+                    <td class="py-3 px-4 text-gray-400">Get all documents as instances</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.update(id, data)</code></td>
@@ -307,7 +386,7 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class User < Model
+            <pre><code class="language-soli text-sm">class User < Model
     def is_admin -> Bool
         this.role == "admin"
     end
@@ -378,10 +457,11 @@ end</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">Validation Results</h3>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let result = User.create({ "email": "" })
+            <pre><code class="language-soli text-sm">let result = User.create({ "email": "" })
 if result["valid"]
-    let user = result["record"]
-    print("Created user: " + user["id"])else
+    let user = result["record"]   # User instance
+    print("Created user: " + user._key)
+else
     for error in result["errors"]
         print(error["field"] + ": " + error["message"])
 end
@@ -394,7 +474,7 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class User < Model
+            <pre><code class="language-soli text-sm">class User < Model
     before_save("normalize_email")
     after_create("send_welcome_email")
     before_update("log_changes")
@@ -402,7 +482,7 @@ end</code></pre>
 
     def normalize_email
         this.email = this.email.downcase()
-end
+    end
 
     def send_welcome_email
         # Send email logic
@@ -452,7 +532,7 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class User < Model
+            <pre><code class="language-soli text-sm">class User < Model
     has_many("posts")
     has_one("profile")
 end
@@ -501,7 +581,7 @@ end</code></pre>
     <p class="text-gray-400 mb-6">Override defaults with an options hash:</p>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class Post < Model
+            <pre><code class="language-soli text-sm">class Post < Model
     belongs_to("author", { "class_name": "User", "foreign_key": "author_id" })
 end</code></pre>
         </div>
@@ -512,7 +592,7 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Load users with their posts and profiles in a single query
+            <pre><code class="language-soli text-sm"># Load users with their posts and profiles in a single query
 let users = User.includes("posts", "profile").all
 
 # Combine with where clauses
@@ -535,7 +615,7 @@ print(User.includes("posts").to_query)
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Find users who have at least one post
+            <pre><code class="language-soli text-sm"># Find users who have at least one post
 let users_with_posts = User.join("posts").all
 
 # Find users who have published posts
@@ -551,7 +631,7 @@ let recent = User.join("posts").order("created_at", "desc").limit(10).all</code>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Only load published posts for each user
+            <pre><code class="language-soli text-sm"># Only load published posts for each user
 let users = User.includes("posts", "published = @p", { "p": true }).all
 
 # Combine a filter with field projection using the "fields" key
@@ -568,7 +648,7 @@ let users = User.includes("posts", "published = @p", {
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Only load title and body from posts
+            <pre><code class="language-soli text-sm"># Only load title and body from posts
 let users = User.includes({ "posts": ["title", "body"] }).all</code></pre>
         </div>
     </div>
@@ -578,7 +658,7 @@ let users = User.includes({ "posts": ["title", "body"] }).all</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Filtered posts + unfiltered profile
+            <pre><code class="language-soli text-sm"># Filtered posts + unfiltered profile
 let users = User.includes("posts", "published = @p", { "p": true })
     .includes("profile")
     .all</code></pre>
@@ -590,7 +670,7 @@ let users = User.includes("posts", "published = @p", { "p": true })
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Only return name and email
+            <pre><code class="language-soli text-sm"># Only return name and email
 let users = User.select("name", "email").all
 # => FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}
 
@@ -615,7 +695,7 @@ let users = User.select("name", "email").includes("posts").all
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">class Post < Model
+            <pre><code class="language-soli text-sm">class Post < Model
     def author
         User.find(this.author_id)
     end
@@ -709,7 +789,7 @@ queries:</p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Read with named parameters
+            <pre><code class="language-soli text-sm"># Read with named parameters
 let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
     "age": 18
 })
@@ -736,7 +816,7 @@ db.query("REMOVE @key IN users", { "key": user_id })</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Simple query with interpolation
+            <pre><code class="language-soli text-sm"># Simple query with interpolation
 let users = @sdql{
     FOR u IN users
     FILTER u.age >= #{age}
@@ -799,7 +879,7 @@ let results = @sdql{
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># app/models/user.sl
+            <pre><code class="language-soli text-sm"># app/models/user.sl
 class User < Model
     has_many("posts")
     has_one("profile")
@@ -856,10 +936,24 @@ class UsersController < Controller
             "email": req["params"]["email"]
         })
         if result["valid"]
-            return redirect("/users/" + result["record"]["id"])
+            let user = result["record"]
+            return redirect("/users/" + user._key)
         else
             render("users/new", { "errors": result["errors"] })
         end
+    end
+
+    def update(req: Any)
+        let user = User.find(req["params"]["id"])
+        user.name = req["params"]["name"]
+        user.save()
+        redirect("/users/" + user._key)
+    end
+
+    def destroy(req: Any)
+        let user = User.find(req["params"]["id"])
+        user.delete()
+        redirect("/users")
     end
 end</code></pre>
         </div>

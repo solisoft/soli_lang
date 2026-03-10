@@ -229,6 +229,28 @@ pub fn get_class_name_from_class(args: &[Value]) -> Result<String, String> {
     }
 }
 
+/// Extract Rc<Class> from the first argument.
+fn get_class_rc_from_args(args: &[Value]) -> Result<Rc<Class>, String> {
+    match args.first() {
+        Some(Value::Class(class)) => Ok(class.clone()),
+        _ => Err("Expected class as first argument".to_string()),
+    }
+}
+
+/// Convert instance fields to a Value::Hash suitable for validation.
+fn instance_fields_to_hash(
+    inst: &std::cell::Ref<'_, crate::interpreter::value::Instance>,
+) -> Value {
+    use crate::interpreter::value::{HashKey, HashPairs};
+    let mut pairs = HashPairs::default();
+    for (k, v) in &inst.fields {
+        if !k.starts_with('_') {
+            pairs.insert(HashKey::String(k.clone()), v.clone());
+        }
+    }
+    Value::Hash(Rc::new(RefCell::new(pairs)))
+}
+
 pub struct Model;
 
 impl Model {
@@ -480,10 +502,11 @@ impl Model {
         native_static_methods.insert(
             "includes".to_string(),
             Rc::new(NativeFunction::new("Model.includes", None, |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
-                let mut qb = QueryBuilder::new(class_name.clone(), collection);
+                let mut qb = QueryBuilder::new_with_class(class_name.clone(), collection, class);
                 let arguments = &args[1..];
 
                 if arguments.len() == 1 && matches!(&arguments[0], Value::Hash(_)) {
@@ -613,10 +636,11 @@ impl Model {
 
         // Model.select("name", "email") / Model.fields("name", "email") - field selection
         let select_fn = Rc::new(NativeFunction::new("Model.select", None, |args| {
-            let class_name = get_class_name_from_class(&args)?;
+            let class = get_class_rc_from_args(&args)?;
+            let class_name = class.name.clone();
             let collection = class_name_to_collection(&class_name);
 
-            let mut qb = QueryBuilder::new(class_name, collection);
+            let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
             let mut fields = Vec::new();
             for arg in &args[1..] {
                 match arg {
@@ -639,7 +663,8 @@ impl Model {
         native_static_methods.insert(
             "join".to_string(),
             Rc::new(NativeFunction::new("Model.join", None, |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
                 let rel_name = match args.get(1) {
@@ -679,7 +704,7 @@ impl Model {
                     _ => std::collections::HashMap::new(),
                 };
 
-                let mut qb = QueryBuilder::new(class_name, collection);
+                let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
                 qb.add_join(rel_name, rel, filter, bind_vars);
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
@@ -690,14 +715,15 @@ impl Model {
         // CRUD Methods
         // ====================================================================
 
-        // Model.create(data) - Insert document with validation
+        // Model.create(data) - Insert document with validation, returns instance in record
         use super::crud::{exec_insert, json_to_value};
         use super::validation::{build_validation_result, run_validations};
         use crate::interpreter::value::value_to_json;
         native_static_methods.insert(
             "create".to_string(),
             Rc::new(NativeFunction::new("Model.create", Some(2), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
                 let data = args
@@ -732,12 +758,8 @@ impl Model {
 
                 match result {
                     Ok(id) => {
-                        let mut result_map = serde_json::Map::new();
-                        result_map.insert("valid".to_string(), serde_json::Value::Bool(true));
-
                         if let serde_json::Value::Object(mut data_map) = data_value {
                             // Flatten DB metadata fields from the id response
-                            // into the record for natural access (e.g., record["_key"])
                             if let serde_json::Value::Object(ref id_map) = id {
                                 for field in &["_key", "_id", "_rev", "_created_at", "_updated_at"]
                                 {
@@ -747,28 +769,33 @@ impl Model {
                                 }
                             }
                             data_map.insert("id".to_string(), id);
-                            result_map
-                                .insert("record".to_string(), serde_json::Value::Object(data_map));
-                        }
+                            let record =
+                                json_doc_to_instance(&class, &serde_json::Value::Object(data_map));
 
-                        Ok(Value::Hash(Rc::new(RefCell::new(
-                            result_map
-                                .into_iter()
-                                .map(|(k, v)| (HashKey::String(k), json_to_value(&v)))
-                                .collect(),
-                        ))))
+                            let mut result_pairs = crate::interpreter::value::HashPairs::default();
+                            result_pairs
+                                .insert(HashKey::String("valid".to_string()), Value::Bool(true));
+                            result_pairs.insert(HashKey::String("record".to_string()), record);
+                            Ok(Value::Hash(Rc::new(RefCell::new(result_pairs))))
+                        } else {
+                            let mut result_pairs = crate::interpreter::value::HashPairs::default();
+                            result_pairs
+                                .insert(HashKey::String("valid".to_string()), Value::Bool(true));
+                            Ok(Value::Hash(Rc::new(RefCell::new(result_pairs))))
+                        }
                     }
                     Err(e) => Ok(Value::String(format!("Error: {}", e))),
                 }
             })),
         );
 
-        // Model.find(id) - Get by ID
-        use super::crud::exec_get;
+        // Model.find(id) - Get by ID, returns a class instance
+        use super::crud::{exec_get, json_doc_to_instance};
         native_static_methods.insert(
             "find".to_string(),
             Rc::new(NativeFunction::new("Model.find", Some(2), |args| {
-                let collection = get_collection_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let collection = class_name_to_collection(&class.name);
 
                 let id = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
@@ -782,7 +809,7 @@ impl Model {
                 };
 
                 match exec_get(&collection, &id) {
-                    Ok(doc) => Ok(json_to_value(&doc)),
+                    Ok(doc) => Ok(json_doc_to_instance(&class, &doc)),
                     // Not found or collection error → null (not an application error)
                     Err(_) => Ok(Value::Null),
                 }
@@ -794,7 +821,8 @@ impl Model {
         native_static_methods.insert(
             "where".to_string(),
             Rc::new(NativeFunction::new("Model.where", Some(3), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
                 let filter = match args.get(1) {
@@ -828,21 +856,26 @@ impl Model {
                 };
 
                 // Create a QueryBuilder and set the filter
-                let mut qb = QueryBuilder::new(class_name, collection);
+                let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
                 qb.set_filter(filter, bind_vars);
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
         );
 
-        // Model.all() - Get all documents (uses async HTTP for high performance)
-        use super::crud::exec_auto_collection;
+        // Model.all() - Get all documents as class instances
+        use super::crud::exec_auto_collection_as_instances;
         native_static_methods.insert(
             "all".to_string(),
             Rc::new(NativeFunction::new("Model.all", Some(1), |args| {
-                let collection = get_collection_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let collection = class_name_to_collection(&class.name);
                 let sdbql = format!("FOR doc IN {} RETURN doc", collection);
-                Ok(exec_auto_collection(sdbql, &collection))
+                Ok(exec_auto_collection_as_instances(
+                    sdbql,
+                    &collection,
+                    &class,
+                ))
             })),
         );
 
@@ -861,7 +894,8 @@ impl Model {
         native_static_methods.insert(
             "order".to_string(),
             Rc::new(NativeFunction::new("Model.order", Some(3), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
                 let field = match args.get(1) {
@@ -880,7 +914,7 @@ impl Model {
                     _ => "asc".to_string(),
                 };
 
-                let mut qb = QueryBuilder::new(class_name, collection);
+                let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
                 qb.set_order(field, direction);
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
@@ -891,7 +925,8 @@ impl Model {
         native_static_methods.insert(
             "limit".to_string(),
             Rc::new(NativeFunction::new("Model.limit", Some(2), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
                 let limit = match args.get(1) {
@@ -906,14 +941,14 @@ impl Model {
                     None => return Err("Model.limit() requires a number".to_string()),
                 };
 
-                let mut qb = QueryBuilder::new(class_name, collection);
+                let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
                 qb.set_limit(limit);
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
         );
 
-        // Model.update(id, data) - Update document
+        // Model.update(id, data) - Update document (accepts hash or instance as data)
         use super::crud::exec_update;
         native_static_methods.insert(
             "update".to_string(),
@@ -941,8 +976,18 @@ impl Model {
                         }
                         Ok(serde_json::Value::Object(map))
                     }
+                    Some(Value::Instance(inst)) => {
+                        let inst_ref = inst.borrow();
+                        let mut map = serde_json::Map::new();
+                        for (k, v) in &inst_ref.fields {
+                            if !k.starts_with('_') {
+                                map.insert(k.clone(), value_to_json(v)?);
+                            }
+                        }
+                        Ok(serde_json::Value::Object(map))
+                    }
                     Some(other) => Err(format!(
-                        "Model.update() expects hash data, got {}",
+                        "Model.update() expects hash or instance data, got {}",
                         other.type_name()
                     )),
                     None => Err("Model.update() requires data argument".to_string()),
@@ -1008,13 +1053,262 @@ impl Model {
             })),
         );
 
+        // ====================================================================
+        // Instance Methods (called on model instances: user.update(), user.delete())
+        // ====================================================================
+        let mut native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+
+        // instance.update() - Persist current instance fields to DB
+        // Returns true on success, false on validation/DB error (errors stored in _errors)
+        native_methods.insert(
+            "update".to_string(),
+            Rc::new(NativeFunction::new("Model#update", Some(1), |args| {
+                use super::validation::run_validations;
+
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let inst_ref = instance.borrow();
+                let class_name = inst_ref.class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let key = inst_ref
+                    .get("_key")
+                    .ok_or_else(|| "Instance has no _key field".to_string())?;
+                let key_str = match key {
+                    Value::String(s) => s,
+                    _ => return Err("_key is not a string".to_string()),
+                };
+
+                // Run validations
+                let data_hash = instance_fields_to_hash(&inst_ref);
+                let errors = run_validations(&class_name, &data_hash, false);
+                if !errors.is_empty() {
+                    let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
+                    drop(inst_ref);
+                    instance.borrow_mut().set(
+                        "_errors".to_string(),
+                        Value::Array(Rc::new(RefCell::new(error_values))),
+                    );
+                    return Ok(Value::Bool(false));
+                }
+
+                let mut map = serde_json::Map::new();
+                for (k, v) in &inst_ref.fields {
+                    if !k.starts_with('_') {
+                        map.insert(k.clone(), value_to_json(v)?);
+                    }
+                }
+                drop(inst_ref);
+                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
+                    Ok(result) => {
+                        let mut inst_mut = instance.borrow_mut();
+                        if let serde_json::Value::Object(ref res_map) = result {
+                            if let Some(rev) = res_map.get("_rev") {
+                                inst_mut.set("_rev".to_string(), json_to_value(rev));
+                            }
+                        }
+                        inst_mut.set(
+                            "_errors".to_string(),
+                            Value::Array(Rc::new(RefCell::new(vec![]))),
+                        );
+                        Ok(Value::Bool(true))
+                    }
+                    Err(e) => {
+                        instance.borrow_mut().set(
+                            "_errors".to_string(),
+                            Value::Array(Rc::new(RefCell::new(vec![Value::String(
+                                e.to_string(),
+                            )]))),
+                        );
+                        Ok(Value::Bool(false))
+                    }
+                }
+            })),
+        );
+
+        // instance.save() - Insert or update depending on whether _key exists
+        // Returns true on success, false on validation/DB error (errors stored in _errors)
+        native_methods.insert(
+            "save".to_string(),
+            Rc::new(NativeFunction::new("Model#save", Some(1), |args| {
+                use super::validation::run_validations;
+
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let inst_ref = instance.borrow();
+                let class_name = inst_ref.class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let has_key = matches!(inst_ref.get("_key"), Some(Value::String(_)));
+
+                // Run validations
+                let data_hash = instance_fields_to_hash(&inst_ref);
+                let errors = run_validations(&class_name, &data_hash, !has_key);
+                if !errors.is_empty() {
+                    let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
+                    drop(inst_ref);
+                    instance.borrow_mut().set(
+                        "_errors".to_string(),
+                        Value::Array(Rc::new(RefCell::new(error_values))),
+                    );
+                    return Ok(Value::Bool(false));
+                }
+
+                let mut map = serde_json::Map::new();
+                for (k, v) in &inst_ref.fields {
+                    if !k.starts_with('_') {
+                        map.insert(k.clone(), value_to_json(v)?);
+                    }
+                }
+
+                if has_key {
+                    // Update existing document
+                    let key_str = match inst_ref.get("_key").unwrap() {
+                        Value::String(s) => s,
+                        _ => unreachable!(),
+                    };
+                    drop(inst_ref);
+                    match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
+                        Ok(result) => {
+                            let mut inst_mut = instance.borrow_mut();
+                            if let serde_json::Value::Object(ref res_map) = result {
+                                if let Some(rev) = res_map.get("_rev") {
+                                    inst_mut.set("_rev".to_string(), json_to_value(rev));
+                                }
+                            }
+                            inst_mut.set(
+                                "_errors".to_string(),
+                                Value::Array(Rc::new(RefCell::new(vec![]))),
+                            );
+                            Ok(Value::Bool(true))
+                        }
+                        Err(e) => {
+                            instance.borrow_mut().set(
+                                "_errors".to_string(),
+                                Value::Array(Rc::new(RefCell::new(vec![Value::String(
+                                    e.to_string(),
+                                )]))),
+                            );
+                            Ok(Value::Bool(false))
+                        }
+                    }
+                } else {
+                    // Insert new document
+                    drop(inst_ref);
+                    match exec_insert(&collection, None, serde_json::Value::Object(map)) {
+                        Ok(result) => {
+                            let mut inst_mut = instance.borrow_mut();
+                            if let serde_json::Value::Object(ref res_map) = result {
+                                for field in &["_key", "_id", "_rev", "_created_at", "_updated_at"]
+                                {
+                                    if let Some(val) = res_map.get(*field) {
+                                        inst_mut.set(field.to_string(), json_to_value(val));
+                                    }
+                                }
+                            }
+                            inst_mut.set(
+                                "_errors".to_string(),
+                                Value::Array(Rc::new(RefCell::new(vec![]))),
+                            );
+                            Ok(Value::Bool(true))
+                        }
+                        Err(e) => {
+                            instance.borrow_mut().set(
+                                "_errors".to_string(),
+                                Value::Array(Rc::new(RefCell::new(vec![Value::String(
+                                    e.to_string(),
+                                )]))),
+                            );
+                            Ok(Value::Bool(false))
+                        }
+                    }
+                }
+            })),
+        );
+
+        // instance.delete() - Delete the document from DB
+        native_methods.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model#delete", Some(1), |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let inst_ref = instance.borrow();
+                let collection = class_name_to_collection(&inst_ref.class.name);
+                let key = inst_ref
+                    .get("_key")
+                    .ok_or_else(|| "Instance has no _key field".to_string())?;
+                let key_str = match key {
+                    Value::String(s) => s,
+                    _ => return Err("_key is not a string".to_string()),
+                };
+                drop(inst_ref);
+                match exec_delete(&collection, &key_str) {
+                    Ok(result) => Ok(json_to_value(&result)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
+            })),
+        );
+
+        // instance.errors - Return the list of errors from last save/update
+        native_methods.insert(
+            "errors".to_string(),
+            Rc::new(NativeFunction::new("Model#errors", Some(1), |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let inst_ref = instance.borrow();
+                match inst_ref.get("_errors") {
+                    Some(errors) => Ok(errors),
+                    None => Ok(Value::Array(Rc::new(RefCell::new(vec![])))),
+                }
+            })),
+        );
+
+        // instance.reload - Re-fetch from DB and refresh all fields
+        native_methods.insert(
+            "reload".to_string(),
+            Rc::new(NativeFunction::new("Model#reload", Some(1), |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let inst_ref = instance.borrow();
+                let collection = class_name_to_collection(&inst_ref.class.name);
+                let key = inst_ref
+                    .get("_key")
+                    .ok_or_else(|| "Instance has no _key field, cannot reload".to_string())?;
+                let key_str = match key {
+                    Value::String(s) => s,
+                    _ => return Err("_key is not a string".to_string()),
+                };
+                drop(inst_ref);
+                match exec_get(&collection, &key_str) {
+                    Ok(doc) => {
+                        if let serde_json::Value::Object(map) = &doc {
+                            let mut inst_mut = instance.borrow_mut();
+                            for (k, v) in map {
+                                inst_mut.set(k.clone(), json_to_value(v));
+                            }
+                        }
+                        Ok(Value::Instance(instance))
+                    }
+                    Err(e) => Err(format!("reload failed: {}", e)),
+                }
+            })),
+        );
+
         let model_class = Class {
             name: "Model".to_string(),
             superclass: None,
             methods: HashMap::new(),
             static_methods: HashMap::new(),
             native_static_methods,
-            native_methods: HashMap::new(),
+            native_methods,
             static_fields: Rc::new(RefCell::new(HashMap::new())),
             fields: HashMap::new(),
             constructor: None,

@@ -167,7 +167,7 @@ pub fn prepare_source(code: &str) -> String {
         if expr.is_empty() {
             return format!("{};", trimmed);
         }
-        format!("println(({}).inspect);", expr)
+        format!("let _ = ({}); println(_.inspect);", expr)
     } else if !passthrough
         && !trimmed.starts_with("let ")
         && !trimmed.starts_with("fn ")

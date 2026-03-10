@@ -110,7 +110,32 @@ impl Interpreter {
         match name {
             "inspect" => {
                 let inst_ref = inst.borrow();
-                return Ok(Value::String(format!("<{} instance>", inst_ref.class.name)));
+                if inst_ref.fields.is_empty() {
+                    return Ok(Value::String(format!("<{} instance>", inst_ref.class.name)));
+                }
+                let mut s = format!("<{}", inst_ref.class.name);
+                let mut first = true;
+                for (k, v) in inst_ref.fields.iter() {
+                    // Hide _errors when empty
+                    if k == "_errors" {
+                        if let Value::Array(arr) = v {
+                            if arr.borrow().is_empty() {
+                                continue;
+                            }
+                        }
+                    }
+                    if first {
+                        s.push(' ');
+                        first = false;
+                    } else {
+                        s.push_str(",\n ");
+                    }
+                    s.push_str(k);
+                    s.push_str(": ");
+                    s.push_str(&Self::inspect_compact(v));
+                }
+                s.push('>');
+                return Ok(Value::String(s));
             }
             "class" => {
                 let inst_ref = inst.borrow();
@@ -137,7 +162,7 @@ impl Interpreter {
             let instance_clone = inst.clone();
             return Ok(Value::NativeFunction(NativeFunction::new(
                 format!("{}.{}", class_name, name),
-                native_method.arity,
+                native_method.arity.map(|a| a.saturating_sub(1)),
                 move |args| {
                     let mut new_args = vec![Value::Instance(instance_clone.clone())];
                     new_args.extend(args.iter().cloned());
@@ -654,6 +679,7 @@ impl Interpreter {
             Value::Int(n) => n.to_string(),
             Value::Float(n) => format!("{}", n),
             Value::Decimal(d) => format!("Decimal({})", d.0),
+            Value::Instance(inst) => Self::inspect_instance_compact(inst),
             Value::Array(arr) => {
                 let arr = arr.borrow();
                 let items: Vec<String> = arr.iter().map(Self::inspect_compact).collect();
@@ -671,6 +697,43 @@ impl Interpreter {
         }
     }
 
+    /// One-line compact representation of an instance, showing only key identifier fields.
+    fn inspect_instance_compact(inst: &Rc<RefCell<Instance>>) -> String {
+        let inst_ref = inst.borrow();
+        if inst_ref.fields.is_empty() {
+            return format!("<{} instance>", inst_ref.class.name);
+        }
+        let mut s = format!("<{}", inst_ref.class.name);
+        // Show _key first if present, then a few meaningful fields (skip internal _ fields)
+        let mut shown = 0;
+        if let Some(key) = inst_ref.fields.get("_key") {
+            s.push_str(&format!(" _key: {}", Self::inspect_compact(key)));
+            shown += 1;
+        }
+        for (k, v) in &inst_ref.fields {
+            if shown >= 3 {
+                s.push_str(", ...");
+                break;
+            }
+            if k == "_key" || k.starts_with('_') {
+                continue;
+            }
+            s.push_str(if shown > 0 { ", " } else { " " });
+            s.push_str(k);
+            s.push_str(": ");
+            let val_str = Self::inspect_compact(v);
+            if val_str.len() > 30 {
+                s.push_str(&val_str[..27]);
+                s.push_str("...");
+            } else {
+                s.push_str(&val_str);
+            }
+            shown += 1;
+        }
+        s.push('>');
+        s
+    }
+
     /// Pretty-print with newlines and indentation.
     fn inspect_pretty(val: &Value, depth: usize) -> String {
         let indent = "  ".repeat(depth + 1);
@@ -681,8 +744,11 @@ impl Interpreter {
                 if arr.is_empty() {
                     return "[]".to_string();
                 }
+                let max_display = 10;
+                let total = arr.len();
                 let items: Vec<String> = arr
                     .iter()
+                    .take(max_display)
                     .map(|v| {
                         let compact = Self::inspect_compact(v);
                         if compact.len() <= 80 {
@@ -692,7 +758,17 @@ impl Interpreter {
                         }
                     })
                     .collect();
-                format!("[\n{}\n{}]", items.join(",\n"), closing_indent)
+                if total > max_display {
+                    format!(
+                        "[\n{},\n{}... ({} more)\n{}]",
+                        items.join(",\n"),
+                        indent,
+                        total - max_display,
+                        closing_indent
+                    )
+                } else {
+                    format!("[\n{}\n{}]", items.join(",\n"), closing_indent)
+                }
             }
             Value::Hash(hash) => {
                 let hash = hash.borrow();

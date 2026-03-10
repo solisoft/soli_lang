@@ -450,7 +450,36 @@ impl fmt::Display for Value {
             Value::Function(func) => write!(f, "<fn {}>", func.name),
             Value::NativeFunction(func) => write!(f, "<native fn {}>", func.name),
             Value::Class(class) => write!(f, "<class {}>", class.name),
-            Value::Instance(inst) => write!(f, "<{} instance>", inst.borrow().class.name),
+            Value::Instance(inst) => {
+                let inst_ref = inst.borrow();
+                if inst_ref.fields.is_empty() {
+                    write!(f, "<{} instance>", inst_ref.class.name)
+                } else {
+                    write!(f, "<{}", inst_ref.class.name)?;
+                    let mut first = true;
+                    for (k, v) in inst_ref.fields.iter() {
+                        // Hide _errors when empty
+                        if k == "_errors" {
+                            if let Value::Array(arr) = v {
+                                if arr.borrow().is_empty() {
+                                    continue;
+                                }
+                            }
+                        }
+                        if first {
+                            write!(f, " ")?;
+                            first = false;
+                        } else {
+                            write!(f, ",\n ")?;
+                        }
+                        match v {
+                            Value::String(s) => write!(f, "{}: \"{}\"", k, s)?,
+                            _ => write!(f, "{}: {}", k, v)?,
+                        }
+                    }
+                    write!(f, ">")
+                }
+            }
             Value::Future(state) => {
                 // Auto-resolve the future when displaying
                 let guard = state.lock().unwrap();

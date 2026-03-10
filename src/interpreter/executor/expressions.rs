@@ -261,6 +261,12 @@ impl Interpreter {
                                 target.span,
                             ));
                         }
+                        if name.starts_with('_') && inst.borrow().class.is_model_subclass() {
+                            return Err(RuntimeError::type_error(
+                                format!("cannot assign to read-only field '{}'", name),
+                                target.span,
+                            ));
+                        }
                         inst.borrow_mut().set(name.clone(), new_value.clone());
                         Ok(new_value)
                     }
@@ -376,6 +382,12 @@ impl Interpreter {
                         if inst.borrow().class.const_fields.contains(name.as_str()) {
                             return Err(RuntimeError::type_error(
                                 format!("cannot reassign const field '{}'", name),
+                                target.span,
+                            ));
+                        }
+                        if name.starts_with('_') && inst.borrow().class.is_model_subclass() {
+                            return Err(RuntimeError::type_error(
+                                format!("cannot assign to read-only field '{}'", name),
                                 target.span,
                             ));
                         }
