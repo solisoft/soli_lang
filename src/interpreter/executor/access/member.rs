@@ -162,7 +162,7 @@ impl Interpreter {
             let instance_clone = inst.clone();
             return Ok(Value::NativeFunction(NativeFunction::new(
                 format!("{}.{}", class_name, name),
-                native_method.arity.map(|a| a.saturating_sub(1)),
+                native_method.arity,
                 move |args| {
                     let mut new_args = vec![Value::Instance(instance_clone.clone())];
                     new_args.extend(args.iter().cloned());

@@ -1062,7 +1062,7 @@ impl Model {
         // Returns true on success, false on validation/DB error (errors stored in _errors)
         native_methods.insert(
             "update".to_string(),
-            Rc::new(NativeFunction::new("Model#update", Some(1), |args| {
+            Rc::new(NativeFunction::new("Model#update", Some(0), |args| {
                 use super::validation::run_validations;
 
                 let instance = match &args[0] {
@@ -1117,9 +1117,7 @@ impl Model {
                     Err(e) => {
                         instance.borrow_mut().set(
                             "_errors".to_string(),
-                            Value::Array(Rc::new(RefCell::new(vec![Value::String(
-                                e.to_string(),
-                            )]))),
+                            Value::Array(Rc::new(RefCell::new(vec![Value::String(e.to_string())]))),
                         );
                         Ok(Value::Bool(false))
                     }
@@ -1131,7 +1129,7 @@ impl Model {
         // Returns true on success, false on validation/DB error (errors stored in _errors)
         native_methods.insert(
             "save".to_string(),
-            Rc::new(NativeFunction::new("Model#save", Some(1), |args| {
+            Rc::new(NativeFunction::new("Model#save", Some(0), |args| {
                 use super::validation::run_validations;
 
                 let instance = match &args[0] {
@@ -1231,7 +1229,7 @@ impl Model {
         // instance.delete() - Delete the document from DB
         native_methods.insert(
             "delete".to_string(),
-            Rc::new(NativeFunction::new("Model#delete", Some(1), |args| {
+            Rc::new(NativeFunction::new("Model#delete", Some(0), |args| {
                 let instance = match &args[0] {
                     Value::Instance(inst) => inst.clone(),
                     _ => return Err("Expected instance".to_string()),
@@ -1256,7 +1254,7 @@ impl Model {
         // instance.errors - Return the list of errors from last save/update
         native_methods.insert(
             "errors".to_string(),
-            Rc::new(NativeFunction::new("Model#errors", Some(1), |args| {
+            Rc::new(NativeFunction::new("Model#errors", Some(0), |args| {
                 let instance = match &args[0] {
                     Value::Instance(inst) => inst.clone(),
                     _ => return Err("Expected instance".to_string()),
@@ -1272,7 +1270,7 @@ impl Model {
         // instance.reload - Re-fetch from DB and refresh all fields
         native_methods.insert(
             "reload".to_string(),
-            Rc::new(NativeFunction::new("Model#reload", Some(1), |args| {
+            Rc::new(NativeFunction::new("Model#reload", Some(0), |args| {
                 let instance = match &args[0] {
                     Value::Instance(inst) => inst.clone(),
                     _ => return Err("Expected instance".to_string()),
