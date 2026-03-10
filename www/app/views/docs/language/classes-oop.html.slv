@@ -350,7 +350,7 @@ end
 
 # Using nested classes
 let outer = new Outer(10)
-let inner = new Outer.Inner(outer, 5)
+let inner = new Outer::Inner(outer, 5)
 print(inner.get_combined())   # 15
 print(inner.get_outer_value()) # 10
 
@@ -379,13 +379,13 @@ print(inner2.get_combined())   # 30</code></pre>
         def insert(new_value: Int)
             if (new_value < this.value)
                 if (this.left == null)
-                    this.left = new Tree.Node(new_value)
+                    this.left = new Tree::Node(new_value)
                 else
                     this.left.insert(new_value)
                 end
             else
                 if (this.right == null)
-                    this.right = new Tree.Node(new_value)
+                    this.right = new Tree::Node(new_value)
                 else
                     this.right.insert(new_value)
                 end
@@ -393,7 +393,7 @@ print(inner2.get_combined())   # 30</code></pre>
         end
     end
 
-    root: Tree.Node?
+    root: Tree::Node?
 
     new
         this.root = null
@@ -401,7 +401,7 @@ print(inner2.get_combined())   # 30</code></pre>
 
     def insert(value: Int)
         if (this.root == null)
-            this.root = new Tree.Node(value)
+            this.root = new Tree::Node(value)
         else
             this.root.insert(value)
         end
