@@ -19,16 +19,16 @@ describe("Predicate Methods with ?", fn() {
         assert_not(s2.empty?());
     });
 
-    test("include? method on array", fn() {
+    test("includes? method on array", fn() {
         let arr = [1, 2, 3];
-        assert(arr.include?(2));
-        assert_not(arr.include?(5));
+        assert(arr.includes?(2));
+        assert_not(arr.includes?(5));
     });
 
-    test("include? method on string", fn() {
+    test("includes? method on string", fn() {
         let s = "hello world";
-        assert(s.include?("world"));
-        assert_not(s.include?("xyz"));
+        assert(s.includes?("world"));
+        assert_not(s.includes?("xyz"));
     });
 
     test("starts_with? method", fn() {
@@ -54,9 +54,9 @@ describe("Predicate Methods with ?", fn() {
 
     test("chained predicate checks", fn() {
         let s = "hello";
-        assert(s.include?("ell") && s.starts_with?("he"));
+        assert(s.includes?("ell") && s.starts_with?("he"));
         // Test that neither xyz is included nor does it end with "xyz"
-        assert_not(s.include?("xyz") || s.ends_with?("xyz"));
+        assert_not(s.includes?("xyz") || s.ends_with?("xyz"));
     });
 });
 

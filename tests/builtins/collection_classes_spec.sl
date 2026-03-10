@@ -198,10 +198,10 @@ describe("Collection Classes", fn() {
             assert_not(full.empty?());
         });
 
-        test("Array.include?() checks if array contains element", fn() {
+        test("Array.includes?() checks if array contains element", fn() {
             let arr = [1, 2, 3];
-            assert(arr.include?(2));
-            assert_not(arr.include?(5));
+            assert(arr.includes?(2));
+            assert_not(arr.includes?(5));
         });
 
         test("Array.join() joins elements with delimiter", fn() {
@@ -282,15 +282,15 @@ describe("Collection Classes", fn() {
         test("Array.sample() returns an element from the array", fn() {
             let arr = [1, 2, 3, 4, 5];
             let s = arr.sample();
-            assert(arr.include?(s));
+            assert(arr.includes?(s));
         });
 
         test("Array.shuffle() returns shuffled array with same elements", fn() {
             let arr = [1, 2, 3, 4, 5];
             let shuffled = arr.shuffle();
             assert_eq(shuffled.length(), 5);
-            assert(shuffled.include?(1));
-            assert(shuffled.include?(5));
+            assert(shuffled.includes?(1));
+            assert(shuffled.includes?(5));
         });
     });
 

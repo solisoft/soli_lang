@@ -502,21 +502,6 @@ pub fn register_array_class(env: &mut Environment) {
     );
 
     array_native_methods.insert(
-        "include?".to_string(),
-        Rc::new(NativeFunction::new("Array.include?", Some(1), |args| {
-            let this = match args.first() {
-                Some(Value::Instance(inst)) => inst,
-                _ => return Err("Array.include?() called on non-Array".to_string()),
-            };
-            let item = args.get(1).cloned().unwrap_or(Value::Null);
-            match this.borrow().fields.get("__value").cloned() {
-                Some(Value::Array(arr)) => Ok(Value::Bool(arr.borrow().contains(&item))),
-                _ => Err("Array missing internal value".to_string()),
-            }
-        })),
-    );
-
-    array_native_methods.insert(
         "join".to_string(),
         Rc::new(NativeFunction::new("Array.join", Some(1), |args| {
             let this = match args.first() {

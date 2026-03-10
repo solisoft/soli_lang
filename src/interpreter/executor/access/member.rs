@@ -251,6 +251,24 @@ impl Interpreter {
             return Ok(value);
         }
 
+        // ClassName.new or ClassName.new() — instantiate
+        if name == "new" {
+            let class_val = class_val.clone();
+            return Ok(Value::NativeFunction(NativeFunction::new(
+                "new",
+                Some(0),
+                move |_args| {
+                    let class_rc = match &class_val {
+                        Value::Class(c) => c.clone(),
+                        _ => unreachable!(),
+                    };
+                    Ok(Value::Instance(Rc::new(RefCell::new(
+                        crate::interpreter::value::Instance::new(class_rc),
+                    ))))
+                },
+            )));
+        }
+
         // Universal methods on class values
         match name {
             "inspect" => return Ok(Value::String(format!("<class {}>", class.name))),
@@ -358,7 +376,7 @@ impl Interpreter {
         match name {
             "length" | "size" | "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?"
             | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "flatten" | "first"
-            | "last" | "empty?" | "include?" | "contains" | "sample" | "shuffle" | "take"
+            | "last" | "empty?" | "includes?" | "contains" | "sample" | "shuffle" | "take"
             | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get"
             | "to_string" | "to_json" | "join" | "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
@@ -475,7 +493,7 @@ impl Interpreter {
             | "ends_with" | "split" | "index_of" | "substring" | "replace" | "lpad"
             | "rpad" | "join" | "empty?"
             // Ruby-style methods
-            | "starts_with?" | "ends_with?" | "include?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
+            | "starts_with?" | "ends_with?" | "includes?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
             | "count" | "gsub" | "sub" | "match" | "scan" | "tr" | "center" | "ljust"
             | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
             | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"

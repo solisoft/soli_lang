@@ -171,7 +171,7 @@ impl Interpreter {
             "first" => self.array_first(items, arguments, span),
             "last" => self.array_last(items, arguments, span),
             "empty?" => self.array_empty(items, arguments, span),
-            "include?" | "contains" => self.array_include(items, arguments, span),
+            "includes?" | "contains" => self.array_include(items, arguments, span),
             "sample" => self.array_sample(items, arguments, span),
             "shuffle" => self.array_shuffle(items, arguments, span),
             "take" => self.array_take(items, arguments, span),

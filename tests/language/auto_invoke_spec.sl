@@ -70,10 +70,10 @@ describe("Auto-invoke built-in Array methods", fn() {
         assert_eq(doubled, [2, 4, 6]);
     });
 
-    test("include? with args still works", fn() {
+    test("includes? with args still works", fn() {
         let arr = [1, 2, 3];
-        assert_eq(arr.include?(2), true);
-        assert_eq(arr.include?(4), false);
+        assert_eq(arr.includes?(2), true);
+        assert_eq(arr.includes?(4), false);
     });
 });
 

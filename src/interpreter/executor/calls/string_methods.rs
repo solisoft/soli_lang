@@ -86,7 +86,7 @@ impl Interpreter {
             "rpad" => self.string_rpad(s, arguments, span),
             "join" => Ok(Value::String(s.to_string())),
             "empty?" => self.string_empty(s, arguments, span),
-            "include?" => self.string_include(s, arguments, span),
+            "includes?" => self.string_include(s, arguments, span),
             "parse_json" => match crate::interpreter::value::parse_json(s) {
                 Ok(value) => Ok(value),
                 Err(_) => Ok(Value::Hash(Rc::new(RefCell::new(

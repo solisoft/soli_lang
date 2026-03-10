@@ -24,17 +24,53 @@ Each new language feature must be tested in a `.sl` test file. Test files should
 soli test
 ```
 
+## Agents
+
+This section provides guidance for AI agents working on the Soli language codebase.
+
+### Agent Verification Checklist
+
+On each modification, agents must verify:
+
+```bash
+# Run clippy with deny warnings
+cargo clippy -- -D warnings
+
+# Format code
+cargo fmt
+
+# Run tests
+soli test
+```
+
+All three commands must pass before submitting changes.
+
+### Working with the Soli Interpreter
+
+- The interpreter is in `src/`
+- Test files use `.sl` extension in `tests/` directory
+- Use `cargo build --release` to build the interpreter
+- Use `./target/release/soli` to run Soli scripts
+
+### Code Organization
+
+- `src/` - Main interpreter source code
+- `stdlib/` - Standard library modules
+- `tests/` - Test files
+- `examples/` - Example Soli programs
+
 ## Table of Contents
 
 1. [Development Requirements](#development-requirements)
-2. [Core Philosophy](#core-philosophy)
-2. [Language Features](#language-features-minimal-set)
-3. [Built-in Functions](#built-in-functions-web-focused)
-4. [Web MVC Architecture](#web-mvc-architecture)
-5. [AI/LLM Code Generation Guide](#ai-llm-code-generation-guide)
-6. [Syntax Summary](#syntax-summary)
-7. [Model ORM](#model-orm)
-8. [Examples](#examples)
+2. [Agents](#agents)
+3. [Core Philosophy](#core-philosophy)
+4. [Language Features](#language-features-minimal-set)
+5. [Built-in Functions](#built-in-functions-web-focused)
+6. [Web MVC Architecture](#web-mvc-architecture)
+7. [AI/LLM Code Generation Guide](#ai-llm-code-generation-guide)
+8. [Syntax Summary](#syntax-summary)
+9. [Model ORM](#model-orm)
+10. [Examples](#examples)
 
 - **Minimum Features, Maximum Utility**: Only essential language constructs
 - **Web-First**: Built for server-side web development (HTTP, templates, MVC)

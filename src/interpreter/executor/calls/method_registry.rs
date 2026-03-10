@@ -618,7 +618,7 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
-        name: "include?",
+        name: "includes?",
         zero_arg: false,
         ret: "bool",
     },
@@ -927,6 +927,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
     },
     MethodDef {
         name: "include?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "includes?",
         zero_arg: false,
         ret: "bool",
     },
