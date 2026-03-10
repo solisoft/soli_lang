@@ -67,6 +67,7 @@ pub enum TokenKind {
     Do,
     End,
     Unless,
+    Then,
 
     // Module keywords
     Import,
@@ -175,6 +176,7 @@ impl TokenKind {
             "when" => Some(TokenKind::When),
             "do" => Some(TokenKind::Do),
             "end" => Some(TokenKind::End),
+            "then" => Some(TokenKind::Then),
             "unless" => Some(TokenKind::Unless),
             "import" => Some(TokenKind::Import),
             "export" => Some(TokenKind::Export),
@@ -241,6 +243,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::When => write!(f, "when"),
             TokenKind::Do => write!(f, "do"),
             TokenKind::End => write!(f, "end"),
+            TokenKind::Then => write!(f, "then"),
             TokenKind::Unless => write!(f, "unless"),
             TokenKind::Import => write!(f, "import"),
             TokenKind::Export => write!(f, "export"),

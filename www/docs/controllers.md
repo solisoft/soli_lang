@@ -87,6 +87,10 @@ end
 
 ## Controller Inheritance
 
+Controllers support multi-level inheritance. Create base controllers to share logic, hooks, and layouts across multiple controllers.
+
+### Base Controller Pattern
+
 Create an `ApplicationController` with shared configuration:
 
 ```soli
@@ -150,6 +154,44 @@ class PostsController extends ApplicationController
     end
 end
 ```
+
+### Multi-level Inheritance
+
+You can create deeper hierarchies. Each level inherits hooks and methods from its parent:
+
+```soli
+# app/controllers/admin_controller.sl
+# Extends ApplicationController, which extends Controller
+class AdminController extends ApplicationController
+    static
+        this.layout = "admin";
+
+        this.before_action = fn(req)
+            # Parent's before_action already ran (authentication)
+            if req["current_user"]["role"] != "admin" {
+                return error(403, "Forbidden");
+            }
+            req
+        end
+    end
+end
+
+# app/controllers/admin_users_controller.sl
+class AdminUsersController extends AdminController
+    fn index(req)
+        # Inherits: ApplicationController's auth + AdminController's admin check
+        render("admin/users/index", { "users": User.all() })
+    end
+end
+```
+
+### Inheritance Rules
+
+- **Methods**: Inherited and can be overridden. Use `super.method()` to call the parent version.
+- **before_action / after_action**: Inherited from parent controllers. Child hooks run after parent hooks.
+- **layout**: Inherited if the child doesn't set its own.
+- **Fields**: Declared in parent classes are available in child instances.
+- **Loading order**: Parent controllers are automatically loaded before children (files are sorted by dependency).
 
 ## Before/After Action Hooks
 

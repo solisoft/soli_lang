@@ -159,6 +159,14 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::TryEnd => out.push_str("TRY_END"),
         Op::Throw => out.push_str("THROW"),
+        Op::CatchMatch(idx, offset) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CATCH_MATCH  {:>5} ({}) jump:{}",
+                idx, name, offset
+            ));
+        }
+        Op::Rethrow => out.push_str("RETHROW"),
         Op::GetIter => out.push_str("GET_ITER"),
         Op::GetIterRange => out.push_str("GET_ITER_RNG"),
         Op::ForIter(offset) => out.push_str(&format!("FOR_ITER     {:>5}", offset)),

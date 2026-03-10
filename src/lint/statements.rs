@@ -89,16 +89,15 @@ impl Linter {
 
             StmtKind::Try {
                 try_block,
-                catch_var: _,
-                catch_block,
+                catch_clauses,
                 finally_block,
             } => {
                 self.depth += 1;
                 rules::smell::check_deep_nesting(self.depth, stmt.span, &mut self.diagnostics);
                 self.lint_stmt(try_block);
-                if let Some(catch) = catch_block {
-                    rules::smell::check_empty_catch(catch, &mut self.diagnostics);
-                    self.lint_stmt(catch);
+                for clause in catch_clauses {
+                    rules::smell::check_empty_catch(&clause.body, &mut self.diagnostics);
+                    self.lint_stmt(&clause.body);
                 }
                 if let Some(finally) = finally_block {
                     self.lint_stmt(finally);

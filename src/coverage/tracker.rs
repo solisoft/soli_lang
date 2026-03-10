@@ -405,13 +405,12 @@ impl CoverageTracker {
             }
             Try {
                 try_block,
-                catch_block,
+                catch_clauses,
                 finally_block,
-                ..
             } => {
                 self.collect_lines_from_stmt(path, lines, try_block);
-                if let Some(catch) = catch_block {
-                    self.collect_lines_from_stmt(path, lines, catch);
+                for clause in catch_clauses {
+                    self.collect_lines_from_stmt(path, lines, &clause.body);
                 }
                 if let Some(finally) = finally_block {
                     self.collect_lines_from_stmt(path, lines, finally);

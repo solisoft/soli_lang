@@ -450,3 +450,198 @@ describe("Constructor Behavior", fn() {
         assert_eq(new Box(2, 3, 4).volume(), 24);
     });
 });
+
+describe("Multi-level Inheritance", fn() {
+    test("3-level inheritance chain with method override", fn() {
+        class Controller {
+            fn action() -> String {
+                return "Controller";
+            }
+        }
+
+        class BaseController extends Controller {
+            fn before() -> String {
+                return "authenticated";
+            }
+        }
+
+        class HomeController extends BaseController {
+            fn action() -> String {
+                return "home";
+            }
+        }
+
+        let c = new HomeController();
+        assert_eq(c.action(), "home");
+        assert_eq(c.before(), "authenticated");
+    });
+
+    test("3-level inheritance with super chaining", fn() {
+        class Controller {
+            fn action() -> String {
+                return "base";
+            }
+        }
+
+        class BaseController extends Controller {
+            fn action() -> String {
+                return super.action() + " -> base_ctrl";
+            }
+        }
+
+        class HomeController extends BaseController {
+            fn action() -> String {
+                return super.action() + " -> home";
+            }
+        }
+
+        assert_eq(new HomeController().action(), "base -> base_ctrl -> home");
+    });
+
+    test("inheriting fields through 3 levels", fn() {
+        class A {
+            x: Int = 1;
+        }
+
+        class B extends A {
+            y: Int = 2;
+        }
+
+        class C extends B {
+            z: Int = 3;
+        }
+
+        let c = new C();
+        assert_eq(c.x, 1);
+        assert_eq(c.y, 2);
+        assert_eq(c.z, 3);
+    });
+
+    test("constructor inheritance through 3 levels", fn() {
+        class Base {
+            name: String;
+
+            new(name: String) {
+                this.name = name;
+            }
+        }
+
+        class Middle extends Base {
+        }
+
+        class Leaf extends Middle {
+        }
+
+        let leaf = new Leaf("hello");
+        assert_eq(leaf.name, "hello");
+    });
+
+    test("4-level inheritance chain", fn() {
+        class L1 {
+            fn id() -> String { return "L1"; }
+        }
+
+        class L2 extends L1 {
+            fn id() -> String { return super.id() + ".L2"; }
+        }
+
+        class L3 extends L2 {
+            fn id() -> String { return super.id() + ".L3"; }
+        }
+
+        class L4 extends L3 {
+            fn id() -> String { return super.id() + ".L4"; }
+        }
+
+        assert_eq(new L4().id(), "L1.L2.L3.L4");
+    });
+
+    test("middle class adds methods accessible by leaf", fn() {
+        class Controller {
+        }
+
+        class BaseController extends Controller {
+            fn layout() -> String {
+                return "application";
+            }
+
+            fn current_user() -> String {
+                return "admin";
+            }
+        }
+
+        class PostsController extends BaseController {
+            fn index() -> String {
+                return this.current_user() + " - " + this.layout();
+            }
+        }
+
+        let pc = new PostsController();
+        assert_eq(pc.index(), "admin - application");
+    });
+
+    test("override in middle class, inherit in leaf", fn() {
+        class A {
+            fn greet() -> String { return "A"; }
+            fn farewell() -> String { return "bye from A"; }
+        }
+
+        class B extends A {
+            fn greet() -> String { return "B"; }
+        }
+
+        class C extends B {
+        }
+
+        let c = new C();
+        assert_eq(c.greet(), "B");
+        assert_eq(c.farewell(), "bye from A");
+    });
+
+    test("this refers to actual instance in inherited method", fn() {
+        class Base {
+            name: String = "default";
+
+            fn get_name() -> String {
+                return this.name;
+            }
+        }
+
+        class Middle extends Base {
+        }
+
+        class Leaf extends Middle {
+            new() {
+                this.name = "leaf";
+            }
+        }
+
+        assert_eq(new Leaf().get_name(), "leaf");
+    });
+
+    test("static method inheritance through 3 levels", fn() {
+        class A {
+            static fn class_type() -> String {
+                return "A";
+            }
+        }
+
+        class B extends A {
+        }
+
+        class C extends B {
+        }
+
+        assert_eq(C.class_type(), "A");
+    });
+
+    test("type reflects most derived class", fn() {
+        class A { }
+        class B extends A { }
+        class C extends B { }
+
+        assert_eq(type(new C()), "C");
+        assert_eq(type(new B()), "B");
+        assert_eq(type(new A()), "A");
+    });
+});

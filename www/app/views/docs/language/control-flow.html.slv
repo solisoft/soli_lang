@@ -46,7 +46,8 @@ end
 # If-else
 let score = 75
 if (score >= 60)
-    print("Pass")else
+    print("Pass")
+else
     print("Fail")
 end
 
@@ -69,6 +70,64 @@ print(letter);  # "B"</code></pre>
         </section>
     </section>
 
+    <!-- Then Keyword -->
+    <section id="section-then" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+            </span>
+            The <code class="text-amber-400">then</code> Keyword
+        </h2>
+
+        <section id="kw-then" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-then" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">then</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    The <code>then</code> keyword is an <strong class="text-white">optional</strong> separator between the condition and the body of an <code>if</code> or <code>elsif</code> statement.
+                    It improves readability, especially for single-line conditionals.
+                </p>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Multi-line with then
+if age >= 18 then
+    print("Adult")
+end
+
+# Single-line with then
+if user != null then print("Welcome, " + user.name) end
+
+# Works with elsif too
+let x = 42
+if x > 100 then
+    print("big")
+elsif x > 10 then
+    print("medium")
+else
+    print("small")
+end
+
+# Parentheses and then can be combined
+if (score >= 90) then
+    grade = "A"
+end
+
+# Without then (also valid)
+if age >= 18
+    print("Adult")
+end</code></pre>
+                <p class="text-gray-400 mt-3 text-sm">
+                    <strong class="text-yellow-400">Note:</strong> <code>then</code> is purely syntactic sugar. Both <code>if condition then ... end</code> and <code>if condition ... end</code> are equivalent.
+                    Parentheses around the condition are also optional.
+                </p>
+            </div>
+        </section>
+    </section>
+
     <!-- While Loops -->
     <section id="section-while" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">While Loops</h2>
@@ -85,7 +144,7 @@ print(letter);  # "B"</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
 while (i < 5)
     print("Count: " + str(i))
-i = i + 1
+    i = i + 1
 end
 # Output: Count: 0, 1, 2, 3, 4</code></pre>
             </div>
@@ -145,16 +204,14 @@ end</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Ruby-style postfix conditionals for concise one-liners.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let x = 10
-print("big")
-if (x > 5)
+print("big") if (x > 5)
+
 let y = 3
-print("small")
-unless (y > 5)
+print("small") unless (y > 5)
+
 let status = "active"
-print("Welcome!")
-if (status == "active")
-print("Account locked")
-unless (status != "banned");</code></pre>
+print("Welcome!") if (status == "active")
+print("Account locked") unless (status != "banned")</code></pre>
             </div>
         </section>
     </section>

@@ -134,6 +134,11 @@ pub enum Op {
     TryEnd,
     /// Throw the top of stack as an exception.
     Throw,
+    /// Check if exception (top of stack) matches a class name. If no match, jump forward.
+    /// Operands: (name_constant_idx, jump_if_no_match). Does NOT pop the value.
+    CatchMatch(u16, u16),
+    /// Re-throw the exception on top of stack (no typed catch matched).
+    Rethrow,
 
     // --- Iterators ---
     /// Pop iterable, push iterator state.

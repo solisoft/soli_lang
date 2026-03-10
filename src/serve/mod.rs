@@ -2846,8 +2846,8 @@ fn call_class_method(
     method_name: &str,
     request_hash: &Value,
 ) -> Result<Value, RuntimeError> {
-    // Look up the method in the class
-    if let Some(method) = class.methods.get(method_name) {
+    // Look up the method in the class (walks inheritance chain)
+    if let Some(method) = class.find_method(method_name) {
         let method_span = method
             .span
             .unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1));
@@ -3695,8 +3695,28 @@ async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes
             .unwrap());
     }
 
-    // Try to read the file
-    let path = std::path::Path::new(&file);
+    // Try to read the file - resolve relative to app root
+    let app_root = crate::live::component::get_app_root();
+    let path = if std::path::Path::new(&file).is_absolute() {
+        std::path::Path::new(&file).to_path_buf()
+    } else {
+        let joined = app_root.join(&file);
+        if joined.exists() {
+            joined
+        } else {
+            // File path may already include the app root prefix (e.g. "host/app/controllers/foo.sl"
+            // when app_root is "host/"), so try it directly relative to CWD
+            let direct = std::path::Path::new(&file).to_path_buf();
+            if direct.exists() {
+                direct
+            } else if let Ok(stripped) = std::path::Path::new(&file).strip_prefix(&app_root) {
+                // Also try stripping a duplicated app_root prefix
+                app_root.join(stripped)
+            } else {
+                joined
+            }
+        }
+    };
     if !path.exists() {
         return Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -4088,8 +4108,45 @@ fn render_error_page(
         full_stack_trace.push(format!("{}:{} (error location)", error_file, error_line));
     }
 
-    // Get source code around the error line
-    let _source_preview = get_source_preview(&error_file, error_line);
+    // Pre-load source files for all stack frame files so the error page
+    // can display them without needing a separate /__dev/source fetch.
+    let mut source_files: HashMap<String, String> = HashMap::new();
+    let app_root = crate::live::component::get_app_root();
+    // Reuse the same FILE_REGEX from render_dev_error_page to extract file paths
+    static SOURCE_FILE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl)):(\d+)",
+        ).unwrap()
+    });
+    for frame in &full_stack_trace {
+        if let Some(caps) = SOURCE_FILE_RE.captures(frame) {
+            if let Some(file_match) = caps.get(1) {
+                let file_str = file_match.as_str();
+                if !source_files.contains_key(file_str) {
+                    // Try multiple resolution strategies
+                    let candidates = [
+                        std::path::Path::new(file_str).to_path_buf(),
+                        app_root.join(file_str),
+                    ];
+                    for candidate in &candidates {
+                        if candidate.exists() {
+                            if let Ok(content) = std::fs::read_to_string(candidate) {
+                                let lines_map: HashMap<usize, String> = content
+                                    .lines()
+                                    .enumerate()
+                                    .map(|(i, l)| (i + 1, l.to_string()))
+                                    .collect();
+                                if let Ok(json) = serde_json::to_string(&lines_map) {
+                                    source_files.insert(file_str.to_string(), json);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let mut request_hash_map = HashMap::new();
     request_hash_map.insert(
@@ -4129,6 +4186,7 @@ fn render_error_page(
         &full_stack_trace,
         &request_data_json,
         env_json_for_render,
+        &source_files,
     )
 }
 
@@ -4270,39 +4328,6 @@ fn extract_file_from_frame(frame: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
-fn get_source_preview(file_path: &str, error_line: usize) -> Vec<String> {
-    if file_path.is_empty() || file_path == "unknown" {
-        return Vec::new();
-    }
-
-    let path = std::path::Path::new(file_path);
-    if !path.exists() {
-        return Vec::new();
-    }
-
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-
-    let start = if error_line > 3 { error_line - 3 } else { 1 };
-    let end = error_line + 3;
-
-    content
-        .lines()
-        .enumerate()
-        .filter(|(i, _)| {
-            let line_num = i + 1;
-            line_num >= start && line_num <= end
-        })
-        .map(|(i, line)| {
-            let line_num = i + 1;
-            let marker = if line_num == error_line { ">>>" } else { "   " };
-            format!("{} {:4} | {}", marker, line_num, line)
-        })
-        .collect()
-}
-
 /// Render the development error page with request details and REPL.
 pub fn render_dev_error_page(
     error: &str,
@@ -4311,6 +4336,7 @@ pub fn render_dev_error_page(
     stack_trace: &[String],
     request_data_json: &str,
     breakpoint_env_json: Option<&str>,
+    preloaded_sources: &HashMap<String, String>,
 ) -> String {
     let error_message = escape_html(error);
     let error_type = escape_html(error_type);
@@ -4462,6 +4488,23 @@ pub fn render_dev_error_page(
         ));
         frame_index += 1;
     }
+
+    // Build preloaded source JS: { "file": { lines: {...}, line: N }, ... }
+    let preloaded_sources_js = if preloaded_sources.is_empty() {
+        "{}".to_string()
+    } else {
+        let entries: Vec<String> = preloaded_sources
+            .iter()
+            .map(|(file, lines_json)| {
+                format!(
+                    r#""{}": {{"lines": {}, "line": 1}}"#,
+                    file.replace('\\', "\\\\").replace('"', "\\\""),
+                    lines_json
+                )
+            })
+            .collect();
+        format!("{{{}}}", entries.join(","))
+    };
 
     // Parse request data from JSON
     let request_method =
@@ -4670,6 +4713,7 @@ pub fn render_dev_error_page(
 
     <script>
         const sourceCache = {{}};
+        const preloadedFiles = {preloaded_sources_js};
         const currentRequestData = {request_data_json};
         const breakpointEnv = {breakpoint_env_js};
 
@@ -4689,6 +4733,14 @@ pub fn render_dev_error_page(
             const cacheKey = file + ':' + line;
             if (sourceCache[cacheKey]) {{
                 displaySource(sourceCache[cacheKey], line);
+                return;
+            }}
+
+            // Check preloaded source files first (embedded at page generation time)
+            if (preloadedFiles[file]) {{
+                const data = {{ file: file, line: line, lines: preloadedFiles[file].lines }};
+                sourceCache[cacheKey] = data;
+                displaySource(data, line);
                 return;
             }}
 
@@ -4948,6 +5000,7 @@ pub fn render_dev_error_page(
         stack_frames = stack_frames.join("\n"),
         request_data_json = request_data_json,
         breakpoint_env_js = breakpoint_env_json.unwrap_or("null"),
+        preloaded_sources_js = preloaded_sources_js,
         request_method = escape_html(&request_method),
         request_path = escape_html(&request_path),
         request_time = request_time,

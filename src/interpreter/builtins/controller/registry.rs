@@ -69,6 +69,11 @@ impl ControllerRegistry {
         self.controllers.values().find(|c| c.name == name)
     }
 
+    /// Get a mutable reference to a controller by its full name.
+    pub fn get_by_name_mut(&mut self, name: &str) -> Option<&mut ControllerInfo> {
+        self.controllers.values_mut().find(|c| c.name == name)
+    }
+
     /// Get all controllers.
     pub fn all(&self) -> Vec<&ControllerInfo> {
         self.controllers.values().collect()
@@ -84,12 +89,16 @@ impl ControllerRegistry {
 }
 
 /// Scan controllers directory and register all controllers.
+/// After registration, inherits before/after actions and layout from parent controllers.
 pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
     let mut registry = CONTROLLER_REGISTRY.write().unwrap();
 
     if !controllers_dir.exists() {
         return Ok(());
     }
+
+    // Track superclass relationships for inheritance resolution
+    let mut superclass_map: HashMap<String, String> = HashMap::new(); // class_name -> parent_class_name
 
     for entry in std::fs::read_dir(controllers_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -104,6 +113,15 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
 
                 match parse_controller_file(&path, file_name) {
                     Ok(info) => {
+                        // Track superclass for inheritance
+                        if let Ok(source) = std::fs::read_to_string(&path) {
+                            if let Some(parent) = extract_superclass_name(&source) {
+                                if parent != "Controller" {
+                                    superclass_map.insert(info.name.clone(), parent);
+                                }
+                            }
+                        }
+
                         println!(
                             "Registered controller: {} with actions: {:?}",
                             info.name,
@@ -126,7 +144,68 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
         }
     }
 
+    // Inherit before/after actions and layout from parent controllers
+    resolve_controller_inheritance(&mut registry, &superclass_map);
+
     Ok(())
+}
+
+/// Resolve inheritance: copy before/after actions and layout from parent controllers
+/// to children that don't define their own.
+/// Inherited hooks from a parent controller.
+type InheritedHooks = (Vec<BeforeAction>, Vec<AfterAction>, Option<String>);
+
+fn resolve_controller_inheritance(
+    registry: &mut ControllerRegistry,
+    superclass_map: &HashMap<String, String>,
+) {
+    // Collect inherited hooks from parents
+    let mut inherited: HashMap<String, InheritedHooks> = HashMap::new();
+
+    for (child_name, parent_name) in superclass_map {
+        if let Some(parent_info) = registry.get_by_name(parent_name) {
+            let mut before_actions = parent_info.before_actions.clone();
+            let mut after_actions = parent_info.after_actions.clone();
+            let mut layout = parent_info.layout.clone();
+
+            // If the parent also inherits, chain up
+            if let Some((parent_before, parent_after, parent_layout)) = inherited.get(parent_name) {
+                let mut combined_before = parent_before.clone();
+                combined_before.extend(before_actions);
+                before_actions = combined_before;
+
+                let mut combined_after = parent_after.clone();
+                combined_after.extend(after_actions);
+                after_actions = combined_after;
+
+                if layout.is_none() {
+                    layout = parent_layout.clone();
+                }
+            }
+
+            inherited.insert(child_name.clone(), (before_actions, after_actions, layout));
+        }
+    }
+
+    // Apply inherited hooks to child controllers
+    for (child_name, (parent_before, parent_after, parent_layout)) in inherited {
+        if let Some(child_info) = registry.get_by_name_mut(&child_name) {
+            // Prepend parent before_actions (parent hooks run first)
+            let mut combined = parent_before;
+            combined.append(&mut child_info.before_actions);
+            child_info.before_actions = combined;
+
+            // Prepend parent after_actions
+            let mut combined = parent_after;
+            combined.append(&mut child_info.after_actions);
+            child_info.after_actions = combined;
+
+            // Inherit layout if child doesn't define one
+            if child_info.layout.is_none() {
+                child_info.layout = parent_layout;
+            }
+        }
+    }
 }
 
 /// Parse a controller file and extract metadata.
@@ -198,6 +277,27 @@ fn extract_class_name(source: &str) -> Option<String> {
                 after_class
             };
             return Some(class_name.trim().to_string());
+        }
+    }
+    None
+}
+
+/// Extract the superclass name from "class X extends SuperClass"
+fn extract_superclass_name(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if let Some(after_class) = trimmed.strip_prefix("class ") {
+            if let Some(pos) = after_class.find(" extends ") {
+                let after_extends = &after_class[pos + 9..];
+                return after_extends
+                    .split_whitespace()
+                    .next()
+                    .map(|s| s.to_string());
+            }
+            if let Some(pos) = after_class.find(" < ") {
+                let after_lt = &after_class[pos + 3..];
+                return after_lt.split_whitespace().next().map(|s| s.to_string());
+            }
         }
     }
     None

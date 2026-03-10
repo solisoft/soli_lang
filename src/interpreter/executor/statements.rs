@@ -155,8 +155,7 @@ impl Interpreter {
 
             StmtKind::Try {
                 try_block,
-                catch_var,
-                catch_block,
+                catch_clauses,
                 finally_block,
             } => {
                 let try_result = self.execute(try_block);
@@ -179,10 +178,19 @@ impl Interpreter {
                 };
 
                 if let Some(error) = throw_value {
-                    if let Some(catch_blk) = catch_block {
-                        let mut catch_env = Environment::with_enclosing(self.environment.clone());
+                    let mut caught = false;
 
-                        if let Some(var_name) = catch_var {
+                    for clause in catch_clauses {
+                        // Check type match if typed catch
+                        if let Some(ref type_name) = clause.type_name {
+                            if !Self::value_matches_catch_type(&error, type_name) {
+                                continue;
+                            }
+                        }
+
+                        // Matched! Execute catch body
+                        let mut catch_env = Environment::with_enclosing(self.environment.clone());
+                        if let Some(ref var_name) = clause.var_name {
                             catch_env.define(var_name.clone(), error.clone());
                         }
 
@@ -190,7 +198,7 @@ impl Interpreter {
                             &mut self.environment,
                             Rc::new(RefCell::new(catch_env)),
                         );
-                        let catch_result = self.execute(catch_blk);
+                        let catch_result = self.execute(&clause.body);
                         self.environment = previous;
 
                         match catch_result {
@@ -214,7 +222,12 @@ impl Interpreter {
                                 return Err(e);
                             }
                         }
-                    } else {
+                        caught = true;
+                        break;
+                    }
+
+                    if !caught {
+                        // No clause matched — re-throw
                         if let Some(finally_blk) = finally_block {
                             self.execute(finally_blk)?;
                         }
@@ -233,6 +246,26 @@ impl Interpreter {
                 Ok(ControlFlow::Normal(Value::Null))
             }
         }
+    }
+
+    fn value_matches_catch_type(value: &Value, type_name: &str) -> bool {
+        match value {
+            Value::Instance(inst) => {
+                let inst = inst.borrow();
+                Self::class_matches_name(&inst.class, type_name)
+            }
+            _ => false,
+        }
+    }
+
+    fn class_matches_name(class: &Class, type_name: &str) -> bool {
+        if class.name == type_name {
+            return true;
+        }
+        if let Some(ref superclass) = class.superclass {
+            return Self::class_matches_name(superclass, type_name);
+        }
+        false
     }
 
     fn execute_for_loop(
@@ -289,13 +322,7 @@ impl Interpreter {
         };
 
         // Check if this class extends Model (directly or indirectly)
-        let extends_model = superclass.as_ref().is_some_and(|sc| {
-            sc.name == "Model"
-                || sc
-                    .superclass
-                    .as_ref()
-                    .is_some_and(|ssc| ssc.name == "Model")
-        });
+        let extends_model = superclass.as_ref().is_some_and(|sc| sc.is_model_subclass());
 
         // Create environment for methods (with potential super binding)
         let method_env = if let Some(ref sc) = superclass {

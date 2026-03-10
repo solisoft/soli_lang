@@ -51,6 +51,9 @@ impl Parser {
             self.expect(&TokenKind::RightParen)?;
         }
 
+        // Optional 'then' keyword
+        self.match_token(&TokenKind::Then);
+
         let then_branch = self.parse_branch_body()?;
 
         let else_branch = if self.match_token(&TokenKind::End) {
@@ -86,6 +89,9 @@ impl Parser {
         if has_paren {
             self.expect(&TokenKind::RightParen)?;
         }
+
+        // Optional 'then' keyword
+        self.match_token(&TokenKind::Then);
 
         let then_branch = self.parse_branch_body()?;
 
@@ -246,6 +252,8 @@ impl Parser {
     }
 
     fn try_statement(&mut self) -> ParseResult<Stmt> {
+        use crate::ast::stmt::CatchClause;
+
         let start_span = self.current_span();
         self.expect(&TokenKind::Try)?;
 
@@ -253,16 +261,19 @@ impl Parser {
         let uses_braces = self.check(&TokenKind::LeftBrace);
 
         if uses_braces {
-            // Brace syntax: try { ... } catch (e) { ... } finally { ... }
+            // Brace syntax: try { ... } catch (TypeName e) { ... } finally { ... }
             let try_block = Box::new(self.block_statement()?);
 
-            let (catch_var, catch_block) = if self.match_token(&TokenKind::Catch) {
-                let var = self.parse_catch_var()?;
-                let block = Some(Box::new(self.block_statement()?));
-                (var, block)
-            } else {
-                (None, None)
-            };
+            let mut catch_clauses = Vec::new();
+            while self.match_token(&TokenKind::Catch) {
+                let (type_name, var_name) = self.parse_catch_clause_header()?;
+                let body = Box::new(self.block_statement()?);
+                catch_clauses.push(CatchClause {
+                    type_name,
+                    var_name,
+                    body,
+                });
+            }
 
             let finally_block = if self.match_token(&TokenKind::Finally) {
                 Some(Box::new(self.block_statement()?))
@@ -274,14 +285,13 @@ impl Parser {
             Ok(Stmt::new(
                 StmtKind::Try {
                     try_block,
-                    catch_var,
-                    catch_block,
+                    catch_clauses,
                     finally_block,
                 },
                 span,
             ))
         } else {
-            // End syntax: try ... catch e ... finally ... end
+            // End syntax: try ... catch TypeName e ... finally ... end
             let body_start = self.current_span();
             let mut try_stmts = Vec::new();
             while !self.check(&TokenKind::Catch)
@@ -296,24 +306,28 @@ impl Parser {
                 body_start.merge(&self.previous_span()),
             ));
 
-            let (catch_var, catch_block) = if self.match_token(&TokenKind::Catch) {
-                let var = self.parse_catch_var()?;
+            let mut catch_clauses = Vec::new();
+            while self.match_token(&TokenKind::Catch) {
+                let (type_name, var_name) = self.parse_catch_clause_header()?;
                 let catch_start = self.current_span();
                 let mut catch_stmts = Vec::new();
-                while !self.check(&TokenKind::Finally)
+                while !self.check(&TokenKind::Catch)
+                    && !self.check(&TokenKind::Finally)
                     && !self.check(&TokenKind::End)
                     && !self.is_at_end()
                 {
                     catch_stmts.push(self.statement()?);
                 }
-                let block = Box::new(Stmt::new(
+                let body = Box::new(Stmt::new(
                     StmtKind::Block(catch_stmts),
                     catch_start.merge(&self.previous_span()),
                 ));
-                (var, Some(block))
-            } else {
-                (None, None)
-            };
+                catch_clauses.push(CatchClause {
+                    type_name,
+                    var_name,
+                    body,
+                });
+            }
 
             let finally_block = if self.match_token(&TokenKind::Finally) {
                 let finally_start = self.current_span();
@@ -334,8 +348,7 @@ impl Parser {
             Ok(Stmt::new(
                 StmtKind::Try {
                     try_block,
-                    catch_var,
-                    catch_block,
+                    catch_clauses,
                     finally_block,
                 },
                 span,
@@ -343,25 +356,52 @@ impl Parser {
         }
     }
 
-    /// Parse a catch variable: `(e)` with parens or bare `e` on the same line.
-    fn parse_catch_var(&mut self) -> ParseResult<Option<String>> {
+    /// Parse a catch clause header: `TypeName varName`, `(TypeName varName)`, `varName`, `(varName)`, or nothing.
+    /// Returns (type_name, var_name).
+    fn parse_catch_clause_header(&mut self) -> ParseResult<(Option<String>, Option<String>)> {
         if self.match_token(&TokenKind::LeftParen) {
-            let var = self.expect_identifier()?;
-            self.expect(&TokenKind::RightParen)?;
-            Ok(Some(var))
+            // Paren syntax: (TypeName varName) or (varName)
+            let first = self.expect_identifier()?;
+            if self.check_identifier() && !self.check(&TokenKind::RightParen) {
+                // Two identifiers: (TypeName varName)
+                let second = self.expect_identifier()?;
+                self.expect(&TokenKind::RightParen)?;
+                Ok((Some(first), Some(second)))
+            } else {
+                // One identifier: (varName)
+                self.expect(&TokenKind::RightParen)?;
+                Ok((None, Some(first)))
+            }
         } else {
-            // Bare variable: catch e — identifier must be on the same line as catch
+            // Bare syntax: must be on the same line as catch
             let catch_line = self.previous_span().line;
             let next_line = self.current_span().line;
             if catch_line == next_line
+                && self.check_identifier()
                 && !self.check(&TokenKind::LeftBrace)
                 && !self.check(&TokenKind::End)
                 && !self.check(&TokenKind::Finally)
+                && !self.check(&TokenKind::Catch)
                 && !self.is_at_end()
             {
-                Ok(Some(self.expect_identifier()?))
+                let first = self.expect_identifier()?;
+                // Check if there's a second identifier on the same line
+                let next_line2 = self.current_span().line;
+                if catch_line == next_line2
+                    && self.check_identifier()
+                    && !self.check(&TokenKind::LeftBrace)
+                    && !self.check(&TokenKind::End)
+                    && !self.check(&TokenKind::Finally)
+                    && !self.check(&TokenKind::Catch)
+                    && !self.is_at_end()
+                {
+                    let second = self.expect_identifier()?;
+                    Ok((Some(first), Some(second)))
+                } else {
+                    Ok((None, Some(first)))
+                }
             } else {
-                Ok(None)
+                Ok((None, None))
             }
         }
     }

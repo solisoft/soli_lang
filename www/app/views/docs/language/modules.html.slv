@@ -84,7 +84,6 @@ export def factorial(n: Int) -> Int
     end
     n * factorial(n - 1)
 end</code></pre>
-                </div>
             </div>
         </section>
 
@@ -97,57 +96,41 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Modules can contain classes, enabling organized domain-driven code structures.</p>
-<pre data-filename="models.sl"><code class="language-soli text-sm"># models.sl
+<pre data-filename="shapes.sl"><code class="language-soli text-sm"># shapes.sl
 
-# Private helper class (not exported)
-class ValidationResult
-    is_valid: Bool
-    errors: String[]
+module Shapes
+    class Circle
+        radius: Float
 
-    new
-        this.is_valid = true
-        this.errors = []
+        new(radius: Float)
+            this.radius = radius
+        end
+
+        def area -> Float
+            3.14159 * this.radius * this.radius
+        end
+
+        def perimeter -> Float
+            2 * 3.14159 * this.radius
+        end
     end
 
-    def add_error(msg: String)
-        this.is_valid = false
-        this.errors.push(msg)
-end
-end
+    class Rectangle
+        width: Float
+        height: Float
 
-# Exported classes
-export class User
-    id: Int
-    username: String
-    email: String
+        new(width: Float, height: Float)
+            this.width = width
+            this.height = height
+        end
 
-    new(id: Int, username: String, email: String)
-        this.id = id
-        this.username = username
-        this.email = email
-    end
+        def area -> Float
+            this.width * this.height
+        end
 
-    def get_display_name -> String
-        this.username + " (" + this.email + ")"
-    end
-end
-
-export class Post
-    id: Int
-    title: String
-    content: String
-    author: User
-
-    new(id: Int, title: String, content: String, author: User)
-        this.id = id
-        this.title = title
-        this.content = content
-        this.author = author
-    end
-
-    def get_summary -> String
-        let preview = this.content.slice(0, 100)
-this.title + " by " + this.author.username
+        def perimeter -> Float
+            2 * (this.width + this.height)
+        end
     end
 end</code></pre>
             </div>
@@ -162,51 +145,46 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Modules can also contain nested classes using the <code>::</code> pattern for domain organization.</p>
-<pre data-filename="controllers.sl"><code class="language-soli text-sm"># controllers.sl
+<pre data-filename="commerce.sl"><code class="language-soli text-sm"># commerce.sl
 
-export class Posts
-    class Action
-        def create(title: String, content: String) -> Post
-            # Create a new post
-            new Post(0, title, content, current_user())
+module Commerce
+    class Product
+        name: String
+        price: Float
+        quantity: Int
+
+        new(name: String, price: Float, quantity: Int)
+            this.name = name
+            this.price = price
+            this.quantity = quantity
         end
 
-        def update(id: Int, updates: Any) -> Post?
-            # Update an existing post
-            find_post_by_id(id).update(updates)
+        def in_stock -> Bool
+            this.quantity > 0
         end
 
-        def delete(id: Int) -> Bool
-            # Delete a post
-            remove_post(id)
-        end
-    end
-
-    class View
-        def list(page: Int, per_page: Int) -> Post[]
-            paginated_posts(page, per_page)
-        end
-
-        def show(id: Int) -> Post?
-            find_post_by_id(id)
-        end
-    end
-end
-
-export class Users
-    class Action
-        def register(username: String, email: String) -> User
-            new User(0, username, email)
-        end
-
-        def login(email: String, password: String) -> User?
-            authenticate_user(email, password)
+        def discounted(percent: Float) -> Float
+            this.price * (1 - percent / 100)
         end
     end
 
-    class Validator
-        def validate_registration(data: Any) -> Bool
-            data["username"] != null && data["email"] != null
+    class Cart
+        items: Product[]
+
+        new
+            this.items = []
+        end
+
+        def add(product: Product)
+            this.items.push(product)
+        end
+
+        def total -> Float
+            let sum = 0.0
+            for item in this.items
+                sum = sum + item.price
+            end
+            sum
         end
     end
 end</code></pre>
@@ -222,20 +200,20 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Import classes from modules using named imports or module namespace.</p>
-<pre data-filename="main.sl"><code class="language-soli text-sm"># Import classes by name
-import { User, Post } from "./models.sl"
+<pre data-filename="main.sl"><code class="language-soli text-sm"># Import the Commerce module from commerce.sl
+import Commerce from "./commerce.sl"
 
-let user = new User(1, "alice", "alice@example.com")
-let post = new Post(1, "Hello World", "Content here", user)
-# Import with namespace
-import "./controllers.sl" as controllers
+# Use classes from the module
+let book = new Commerce.Product("Soli Guide", 29.99, 10)
+let shirt = new Commerce.Product("T-Shirt", 19.99, 3)
 
-let action = new controllers.Posts.Action()action.create("My Post", "Post content")
-# Import nested classes directly
-import { Posts::Action, Posts::View } from "./controllers.sl"
+println(book.in_stock())          # true
+println(book.discounted(20.0))    # 23.992
 
-let view = new Posts::View()
-let posts = view.list(1, 10);</code></pre>
+let cart = new Commerce.Cart()
+cart.add(book)
+cart.add(shirt)
+println(cart.total())             # 49.98</code></pre>
             </div>
         </section>
     </section>

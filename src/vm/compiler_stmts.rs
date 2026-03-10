@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::ast::stmt::{FunctionDecl, ImportDecl, StmtKind};
+use crate::ast::stmt::{CatchClause, FunctionDecl, ImportDecl, StmtKind};
 use crate::ast::Stmt;
 
 use super::chunk::Constant;
@@ -71,17 +71,10 @@ impl Compiler {
             }
             StmtKind::Try {
                 try_block,
-                catch_var,
-                catch_block,
+                catch_clauses,
                 finally_block,
             } => {
-                self.compile_try(
-                    try_block,
-                    catch_var.as_deref(),
-                    catch_block.as_deref(),
-                    finally_block.as_deref(),
-                    line,
-                )?;
+                self.compile_try(try_block, catch_clauses, finally_block.as_deref(), line)?;
             }
             StmtKind::Function(decl) => {
                 self.compile_function_decl(decl, line)?;
@@ -248,8 +241,7 @@ impl Compiler {
     fn compile_try(
         &mut self,
         try_block: &Stmt,
-        catch_var: Option<&str>,
-        catch_block: Option<&Stmt>,
+        catch_clauses: &[CatchClause],
         finally_block: Option<&Stmt>,
         line: usize,
     ) -> CompileResult<()> {
@@ -263,22 +255,68 @@ impl Compiler {
         // Jump over catch/finally if no exception
         let no_exception_jump = self.emit_jump(Op::Jump(0), line);
 
-        // Patch catch offset
+        // Patch catch offset — exception value is now on the stack
         let catch_start = self.current_offset();
         let catch_offset = catch_start - try_begin - 1;
 
-        // Compile catch block
-        if let Some(catch_body) = catch_block {
-            self.begin_scope();
-            if let Some(var_name) = catch_var {
-                // The exception value is on the stack
-                self.add_local(var_name.to_string(), false);
-            }
-            self.compile_stmt(catch_body)?;
-            self.end_scope(line);
-        } else {
+        if catch_clauses.is_empty() {
             // No catch block — pop the exception
             self.emit(Op::Pop, line);
+        } else {
+            // Compile catch clauses. Exception value is on top of stack.
+            // For typed catches, emit CatchMatch to check type and jump to next clause.
+            let mut end_jumps = Vec::new();
+            let mut next_clause_patches: Vec<usize> = Vec::new();
+
+            for (i, clause) in catch_clauses.iter().enumerate() {
+                // Patch the previous clause's "no match" jump to here
+                for patch_idx in next_clause_patches.drain(..) {
+                    let target = self.current_offset();
+                    let jump_offset = target - patch_idx - 1;
+                    if let Op::CatchMatch(_, ref mut off) = self.proto.chunk.code[patch_idx] {
+                        *off = jump_offset as u16;
+                    }
+                }
+
+                if let Some(ref type_name) = clause.type_name {
+                    // Typed catch: check if exception matches the type
+                    let name_idx = self.add_constant(Constant::String(type_name.clone()));
+                    let catch_match_idx = self.emit(Op::CatchMatch(name_idx, 0), line);
+                    next_clause_patches.push(catch_match_idx);
+                }
+
+                // Matched — compile the catch body in a new scope
+                self.begin_scope();
+                if let Some(ref var_name) = clause.var_name {
+                    // The exception value is on the stack — declare it as a local
+                    self.add_local(var_name.clone(), false);
+                }
+                self.compile_stmt(&clause.body)?;
+                self.end_scope(line);
+
+                // Jump to after all catch clauses (to finally)
+                // But not for the last clause — it falls through
+                if i < catch_clauses.len() - 1 {
+                    end_jumps.push(self.emit_jump(Op::Jump(0), line));
+                }
+            }
+
+            // If the last clause was typed and didn't match, re-throw
+            if !next_clause_patches.is_empty() {
+                for patch_idx in next_clause_patches.drain(..) {
+                    let target = self.current_offset();
+                    let jump_offset = target - patch_idx - 1;
+                    if let Op::CatchMatch(_, ref mut off) = self.proto.chunk.code[patch_idx] {
+                        *off = jump_offset as u16;
+                    }
+                }
+                self.emit(Op::Rethrow, line);
+            }
+
+            // Patch all end jumps to here
+            for j in end_jumps {
+                self.patch_jump(j);
+            }
         }
 
         // Patch the finally offset

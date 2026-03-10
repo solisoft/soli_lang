@@ -78,6 +78,8 @@ enum Command {
     Remove { name: String },
     /// Install all dependencies
     Install,
+    /// Update soli CLI to latest release (self-update)
+    SelfUpdate,
     /// Update dependencies
     Update { name: Option<String> },
     /// Login to package registry
@@ -136,7 +138,9 @@ fn print_usage() {
     eprintln!("  login                Login to the package registry");
     eprintln!("  publish              Publish the current package to the registry");
     eprintln!("  install              Install all dependencies from soli.toml");
-    eprintln!("  update [name]        Update dependencies (re-resolve from source)");
+    eprintln!(
+        "  update [name]      Update a dependency (soli update = self-update to latest release)"
+    );
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
@@ -167,8 +171,8 @@ fn print_usage() {
     eprintln!("  soli add utils --path ../shared/utils");
     eprintln!("  soli remove math              Remove dependency");
     eprintln!("  soli install                  Install all dependencies");
-    eprintln!("  soli update                   Update all dependencies");
-    eprintln!("  soli update math              Update a specific dependency");
+    eprintln!("  soli update                    Update soli CLI to latest release");
+    eprintln!("  soli update math               Update a specific dependency");
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
     eprintln!("  soli serve my_app             Start production server (no hot reload)");
@@ -582,7 +586,11 @@ fn parse_args() -> Options {
                 } else {
                     None
                 };
-                options.command = Command::Update { name };
+                if name.is_none() {
+                    options.command = Command::SelfUpdate;
+                } else {
+                    options.command = Command::Update { name };
+                }
                 return options;
             }
             "--no-type-check" => options.no_type_check = true,
@@ -741,6 +749,7 @@ fn main() {
         Command::Remove { name } => run_remove(name),
         Command::Install => run_install(),
         Command::Update { name } => run_update(name.as_deref()),
+        Command::SelfUpdate => run_self_update(),
         Command::Login { registry, token } => run_login(registry.as_deref(), token.as_deref()),
         Command::Publish { registry } => run_publish(registry.as_deref()),
         Command::Test {
@@ -1627,6 +1636,162 @@ fn run_update(name: Option<&str>) {
             println!("    {} @ {}", name, rev);
         }
     }
+    println!();
+}
+
+fn run_self_update() {
+    let repo = "solisoft/soli_lang";
+    let current_version = VERSION;
+
+    println!();
+    println!("  \x1b[1mChecking for updates...\x1b[0m");
+    println!();
+
+    let os = match std::env::consts::OS {
+        "linux" => "linux",
+        "macos" => "darwin",
+        _ => {
+            eprintln!("  \x1b[31mError:\x1b[0m Unsupported operating system");
+            process::exit(1);
+        }
+    };
+
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" | "arm64" => "arm64",
+        _ => {
+            eprintln!(
+                "  \x1b[31mError:\x1b[0m Unsupported architecture: {}",
+                std::env::consts::ARCH
+            );
+            process::exit(1);
+        }
+    };
+
+    let tag_url = format!("https://api.github.com/repos/{}/releases/latest", repo);
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("soli-lang-cli")
+        .build()
+        .expect("Failed to create HTTP client");
+
+    let response = client
+        .get(&tag_url)
+        .send()
+        .map_err(|e| format!("Failed to fetch latest release: {}", e))
+        .and_then(|resp| {
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                Err("Release not found".into())
+            } else {
+                resp.error_for_status()
+                    .map_err(|e| format!("GitHub API error: {}", e))
+            }
+        });
+
+    let response = match response {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    };
+
+    let json: serde_json::Value = response
+        .json()
+        .map_err(|e| format!("Failed to parse GitHub response: {}", e))
+        .expect("Failed to parse release info");
+
+    let latest_tag = json["tag_name"]
+        .as_str()
+        .unwrap_or("v0.0.0")
+        .trim_start_matches('v');
+
+    if latest_tag == current_version {
+        println!(
+            "  You are already running the latest version: v{}",
+            current_version
+        );
+        println!();
+        return;
+    }
+
+    println!("  Current version: v{}", current_version);
+    println!("  Latest version: v{}", latest_tag);
+    println!();
+
+    let tarball = format!("soli-{}-{}.tar.gz", os, arch);
+    let download_url = format!(
+        "https://github.com/{}/releases/download/v{}/{}",
+        repo, latest_tag, tarball
+    );
+
+    println!("  Downloading {}...", tarball);
+
+    let temp_dir = std::env::temp_dir();
+    let tarball_path = temp_dir.join(&tarball);
+    let binary_path = temp_dir.join("soli");
+
+    let response = client
+        .get(&download_url)
+        .send()
+        .map_err(|e| format!("Failed to download: {}", e))
+        .and_then(|resp| {
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                Err(format!(
+                    "Release asset not found: {} - may not be available for {}-{}",
+                    latest_tag, os, arch
+                ))
+            } else {
+                resp.error_for_status()
+                    .map_err(|e| format!("Download error: {}", e))
+            }
+        });
+
+    let mut response = match response {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    };
+
+    let mut file = std::fs::File::create(&tarball_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))
+        .expect("Failed to create temp file");
+
+    response
+        .copy_to(&mut file)
+        .map_err(|e| format!("Failed to write download: {}", e))
+        .expect("Failed to write download");
+
+    println!("  Extracting...");
+    let tf = std::fs::File::open(&tarball_path).expect("Failed to open tarball");
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tf));
+    archive
+        .unpack(&temp_dir)
+        .expect("Failed to extract tarball");
+
+    let current_exe = std::env::current_exe().expect("Failed to get current executable path");
+    let backup_path = temp_dir.join("soli.backup");
+
+    std::fs::rename(&current_exe, &backup_path).expect("Failed to backup current binary");
+    std::fs::rename(&binary_path, &current_exe).expect("Failed to install new binary");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&current_exe)
+            .expect("Failed to get permissions")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&current_exe, perms)
+            .expect("Failed to set executable permissions");
+    }
+
+    std::fs::remove_file(&tarball_path).ok();
+    std::fs::remove_file(&backup_path).ok();
+
+    println!();
+    println!("  \x1b[32m\x1b[1m✓\x1b[0m Updated to v{}", latest_tag);
     println!();
 }
 

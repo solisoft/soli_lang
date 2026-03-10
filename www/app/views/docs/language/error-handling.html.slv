@@ -46,14 +46,17 @@ end
 # With finally (always runs)
 try
     let data = read_file("config.sl")
-print(data)catch e
-    print("Failed: " + str(e))finally
+    print(data)
+catch e
+    print("Failed: " + str(e))
+finally
     print("Cleanup done")
 end
 
 # Try/finally without catch
 try
-    process_data()finally
+    process_data()
+finally
     close_connection()
 end</code></pre>
             </div>
@@ -68,13 +71,15 @@ end</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Without parentheses
 try
-    risky()catch e
+    risky()
+catch e
     print(e)
 end
 
 # With parentheses
 try
-    risky()catch (e)
+    risky()
+catch (e)
     print(e)
 end</code></pre>
             </div>
@@ -109,8 +114,9 @@ end</code></pre>
 end
 
 try
-    let result = divide(10, 0)catch e
-    print("Caught: " + str(e));  # "Caught: Division by zero"
+    let result = divide(10, 0)
+catch e
+    print("Caught: " + str(e))  # "Caught: Division by zero"
 end</code></pre>
             </div>
         </section>
@@ -123,9 +129,142 @@ end</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try {
-    let result = risky_operation()} catch (e) {
-    print("Error: " + str(e))} finally {
-    cleanup()}</code></pre>
+    let result = risky_operation()
+} catch (e) {
+    print("Error: " + str(e))
+} finally {
+    cleanup()
+}</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Typed Catch -->
+    <section id="section-typed-catch" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+            </span>
+            Typed Catch
+        </h2>
+
+        <section id="kw-typed-catch" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-typed-catch" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">catch ClassName e</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Catch specific error types by class name. Multiple <code class="text-indigo-400">catch</code> blocks are tried in order. A bare <code class="text-indigo-400">catch</code> without a type acts as a catch-all.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Define error classes
+class NotFoundError
+    message: String
+    new(msg: String)
+        this.message = msg
+    end
+end
+
+class ValidationError
+    message: String
+    new(msg: String)
+        this.message = msg
+    end
+end
+
+# Multiple typed catch blocks
+try
+    throw new NotFoundError("User not found")
+catch NotFoundError e
+    print("404: " + e.message)
+catch ValidationError e
+    print("Invalid: " + e.message)
+catch e
+    print("Unknown error: " + str(e))
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="typed-catch-inheritance" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#typed-catch-inheritance" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Catching by Superclass</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Typed catches walk the inheritance chain. A <code class="text-indigo-400">catch BaseError</code> will also catch any subclass of <code class="text-indigo-400">BaseError</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">class AppError
+    message: String
+    new(msg: String)
+        this.message = msg
+    end
+end
+
+class NotFoundError extends AppError
+    new(msg: String)
+        super(msg)
+    end
+end
+
+class PermissionError extends AppError
+    new(msg: String)
+        super(msg)
+    end
+end
+
+# Catches NotFoundError because it extends AppError
+try
+    throw new NotFoundError("Page not found")
+catch AppError e
+    print("App error: " + e.message)
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="typed-catch-rethrow" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#typed-catch-rethrow" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Unmatched Exceptions</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">If no typed catch matches, the exception is re-thrown to the next outer <code class="text-indigo-400">try/catch</code>. Add a bare <code class="text-indigo-400">catch</code> at the end to handle all remaining exceptions.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">class ErrorA {}
+class ErrorB {}
+
+try
+    try
+        throw new ErrorB()
+    catch ErrorA e
+        # Does NOT match ErrorB
+        print("A")
+    end
+catch e
+    # ErrorB bubbles up here
+    print("Caught in outer: " + str(e))
+end</code></pre>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-5 mb-6">
+            <div class="flex gap-3">
+                <svg class="w-5 h-5 text-amber-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <p class="text-amber-200 font-medium mb-1">Typed Catch Rules</p>
+                    <ul class="text-gray-400 text-sm space-y-1">
+                        <li>Typed catches only match class instances (strings, ints, etc. will not match)</li>
+                        <li>Catches are tried in order &mdash; put more specific types first</li>
+                        <li>A bare <code class="text-indigo-400">catch e</code> catches everything (including non-instance values)</li>
+                        <li>Subclasses match their parent class catches (walks the inheritance chain)</li>
+                        <li>Works with both <code class="text-indigo-400">end</code> and <code class="text-indigo-400">{}</code> syntax</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </section>
@@ -138,12 +277,13 @@ end</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try
     print("Outer try")
-try
+    try
         throw "inner error"
     catch e
         print("Inner catch: " + str(e))
-end
-    print("After inner try")catch e
+    end
+    print("After inner try")
+catch e
     print("Outer catch: " + str(e))
 end</code></pre>
             </div>

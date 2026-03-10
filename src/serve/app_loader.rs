@@ -3,6 +3,7 @@
 //! This module handles loading controllers, models, middleware, and executing files.
 //! It also provides view file tracking for hot reload.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::error::RuntimeError;
@@ -17,6 +18,7 @@ use crate::serve::router::{derive_routes_from_controller, to_pascal_case_control
 use crate::span::Span;
 
 /// Scan for all controller files in the controllers directory.
+/// Returns files sorted so parent controllers are loaded before children.
 pub(crate) fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
     let mut controllers = Vec::new();
 
@@ -39,7 +41,108 @@ pub(crate) fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, R
         }
     }
 
+    sort_controllers_by_dependency(&mut controllers);
+
     Ok(controllers)
+}
+
+/// Sort controller files so parent controllers are loaded before children.
+/// Uses topological sort based on the `extends` declarations in each file.
+pub(crate) fn sort_controllers_by_dependency(controllers: &mut Vec<PathBuf>) {
+    if controllers.len() <= 1 {
+        return;
+    }
+
+    // Parse each file to extract class name and superclass
+    let metas: Vec<(PathBuf, Option<String>, Option<String>)> = controllers
+        .drain(..)
+        .map(|path| {
+            let (class_name, superclass) = std::fs::read_to_string(&path)
+                .ok()
+                .map(|source| {
+                    (
+                        extract_class_name_from_source(&source),
+                        extract_superclass_from_source(&source),
+                    )
+                })
+                .unwrap_or((None, None));
+            (path, class_name, superclass)
+        })
+        .collect();
+
+    // Topological sort: controllers whose superclass is already defined can be loaded
+    let mut sorted = Vec::with_capacity(metas.len());
+    let mut remaining: Vec<_> = metas;
+    let mut defined: HashSet<String> = HashSet::new();
+    defined.insert("Controller".to_string());
+
+    let max_rounds = remaining.len() + 1;
+    for _ in 0..max_rounds {
+        if remaining.is_empty() {
+            break;
+        }
+
+        let mut next_remaining = Vec::new();
+        let mut made_progress = false;
+
+        for (path, class_name, superclass) in remaining {
+            let can_load = match &superclass {
+                Some(parent) => defined.contains(parent.as_str()),
+                None => true,
+            };
+
+            if can_load {
+                if let Some(ref cn) = class_name {
+                    defined.insert(cn.clone());
+                }
+                sorted.push(path);
+                made_progress = true;
+            } else {
+                next_remaining.push((path, class_name, superclass));
+            }
+        }
+
+        remaining = next_remaining;
+
+        if !made_progress {
+            // Circular dependency or missing parent — load remaining in any order
+            for (path, _, _) in remaining {
+                sorted.push(path);
+            }
+            break;
+        }
+    }
+
+    *controllers = sorted;
+}
+
+/// Extract the class name from source (e.g., "class PostsController ..." -> "PostsController").
+fn extract_class_name_from_source(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if let Some(after_class) = trimmed.strip_prefix("class ") {
+            return after_class.split_whitespace().next().map(String::from);
+        }
+    }
+    None
+}
+
+/// Extract the superclass name from source (e.g., "class X extends BaseController" -> "BaseController").
+fn extract_superclass_from_source(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if let Some(after_class) = trimmed.strip_prefix("class ") {
+            if let Some(pos) = after_class.find(" extends ") {
+                let after_extends = &after_class[pos + 9..];
+                return after_extends.split_whitespace().next().map(String::from);
+            }
+            if let Some(pos) = after_class.find(" < ") {
+                let after_lt = &after_class[pos + 3..];
+                return after_lt.split_whitespace().next().map(String::from);
+            }
+        }
+    }
+    None
 }
 
 /// Load all model files.
@@ -263,57 +366,88 @@ pub(crate) fn track_view_files(
     track_recursive(views_dir, file_tracker)
 }
 
-/// Load all controllers in a worker thread
+/// Load all controllers in a worker thread.
+/// Files are sorted so parent controllers are loaded before children.
 pub(crate) fn load_controllers_in_worker(
     worker_id: usize,
     interpreter: &mut Interpreter,
     controllers_dir: &Path,
 ) {
-    if let Ok(entries) = std::fs::read_dir(controllers_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "sl") {
-                if let Err(e) = execute_file(interpreter, &path) {
-                    eprintln!(
-                        "Worker {}: Error loading {}: {}",
-                        worker_id,
-                        path.display(),
-                        e
-                    );
-                }
+    let Ok(entries) = std::fs::read_dir(controllers_dir) else {
+        return;
+    };
 
-                // Also register controller actions in this worker (only for function-based controllers)
-                if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
-                    if name.ends_with("_controller") {
-                        let controller_key = name.trim_end_matches("_controller");
-                        let class_name = to_pascal_case_controller(controller_key);
+    // Collect all .sl files, then sort controllers by dependency
+    let mut controller_files = Vec::new();
+    let mut other_files = Vec::new();
 
-                        // Check if this is an OOP controller (class-based)
-                        let is_oop_controller = interpreter
-                            .environment
-                            .borrow()
-                            .get(&class_name)
-                            .map(|v| matches!(v, Value::Class(_)))
-                            .unwrap_or(false);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "sl") {
+            let is_controller = path
+                .file_stem()
+                .and_then(|n| n.to_str())
+                .is_some_and(|name| name.ends_with("_controller"));
+            if is_controller {
+                controller_files.push(path);
+            } else {
+                other_files.push(path);
+            }
+        }
+    }
 
-                        // Only register actions for function-based controllers
-                        // OOP controllers have their methods resolved at runtime
-                        if !is_oop_controller {
-                            let source = std::fs::read_to_string(&path).unwrap_or_default();
-                            let routes =
-                                derive_routes_from_controller(name, &source).unwrap_or_default();
-                            for route in routes {
-                                if let Some(func_value) =
-                                    interpreter.environment.borrow().get(&route.function_name)
-                                {
-                                    register_controller_action(
-                                        controller_key,
-                                        &route.function_name,
-                                        func_value.clone(),
-                                    );
-                                }
-                            }
-                        }
+    // Load non-controller files first (helpers, etc.)
+    for path in &other_files {
+        if let Err(e) = execute_file(interpreter, path) {
+            eprintln!(
+                "Worker {}: Error loading {}: {}",
+                worker_id,
+                path.display(),
+                e
+            );
+        }
+    }
+
+    // Sort controllers so parents are loaded before children
+    sort_controllers_by_dependency(&mut controller_files);
+
+    for path in &controller_files {
+        if let Err(e) = execute_file(interpreter, path) {
+            eprintln!(
+                "Worker {}: Error loading {}: {}",
+                worker_id,
+                path.display(),
+                e
+            );
+        }
+
+        // Also register controller actions in this worker (only for function-based controllers)
+        if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
+            let controller_key = name.trim_end_matches("_controller");
+            let class_name = to_pascal_case_controller(controller_key);
+
+            // Check if this is an OOP controller (class-based)
+            let is_oop_controller = interpreter
+                .environment
+                .borrow()
+                .get(&class_name)
+                .map(|v| matches!(v, Value::Class(_)))
+                .unwrap_or(false);
+
+            // Only register actions for function-based controllers
+            // OOP controllers have their methods resolved at runtime
+            if !is_oop_controller {
+                let source = std::fs::read_to_string(path).unwrap_or_default();
+                let routes = derive_routes_from_controller(name, &source).unwrap_or_default();
+                for route in routes {
+                    if let Some(func_value) =
+                        interpreter.environment.borrow().get(&route.function_name)
+                    {
+                        register_controller_action(
+                            controller_key,
+                            &route.function_name,
+                            func_value.clone(),
+                        );
                     }
                 }
             }

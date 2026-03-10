@@ -379,15 +379,6 @@
       "keywords": ["http", "request", "api"]
     },
     {
-      "title": "http_ok",
-      "type": "function",
-      "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-ok",
-      "signature": "http_ok(resp)",
-      "description": "Check if HTTP status is exactly 200",
-      "keywords": ["http", "status", "response"]
-    },
-    {
       "title": "http_success",
       "type": "function",
       "category": "HTTP",
@@ -395,24 +386,6 @@
       "signature": "http_success(resp)",
       "description": "Check if HTTP status is 2xx",
       "keywords": ["http", "status", "response"]
-    },
-    {
-      "title": "http_get_all",
-      "type": "function",
-      "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-get-all",
-      "signature": "http_get_all(urls)",
-      "description": "Execute multiple GET requests in parallel",
-      "keywords": ["http", "parallel", "batch", "concurrent"]
-    },
-    {
-      "title": "http_parallel",
-      "type": "function",
-      "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-parallel",
-      "signature": "http_parallel(requests)",
-      "description": "Execute multiple requests of different methods in parallel",
-      "keywords": ["http", "parallel", "batch", "concurrent"]
     },
     {
       "title": "JSON",

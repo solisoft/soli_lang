@@ -11,6 +11,53 @@ describe("If/Else Statements", fn() {
         assert_eq(result, 1);
     });
 
+    test("if with then keyword executes block", fn() {
+        let result = 0;
+        if true then
+            result = 1;
+        end
+        assert_eq(result, 1);
+    });
+
+    test("if with then keyword skips block when false", fn() {
+        let result = 0;
+        if false then
+            result = 1;
+        end
+        assert_eq(result, 0);
+    });
+
+    test("if with then and else", fn() {
+        let result = 0;
+        if false then
+            result = 1;
+        else
+            result = 2;
+        end
+        assert_eq(result, 2);
+    });
+
+    test("if-elsif with then keyword", fn() {
+        let x = 2;
+        let result = "";
+        if x == 1 then
+            result = "one";
+        elsif x == 2 then
+            result = "two";
+        else
+            result = "other";
+        end
+        assert_eq(result, "two");
+    });
+
+    test("if with then and parentheses", fn() {
+        let result = 0;
+        if (true) then
+            result = 1;
+        end
+        assert_eq(result, 1);
+    });
+
     test("if false skips block", fn() {
         let result = 0;
         if (false) {

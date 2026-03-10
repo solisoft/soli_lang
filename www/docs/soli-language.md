@@ -441,6 +441,36 @@ if is_weekend
 end
 ```
 
+### The `then` Keyword
+
+The `then` keyword is an **optional** separator between the condition and the body of `if` and `elsif` statements. It improves readability, especially for single-line conditionals.
+
+```soli
+# Multi-line with then
+if age >= 18 then
+    print("Adult")
+end
+
+# Single-line with then
+if user != null then print("Welcome") end
+
+# Works with elsif
+if x > 100 then
+    print("big")
+elsif x > 10 then
+    print("medium")
+else
+    print("small")
+end
+
+# Parentheses and then can be combined
+if (score >= 90) then
+    grade = "A"
+end
+```
+
+> **Note:** `then` is purely syntactic sugar. Both `if condition then ... end` and `if condition ... end` are equivalent. Parentheses around the condition are also optional.
+
 ### While Loops
 
 ```soli
@@ -700,6 +730,65 @@ catch e
     print("Caught: " + str(e));  # "Caught: Division by zero"
 end
 ```
+
+### Typed Catch
+
+Catch specific error types by class name. Multiple `catch` blocks are tried in order:
+
+```soli
+class NotFoundError
+    message: String
+    new(msg: String)
+        this.message = msg
+    end
+end
+
+class ValidationError
+    message: String
+    new(msg: String)
+        this.message = msg
+    end
+end
+
+try
+    throw new NotFoundError("User not found")
+catch NotFoundError e
+    print("404: " + e.message)
+catch ValidationError e
+    print("Invalid: " + e.message)
+catch e
+    print("Unknown: " + str(e))
+end
+```
+
+**Subclass matching:** A typed catch walks the inheritance chain, so `catch AppError` also catches subclasses of `AppError`:
+
+```soli
+class AppError
+    message: String
+    new(msg: String)
+        this.message = msg
+    end
+end
+
+class NotFoundError extends AppError
+    new(msg: String)
+        super(msg)
+    end
+end
+
+try
+    throw new NotFoundError("missing")
+catch AppError e
+    print("App error: " + e.message)  # Catches NotFoundError too
+end
+```
+
+**Rules:**
+- Typed catches only match class instances (strings, ints, etc. won't match a typed catch)
+- Put more specific types first — catches are tried in order
+- A bare `catch e` catches everything (catch-all)
+- If no typed catch matches and there is no catch-all, the exception re-throws to the outer scope
 
 ### Brace Syntax
 
@@ -1624,6 +1713,34 @@ let animals = [
 for animal in animals
     print(animal.speak());  # Each calls the appropriate speak() method
 end
+```
+
+### Multi-level Inheritance
+
+Classes can extend other user-defined classes, forming deep inheritance chains. Methods, fields, and constructors are inherited through the full chain. Use `super` to call the parent's version at each level.
+
+```soli
+class Controller
+    fn action() -> String
+        "base"
+    end
+end
+
+class BaseController extends Controller
+    fn before() -> String
+        "authenticated"
+    end
+end
+
+class HomeController extends BaseController
+    fn action() -> String
+        super.action() + " -> home"
+    end
+end
+
+let c = new HomeController()
+print(c.action())   # "base -> home"
+print(c.before())   # "authenticated" (inherited from BaseController)
 ```
 
 ### Interfaces

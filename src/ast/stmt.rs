@@ -17,6 +17,17 @@ impl Stmt {
     }
 }
 
+/// A single catch clause in a try/catch statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CatchClause {
+    /// Optional type name to match (e.g., "NotFoundError"). None = catch-all.
+    pub type_name: Option<String>,
+    /// Optional variable to bind the exception value.
+    pub var_name: Option<String>,
+    /// The catch block body.
+    pub body: Box<Stmt>,
+}
+
 /// Statement variants.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
@@ -64,11 +75,10 @@ pub enum StmtKind {
     /// Throw statement: throw expr;
     Throw(Expr),
 
-    /// Try/Catch/Finally: try { ... } catch (e) { ... } finally { ... }
+    /// Try/Catch/Finally: try { ... } catch TypeName e { ... } catch e { ... } finally { ... }
     Try {
         try_block: Box<Stmt>,
-        catch_var: Option<String>,
-        catch_block: Option<Box<Stmt>>,
+        catch_clauses: Vec<CatchClause>,
         finally_block: Option<Box<Stmt>>,
     },
 

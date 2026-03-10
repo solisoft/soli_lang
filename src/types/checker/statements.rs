@@ -226,32 +226,26 @@ impl TypeChecker {
 
             StmtKind::Try {
                 try_block,
-                catch_var,
-                catch_block,
+                catch_clauses,
                 finally_block,
             } => {
-                // Check try block
                 self.check_stmt(try_block)?;
 
-                // Check catch block if present
-                if let Some(catch_blk) = catch_block {
-                    // In catch block, the catch variable (if any) has type Any
-                    if let Some(var_name) = catch_var {
+                for clause in catch_clauses {
+                    if let Some(ref var_name) = clause.var_name {
                         self.env.push_scope();
                         self.env.define(var_name.clone(), Type::Any);
-                        self.check_stmt(catch_blk)?;
+                        self.check_stmt(&clause.body)?;
                         self.env.pop_scope();
                     } else {
-                        self.check_stmt(catch_blk)?;
+                        self.check_stmt(&clause.body)?;
                     }
                 }
 
-                // Check finally block if present
                 if let Some(finally_blk) = finally_block {
                     self.check_stmt(finally_blk)?;
                 }
 
-                // try/catch/finally doesn't return a value
                 Ok(())
             }
         }

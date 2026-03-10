@@ -67,6 +67,10 @@ impl Parser {
         }
     }
 
+    pub(crate) fn check_identifier(&self) -> bool {
+        matches!(self.peek().kind, TokenKind::Identifier(_))
+    }
+
     pub(crate) fn match_token(&mut self, kind: &TokenKind) -> bool {
         if self.check(kind) {
             self.advance();

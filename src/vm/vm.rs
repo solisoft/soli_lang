@@ -959,6 +959,25 @@ impl Vm {
                     let span = self.current_span();
                     self.throw_exception(value, span)?;
                 }
+                Op::CatchMatch(name_idx, jump_offset) => {
+                    let type_name = self.read_string_constant_owned(name_idx);
+                    let matches = match self.stack.last().unwrap() {
+                        Value::Instance(inst) => {
+                            let inst = inst.borrow();
+                            class_name_matches(&inst.class, &type_name)
+                        }
+                        _ => false,
+                    };
+                    if !matches {
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.ip += jump_offset as usize;
+                    }
+                }
+                Op::Rethrow => {
+                    let value = self.stack.pop().unwrap();
+                    let span = self.current_span();
+                    self.throw_exception(value, span)?;
+                }
 
                 // --- Iterators ---
                 Op::GetIter => {
@@ -1577,6 +1596,17 @@ impl Default for Vm {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Check if a class (or any of its superclasses) matches the given name.
+fn class_name_matches(class: &Class, name: &str) -> bool {
+    if class.name == name {
+        return true;
+    }
+    if let Some(ref superclass) = class.superclass {
+        return class_name_matches(superclass, name);
+    }
+    false
 }
 
 /// Convert a chunk constant to a runtime Value.
