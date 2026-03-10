@@ -732,7 +732,7 @@ impl Model {
                     .ok_or_else(|| "Model.create() requires data argument".to_string())?;
 
                 // Run validations
-                let errors = run_validations(&class_name, &data, true);
+                let errors = run_validations(&class_name, &data, None)?;
                 if !errors.is_empty() {
                     return Ok(build_validation_result(false, errors, None));
                 }
@@ -1082,7 +1082,7 @@ impl Model {
 
                 // Run validations
                 let data_hash = instance_fields_to_hash(&inst_ref);
-                let errors = run_validations(&class_name, &data_hash, false);
+                let errors = run_validations(&class_name, &data_hash, Some(&key_str))?;
                 if !errors.is_empty() {
                     let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
                     drop(inst_ref);
@@ -1139,11 +1139,14 @@ impl Model {
                 let inst_ref = instance.borrow();
                 let class_name = inst_ref.class.name.clone();
                 let collection = class_name_to_collection(&class_name);
-                let has_key = matches!(inst_ref.get("_key"), Some(Value::String(_)));
+                let key_opt = inst_ref.get("_key").and_then(|k| match k {
+                    Value::String(s) => Some(s.clone()),
+                    _ => None,
+                });
 
                 // Run validations
                 let data_hash = instance_fields_to_hash(&inst_ref);
-                let errors = run_validations(&class_name, &data_hash, !has_key);
+                let errors = run_validations(&class_name, &data_hash, key_opt.as_deref())?;
                 if !errors.is_empty() {
                     let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
                     drop(inst_ref);
@@ -1161,14 +1164,10 @@ impl Model {
                     }
                 }
 
-                if has_key {
+                if let Some(ref key_str) = key_opt {
                     // Update existing document
-                    let key_str = match inst_ref.get("_key").unwrap() {
-                        Value::String(s) => s,
-                        _ => unreachable!(),
-                    };
                     drop(inst_ref);
-                    match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
+                    match exec_update(&collection, key_str, serde_json::Value::Object(map), true) {
                         Ok(result) => {
                             let mut inst_mut = instance.borrow_mut();
                             if let serde_json::Value::Object(ref res_map) = result {

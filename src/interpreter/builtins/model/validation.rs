@@ -69,16 +69,21 @@ pub fn register_validation(class_name: &str, rule: ValidationRule) {
 }
 
 /// Run validations on data and return any errors.
-pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<ValidationError> {
+/// If `exclude_key` is provided (for updates), that record is excluded from uniqueness checks.
+pub fn run_validations(
+    class_name: &str,
+    data: &Value,
+    exclude_key: Option<&str>,
+) -> Result<Vec<ValidationError>, String> {
     let registry = MODEL_REGISTRY.read().unwrap();
     let metadata = match registry.get(class_name) {
         Some(m) => m,
-        None => return vec![],
+        None => return Ok(vec![]),
     };
 
     let hash = match data {
         Value::Hash(h) => h.borrow(),
-        _ => return vec![ValidationError::new("_base", "Data must be a hash")],
+        _ => return Ok(vec![ValidationError::new("_base", "Data must be a hash")]),
     };
 
     let mut errors = Vec::new();
@@ -133,19 +138,30 @@ pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<
             if let Some(Value::String(val)) = &field_value {
                 if !val.is_empty() {
                     let collection = class_name_to_collection(class_name);
-                    let sdbql = format!(
-                        "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN 1",
-                        collection, rule.field
-                    );
+                    #[allow(unused_variables)]
+                    let sdbql = if let Some(key) = exclude_key {
+                        format!(
+                            "FOR doc IN {} FILTER doc.{} == @val AND doc._key != @key LIMIT 1 RETURN 1",
+                            collection, rule.field
+                        )
+                    } else {
+                        format!(
+                            "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN 1",
+                            collection, rule.field
+                        )
+                    };
                     let mut bind_vars = std::collections::HashMap::new();
                     bind_vars.insert("val".to_string(), serde_json::Value::String(val.clone()));
-                    if let Ok(results) =
-                        exec_with_auto_collection(sdbql, Some(bind_vars), &collection)
-                    {
-                        if !results.is_empty() {
-                            errors
-                                .push(ValidationError::new(&rule.field, "has already been taken"));
-                        }
+                    if let Some(key) = exclude_key {
+                        bind_vars.insert(
+                            "key".to_string(),
+                            serde_json::Value::String(key.to_string()),
+                        );
+                    }
+                    let results = exec_with_auto_collection(sdbql, Some(bind_vars), &collection)
+                        .map_err(|e| format!("Database error during uniqueness check: {}", e))?;
+                    if !results.is_empty() {
+                        errors.push(ValidationError::new(&rule.field, "has already been taken"));
                     }
                 }
             }
@@ -154,10 +170,20 @@ pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<
         // Format validation (regex)
         if let Some(pattern) = &rule.format {
             if let Some(Value::String(s)) = &field_value {
-                if let Ok(re) = crate::regex_cache::get_regex(pattern) {
-                    if !re.is_match(s) {
-                        errors.push(ValidationError::new(&rule.field, "is invalid"));
-                    }
+                let is_valid = if pattern == "email" {
+                    static EMAIL_RE: std::sync::LazyLock<regex::Regex> =
+                        std::sync::LazyLock::new(|| {
+                            regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+                                .unwrap()
+                        });
+                    EMAIL_RE.is_match(s)
+                } else if let Ok(re) = crate::regex_cache::get_regex(pattern) {
+                    re.is_match(s)
+                } else {
+                    true
+                };
+                if !is_valid {
+                    errors.push(ValidationError::new(&rule.field, "is invalid"));
                 }
             }
         }
@@ -210,7 +236,7 @@ pub fn run_validations(class_name: &str, data: &Value, _is_create: bool) -> Vec<
         }
     }
 
-    errors
+    Ok(errors)
 }
 
 /// Build a validation result hash.
