@@ -66,9 +66,7 @@ impl Parser {
                 start_span,
             )),
             TokenKind::BoolLiteral(b) => Ok(Expr::new(ExprKind::BoolLiteral(*b), start_span)),
-            TokenKind::SymbolLiteral(s) => {
-                Ok(Expr::new(ExprKind::Symbol(s.clone()), start_span))
-            }
+            TokenKind::SymbolLiteral(s) => Ok(Expr::new(ExprKind::Symbol(s.clone()), start_span)),
             TokenKind::Null => Ok(Expr::new(ExprKind::Null, start_span)),
 
             TokenKind::Identifier(name) => {

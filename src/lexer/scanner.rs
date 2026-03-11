@@ -100,7 +100,7 @@ impl<'a> Scanner<'a> {
             ':' => {
                 if self.match_char(':') {
                     Ok(self.make_token(TokenKind::DoubleColon))
-                } else if self.peek().map_or(false, |c| c.is_alphabetic() || c == '_') {
+                } else if self.peek().is_some_and(|c| c.is_alphabetic() || c == '_') {
                     self.scan_symbol()
                 } else {
                     Ok(self.make_token(TokenKind::Colon))

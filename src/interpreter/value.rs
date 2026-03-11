@@ -363,7 +363,12 @@ impl Value {
     pub fn is_hashable(&self) -> bool {
         matches!(
             self,
-            Value::Int(_) | Value::Decimal(_) | Value::String(_) | Value::Symbol(_) | Value::Bool(_) | Value::Null
+            Value::Int(_)
+                | Value::Decimal(_)
+                | Value::String(_)
+                | Value::Symbol(_)
+                | Value::Bool(_)
+                | Value::Null
         )
     }
 

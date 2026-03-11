@@ -91,20 +91,18 @@ impl Vm {
                     }))
                 }
             }
-            Value::Symbol(s) => {
-                match name {
-                    "to_s" | "to_string" => Ok(Value::String(s.clone())),
-                    "inspect" => Ok(Value::String(format!(":{}", s))),
-                    "class" => Ok(Value::String("symbol".to_string())),
-                    "nil?" => Ok(Value::Bool(false)),
-                    "blank?" => Ok(Value::Bool(false)),
-                    "present?" => Ok(Value::Bool(true)),
-                    _ => Ok(Value::Method(ValueMethod {
-                        receiver: Box::new(object.clone()),
-                        method_name: name.to_string(),
-                    })),
-                }
-            }
+            Value::Symbol(s) => match name {
+                "to_s" | "to_string" => Ok(Value::String(s.clone())),
+                "inspect" => Ok(Value::String(format!(":{}", s))),
+                "class" => Ok(Value::String("symbol".to_string())),
+                "nil?" => Ok(Value::Bool(false)),
+                "blank?" => Ok(Value::Bool(false)),
+                "present?" => Ok(Value::Bool(true)),
+                _ => Ok(Value::Method(ValueMethod {
+                    receiver: Box::new(object.clone()),
+                    method_name: name.to_string(),
+                })),
+            },
             Value::Super(superclass) => {
                 // super.method() — look up method in superclass
                 if let Some(method) = superclass.find_method(name) {

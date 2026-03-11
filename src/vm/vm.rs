@@ -164,7 +164,8 @@ impl Vm {
                 }
                 Op::Symbol(idx) => {
                     let frame = self.frames.last().unwrap();
-                    if let Constant::String(s) = &frame.closure.proto.chunk.constants[idx as usize] {
+                    if let Constant::String(s) = &frame.closure.proto.chunk.constants[idx as usize]
+                    {
                         self.stack.push(Value::Symbol(s.clone()));
                     }
                 }

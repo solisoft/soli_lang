@@ -48,7 +48,13 @@ impl TypeChecker {
         // Check that key is a valid hashable type
         if !matches!(
             key_type,
-            Type::Int | Type::Float | Type::String | Type::Symbol | Type::Bool | Type::Any | Type::Unknown
+            Type::Int
+                | Type::Float
+                | Type::String
+                | Type::Symbol
+                | Type::Bool
+                | Type::Any
+                | Type::Unknown
         ) {
             return Err(TypeError::General {
                 message: format!("{} cannot be used as a hash key", key_type),
