@@ -1,0 +1,248 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Relationships</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Define associations between models using a simple DSL.
+            SoliLang handles foreign keys, eager loading, and join filtering automatically.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Relationship DSL</h2>
+    <p class="text-gray-400 mb-4">Declare associations inside your model class using the built-in relationship methods:</p>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_many(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a one-to-many relationship</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_one(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a one-to-one relationship</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">belongs_to(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare an inverse relationship</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">belongs_to(name, { "polymorphic": true })</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a polymorphic relationship</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Defining Relationships</h2>
+    <p class="text-gray-400 mb-4">Add relationship declarations at the top of your model class body:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+    has_many("posts")
+    has_one("profile")
+end
+
+class Post < Model
+    belongs_to("user")
+    has_many("comments")
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Naming Conventions</h2>
+    <p class="text-gray-400 mb-4">SoliLang automatically infers the related class, collection, and foreign key from the relationship name:</p>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Declaration</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Related Class</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Collection</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Foreign Key</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_many("posts")</code></td>
+                    <td class="py-3 px-4 text-gray-400">Post</td>
+                    <td class="py-3 px-4 text-gray-400">posts</td>
+                    <td class="py-3 px-4 text-gray-400">user_id</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_one("profile")</code></td>
+                    <td class="py-3 px-4 text-gray-400">Profile</td>
+                    <td class="py-3 px-4 text-gray-400">profiles</td>
+                    <td class="py-3 px-4 text-gray-400">user_id</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">belongs_to("user")</code></td>
+                    <td class="py-3 px-4 text-gray-400">User</td>
+                    <td class="py-3 px-4 text-gray-400">users</td>
+                    <td class="py-3 px-4 text-gray-400">user_id</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Custom Foreign Keys</h2>
+    <p class="text-gray-400 mb-4">Override the default naming conventions with an options hash:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Post < Model
+    belongs_to("author", { "class_name": "User", "foreign_key": "author_id" })
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Polymorphic Relationships</h2>
+    <p class="text-gray-400 mb-4">
+        A polymorphic <code>belongs_to</code> allows a model to belong to more than one other model on a single association.
+        The related type and ID are stored in <code>commentable_type</code> and <code>commentable_id</code> fields:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Comment < Model
+    belongs_to("commentable", { "polymorphic": true })
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Relationship Accessors</h2>
+    <p class="text-gray-400 mb-4">Access related records directly from model instances. You can also chain query builder methods on <code>has_many</code> relations:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">let user = User.find("user_id")
+
+# Access has_many relation
+let posts = user.posts
+
+# Access has_one relation
+let profile = user.profile
+
+# Access belongs_to relation
+let author = post.user
+
+# Chain query builder methods on relations
+let published = user.posts.where("published = @p", { "p": true }).all</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Eager Loading (includes)</h2>
+    <p class="text-gray-400 mb-4">
+        Without eager loading, accessing relations in a loop triggers a separate query for each record &mdash; the classic <strong class="text-white">N+1 problem</strong>.
+        Use <code>.includes()</code> to preload related records in a single query via LET subqueries with MERGE:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Load users with their posts and profiles in a single query
+let users = User.includes("posts", "profile").all
+
+# Combine with where clauses
+let active = User.where("active = @a", { "a": true }).includes("posts").first
+
+# Inspect the generated query
+print(User.includes("posts").to_query)</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <p class="text-indigo-300 text-sm">
+            <code>has_many</code> includes return an array. <code>has_one</code> and <code>belongs_to</code> includes return a single document (via <code>FIRST()</code>).
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Join Filtering</h2>
+    <p class="text-gray-400 mb-4">
+        Filter records by the existence of related records. Unlike <code>includes</code>, <code>join</code> does <strong class="text-white">not</strong> preload the related data &mdash; it only filters the parent records:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Find users who have at least one post
+let users_with_posts = User.join("posts").all
+
+# Find users who have published posts
+let count = User.join("posts", "published = @p", { "p": true }).count
+
+# Chain with other query methods
+let recent = User.join("posts").order("created_at", "desc").limit(10).all</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Filtered Includes</h2>
+    <p class="text-gray-400 mb-4">Filter included relations to load only matching related records:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Only load published posts for each user
+let users = User.includes("posts", "published = @p", { "p": true }).all
+
+# Combine a filter with field projection using the "fields" key
+let users = User.includes("posts", "published = @p", {
+    "p": true,
+    "fields": ["title", "body"]
+}).all</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Includes with Field Projection</h2>
+    <p class="text-gray-400 mb-4">Use a hash argument to select specific fields on included relations (without filtering):</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Only load title and body from posts
+let users = User.includes({ "posts": ["title", "body"] }).all</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Chaining Multiple Includes</h2>
+    <p class="text-gray-400 mb-4">Chain <code>.includes()</code> calls to eagerly load multiple relations with different options:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Filtered posts + unfiltered profile
+let users = User.includes("posts", "published = @p", { "p": true })
+    .includes("profile")
+    .all</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Manual Relationships</h2>
+    <p class="text-gray-400 mb-4">For more control, implement relationships as custom instance methods:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Post < Model
+    def author
+        User.find(this.author_id)
+    end
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models Overview &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn about defining models, CRUD operations, validations, and callbacks.</p>
+        </a>
+        <a href="/docs/database/query-builder" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Query Builder &rarr;</h3>
+            <p class="text-sm text-gray-400">Chain where, order, limit, aggregations, and more.</p>
+        </a>
+    </div>
+</div>

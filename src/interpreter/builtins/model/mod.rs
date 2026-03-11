@@ -255,8 +255,9 @@ pub mod validation;
 
 pub use callbacks::{register_callback, ModelCallbacks};
 pub use core::{
-    class_name_to_collection, get_or_create_metadata, init_db_config, register_model_builtins,
-    update_metadata, Model, ModelMetadata, DB_CONFIG, MODEL_REGISTRY,
+    class_name_to_collection, get_or_create_metadata, get_translated_fields, init_db_config,
+    is_translated_field, register_model_builtins, register_translation, update_metadata, Model,
+    ModelMetadata, DB_CONFIG, MODEL_REGISTRY,
 };
 pub use crud::{
     exec_async_query, exec_async_query_raw, exec_async_query_with_binds, exec_auto_collection,

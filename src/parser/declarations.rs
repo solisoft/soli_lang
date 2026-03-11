@@ -336,7 +336,13 @@ impl Parser {
                 self.match_token(&TokenKind::Semicolon);
                 // Wrap as a zero-arg Call so the class executor can process it
                 let callee = Expr::new(ExprKind::Variable(name), start_span);
-                let call = Expr::new(ExprKind::Call { callee: Box::new(callee), arguments: vec![] }, span);
+                let call = Expr::new(
+                    ExprKind::Call {
+                        callee: Box::new(callee),
+                        arguments: vec![],
+                    },
+                    span,
+                );
                 return Ok(Stmt::new(StmtKind::Expression(call), span));
             }
         }

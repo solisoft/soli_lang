@@ -23,6 +23,34 @@ pub struct ModelMetadata {
     pub callbacks: ModelCallbacks,
     pub relations: Vec<RelationDef>,
     pub soft_delete: bool,
+    pub translated_fields: Vec<String>,
+}
+
+/// Register a field as translatable for a model class.
+pub fn register_translation(class_name: &str, field_name: &str) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    if !metadata.translated_fields.contains(&field_name.to_string()) {
+        metadata.translated_fields.push(field_name.to_string());
+    }
+}
+
+/// Get all translated field names for a model class.
+pub fn get_translated_fields(class_name: &str) -> Vec<String> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.translated_fields.clone())
+        .unwrap_or_default()
+}
+
+/// Check if a field is registered as translatable for a model class.
+pub fn is_translated_field(class_name: &str, field_name: &str) -> bool {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.translated_fields.contains(&field_name.to_string()))
+        .unwrap_or(false)
 }
 
 /// Cached database configuration to avoid repeated env::var() lookups.
@@ -654,6 +682,39 @@ impl Model {
                 })),
             );
         }
+
+        // ====================================================================
+        // Translation DSL: translate("field1", "field2", ...)
+        // ====================================================================
+
+        // Model.translate("title", "description") - declare translatable fields
+        native_static_methods.insert(
+            "translate".to_string(),
+            Rc::new(NativeFunction::new("Model.translate", None, |args| {
+                let class_name = get_class_name_from_class(&args)?;
+
+                // Accept one or more field names as arguments
+                let field_names: Vec<String> = args[1..]
+                    .iter()
+                    .filter_map(|arg| {
+                        if let Value::String(s) = arg {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                if field_names.is_empty() {
+                    return Err("translate() requires at least one field name".to_string());
+                }
+
+                for field_name in &field_names {
+                    register_translation(&class_name, field_name);
+                }
+                Ok(Value::Null)
+            })),
+        );
 
         // ====================================================================
         // Query Chain Starters: includes, join
@@ -1369,16 +1430,13 @@ impl Model {
                     let field = match args.get(1) {
                         Some(Value::String(s)) => s.clone(),
                         _ => {
-                            return Err(
-                                "find_or_create_by() expects string field name".to_string()
-                            )
+                            return Err("find_or_create_by() expects string field name".to_string())
                         }
                     };
                     let value = args
                         .get(2)
                         .ok_or_else(|| "find_or_create_by() requires a value".to_string())?;
-                    let json_val =
-                        super::value_to_json(value).map_err(|e| e.to_string())?;
+                    let json_val = super::value_to_json(value).map_err(|e| e.to_string())?;
 
                     // Try to find existing
                     let sdbql = format!(
@@ -1464,9 +1522,7 @@ impl Model {
                             None,
                             serde_json::Value::Object(obj),
                         ) {
-                            Ok(result) => {
-                                Ok(super::crud::json_doc_to_instance(&class, &result))
-                            }
+                            Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
                             Err(e) => Err(format!("upsert failed: {}", e)),
                         }
                     }
@@ -1573,10 +1629,7 @@ impl Model {
                         let field = match args.get(1) {
                             Some(Value::String(s)) => s.clone(),
                             _ => {
-                                return Err(format!(
-                                    "{}() expects string field name",
-                                    method_name
-                                ))
+                                return Err(format!("{}() expects string field name", method_name))
                             }
                         };
                         let mut qb = super::query::QueryBuilder::new_with_class(
@@ -1619,9 +1672,8 @@ impl Model {
                         )
                     }
                 };
-                let mut qb = super::query::QueryBuilder::new_with_class(
-                    class_name, collection, class,
-                );
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
                 qb.group_by_info = Some((group_field, func, agg_field));
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
@@ -1636,112 +1688,114 @@ impl Model {
         // Returns true on success, false on validation/DB error (errors stored in _errors)
         native_methods.insert(
             "update".to_string(),
-            Rc::new(NativeFunction::new("Model#update", Some(0), |args| {
-                use super::validation::run_validations;
+            Rc::new(NativeFunction::new(
+                "Model#update",
+                Some(0),
+                #[allow(clippy::collapsible_match)]
+                |args| {
+                    use super::validation::run_validations;
+                    use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
+                    use crate::interpreter::builtins::model::get_translated_fields;
 
-                let instance = match &args[0] {
-                    Value::Instance(inst) => inst.clone(),
-                    _ => return Err("Expected instance".to_string()),
-                };
-                let inst_ref = instance.borrow();
-                let class_name = inst_ref.class.name.clone();
-                let collection = class_name_to_collection(&class_name);
-                let key = inst_ref
-                    .get("_key")
-                    .ok_or_else(|| "Instance has no _key field".to_string())?;
-                let key_str = match key {
-                    Value::String(s) => s,
-                    _ => return Err("_key is not a string".to_string()),
-                };
+                    let instance = match &args[0] {
+                        Value::Instance(inst) => inst.clone(),
+                        _ => return Err("Expected instance".to_string()),
+                    };
+                    let inst_ref = instance.borrow();
+                    let class_name = inst_ref.class.name.clone();
+                    let collection = class_name_to_collection(&class_name);
+                    let key = inst_ref
+                        .get("_key")
+                        .ok_or_else(|| "Instance has no _key field".to_string())?;
+                    let key_str = match key {
+                        Value::String(s) => s,
+                        _ => return Err("_key is not a string".to_string()),
+                    };
 
-                // Run validations
-                let data_hash = instance_fields_to_hash(&inst_ref);
-                let errors = run_validations(&class_name, &data_hash, Some(&key_str))?;
-                if !errors.is_empty() {
-                    let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
-                    drop(inst_ref);
-                    instance.borrow_mut().set(
-                        "_errors".to_string(),
-                        Value::Array(Rc::new(RefCell::new(error_values))),
-                    );
-                    return Ok(Value::Bool(false));
-                }
+                    // Handle pending translations before updating
+                    let translated_field_names = get_translated_fields(&class_name);
+                    if !translated_field_names.is_empty() {
+                        let locale = i18n_helpers::get_locale();
 
-                let mut map = serde_json::Map::new();
-                for (k, v) in &inst_ref.fields {
-                    if !k.starts_with('_') {
-                        map.insert(k.clone(), value_to_json(v)?);
-                    }
-                }
-                drop(inst_ref);
-                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
-                    Ok(result) => {
-                        let mut inst_mut = instance.borrow_mut();
-                        if let serde_json::Value::Object(ref res_map) = result {
-                            if let Some(rev) = res_map.get("_rev") {
-                                inst_mut.set("_rev".to_string(), json_to_value(rev));
+                        // Get or create translated_fields JSON structure
+                        let mut translated_fields_json: serde_json::Map<String, serde_json::Value> =
+                            serde_json::Map::new();
+
+                        // If instance already has translated_fields, copy it
+                        if let Some(tf) = inst_ref.get("translated_fields") {
+                            if let Ok(tf_json) = value_to_json(&tf) {
+                                if let serde_json::Value::Object(obj) = tf_json {
+                                    translated_fields_json = obj;
+                                }
                             }
                         }
-                        inst_mut.set(
-                            "_errors".to_string(),
-                            Value::Array(Rc::new(RefCell::new(vec![]))),
+
+                        // Get pending translations and merge them
+                        if let Some(pending) = inst_ref.get("_pending_translations") {
+                            if let Ok(pending_json) = value_to_json(&pending) {
+                                if let serde_json::Value::Object(pending_obj) = pending_json {
+                                    for field_name in &translated_field_names {
+                                        if let Some(pending_value) = pending_obj.get(field_name) {
+                                            // Get or create the locale object for this field
+                                            let field_obj =
+                                                translated_fields_json
+                                                    .entry(field_name.clone())
+                                                    .or_insert_with(|| {
+                                                        serde_json::Value::Object(
+                                                            serde_json::Map::new(),
+                                                        )
+                                                    });
+
+                                            if let serde_json::Value::Object(ref mut locale_obj) =
+                                                *field_obj
+                                            {
+                                                locale_obj
+                                                    .insert(locale.clone(), pending_value.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Update the instance's translated_fields field
+                        drop(inst_ref);
+                        let mut inst_mut = instance.borrow_mut();
+                        inst_mut.fields.insert(
+                            "translated_fields".to_string(),
+                            json_to_value(&serde_json::Value::Object(translated_fields_json)),
                         );
-                        Ok(Value::Bool(true))
+
+                        // Clear pending translations
+                        inst_mut.fields.remove("_pending_translations");
+                        drop(inst_mut);
+                    } else {
+                        drop(inst_ref);
                     }
-                    Err(e) => {
+
+                    // Run validations
+                    let inst_ref2 = instance.borrow();
+                    let data_hash = instance_fields_to_hash(&inst_ref2);
+                    let errors = run_validations(&class_name, &data_hash, Some(&key_str))?;
+                    if !errors.is_empty() {
+                        let error_values: Vec<Value> =
+                            errors.iter().map(|e| e.to_value()).collect();
+                        drop(inst_ref2);
                         instance.borrow_mut().set(
                             "_errors".to_string(),
-                            Value::Array(Rc::new(RefCell::new(vec![Value::String(e.to_string())]))),
+                            Value::Array(Rc::new(RefCell::new(error_values))),
                         );
-                        Ok(Value::Bool(false))
+                        return Ok(Value::Bool(false));
                     }
-                }
-            })),
-        );
 
-        // instance.save() - Insert or update depending on whether _key exists
-        // Returns true on success, false on validation/DB error (errors stored in _errors)
-        native_methods.insert(
-            "save".to_string(),
-            Rc::new(NativeFunction::new("Model#save", Some(0), |args| {
-                use super::validation::run_validations;
-
-                let instance = match &args[0] {
-                    Value::Instance(inst) => inst.clone(),
-                    _ => return Err("Expected instance".to_string()),
-                };
-                let inst_ref = instance.borrow();
-                let class_name = inst_ref.class.name.clone();
-                let collection = class_name_to_collection(&class_name);
-                let key_opt = inst_ref.get("_key").and_then(|k| match k {
-                    Value::String(s) => Some(s.clone()),
-                    _ => None,
-                });
-
-                // Run validations
-                let data_hash = instance_fields_to_hash(&inst_ref);
-                let errors = run_validations(&class_name, &data_hash, key_opt.as_deref())?;
-                if !errors.is_empty() {
-                    let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
-                    drop(inst_ref);
-                    instance.borrow_mut().set(
-                        "_errors".to_string(),
-                        Value::Array(Rc::new(RefCell::new(error_values))),
-                    );
-                    return Ok(Value::Bool(false));
-                }
-
-                let mut map = serde_json::Map::new();
-                for (k, v) in &inst_ref.fields {
-                    if !k.starts_with('_') {
-                        map.insert(k.clone(), value_to_json(v)?);
+                    let mut map = serde_json::Map::new();
+                    for (k, v) in &inst_ref2.fields {
+                        if !k.starts_with('_') {
+                            map.insert(k.clone(), value_to_json(v)?);
+                        }
                     }
-                }
-
-                if let Some(ref key_str) = key_opt {
-                    // Update existing document
-                    drop(inst_ref);
-                    match exec_update(&collection, key_str, serde_json::Value::Object(map), true) {
+                    drop(inst_ref2);
+                    match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                         Ok(result) => {
                             let mut inst_mut = instance.borrow_mut();
                             if let serde_json::Value::Object(ref res_map) = result {
@@ -1765,38 +1819,193 @@ impl Model {
                             Ok(Value::Bool(false))
                         }
                     }
-                } else {
-                    // Insert new document
-                    drop(inst_ref);
-                    match exec_insert(&collection, None, serde_json::Value::Object(map)) {
-                        Ok(result) => {
-                            let mut inst_mut = instance.borrow_mut();
-                            if let serde_json::Value::Object(ref res_map) = result {
-                                for field in &["_key", "_id", "_rev", "_created_at", "_updated_at"]
-                                {
-                                    if let Some(val) = res_map.get(*field) {
-                                        inst_mut.set(field.to_string(), json_to_value(val));
+                },
+            )),
+        );
+
+        // instance.save() - Insert or update depending on whether _key exists
+        // Returns true on success, false on validation/DB error (errors stored in _errors)
+        native_methods.insert(
+            "save".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model#save",
+                Some(0),
+                #[allow(clippy::collapsible_match)]
+                |args| {
+                    use super::validation::run_validations;
+                    use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
+                    use crate::interpreter::builtins::model::get_translated_fields;
+
+                    let instance = match &args[0] {
+                        Value::Instance(inst) => inst.clone(),
+                        _ => return Err("Expected instance".to_string()),
+                    };
+                    let inst_ref = instance.borrow();
+                    let class_name = inst_ref.class.name.clone();
+                    let collection = class_name_to_collection(&class_name);
+                    let key_opt = inst_ref.get("_key").and_then(|k| match k {
+                        Value::String(s) => Some(s.clone()),
+                        _ => None,
+                    });
+
+                    // Handle pending translations before saving
+                    let translated_field_names = get_translated_fields(&class_name);
+                    let has_translations = !translated_field_names.is_empty();
+
+                    // Pre-compute translation data while we have inst_ref
+                    let translation_update: Option<(
+                        serde_json::Map<String, serde_json::Value>,
+                        Vec<String>,
+                    )> = if has_translations {
+                        let locale = i18n_helpers::get_locale();
+
+                        // Get or create translated_fields JSON structure
+                        let mut translated_fields_json: serde_json::Map<String, serde_json::Value> =
+                            serde_json::Map::new();
+
+                        // If instance already has translated_fields, copy it
+                        if let Some(tf) = inst_ref.get("translated_fields") {
+                            if let Ok(tf_json) = value_to_json(&tf) {
+                                if let serde_json::Value::Object(obj) = tf_json {
+                                    translated_fields_json = obj;
+                                }
+                            }
+                        }
+
+                        // Get pending translations and merge them
+                        if let Some(pending) = inst_ref.get("_pending_translations") {
+                            if let Ok(pending_json) = value_to_json(&pending) {
+                                if let serde_json::Value::Object(pending_obj) = pending_json {
+                                    for field_name in &translated_field_names {
+                                        if let Some(pending_value) = pending_obj.get(field_name) {
+                                            // Get or create the locale object for this field
+                                            let field_obj =
+                                                translated_fields_json
+                                                    .entry(field_name.clone())
+                                                    .or_insert_with(|| {
+                                                        serde_json::Value::Object(
+                                                            serde_json::Map::new(),
+                                                        )
+                                                    });
+
+                                            if let serde_json::Value::Object(ref mut locale_obj) =
+                                                *field_obj
+                                            {
+                                                locale_obj
+                                                    .insert(locale.clone(), pending_value.clone());
+                                            }
+                                        }
                                     }
                                 }
                             }
-                            inst_mut.set(
-                                "_errors".to_string(),
-                                Value::Array(Rc::new(RefCell::new(vec![]))),
-                            );
-                            Ok(Value::Bool(true))
                         }
-                        Err(e) => {
-                            instance.borrow_mut().set(
-                                "_errors".to_string(),
-                                Value::Array(Rc::new(RefCell::new(vec![Value::String(
-                                    e.to_string(),
-                                )]))),
-                            );
-                            Ok(Value::Bool(false))
+
+                        Some((translated_fields_json, translated_field_names))
+                    } else {
+                        None
+                    };
+
+                    // Get data we need before dropping inst_ref
+                    let data_hash = instance_fields_to_hash(&inst_ref);
+
+                    // Build map for DB operation before dropping inst_ref
+                    let mut map = serde_json::Map::new();
+                    for (k, v) in &inst_ref.fields {
+                        if !k.starts_with('_') {
+                            map.insert(k.clone(), value_to_json(v)?);
                         }
                     }
-                }
-            })),
+
+                    // Now we can drop inst_ref
+                    drop(inst_ref);
+
+                    // Apply translation update if needed
+                    if let Some((translated_fields_json, _)) = translation_update {
+                        let mut inst_mut = instance.borrow_mut();
+                        inst_mut.fields.insert(
+                            "translated_fields".to_string(),
+                            json_to_value(&serde_json::Value::Object(translated_fields_json)),
+                        );
+                        // Clear pending translations
+                        inst_mut.fields.remove("_pending_translations");
+                    }
+
+                    // Run validations
+                    let errors = run_validations(&class_name, &data_hash, key_opt.as_deref())?;
+                    if !errors.is_empty() {
+                        let error_values: Vec<Value> =
+                            errors.iter().map(|e| e.to_value()).collect();
+                        instance.borrow_mut().set(
+                            "_errors".to_string(),
+                            Value::Array(Rc::new(RefCell::new(error_values))),
+                        );
+                        return Ok(Value::Bool(false));
+                    }
+
+                    if let Some(ref key_str) = key_opt {
+                        // Update existing document
+                        match exec_update(
+                            &collection,
+                            key_str,
+                            serde_json::Value::Object(map),
+                            true,
+                        ) {
+                            Ok(result) => {
+                                let mut inst_mut = instance.borrow_mut();
+                                if let serde_json::Value::Object(ref res_map) = result {
+                                    if let Some(rev) = res_map.get("_rev") {
+                                        inst_mut.set("_rev".to_string(), json_to_value(rev));
+                                    }
+                                }
+                                inst_mut.set(
+                                    "_errors".to_string(),
+                                    Value::Array(Rc::new(RefCell::new(vec![]))),
+                                );
+                                Ok(Value::Bool(true))
+                            }
+                            Err(e) => {
+                                instance.borrow_mut().set(
+                                    "_errors".to_string(),
+                                    Value::Array(Rc::new(RefCell::new(vec![Value::String(
+                                        e.to_string(),
+                                    )]))),
+                                );
+                                Ok(Value::Bool(false))
+                            }
+                        }
+                    } else {
+                        // Insert new document
+                        match exec_insert(&collection, None, serde_json::Value::Object(map)) {
+                            Ok(result) => {
+                                let mut inst_mut = instance.borrow_mut();
+                                if let serde_json::Value::Object(ref res_map) = result {
+                                    for field in
+                                        &["_key", "_id", "_rev", "_created_at", "_updated_at"]
+                                    {
+                                        if let Some(val) = res_map.get(*field) {
+                                            inst_mut.set(field.to_string(), json_to_value(val));
+                                        }
+                                    }
+                                }
+                                inst_mut.set(
+                                    "_errors".to_string(),
+                                    Value::Array(Rc::new(RefCell::new(vec![]))),
+                                );
+                                Ok(Value::Bool(true))
+                            }
+                            Err(e) => {
+                                instance.borrow_mut().set(
+                                    "_errors".to_string(),
+                                    Value::Array(Rc::new(RefCell::new(vec![Value::String(
+                                        e.to_string(),
+                                    )]))),
+                                );
+                                Ok(Value::Bool(false))
+                            }
+                        }
+                    }
+                },
+            )),
         );
 
         // instance.delete() - Delete (or soft-delete) the document from DB
@@ -1827,12 +2036,7 @@ impl Model {
                         "deleted_at".to_string(),
                         serde_json::Value::String(now.clone()),
                     );
-                    match exec_update(
-                        &collection,
-                        &key_str,
-                        serde_json::Value::Object(map),
-                        true,
-                    ) {
+                    match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                         Ok(_) => {
                             instance
                                 .borrow_mut()
@@ -1872,12 +2076,7 @@ impl Model {
 
                 let mut map = serde_json::Map::new();
                 map.insert("deleted_at".to_string(), serde_json::Value::Null);
-                match exec_update(
-                    &collection,
-                    &key_str,
-                    serde_json::Value::Object(map),
-                    true,
-                ) {
+                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                     Ok(_) => {
                         instance
                             .borrow_mut()
@@ -1930,16 +2129,9 @@ impl Model {
                     field.clone(),
                     serde_json::Value::Number(serde_json::Number::from(new_value)),
                 );
-                match exec_update(
-                    &collection,
-                    &key_str,
-                    serde_json::Value::Object(map),
-                    true,
-                ) {
+                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                     Ok(_) => {
-                        instance
-                            .borrow_mut()
-                            .set(field, Value::Int(new_value));
+                        instance.borrow_mut().set(field, Value::Int(new_value));
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => Err(format!("increment failed: {}", e)),
@@ -1988,16 +2180,9 @@ impl Model {
                     field.clone(),
                     serde_json::Value::Number(serde_json::Number::from(new_value)),
                 );
-                match exec_update(
-                    &collection,
-                    &key_str,
-                    serde_json::Value::Object(map),
-                    true,
-                ) {
+                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                     Ok(_) => {
-                        instance
-                            .borrow_mut()
-                            .set(field, Value::Int(new_value));
+                        instance.borrow_mut().set(field, Value::Int(new_value));
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => Err(format!("decrement failed: {}", e)),
@@ -2031,12 +2216,7 @@ impl Model {
                     "_updated_at".to_string(),
                     serde_json::Value::String(now.clone()),
                 );
-                match exec_update(
-                    &collection,
-                    &key_str,
-                    serde_json::Value::Object(map),
-                    true,
-                ) {
+                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
                     Ok(_) => {
                         instance
                             .borrow_mut()

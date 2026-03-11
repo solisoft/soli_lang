@@ -129,10 +129,10 @@
                         <!-- View Content -->
                         <div id="content-view" class="hidden">
 <pre class="text-sm leading-7"><code class="language-html"><span class="text-gray-500">&lt;!-- ERB-style templates --&gt;</span>
-<span class="text-blue-400">&lt;h1&gt;</span><span class="text-white">&lt;%= @title %&gt;</span><span class="text-blue-400">&lt;/h1&gt;</span>
+<span class="text-blue-400">&lt;h1&gt;</span><span class="text-white">&lt;%= title %&gt;</span><span class="text-blue-400">&lt;/h1&gt;</span>
 
 <span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"posts"</span><span class="text-blue-400">&gt;</span>
-  <span class="text-white">&lt;% for post in @posts %&gt;</span>
+  <span class="text-white">&lt;% for post in posts %&gt;</span>
     <span class="text-blue-400">&lt;article&gt;</span>
       <span class="text-blue-400">&lt;h2&gt;</span><span class="text-white">&lt;%= post["title"] %&gt;</span><span class="text-blue-400">&lt;/h2&gt;</span>
       <span class="text-blue-400">&lt;p&gt;</span><span class="text-white">&lt;%= post["excerpt"] %&gt;</span><span class="text-blue-400">&lt;/p&gt;</span>

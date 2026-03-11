@@ -974,7 +974,15 @@ mod tests {
     #[test]
     fn test_includes_has_many() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
@@ -986,7 +994,15 @@ mod tests {
     #[test]
     fn test_includes_has_one() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "profile", RelationType::HasOne, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "profile",
+            RelationType::HasOne,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_include("profile".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
@@ -998,7 +1014,15 @@ mod tests {
     #[test]
     fn test_includes_belongs_to() {
         let mut qb = make_qb("Post", "posts");
-        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None, None, None);
+        let rel = build_relation(
+            "Post",
+            "user",
+            RelationType::BelongsTo,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_include("user".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
@@ -1010,8 +1034,24 @@ mod tests {
     #[test]
     fn test_includes_multiple() {
         let mut qb = make_qb("User", "users");
-        let posts_rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
-        let profile_rel = build_relation("User", "profile", RelationType::HasOne, None, None, None, None);
+        let posts_rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
+        let profile_rel = build_relation(
+            "User",
+            "profile",
+            RelationType::HasOne,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_include("posts".to_string(), posts_rel, None, HashMap::new(), None);
         qb.add_include(
             "profile".to_string(),
@@ -1031,7 +1071,15 @@ mod tests {
     #[test]
     fn test_join_has_many() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_join("posts".to_string(), rel, None, HashMap::new());
         let (query, _) = qb.build_query();
         assert_eq!(
@@ -1043,7 +1091,15 @@ mod tests {
     #[test]
     fn test_join_with_filter() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
         qb.add_join(
@@ -1060,7 +1116,15 @@ mod tests {
     #[test]
     fn test_includes_with_where() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
@@ -1075,7 +1139,15 @@ mod tests {
     #[test]
     fn test_join_belongs_to() {
         let mut qb = make_qb("Post", "posts");
-        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None, None, None);
+        let rel = build_relation(
+            "Post",
+            "user",
+            RelationType::BelongsTo,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_join("user".to_string(), rel, None, HashMap::new());
         let (query, _) = qb.build_query();
         assert!(query.contains("doc.user_id == rel._key"));
@@ -1084,7 +1156,15 @@ mod tests {
     #[test]
     fn test_filtered_include_has_many() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
         qb.add_include(
@@ -1103,7 +1183,15 @@ mod tests {
     #[test]
     fn test_filtered_include_has_one() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "profile", RelationType::HasOne, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "profile",
+            RelationType::HasOne,
+            None,
+            None,
+            None,
+            None,
+        );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
         qb.add_include(
@@ -1122,7 +1210,15 @@ mod tests {
     #[test]
     fn test_filtered_include_belongs_to() {
         let mut qb = make_qb("Post", "posts");
-        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None, None, None);
+        let rel = build_relation(
+            "Post",
+            "user",
+            RelationType::BelongsTo,
+            None,
+            None,
+            None,
+            None,
+        );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
         qb.add_include(
@@ -1141,7 +1237,15 @@ mod tests {
     #[test]
     fn test_include_with_fields() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_include(
             "posts".to_string(),
             rel,
@@ -1156,7 +1260,15 @@ mod tests {
     #[test]
     fn test_filtered_include_with_fields() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
         qb.add_include(
@@ -1187,7 +1299,15 @@ mod tests {
     fn test_select_with_includes() {
         let mut qb = make_qb("User", "users");
         qb.set_select(vec!["name".to_string(), "email".to_string()]);
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert!(query.contains(

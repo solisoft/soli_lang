@@ -448,7 +448,11 @@ impl Interpreter {
         if qb_ref.exists_mode {
             Ok(execute_query_builder_exists(&qb_ref))
         } else if let Some((ref func, ref field)) = qb_ref.aggregation {
-            Ok(execute_query_builder_aggregate(&qb_ref, func.clone(), field))
+            Ok(execute_query_builder_aggregate(
+                &qb_ref,
+                func.clone(),
+                field,
+            ))
         } else if let Some((ref gf, ref func, ref af)) = qb_ref.group_by_info {
             Ok(execute_query_builder_group_by(
                 &qb_ref,
@@ -474,7 +478,11 @@ impl Interpreter {
         if qb_ref.exists_mode {
             Ok(execute_query_builder_exists(&qb_ref))
         } else if let Some((ref func, ref field)) = qb_ref.aggregation {
-            Ok(execute_query_builder_aggregate(&qb_ref, func.clone(), field))
+            Ok(execute_query_builder_aggregate(
+                &qb_ref,
+                func.clone(),
+                field,
+            ))
         } else if let Some((ref gf, ref func, ref af)) = qb_ref.group_by_info {
             Ok(execute_query_builder_group_by(
                 &qb_ref,

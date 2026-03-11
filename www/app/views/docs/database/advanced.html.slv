@@ -1,0 +1,227 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Advanced Features</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Go beyond basic CRUD with soft deletes, scopes, batch operations, transactions, and raw queries.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Soft Delete</h2>
+    <p class="text-gray-400 mb-6">Mark records as deleted without removing them from the database. Soft-deleted records are excluded from queries by default and can be restored at any time.</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/post.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Post < Model
+    soft_delete
+end
+
+# Delete sets deleted_at timestamp
+post.delete
+
+# Restore clears deleted_at
+post.restore
+
+# Query without deleted records (default behavior)
+let posts = Post.all
+
+# Include soft-deleted records
+let all = Post.with_deleted.all
+
+# Query only deleted records
+let deleted = Post.only_deleted.all</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <p class="text-indigo-300 text-sm">
+            <strong>How it works:</strong> When <code>soft_delete</code> is declared, calling <code>.delete</code> on an instance sets a <code>deleted_at</code> timestamp instead of removing the document. All standard queries automatically filter out soft-deleted records unless you explicitly opt in with <code>.with_deleted</code> or <code>.only_deleted</code>.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Scopes</h2>
+    <p class="text-gray-400 mb-6">Define reusable query scopes in your model class to encapsulate common filters:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+    scope("active", "active = @a", { "a": true })
+    scope("recent", "1 = 1", {})  # no filter, just for chaining
+end
+
+# Use scopes
+let active = User.scope("active").all
+let recent = User.scope("active").limit(10).all</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-green-500/10 border border-green-500/20 mb-12">
+        <p class="text-green-300 text-sm">
+            <strong>Chainable:</strong> Scopes return a query builder, so you can chain them with <code>.where()</code>, <code>.order()</code>, <code>.limit()</code>, <code>.includes()</code>, and any other query builder method.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Batch Operations</h2>
+    <p class="text-gray-400 mb-6">Insert or update multiple records efficiently in a single operation:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Batch create
+let result = User.create_many([
+    { "name": "Alice", "email": "alice@example.com" },
+    { "name": "Bob", "email": "bob@example.com" },
+    { "name": "Charlie", "email": "charlie@example.com" }
+])
+# Returns: { "created": 3 }
+
+# Upsert (insert or update by ID)
+User.upsert("user123", { "name": "Updated Name" })
+# Updates if exists, inserts with ID if not</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <p class="text-yellow-300 text-sm">
+            <strong>Performance:</strong> <code>create_many</code> sends all documents in a single database request, making it significantly faster than calling <code>create</code> in a loop. Use it when inserting large datasets.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Transactions</h2>
+    <p class="text-gray-400 mb-6">Execute multiple operations atomically within a database transaction. Use a transaction handle for manual control, or execute SDBQL directly:</p>
+
+    <h3 class="text-xl font-bold text-white mb-4">Transaction Handle (Recommended)</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Get transaction handle
+let tx = User.transaction()
+
+# Perform operations within the transaction
+tx.create({ name: "Alice", age: 30 })
+tx.create({ name: "Bob", age: 25 })
+
+# Commit all changes
+tx.commit()
+# Or tx.rollback() to undo all changes
+
+# Also available: tx.get(key), tx.update(key, doc), tx.delete(key)</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-8">
+        <p class="text-indigo-300 text-sm">
+            <strong>Transaction handle methods:</strong> <code>tx.create(doc)</code>, <code>tx.get(key)</code>, <code>tx.update(key, doc)</code>, <code>tx.delete(key)</code>, <code>tx.commit()</code>, <code>tx.rollback()</code>. All operations are buffered until <code>commit()</code> is called.
+        </p>
+    </div>
+
+    <h3 class="text-xl font-bold text-white mb-4">Execute SDBQL in Transaction</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Execute SDBQL in a transaction (auto-commits)
+let result = User.transaction("
+    INSERT { name: 'Alice', age: 30 } INTO users;
+    INSERT { name: 'Bob', age: 25 } INTO users;
+    RETURN users
+")</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-green-500/10 border border-green-500/20 mb-12">
+        <p class="text-green-300 text-sm">
+            <strong>Auto-commit:</strong> When passing a SDBQL string to <code>transaction()</code>, all statements are executed atomically and committed automatically. If any statement fails, the entire transaction is rolled back.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
+    <p class="text-gray-400 mb-4">When the ORM doesn't cover your use case, you can run raw SDBQL queries directly.</p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Using db.query()</h3>
+    <p class="text-gray-400 mb-4">Use <code>db.query()</code> with <code>@param</code> bind parameters for safe, parameterized queries:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Read with named parameters
+let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
+    "age": 18
+})
+
+# Insert
+db.query("INSERT { name: @name, email: @email } INTO users", {
+    "name": "Bob",
+    "email": "bob@example.com"
+})
+
+# Update
+db.query("UPDATE @key WITH { name: @name } IN users", {
+    "key": user_id,
+    "name": "Alice Smith"
+})
+
+# Delete
+db.query("REMOVE @key IN users", { "key": user_id })</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Using @sdql{} Query Block</h3>
+    <p class="text-gray-400 mb-4">The <code>@sdql{}</code> syntax provides inline interpolation with <code>#{expression}</code> for more readable multi-line queries:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Simple query with interpolation
+let users = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{age}
+    RETURN u
+}
+
+# Multiple interpolations
+let results = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{min_age} AND u.city == #{city}
+    SORT u.name ASC
+    LIMIT #{limit}
+    RETURN u
+}</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">When to Use Each</h3>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Approach</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Use Case</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Standard CRUD, relations, eager loading &mdash; use the ORM first</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">db.query()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Parameterized queries with <code>@param</code> bind variables</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">@sdql{}</code></td>
+                    <td class="py-3 px-4 text-gray-400">Inline interpolation with <code>#{expr}</code> for readable multi-line queries</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models & ORM &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn the basics of models, CRUD operations, and query building.</p>
+        </a>
+        <a href="/docs/database/validations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Validations &rarr;</h3>
+            <p class="text-sm text-gray-400">Validate data integrity with built-in and custom validation rules.</p>
+        </a>
+    </div>
+</div>

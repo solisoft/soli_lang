@@ -214,7 +214,15 @@ mod tests {
 
     #[test]
     fn test_build_has_many() {
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "posts",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         assert_eq!(rel.name, "posts");
         assert_eq!(rel.relation_type, RelationType::HasMany);
         assert_eq!(rel.class_name, "Post");
@@ -224,7 +232,15 @@ mod tests {
 
     #[test]
     fn test_build_has_one() {
-        let rel = build_relation("User", "profile", RelationType::HasOne, None, None, None, None);
+        let rel = build_relation(
+            "User",
+            "profile",
+            RelationType::HasOne,
+            None,
+            None,
+            None,
+            None,
+        );
         assert_eq!(rel.name, "profile");
         assert_eq!(rel.relation_type, RelationType::HasOne);
         assert_eq!(rel.class_name, "Profile");
@@ -234,7 +250,15 @@ mod tests {
 
     #[test]
     fn test_build_belongs_to() {
-        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None, None, None);
+        let rel = build_relation(
+            "Post",
+            "user",
+            RelationType::BelongsTo,
+            None,
+            None,
+            None,
+            None,
+        );
         assert_eq!(rel.name, "user");
         assert_eq!(rel.relation_type, RelationType::BelongsTo);
         assert_eq!(rel.class_name, "User");

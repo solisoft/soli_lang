@@ -37,6 +37,11 @@ get("/docs/core-concepts/error-pages", "docs#core_concepts_error_pages");
 # Database
 get("/docs/database/configuration", "docs#database_configuration");
 get("/docs/database/models", "docs#database_models");
+get("/docs/database/query-builder", "docs#database_query_builder");
+get("/docs/database/relationships", "docs#database_relationships");
+get("/docs/database/validations", "docs#database_validations");
+get("/docs/database/finders", "docs#database_finders");
+get("/docs/database/advanced", "docs#database_advanced");
 get("/docs/database/migrations", "docs#database_migrations");
 
 # Security

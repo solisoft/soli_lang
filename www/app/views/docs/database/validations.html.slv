@@ -1,0 +1,302 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Validations & Callbacks</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Ensure data integrity with model validations and hook into the lifecycle of your records with callbacks.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Defining Validations</h2>
+    <p class="text-gray-400 mb-4">
+        Use <code>validates</code> inside your model class to declare rules for each field.
+        Validations run automatically before <code>create</code> and <code>save</code> operations.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+    validates("email", { "presence": true, "uniqueness": true })
+    validates("name", { "presence": true, "min_length": 2 })
+    validates("age", { "numericality": true, "min": 0, "max": 150 })
+    validates("password", { "min_length": 8 })
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-green-500/10 border border-green-500/20 mb-12">
+        <p class="text-green-300 text-sm">
+            <strong>Multiple rules per field:</strong> You can combine any number of validation options in a single <code>validates</code> call. All rules for the field are checked together, and every failing rule produces its own error message.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Validation Options</h2>
+    <p class="text-gray-400 mb-6">Each option controls a specific check on the field value:</p>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Option</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">presence: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Field must be present and not empty</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">uniqueness: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Value must be unique in collection</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">min_length: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must be at least n characters</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">max_length: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must be at most n characters</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">format: "regex"</code></td>
+                    <td class="py-3 px-4 text-gray-400">String must match regex pattern</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">numericality: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Value must be a number</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">min: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">Number must be &gt;= n</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">max: n</code></td>
+                    <td class="py-3 px-4 text-gray-400">Number must be &lt;= n</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">custom: "method"</code></td>
+                    <td class="py-3 px-4 text-gray-400">Call custom validation method</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Validation Results</h2>
+    <p class="text-gray-400 mb-4">
+        Operations like <code>Model.create()</code> return a result hash indicating success or failure.
+        When validation fails, the <code>"errors"</code> key contains an array of error objects with <code>"field"</code> and <code>"message"</code> keys.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">let result = User.create({ "email": "" })
+if result["valid"]
+    let user = result["record"]
+    print("Created user: " + user._key)
+else
+    for error in result["errors"]
+        print(error["field"] + ": " + error["message"])
+    end
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <p class="text-indigo-300 text-sm">
+            <strong>Tip:</strong> Always check <code>result["valid"]</code> before accessing the record. When validations fail, the record is <strong class="text-white">not</strong> persisted to the database.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Custom Methods on Models</h2>
+    <p class="text-gray-400 mb-4">
+        Define instance methods directly in your model class to encapsulate business logic.
+        Use <code>this</code> to access the current instance's fields.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+    def is_admin -> Bool
+        this.role == "admin"
+    end
+
+    def full_name -> String
+        this.first_name + " " + this.last_name
+    end
+end
+
+let user = User.find("user123")
+if user.is_admin
+    print("Welcome, admin " + user.full_name())
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <p class="text-yellow-300 text-sm">
+            <strong>Zero-arg methods:</strong> Methods like <code>is_admin</code> that take no arguments can be called without parentheses (e.g. <code>user.is_admin</code>). Methods that return a value from a computation should use parentheses when called (e.g. <code>user.full_name()</code>).
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Callbacks</h2>
+    <p class="text-gray-400 mb-4">
+        Callbacks let you hook into the lifecycle of a model record. Declare them at the class level with the name of the instance method to call.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+    before_save("normalize_email")
+    after_create("send_welcome_email")
+    before_update("log_changes")
+    after_delete("cleanup_related")
+
+    def normalize_email
+        this.email = this.email.downcase()
+    end
+
+    def send_welcome_email
+        # Send email logic
+    end
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
+        <p class="text-indigo-300 text-sm">
+            <strong>Execution order:</strong> <code>before_save</code> runs before both create and update operations, making it ideal for data normalization. Specific callbacks like <code>before_create</code> or <code>before_update</code> run only for their respective operation.
+        </p>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Available Callbacks</h3>
+    <div class="grid grid-cols-2 gap-4 mb-12">
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_save</code>
+            <p class="text-xs text-gray-400 mt-1">Before create or update</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_save</code>
+            <p class="text-xs text-gray-400 mt-1">After create or update</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_create</code>
+            <p class="text-xs text-gray-400 mt-1">Before inserting new record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_create</code>
+            <p class="text-xs text-gray-400 mt-1">After inserting new record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_update</code>
+            <p class="text-xs text-gray-400 mt-1">Before updating record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_update</code>
+            <p class="text-xs text-gray-400 mt-1">After updating record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">before_delete</code>
+            <p class="text-xs text-gray-400 mt-1">Before deleting record</p>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+            <code class="text-cyan-300">after_delete</code>
+            <p class="text-xs text-gray-400 mt-1">After deleting record</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+    validates("email", { "presence": true, "uniqueness": true, "format": "^[^@]+@[^@]+$" })
+    validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
+    validates("age", { "numericality": true, "min": 0, "max": 150 })
+    validates("password", { "min_length": 8 })
+    validates("role", { "custom": "validate_role" })
+
+    before_save("normalize_email")
+    after_create("send_welcome_email")
+    before_delete("cleanup_related")
+
+    def normalize_email
+        this.email = this.email.downcase()
+    end
+
+    def send_welcome_email
+        # Send welcome email to new users
+    end
+
+    def cleanup_related
+        # Remove associated data before deletion
+    end
+
+    def validate_role
+        let valid_roles = ["admin", "user", "moderator"]
+        if !valid_roles.includes?(this.role)
+            return "must be one of: admin, user, moderator"
+        end
+    end
+
+    def is_admin -> Bool
+        this.role == "admin"
+    end
+
+    def full_name -> String
+        this.first_name + " " + this.last_name
+    end
+end
+
+# Creating a user with validation
+let result = User.create({
+    "email": "Alice@Example.com",
+    "name": "Alice",
+    "age": 30,
+    "password": "securepass",
+    "role": "admin"
+})
+
+if result["valid"]
+    let user = result["record"]
+    print(user.email)       # => "alice@example.com" (normalized by before_save)
+    print(user.is_admin)    # => true
+    print(user.full_name()) # => "Alice "
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
+            </svg>
+            Best Practices
+        </h4>
+        <ul class="text-indigo-200/80 text-sm space-y-2">
+            <li><strong>Validate early</strong> - Add validations to catch bad data before it reaches the database</li>
+            <li><strong>Use presence checks</strong> - Required fields should always have <code>presence: true</code></li>
+            <li><strong>Keep callbacks focused</strong> - Each callback method should do one thing well</li>
+            <li><strong>Avoid heavy logic in callbacks</strong> - Don't put slow operations in <code>before_save</code> or <code>before_create</code></li>
+            <li><strong>Use custom validations</strong> - For complex rules that can't be expressed with built-in options</li>
+            <li><strong>Check validation results</strong> - Always inspect <code>result["valid"]</code> after <code>create</code></li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models & ORM &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn about CRUD operations, query building, and relationships.</p>
+        </a>
+        <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Advanced Queries &rarr;</h3>
+            <p class="text-sm text-gray-400">Aggregations, raw queries, transactions, and more.</p>
+        </a>
+    </div>
+</div>

@@ -5,7 +5,9 @@ use std::rc::Rc;
 
 use crate::ast::Expr;
 use crate::error::RuntimeError;
+use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::builtins::model::get_relation;
+use crate::interpreter::builtins::model::is_translated_field;
 use crate::interpreter::builtins::model::relations::RelationType;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
@@ -102,6 +104,7 @@ impl Interpreter {
         }
     }
 
+    #[allow(clippy::collapsible_match)]
     fn instance_member_access(
         &mut self,
         inst: Rc<RefCell<Instance>>,
@@ -262,7 +265,44 @@ impl Interpreter {
             }
         }
 
+        // Check if this is a translated field
+        #[allow(clippy::collapsible_match)]
+        let inst_ref = inst.borrow();
+        if inst_ref.class.is_model_subclass() {
+            let class_name = &inst_ref.class.name;
+            if is_translated_field(class_name, name) {
+                let locale = i18n_helpers::get_locale();
+
+                // Look up in translated_fields.{field_name}.{locale}
+                if let Some(translated_fields) = inst_ref.get("translated_fields") {
+                    if let Value::Hash(tf_hash) = translated_fields {
+                        let tf_ref = tf_hash.borrow();
+                        if let Some(field_translations) = tf_ref.get(
+                            &crate::interpreter::value::HashKey::String(name.to_string()),
+                        ) {
+                            if let Value::Hash(locale_hash) = field_translations {
+                                let locale_ref = locale_hash.borrow();
+                                if let Some(translated_value) = locale_ref.get(
+                                    &crate::interpreter::value::HashKey::String(locale.clone()),
+                                ) {
+                                    return Ok(translated_value.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fallback: return raw field value if locale not found
+                if let Some(raw_value) = inst_ref.get(name) {
+                    return Ok(raw_value);
+                }
+            }
+        }
+
+        drop(inst_ref);
+
         // First check for field
+        let inst_ref = inst.borrow();
         if let Some(value) = inst_ref.get(name) {
             return Ok(value);
         }

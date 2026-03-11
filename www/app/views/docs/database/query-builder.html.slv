@@ -1,0 +1,242 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Query Builder</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Build complex database queries with a fluent, chainable API.
+            The QueryBuilder lets you compose filters, sorting, pagination, aggregations, and eager loading step by step.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Query Builder Chaining</h2>
+    <p class="text-gray-400 mb-6">Chain methods to build complex queries. You can start a chain with <code>.where()</code>, <code>.order()</code>, or <code>.limit()</code>:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Start with .where()
+let results = User
+    .where("age >= @age", { "age": 18 })
+    .where("active == @active", { "active": true })
+    .order("created_at", "desc")
+    .limit(10)
+    .offset(20)
+    .all
+
+# Start with .order() — no filter needed
+let recent = User.order("created_at", "desc").limit(5).all
+
+# Start with .limit()
+let sample = User.limit(3).all
+
+# Get first result only
+let first = User.where("email == @email", { "email": "alice@example.com" }).first
+
+# Count with conditions
+let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">QueryBuilder Methods</h2>
+    <p class="text-gray-400 mb-6">All chainable methods available on the QueryBuilder. Methods like <code>.where()</code>, <code>.order()</code>, <code>.limit()</code>, and <code>.includes()</code> return a new QueryBuilder, while <code>.all</code>, <code>.first</code>, <code>.count</code> execute the query.</p>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.where(filter, bind_vars)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Add filter condition (ANDed)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.order(field, direction)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set sort order ("asc"/"desc")</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.limit(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Limit results to n documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.offset(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Skip first n documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.all</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return all results</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.first</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return first result</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.count</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return count</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.exists</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set exists mode (chain with <code>.first</code> to execute, <code>.to_query</code> to inspect)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.pluck(field, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set pluck mode for specified fields (chain with <code>.all</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.sum(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set sum aggregation (chain with <code>.first</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.avg(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set average aggregation (chain with <code>.first</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.min(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set minimum aggregation (chain with <code>.first</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.max(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set maximum aggregation (chain with <code>.first</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.group_by(field, func, agg_field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set group-by aggregation (chain with <code>.all</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes(rel, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load relations via subqueries</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes(rel, filter, binds)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load with filter and optional <code>"fields"</code> key</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes({ rel: [fields] })</code></td>
+                    <td class="py-3 px-4 text-gray-400">Eager load with field projection</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.select(field, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Select specific fields on the main collection</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.fields(field, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Alias for <code>.select()</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.join(rel, filter?, binds?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Filter by existence of related records</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.to_query</code></td>
+                    <td class="py-3 px-4 text-gray-400">Return the generated SDBQL string (for debugging)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Query Generation (SDBQL)</h2>
+    <p class="text-gray-400 mb-6">Under the hood, QueryBuilder methods generate SDBQL (SoliDB Query Language) queries. Use <code>.to_query</code> to inspect the generated output:</p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Soli Code</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Generated SDBQL</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.all</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.where("age >= @age", {"age": 18})</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER doc.age >= @age RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.order("name", "asc").all</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users SORT doc.name ASC RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.order("name", "asc").limit(10).all</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users SORT doc.name ASC LIMIT 10 RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.limit(10).offset(20)</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... LIMIT 20, 10 RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.count</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users COLLECT WITH COUNT INTO count RETURN count</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.includes("posts")</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes("posts", "published = @p", {"p": true})</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... FILTER rel.user_id == doc._key AND rel.published == @p RETURN rel ...</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.includes({"posts": ["title"]})</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">... RETURN {title: rel.title} ...</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.select("name", "email")</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.join("posts")</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER LENGTH(FOR rel IN posts FILTER rel.user_id == doc._key LIMIT 1 RETURN 1) > 0 RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.exists.to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... LIMIT 1 RETURN true</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.pluck("name").to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... RETURN doc.name</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.pluck("name", "email").to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... RETURN {name: doc.name, email: doc.email}</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.sum("balance").to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... RETURN SUM(doc.balance)</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.group_by("country", "sum", "balance").to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... COLLECT group = doc.country AGGREGATE result = SUM(doc.balance) RETURN {group: group, result: result}</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">SDBQL Syntax</h4>
+        <ul class="text-blue-200/80 text-sm space-y-2">
+            <li><code>FOR doc IN collection</code> instead of <code>SELECT * FROM</code></li>
+            <li><code>FILTER expression</code> instead of <code>WHERE</code></li>
+            <li><code>SORT doc.field ASC/DESC</code> instead of <code>ORDER BY</code></li>
+            <li><code>@variable</code> syntax for bind parameters</li>
+            <li><code>LET</code> subqueries + <code>MERGE</code> for eager loading</li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/database/relationships" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Relationships &rarr;</h3>
+            <p class="text-sm text-gray-400">Define associations between models with has_many, has_one, and belongs_to.</p>
+        </a>
+        <a href="/docs/database/finders" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Finders & Aggregations &rarr;</h3>
+            <p class="text-sm text-gray-400">Use find_by, pluck, sum, avg, and other convenience methods.</p>
+        </a>
+    </div>
+</div>

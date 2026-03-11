@@ -4,8 +4,9 @@
 
 use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
+use crate::interpreter::builtins::model::is_translated_field;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{HashKey, Value};
 use crate::span::Span;
 
 use std::cell::RefCell;
@@ -267,6 +268,49 @@ impl Interpreter {
                                 target.span,
                             ));
                         }
+
+                        // Handle translated fields: store in _pending_translations instead of raw field
+                        let class_name = inst.borrow().class.name.clone();
+                        if is_translated_field(&class_name, name) {
+                            let mut inst_mut = inst.borrow_mut();
+
+                            // Get or create _pending_translations hash
+                            let pending_translations =
+                                if let Some(pt) = inst_mut.get("_pending_translations") {
+                                    if let Value::Hash(hash) = pt {
+                                        hash.clone()
+                                    } else {
+                                        // Create new hash if it exists but isn't a hash
+                                        let new_hash = Rc::new(RefCell::new(
+                                            crate::interpreter::value::HashPairs::default(),
+                                        ));
+                                        inst_mut.fields.insert(
+                                            "_pending_translations".to_string(),
+                                            Value::Hash(new_hash.clone()),
+                                        );
+                                        new_hash
+                                    }
+                                } else {
+                                    // Create new hash
+                                    let new_hash = Rc::new(RefCell::new(
+                                        crate::interpreter::value::HashPairs::default(),
+                                    ));
+                                    inst_mut.fields.insert(
+                                        "_pending_translations".to_string(),
+                                        Value::Hash(new_hash.clone()),
+                                    );
+                                    new_hash
+                                };
+
+                            // Store the value in _pending_translations.{field_name}
+                            pending_translations
+                                .borrow_mut()
+                                .insert(HashKey::String(name.clone()), new_value.clone());
+
+                            // Don't set the raw field - translations are stored separately
+                            return Ok(new_value);
+                        }
+
                         inst.borrow_mut().set(name.clone(), new_value.clone());
                         Ok(new_value)
                     }

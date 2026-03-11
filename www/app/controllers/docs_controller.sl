@@ -82,6 +82,26 @@ fn database_models(req)
     render_docs("docs/database/models", "Models & ORM", "database", "models")
 end
 
+fn database_query_builder(req)
+    render_docs("docs/database/query-builder", "Query Builder", "database", "query_builder")
+end
+
+fn database_relationships(req)
+    render_docs("docs/database/relationships", "Relationships", "database", "relationships")
+end
+
+fn database_validations(req)
+    render_docs("docs/database/validations", "Validations & Callbacks", "database", "validations")
+end
+
+fn database_finders(req)
+    render_docs("docs/database/finders", "Finders & Aggregations", "database", "finders")
+end
+
+fn database_advanced(req)
+    render_docs("docs/database/advanced", "Advanced Features", "database", "advanced")
+end
+
 fn database_migrations(req)
     render_docs("docs/database/migrations", "Migrations", "database", "migrations")
 end

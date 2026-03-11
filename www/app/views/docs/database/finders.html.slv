@@ -1,0 +1,242 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Finders & Aggregations</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Locate records by field values, compute aggregates, pluck specific columns,
+            and perform atomic instance operations on your models.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Finder Methods</h2>
+    <p class="text-gray-400 mb-6">
+        Finder methods provide convenient shortcuts for common lookup patterns. They return model instances (or <code>null</code> when no match is found).
+    </p>
+
+    <div class="space-y-8 mb-12">
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">FIND_BY</span>
+                Find by Exact Field Match
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Returns the first record whose field equals the given value, or <code>null</code> if none is found.
+            </p>
+            <pre><code class="language-soli text-sm"># Find by exact field match
+let user = User.find_by("email", "alice@example.com")</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">FIRST_BY</span>
+                Find with Ordering
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Returns the first record matching the field value, with ordering applied.
+            </p>
+            <pre><code class="language-soli text-sm"># Find with ordering (first by field value)
+let user = User.first_by("name", "Alice")</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">FIND_OR_CREATE_BY</span>
+                Find or Create
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Returns an existing record if one matches, or creates a new one. An optional third argument provides additional fields for creation.
+            </p>
+            <pre><code class="language-soli text-sm"># Find or create - returns existing or creates new
+let user = User.find_or_create_by("email", "new@example.com")
+let user = User.find_or_create_by("email", "new@example.com", { "name": "New User" })</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Aggregations</h2>
+    <p class="text-gray-400 mb-6">
+        Aggregation methods let you compute sums, averages, minimums, maximums, and grouped totals directly in the database.
+    </p>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
+        <p class="text-indigo-300 text-sm">
+            <strong>QueryBuilder mode:</strong> Aggregation methods (<code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code>, <code>group_by</code>) return a QueryBuilder in aggregation mode. Chain with <code>.first</code> to execute and get the result, or <code>.to_query</code> to inspect the generated SDBQL.
+        </p>
+    </div>
+
+    <div class="space-y-8 mb-12">
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">SUM</span>
+                Sum
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Compute the sum of a numeric field. Chain <code>.first</code> to execute.
+            </p>
+            <pre><code class="language-soli text-sm"># Sum — chain .first to execute
+let total = User.where("age > @a", { "a": 18 }).sum("balance").first</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">AVG</span>
+                Average
+            </h3>
+            <pre><code class="language-soli text-sm"># Average
+let avg = User.avg("score").first</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">MIN</span>
+                Minimum
+            </h3>
+            <pre><code class="language-soli text-sm"># Minimum
+let min_score = User.min("score").first</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">MAX</span>
+                Maximum
+            </h3>
+            <pre><code class="language-soli text-sm"># Maximum
+let max_score = User.max("views").first</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">GROUP_BY</span>
+                Group By Aggregation
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Group records by a field and apply an aggregation function. Chain <code>.all</code> for grouped results.
+            </p>
+            <pre><code class="language-soli text-sm"># Group by aggregation — chain .all for grouped results
+let by_country = User.group_by("country", "sum", "balance").all
+# Returns: [{ group: "US", result: 1000 }, { group: "FR", result: 500 }, ...]</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs font-mono">INSPECT</span>
+                Inspecting Generated Queries
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Use <code>.to_query</code> to see the SDBQL that a QueryBuilder will execute.
+            </p>
+            <pre><code class="language-soli text-sm"># Inspect the generated query
+let q = User.where("active = @a", { "a": true }).sum("balance").to_query
+# => FOR doc IN users FILTER doc.active == @a RETURN SUM(doc.balance)</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Pluck</h2>
+    <p class="text-gray-400 mb-6">
+        Use <code>pluck</code> to retrieve only specific field values instead of full model instances. This is more efficient when you only need a subset of fields.
+    </p>
+
+    <div class="space-y-8 mb-12">
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">SINGLE FIELD</span>
+                Pluck a Single Field
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Returns a flat array of values. Chain <code>.all</code> to execute.
+            </p>
+            <pre><code class="language-soli text-sm"># Get array of single field values — chain .all to execute
+let names = User.where("active = @a", { "a": true }).pluck("name").all
+# Returns: ["Alice", "Bob", "Charlie"]</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">MULTIPLE FIELDS</span>
+                Pluck Multiple Fields
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Returns an array of objects with the requested keys.
+            </p>
+            <pre><code class="language-soli text-sm"># Get multiple fields as objects
+let users = User.pluck("name", "email").all
+# Returns: [{ name: "Alice", email: "alice@example.com" }, ...]</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Exists</h2>
+    <p class="text-gray-400 mb-6">
+        Check whether any records match a query without fetching them. Returns a boolean.
+    </p>
+
+    <div class="space-y-8 mb-12">
+        <div>
+            <pre><code class="language-soli text-sm"># Check if records exist — chain .first to execute (returns boolean)
+let exists = User.where("role = @r", { "r": "admin" }).exists.first
+# Returns: true or false
+
+# Inspect the generated query
+let q = User.where("role = @r", { "r": "admin" }).exists.to_query
+# => FOR doc IN users FILTER doc.role == @r LIMIT 1 RETURN true</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Instance Increment/Decrement</h2>
+    <p class="text-gray-400 mb-6">
+        Perform atomic updates and utility operations on individual model instances.
+    </p>
+
+    <div class="space-y-8 mb-12">
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">INCREMENT / DECREMENT</span>
+                Atomic Field Updates
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Atomically increment or decrement a numeric field in the database. The default step is 1.
+            </p>
+            <pre><code class="language-soli text-sm">let user = User.find("user_id")
+
+# Atomic increment/decrement
+user.increment("view_count")       # +1
+user.increment("view_count", 5)    # +5
+user.decrement("stock")            # -1</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs font-mono">TOUCH</span>
+                Update Timestamp
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Updates the <code>_updated_at</code> timestamp without modifying any other fields.
+            </p>
+            <pre><code class="language-soli text-sm"># Update timestamp only
+user.touch  # Updates _updated_at</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">RELOAD</span>
+                Refresh from Database
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Re-fetches the record from the database, discarding any unsaved local changes.
+            </p>
+            <pre><code class="language-soli text-sm"># Refresh from database
+user.reload</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/database/query-builder" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Query Builder &rarr;</h3>
+            <p class="text-sm text-gray-400">Build complex queries with chaining, filters, ordering, and pagination.</p>
+        </a>
+        <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Advanced &rarr;</h3>
+            <p class="text-sm text-gray-400">Raw queries, transactions, and advanced database patterns.</p>
+        </a>
+    </div>
+</div>
