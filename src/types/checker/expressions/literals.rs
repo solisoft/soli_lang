@@ -16,6 +16,7 @@ impl TypeChecker {
             ExprKind::StringLiteral(_) => Ok(Type::String),
             ExprKind::CommandSubstitution(_) => Ok(Type::Future(Box::new(Type::Any))),
             ExprKind::BoolLiteral(_) => Ok(Type::Bool),
+            ExprKind::Symbol(_) => Ok(Type::Symbol),
             ExprKind::Null => Ok(Type::Null),
             _ => unreachable!("Expected literal expression kind"),
         }

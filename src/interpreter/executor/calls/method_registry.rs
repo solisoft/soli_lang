@@ -516,6 +516,49 @@ pub const NULL_METHODS: &[MethodDef] = &[
     },
 ];
 
+pub const SYMBOL_METHODS: &[MethodDef] = &[
+    MethodDef {
+        name: "blank?",
+        zero_arg: true,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "class",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
+        name: "inspect",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
+        name: "is_a?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "nil?",
+        zero_arg: true,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "present?",
+        zero_arg: true,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "to_s",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
+        name: "to_string",
+        zero_arg: true,
+        ret: "string",
+    },
+];
+
 pub const STRING_METHODS: &[MethodDef] = &[
     MethodDef {
         name: "blank?",
@@ -821,6 +864,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         name: "to_string",
         zero_arg: true,
         ret: "string",
+    },
+    MethodDef {
+        name: "to_sym",
+        zero_arg: true,
+        ret: "symbol",
     },
     MethodDef {
         name: "tr",
@@ -1336,6 +1384,7 @@ pub fn known_methods(type_name: &str) -> &'static [MethodDef] {
         "bool" => BOOL_METHODS,
         "null" => NULL_METHODS,
         "string" => STRING_METHODS,
+        "symbol" => SYMBOL_METHODS,
         "array" => ARRAY_METHODS,
         "hash" => HASH_METHODS,
         "query_builder" => QUERY_BUILDER_METHODS,
@@ -1352,6 +1401,7 @@ pub fn is_zero_arg_method(method_name: &str, receiver: &Value) -> bool {
         Value::Bool(_) => "bool",
         Value::Null => "null",
         Value::String(_) => "string",
+        Value::Symbol(_) => "symbol",
         Value::Array(_) => "array",
         Value::Hash(_) => "hash",
         Value::QueryBuilder(_) => "query_builder",
@@ -1372,6 +1422,7 @@ pub fn method_return_type(type_name: &str, method_name: &str) -> Option<&'static
         "bool" => "bool",
         "null" => "null",
         "string" => "string",
+        "symbol" => "symbol",
         "array" => "array",
         "hash" => "hash",
         "query_builder" => "query_builder",

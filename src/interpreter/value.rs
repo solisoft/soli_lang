@@ -69,6 +69,7 @@ pub enum HashKey {
     String(String),
     Bool(bool),
     Null,
+    Symbol(String),
 }
 
 impl Hash for HashKey {
@@ -92,6 +93,10 @@ impl Hash for HashKey {
             }
             HashKey::Null => {
                 4u8.hash(state);
+            }
+            HashKey::Symbol(s) => {
+                5u8.hash(state);
+                s.hash(state);
             }
         }
     }
@@ -126,6 +131,7 @@ impl HashKey {
             Value::String(s) => Some(HashKey::String(s.clone())),
             Value::Bool(b) => Some(HashKey::Bool(*b)),
             Value::Null => Some(HashKey::Null),
+            Value::Symbol(s) => Some(HashKey::Symbol(s.clone())),
             // Floats are not hashable due to NaN != NaN issues
             _ => None,
         }
@@ -139,6 +145,7 @@ impl HashKey {
             HashKey::String(s) => Value::String(s.clone()),
             HashKey::Bool(b) => Value::Bool(*b),
             HashKey::Null => Value::Null,
+            HashKey::Symbol(s) => Value::Symbol(s.clone()),
         }
     }
 }
@@ -151,6 +158,7 @@ impl std::fmt::Display for HashKey {
             HashKey::String(s) => write!(f, "{}", s),
             HashKey::Bool(b) => write!(f, "{}", b),
             HashKey::Null => write!(f, "null"),
+            HashKey::Symbol(s) => write!(f, ":{}", s),
         }
     }
 }
@@ -187,6 +195,8 @@ pub enum Value {
     Decimal(DecimalValue),
     /// String value
     String(String),
+    /// Symbol value (:name)
+    Symbol(String),
     /// Boolean value
     Bool(bool),
     /// Null value
@@ -271,6 +281,7 @@ impl Value {
             Value::Float(_) => "float".to_string(),
             Value::Decimal(_) => "decimal".to_string(),
             Value::String(_) => "string".to_string(),
+            Value::Symbol(_) => "symbol".to_string(),
             Value::Bool(_) => "bool".to_string(),
             Value::Null => "null".to_string(),
             Value::Array(_) => "array".to_string(),
@@ -352,7 +363,7 @@ impl Value {
     pub fn is_hashable(&self) -> bool {
         matches!(
             self,
-            Value::Int(_) | Value::Decimal(_) | Value::String(_) | Value::Bool(_) | Value::Null
+            Value::Int(_) | Value::Decimal(_) | Value::String(_) | Value::Symbol(_) | Value::Bool(_) | Value::Null
         )
     }
 
@@ -386,6 +397,7 @@ impl PartialEq for Value {
             (Value::Int(a), Value::Float(b)) => (*a as f64) == *b,
             (Value::Float(a), Value::Int(b)) => *a == (*b as f64),
             (Value::String(a), Value::String(b)) => a == b,
+            (Value::Symbol(a), Value::Symbol(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Null, Value::Null) => true,
             (Value::Array(a), Value::Array(b)) => {
@@ -423,6 +435,7 @@ impl fmt::Display for Value {
             Value::Float(n) => write!(f, "{}", n),
             Value::Decimal(d) => write!(f, "{}", d),
             Value::String(s) => write!(f, "{}", s),
+            Value::Symbol(s) => write!(f, ":{}", s),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Null => write!(f, "null"),
             Value::Array(arr) => {
@@ -1083,6 +1096,7 @@ impl serde::Serialize for Value {
             Value::Float(f) => serializer.serialize_f64(*f),
             Value::Decimal(d) => serializer.serialize_str(&d.to_string()),
             Value::String(s) => serializer.serialize_str(s),
+            Value::Symbol(s) => serializer.serialize_str(s),
             Value::Array(arr) => {
                 let borrow = arr.borrow();
                 let mut seq = serializer.serialize_seq(Some(borrow.len()))?;
@@ -1095,8 +1109,11 @@ impl serde::Serialize for Value {
                 let borrow = hash.borrow();
                 let mut map = serializer.serialize_map(Some(borrow.len()))?;
                 for (k, v) in borrow.iter() {
-                    if let HashKey::String(key) = k {
-                        map.serialize_entry(key, v)?;
+                    match k {
+                        HashKey::String(key) | HashKey::Symbol(key) => {
+                            map.serialize_entry(key, v)?;
+                        }
+                        _ => {}
                     }
                 }
                 map.end()

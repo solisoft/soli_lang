@@ -66,6 +66,7 @@ impl Vm {
                     .keys()
                     .map(|k| match k {
                         HashKey::String(s) => Value::String(s.clone()),
+                        HashKey::Symbol(s) => Value::Symbol(s.clone()),
                         HashKey::Int(n) => Value::Int(*n),
                         HashKey::Bool(b) => Value::Bool(*b),
                         HashKey::Null => Value::Null,
@@ -91,6 +92,7 @@ impl Vm {
                     .map(|(k, v)| {
                         let key = match k {
                             HashKey::String(s) => Value::String(s.clone()),
+                            HashKey::Symbol(s) => Value::Symbol(s.clone()),
                             HashKey::Int(n) => Value::Int(*n),
                             HashKey::Bool(b) => Value::Bool(*b),
                             HashKey::Null => Value::Null,
@@ -164,6 +166,7 @@ impl Vm {
                     let new_key = value_to_hash_key(v, span)?;
                     let new_value = match k {
                         HashKey::String(s) => Value::String(s.clone()),
+                        HashKey::Symbol(s) => Value::Symbol(s.clone()),
                         HashKey::Int(n) => Value::Int(*n),
                         HashKey::Bool(b) => Value::Bool(*b),
                         HashKey::Null => Value::Null,

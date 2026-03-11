@@ -87,6 +87,7 @@ impl Interpreter {
             "join" => Ok(Value::String(s.to_string())),
             "empty?" => self.string_empty(s, arguments, span),
             "includes?" => self.string_include(s, arguments, span),
+            "to_sym" => Ok(Value::Symbol(s.to_string())),
             "parse_json" => match crate::interpreter::value::parse_json(s) {
                 Ok(value) => Ok(value),
                 Err(_) => Ok(Value::Hash(Rc::new(RefCell::new(

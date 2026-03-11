@@ -162,6 +162,12 @@ impl Vm {
                     };
                     self.stack.push(value);
                 }
+                Op::Symbol(idx) => {
+                    let frame = self.frames.last().unwrap();
+                    if let Constant::String(s) = &frame.closure.proto.chunk.constants[idx as usize] {
+                        self.stack.push(Value::Symbol(s.clone()));
+                    }
+                }
                 Op::Null => self.stack.push(Value::Null),
                 Op::True => self.stack.push(Value::Bool(true)),
                 Op::False => self.stack.push(Value::Bool(false)),

@@ -57,6 +57,8 @@ pub enum ExprKind {
 
     /// Boolean literal: true, false
     BoolLiteral(bool),
+    /// Symbol literal: :name
+    Symbol(String),
     /// Null literal
     Null,
 

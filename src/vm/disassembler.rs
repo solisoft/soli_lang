@@ -49,6 +49,10 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let val = chunk.constants.get(*idx as usize);
             out.push_str(&format!("CONSTANT {:>5} ({})", idx, format_constant(val)));
         }
+        Op::Symbol(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("SYMBOL       {:>5} (:{})", idx, name));
+        }
         Op::Null => out.push_str("NULL"),
         Op::True => out.push_str("TRUE"),
         Op::False => out.push_str("FALSE"),

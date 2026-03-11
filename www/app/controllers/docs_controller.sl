@@ -218,6 +218,10 @@ fn language_decimal(req)
     render_docs("docs/language/decimal", "Decimal", "language", "decimal")
 end
 
+fn language_symbols(req)
+    render_docs("docs/language/symbols", "Symbols", "language", "symbols")
+end
+
 fn language_blocks(req)
     render_docs("docs/language/blocks", "Block Syntax", "language", "blocks")
 end

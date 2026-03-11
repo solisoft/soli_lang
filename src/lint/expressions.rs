@@ -11,6 +11,7 @@ impl Linter {
             | ExprKind::DecimalLiteral(_)
             | ExprKind::StringLiteral(_)
             | ExprKind::BoolLiteral(_)
+            | ExprKind::Symbol(_)
             | ExprKind::Null
             | ExprKind::This
             | ExprKind::Super

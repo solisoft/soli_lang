@@ -64,6 +64,7 @@ impl Interpreter {
                         let hash_ref = hash_rc.clone();
                         self.hash_member_access(&hash_ref, name, span, Value::Hash(hash_rc))
                     }
+                    Value::Symbol(ref s) => Self::symbol_member_access(s, name, span),
                     Value::Int(n) => Self::int_member_access(n, name, span),
                     Value::Float(n) => Self::float_member_access(n, name, span),
                     Value::Bool(b) => Self::bool_member_access(b, name, span),
@@ -91,6 +92,7 @@ impl Interpreter {
             Value::Hash(ref hash) => self.hash_member_access(hash, name, span, obj_val.clone()),
             Value::QueryBuilder(_) => self.query_builder_member_access(name, span, obj_val),
             Value::String(ref _s) => self.string_member_access(name, span, obj_val),
+            Value::Symbol(ref _s) => Self::symbol_member_access(_s, name, span),
             Value::Int(n) => Self::int_member_access(n, name, span),
             Value::Float(n) => Self::float_member_access(n, name, span),
             Value::Bool(b) => Self::bool_member_access(b, name, span),
@@ -662,7 +664,7 @@ impl Interpreter {
             | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
             | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
             | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"
-            | "truncate" | "parse_json"
+            | "truncate" | "parse_json" | "to_sym"
             // Universal method with args
             | "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
@@ -800,6 +802,26 @@ impl Interpreter {
         }
     }
 
+    fn symbol_member_access(s: &str, name: &str, span: Span) -> RuntimeResult<Value> {
+        match name {
+            "class" => Ok(Value::String("symbol".to_string())),
+            "nil?" => Ok(Value::Bool(false)),
+            "blank?" => Ok(Value::Bool(false)),
+            "present?" => Ok(Value::Bool(true)),
+            "to_s" | "to_string" => Ok(Value::String(s.to_string())),
+            "inspect" => Ok(Value::String(format!(":{}", s))),
+            "is_a?" => Ok(Value::Method(ValueMethod {
+                receiver: Box::new(Value::Symbol(s.to_string())),
+                method_name: name.to_string(),
+            })),
+            _ => Err(RuntimeError::NoSuchProperty {
+                value_type: "symbol".to_string(),
+                property: name.to_string(),
+                span,
+            }),
+        }
+    }
+
     fn decimal_member_access(
         d: &crate::interpreter::value::DecimalValue,
         name: &str,
@@ -856,6 +878,7 @@ impl Interpreter {
     fn inspect_compact(val: &Value) -> String {
         match val {
             Value::String(s) => format!("\"{}\"", s),
+            Value::Symbol(s) => format!(":{}", s),
             Value::Null => "null".to_string(),
             Value::Bool(b) => b.to_string(),
             Value::Int(n) => n.to_string(),
@@ -988,6 +1011,7 @@ impl Interpreter {
             crate::interpreter::value::HashKey::Decimal(d) => format!("{}", d),
             crate::interpreter::value::HashKey::Bool(b) => b.to_string(),
             crate::interpreter::value::HashKey::Null => "null".to_string(),
+            crate::interpreter::value::HashKey::Symbol(s) => format!(":{}", s),
         }
     }
 }

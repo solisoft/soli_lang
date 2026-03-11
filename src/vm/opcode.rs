@@ -13,6 +13,9 @@ pub enum Op {
     /// Push false.
     False,
 
+    /// Push a symbol from the constant pool onto the stack.
+    Symbol(u16),
+
     // --- Stack manipulation ---
     /// Pop the top value off the stack.
     Pop,

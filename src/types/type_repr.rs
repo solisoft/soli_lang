@@ -16,6 +16,8 @@ pub enum Type {
     Bool,
     /// Primitive string type
     String,
+    /// Symbol type
+    Symbol,
     /// Void type (no value)
     Void,
     /// Null type
@@ -54,7 +56,7 @@ impl Type {
     pub fn is_primitive(&self) -> bool {
         matches!(
             self,
-            Type::Int | Type::Float | Type::Decimal(_) | Type::Bool | Type::String
+            Type::Int | Type::Float | Type::Decimal(_) | Type::Bool | Type::String | Type::Symbol
         )
     }
 
@@ -134,6 +136,7 @@ impl fmt::Display for Type {
             Type::Decimal(precision) => write!(f, "Decimal({})", precision),
             Type::Bool => write!(f, "Bool"),
             Type::String => write!(f, "String"),
+            Type::Symbol => write!(f, "Symbol"),
             Type::Void => write!(f, "Void"),
             Type::Null => write!(f, "Null"),
             Type::Array(inner) => write!(f, "{}[]", inner),

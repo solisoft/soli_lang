@@ -466,6 +466,7 @@ impl CoverageTracker {
             | DecimalLiteral(_)
             | StringLiteral(_)
             | BoolLiteral(_)
+            | Symbol(_)
             | Null
             | CommandSubstitution(_) => {}
             Variable(_) => {}

@@ -66,6 +66,9 @@ impl Parser {
                 start_span,
             )),
             TokenKind::BoolLiteral(b) => Ok(Expr::new(ExprKind::BoolLiteral(*b), start_span)),
+            TokenKind::SymbolLiteral(s) => {
+                Ok(Expr::new(ExprKind::Symbol(s.clone()), start_span))
+            }
             TokenKind::Null => Ok(Expr::new(ExprKind::Null, start_span)),
 
             TokenKind::Identifier(name) => {
@@ -211,13 +214,19 @@ impl Parser {
 
             // &:method_name → |__it| __it.method_name
             TokenKind::Ampersand => {
-                self.expect(&TokenKind::Colon)?;
-                // Parse method name, allowing ? suffix (e.g., empty?, nil?)
-                let method_name = self.expect_identifier()?;
-                let method_name = if self.match_token(&TokenKind::Question) {
-                    format!("{}?", method_name)
+                // Accept both &:symbol and &:identifier forms
+                let method_name = if let TokenKind::SymbolLiteral(s) = &self.peek().kind {
+                    let s = s.clone();
+                    self.advance();
+                    s
                 } else {
-                    method_name
+                    self.expect(&TokenKind::Colon)?;
+                    let name = self.expect_identifier()?;
+                    if self.match_token(&TokenKind::Question) {
+                        format!("{}?", name)
+                    } else {
+                        name
+                    }
                 };
                 let span = start_span.merge(&self.previous_span());
                 let param = crate::ast::stmt::Parameter {
@@ -419,7 +428,16 @@ impl Parser {
                     key
                 };
 
-                let value = self.expression()?;
+                // Shorthand: { name: } or { name:, age: } — value is the variable with the same name as the key
+                let value = if let ExprKind::StringLiteral(ref name) = key.kind {
+                    if self.check(&TokenKind::Comma) || self.check(&TokenKind::RightBrace) {
+                        Expr::new(ExprKind::Variable(name.clone()), key.span)
+                    } else {
+                        self.expression()?
+                    }
+                } else {
+                    self.expression()?
+                };
 
                 // Check if this is a comprehension
                 if self.match_token(&TokenKind::For) {
@@ -880,6 +898,87 @@ impl Parser {
                         let block_expr = self.finish_parsing_lambda(params, block_start)?;
                         let _span = start_span.merge(&block_expr.span);
                         arguments.push(Argument::Block(block_expr));
+                    } else if let TokenKind::SymbolLiteral(s) = &self.peek().kind {
+                        // &:method shorthand: &:to_s → |__it| __it.to_s
+                        let method_name = s.clone();
+                        self.advance(); // consume the symbol
+                        let span = start_span.merge(&self.previous_span());
+                        let param = crate::ast::stmt::Parameter {
+                            name: "__it".to_string(),
+                            type_annotation: TypeAnnotation::new(
+                                crate::ast::types::TypeKind::Named("Any".to_string()),
+                                start_span,
+                            ),
+                            default_value: None,
+                            span: start_span,
+                            is_block_param: false,
+                        };
+                        let body_expr = Expr::new(
+                            ExprKind::Member {
+                                object: Box::new(Expr::new(
+                                    ExprKind::Variable("__it".to_string()),
+                                    start_span,
+                                )),
+                                name: method_name,
+                            },
+                            span,
+                        );
+                        let body_stmt = crate::ast::Stmt::new(
+                            crate::ast::StmtKind::Expression(body_expr),
+                            span,
+                        );
+                        let lambda = Expr::new(
+                            ExprKind::Lambda {
+                                params: vec![param],
+                                return_type: None,
+                                body: vec![body_stmt],
+                            },
+                            span,
+                        );
+                        arguments.push(Argument::Block(lambda));
+                    } else if self.check(&TokenKind::Colon) {
+                        // &:method_name shorthand (old syntax): &:identifier
+                        self.advance(); // consume :
+                        let method_name = self.expect_identifier()?;
+                        let method_name = if self.match_token(&TokenKind::Question) {
+                            format!("{}?", method_name)
+                        } else {
+                            method_name
+                        };
+                        let span = start_span.merge(&self.previous_span());
+                        let param = crate::ast::stmt::Parameter {
+                            name: "__it".to_string(),
+                            type_annotation: TypeAnnotation::new(
+                                crate::ast::types::TypeKind::Named("Any".to_string()),
+                                start_span,
+                            ),
+                            default_value: None,
+                            span: start_span,
+                            is_block_param: false,
+                        };
+                        let body_expr = Expr::new(
+                            ExprKind::Member {
+                                object: Box::new(Expr::new(
+                                    ExprKind::Variable("__it".to_string()),
+                                    start_span,
+                                )),
+                                name: method_name,
+                            },
+                            span,
+                        );
+                        let body_stmt = crate::ast::Stmt::new(
+                            crate::ast::StmtKind::Expression(body_expr),
+                            span,
+                        );
+                        let lambda = Expr::new(
+                            ExprKind::Lambda {
+                                params: vec![param],
+                                return_type: None,
+                                body: vec![body_stmt],
+                            },
+                            span,
+                        );
+                        arguments.push(Argument::Block(lambda));
                     } else if let TokenKind::Identifier(_) = &self.peek().kind {
                         // Block reference: &identifier
                         let name = self.expect_identifier()?;

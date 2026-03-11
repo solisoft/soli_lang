@@ -100,6 +100,8 @@ impl<'a> Scanner<'a> {
             ':' => {
                 if self.match_char(':') {
                     Ok(self.make_token(TokenKind::DoubleColon))
+                } else if self.peek().map_or(false, |c| c.is_alphabetic() || c == '_') {
+                    self.scan_symbol()
                 } else {
                     Ok(self.make_token(TokenKind::Colon))
                 }
@@ -924,6 +926,26 @@ impl<'a> Scanner<'a> {
                 .map_err(|_| LexerError::invalid_number(value.clone(), self.current_span()))?;
             Ok(self.make_token(TokenKind::IntLiteral(n)))
         }
+    }
+
+    fn scan_symbol(&mut self) -> Result<Token, LexerError> {
+        let mut name = String::new();
+        while let Some(c) = self.peek() {
+            if c.is_alphanumeric() || c == '_' {
+                name.push(c);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        // Allow trailing ? or !
+        if let Some(c) = self.peek() {
+            if c == '?' || c == '!' {
+                name.push(c);
+                self.advance();
+            }
+        }
+        Ok(self.make_token(TokenKind::SymbolLiteral(name)))
     }
 
     fn scan_identifier(&mut self, first: char) -> Result<Token, LexerError> {

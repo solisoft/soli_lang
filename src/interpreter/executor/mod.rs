@@ -328,6 +328,7 @@ impl Interpreter {
             Value::QueryBuilder(_) => "\"<query builder>\"".to_string(),
             Value::Super(c) => format!("\"<super of {}>\"", c.name),
             Value::VmClosure(c) => format!("\"<fn {}>\"", c.proto.name),
+            Value::Symbol(s) => format!("\"{}\"", s),
         }
     }
 

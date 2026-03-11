@@ -151,6 +151,7 @@ fn value_to_json(value: &Value) -> serde_json::Value {
             for (key, val) in hash.borrow().iter() {
                 let key_str = match key {
                     crate::interpreter::value::HashKey::String(s) => s.clone(),
+                    crate::interpreter::value::HashKey::Symbol(s) => format!(":{}", s),
                     crate::interpreter::value::HashKey::Int(i) => i.to_string(),
                     crate::interpreter::value::HashKey::Decimal(d) => d.0.to_string(),
                     crate::interpreter::value::HashKey::Bool(b) => b.to_string(),

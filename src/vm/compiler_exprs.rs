@@ -37,6 +37,10 @@ impl Compiler {
             ExprKind::BoolLiteral(b) => {
                 self.emit(if *b { Op::True } else { Op::False }, line);
             }
+            ExprKind::Symbol(s) => {
+                let idx = self.add_string_constant(s);
+                self.emit(Op::Symbol(idx), line);
+            }
             ExprKind::Null => {
                 self.emit(Op::Null, line);
             }

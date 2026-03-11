@@ -24,6 +24,7 @@ impl TypeChecker {
             | ExprKind::StringLiteral(_)
             | ExprKind::CommandSubstitution(_)
             | ExprKind::BoolLiteral(_)
+            | ExprKind::Symbol(_)
             | ExprKind::Null => self.check_literal(&expr.kind),
 
             // Variables and references

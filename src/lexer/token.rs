@@ -21,6 +21,7 @@ pub enum TokenKind {
     InterpolatedString(Vec<String>), // Parts for interpolation
     BacktickString(String),          // Command substitution: `command`
     BoolLiteral(bool),
+    SymbolLiteral(String), // :name
 
     // SDBQL query block with #{...} interpolation
     SdqlBlock {
@@ -208,6 +209,7 @@ impl std::fmt::Display for TokenKind {
                 write!(f, "@sdql{{{}}}...", &query[..query.len().min(30)])
             }
             TokenKind::BoolLiteral(b) => write!(f, "{}", b),
+            TokenKind::SymbolLiteral(s) => write!(f, ":{}", s),
             TokenKind::Identifier(s) => write!(f, "{}", s),
             TokenKind::Let => write!(f, "let"),
             TokenKind::Const => write!(f, "const"),

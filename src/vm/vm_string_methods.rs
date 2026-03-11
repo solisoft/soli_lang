@@ -606,6 +606,7 @@ impl Vm {
                 Ok(Value::Array(Rc::new(RefCell::new(matches))))
             }
             "join" => Ok(Value::String(s.to_string())),
+            "to_sym" => Ok(Value::Symbol(s.to_string())),
             "parse_json" => match crate::interpreter::value::parse_json(s) {
                 Ok(value) => Ok(value),
                 Err(_) => Ok(Value::Hash(Rc::new(RefCell::new(

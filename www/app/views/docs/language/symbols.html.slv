@@ -1,0 +1,324 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Symbols</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-fuchsia-400 to-pink-400 bg-clip-text text-transparent">Symbols</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Lightweight identifiers for hash keys, constants, and method references.
+        </p>
+    </div>
+
+    <!-- Creating Symbols -->
+    <section id="section-creating" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </span>
+            Creating Symbols
+        </h2>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># Symbol literals start with a colon
+let s = :name
+let status = :active
+
+# Symbols can contain letters, numbers, underscores
+let field = :first_name
+let key = :user_id
+
+# Symbols can end with ? or !
+let check = :empty?
+let action = :save!</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Equality & Comparison -->
+    <section id="section-equality" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4" />
+                </svg>
+            </span>
+            Equality & Comparison
+        </h2>
+
+        <div class="space-y-6">
+            <section id="symbol-equality" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#symbol-equality" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Symbol Equality</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Symbols with the same name are equal. Symbols are <strong class="text-white">not</strong> equal to strings, even with the same text.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Same symbols are equal
+:name == :name    # true
+:foo == :foo      # true
+
+# Different symbols are not equal
+:name != :age     # true
+
+# Symbols are NOT equal to strings
+:name != "name"   # true
+"name" != :name   # true</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- As Hash Keys -->
+    <section id="section-hash-keys" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+            </span>
+            As Hash Keys
+        </h2>
+
+        <div class="space-y-6">
+            <section id="symbol-hash-keys" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#symbol-hash-keys" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Symbol Keys in Hashes</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Symbols make great hash keys. They are distinct from string keys in the same hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Symbol keys use fat arrow syntax
+let person = { :name => "Alice", :age => 30 }
+person[:name]   # "Alice"
+
+let config = { :host => "localhost", :port => 3000 }
+config[:host]   # "localhost"
+
+# Symbol keys are separate from string keys
+let h = { :name => "sym_value" }
+h["name"] = "str_value"
+h[:name]     # "sym_value"
+h["name"]    # "str_value"
+h.length     # 2</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Conversion Methods -->
+    <section id="section-conversion" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+            </span>
+            Conversion Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-to-s" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-s" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.to_s / .to_string</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Convert a symbol to its string representation (without the colon prefix).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">:name.to_s       # "name"
+:hello.to_string # "hello"
+
+# Round-trip conversion
+let original = "test"
+let sym = original.to_sym
+sym.to_s == original  # true</code></pre>
+                </div>
+            </section>
+
+            <section id="method-to-sym" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-sym" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">String.to_sym</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Convert a string to a symbol.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello".to_sym       # :hello
+"first_name".to_sym  # :first_name</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Introspection Methods -->
+    <section id="section-introspection" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+            </span>
+            Introspection Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-class" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-class" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.class</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the type name as a string.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">:name.class   # "symbol"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-inspect" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-inspect" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.inspect</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns a developer-friendly string representation with the colon prefix.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">:name.inspect         # ":name"
+:hello_world.inspect  # ":hello_world"
+:empty?.inspect       # ":empty?"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-nil" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-nil" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.nil? / .blank? / .present?</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Symbols are always truthy and present.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">:name.nil?      # false
+:name.blank?    # false
+:name.present?  # true</code></pre>
+                </div>
+            </section>
+
+            <section id="method-is-a" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-is-a" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.is_a?(type_name)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if the value is of the given type.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">:name.is_a?("symbol")   # true
+:name.is_a?("object")   # true
+:name.is_a?("string")   # false</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Method Shorthand -->
+    <section id="section-shorthand" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            &amp;:method Shorthand
+        </h2>
+
+        <div class="space-y-6">
+            <section id="amp-symbol" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#amp-symbol" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">&amp;:method</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">&amp;:method_name</code> as a shorthand for creating a lambda that calls a method on each element. Works with <code class="text-indigo-400">map</code>, <code class="text-indigo-400">filter</code>, and other collection methods.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Convert all elements to strings
+let arr = [1, 2, 3]
+arr.map(&:to_s)       # ["1", "2", "3"]
+
+# Filter with predicate methods
+let nums = [1, 2, 3, 4, 5, 6]
+nums.filter(&:even?)  # [2, 4, 6]
+
+# Equivalent to writing a full lambda
+arr.map(|x| x.to_s)  # same as arr.map(&:to_s)</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Ternary with Symbols -->
+    <section id="section-ternary" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Symbols in Expressions
+        </h2>
+
+        <div class="space-y-6">
+            <section id="ternary-symbols" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#ternary-symbols" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Ternary & Conditionals</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Symbols work naturally in ternary expressions and conditionals. They are always truthy.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Ternary with symbols
+let result = true ? :yes : :no
+result  # :yes
+
+# Symbols as status values
+let status = user.active ? :active : :inactive</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/decimal" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Decimal
+        </a>
+        <a href="/docs/language/strings" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Strings
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

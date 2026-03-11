@@ -2521,6 +2521,12 @@ video {
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
 
+.from-fuchsia-400 {
+  --tw-gradient-from: #e879f9 var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(232 121 249 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
 .from-gray-400 {
   --tw-gradient-from: #9ca3af var(--tw-gradient-from-position);
   --tw-gradient-to: rgb(156 163 175 / 0) var(--tw-gradient-to-position);
@@ -3774,6 +3780,10 @@ video {
 
 .hover\:border-emerald-500\/50:hover {
   border-color: rgb(16 185 129 / 0.5);
+}
+
+.hover\:border-fuchsia-500\/50:hover {
+  border-color: rgb(217 70 239 / 0.5);
 }
 
 .hover\:border-gray-500\/50:hover {

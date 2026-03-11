@@ -47,6 +47,7 @@ impl Interpreter {
             ExprKind::StringLiteral(s) => Ok(Value::String(s.clone())),
             ExprKind::CommandSubstitution(cmd) => self.evaluate_system_run(cmd, expr.span),
             ExprKind::BoolLiteral(b) => Ok(Value::Bool(*b)),
+            ExprKind::Symbol(s) => Ok(Value::Symbol(s.clone())),
             ExprKind::Null => Ok(Value::Null),
 
             // Variables

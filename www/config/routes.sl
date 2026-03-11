@@ -73,6 +73,7 @@ get("/docs/language/floats", "docs#language_floats");
 get("/docs/language/booleans", "docs#language_booleans");
 get("/docs/language/null", "docs#language_null");
 get("/docs/language/decimal", "docs#language_decimal");
+get("/docs/language/symbols", "docs#language_symbols");
 get("/docs/language/modules", "docs#language_modules");
 get("/docs/language/blocks", "docs#language_blocks");
 get("/docs/language/linting", "docs#language_linting");

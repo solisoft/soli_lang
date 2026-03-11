@@ -328,6 +328,7 @@ fn value_to_json(value: &Value) -> String {
                 .map(|(k, v)| {
                     let key = match k {
                         HashKey::String(s) => s.clone(),
+                        HashKey::Symbol(s) => s.clone(),
                         HashKey::Int(i) => i.to_string(),
                         HashKey::Bool(b) => b.to_string(),
                         HashKey::Decimal(d) => d.to_string(),

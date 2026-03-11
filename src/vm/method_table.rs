@@ -279,6 +279,7 @@ pub fn hash_method_zero_arg(hash: &Rc<RefCell<HashPairs>>, mid: MethodId) -> Opt
                 .keys()
                 .map(|k| match k {
                     HashKey::String(s) => Value::String(s.clone()),
+                    HashKey::Symbol(s) => Value::Symbol(s.clone()),
                     HashKey::Int(n) => Value::Int(*n),
                     HashKey::Bool(b) => Value::Bool(*b),
                     HashKey::Null => Value::Null,
