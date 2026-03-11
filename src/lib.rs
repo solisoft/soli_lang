@@ -387,6 +387,7 @@ fn extract_suite_from_call(
     let first_arg = match &arguments[0] {
         Argument::Positional(expr) => expr,
         Argument::Named(_) => return None,
+        Argument::Block(_) => return None,
     };
     let suite_name = match &first_arg.kind {
         ast::ExprKind::StringLiteral(s) => s.clone(),
@@ -397,6 +398,7 @@ fn extract_suite_from_call(
     let second_arg = match &arguments[1] {
         Argument::Positional(expr) => expr,
         Argument::Named(_) => return None,
+        Argument::Block(_) => return None,
     };
     let suite_body = match &second_arg.kind {
         ast::ExprKind::Lambda { body, .. } => body.clone(),
@@ -469,6 +471,7 @@ fn extract_test_from_call(
     let first_arg = match &arguments[0] {
         Argument::Positional(expr) => expr,
         Argument::Named(_) => return None,
+        Argument::Block(_) => return None,
     };
     let test_name = match &first_arg.kind {
         ast::ExprKind::StringLiteral(s) => s.clone(),
@@ -478,6 +481,7 @@ fn extract_test_from_call(
     let second_arg = match &arguments[1] {
         Argument::Positional(expr) => expr,
         Argument::Named(_) => return None,
+        Argument::Block(_) => return None,
     };
     let test_body = match &second_arg.kind {
         ast::ExprKind::Lambda {

@@ -85,6 +85,11 @@ impl TypeChecker {
                             }
                             // Unknown named argument - runtime will catch this
                         }
+                        Argument::Block(expr) => {
+                            // Block arguments - type check the block expression
+                            self.check_expr(expr)?;
+                            // For now, skip block param type checking
+                        }
                     }
                 }
 
@@ -155,6 +160,10 @@ impl TypeChecker {
                                 Argument::Named(_) => {
                                     // Named arguments in pipeline - skip type checking
                                     // Runtime will validate these
+                                }
+                                Argument::Block(expr) => {
+                                    // Block arguments in pipeline - skip type checking
+                                    self.check_expr(expr)?;
                                 }
                             }
                         }

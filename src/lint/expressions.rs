@@ -196,6 +196,7 @@ impl Linter {
             match arg {
                 Argument::Positional(expr) => self.lint_expr(expr),
                 Argument::Named(named) => self.lint_expr(&named.value),
+                Argument::Block(expr) => self.lint_expr(expr),
             }
         }
     }

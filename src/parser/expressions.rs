@@ -78,6 +78,25 @@ impl Parser {
                 let next = self.peek();
                 if next.span.line == start_span.line && Self::is_command_arg(&next.kind) {
                     let arguments = self.parse_command_arguments()?;
+
+                    // Check for trailing block: puts("args") { body } or puts "args" { body }
+                    if self.check(&TokenKind::LeftBrace) {
+                        let block = self.parse_trailing_brace_block()?;
+                        let mut args = arguments;
+                        args.push(Argument::Block(block));
+                        let span = start_span.merge(&self.previous_span());
+                        return Ok(Expr::new(
+                            ExprKind::Call {
+                                callee: Box::new(Expr::new(
+                                    ExprKind::Variable(name.clone()),
+                                    start_span,
+                                )),
+                                arguments: args,
+                            },
+                            span,
+                        ));
+                    }
+
                     let span = start_span.merge(&self.previous_span());
                     return Ok(Expr::new(
                         ExprKind::Call {
@@ -209,6 +228,7 @@ impl Parser {
                     ),
                     default_value: None,
                     span: start_span,
+                    is_block_param: false,
                 };
                 let body_expr = Expr::new(
                     ExprKind::Member {
@@ -699,7 +719,11 @@ impl Parser {
                 // Check for trailing block: obj.method(args) |params| body end
                 if self.check(&TokenKind::Pipe) {
                     let block = self.parse_trailing_block()?;
-                    arguments.push(Argument::Positional(block));
+                    arguments.push(Argument::Block(block));
+                // Check for trailing brace block: obj.method(args) { body }
+                } else if self.check(&TokenKind::LeftBrace) {
+                    let block = self.parse_trailing_brace_block()?;
+                    arguments.push(Argument::Block(block));
                 }
 
                 let span = start_span.merge(&self.previous_span());
@@ -731,7 +755,25 @@ impl Parser {
                     Ok(Expr::new(
                         ExprKind::Call {
                             callee: Box::new(member),
-                            arguments: vec![Argument::Positional(block)],
+                            arguments: vec![Argument::Block(block)],
+                        },
+                        span,
+                    ))
+                // Check for trailing brace block: obj.method { body }
+                } else if self.check(&TokenKind::LeftBrace) {
+                    let block = self.parse_trailing_brace_block()?;
+                    let span = start_span.merge(&self.previous_span());
+                    let member = Expr::new(
+                        ExprKind::Member {
+                            object: Box::new(left),
+                            name,
+                        },
+                        member_span,
+                    );
+                    Ok(Expr::new(
+                        ExprKind::Call {
+                            callee: Box::new(member),
+                            arguments: vec![Argument::Block(block)],
                         },
                         span,
                     ))
@@ -820,21 +862,63 @@ impl Parser {
             loop {
                 let start_span = self.current_span();
 
-                // Check for named argument: identifier followed by colon
-                if let TokenKind::Identifier(name) = &self.peek().kind {
-                    let name = name.clone();
-                    // Look ahead to see if next token is colon
-                    let next_token = self.peek_nth(1);
-                    if next_token.kind == TokenKind::Colon {
-                        // This is a named argument
-                        self.advance(); // consume identifier
-                        self.advance(); // consume colon
-                        let value = self.expression()?;
-                        let span = start_span.merge(&value.span);
-                        arguments.push(Argument::Named(NamedArgument { name, value, span }));
-                        seen_named = true;
+                // Check for block argument: &identifier or &{ ... }
+                if self.check(&TokenKind::Ampersand) {
+                    self.advance(); // consume &
+                    let block_start = self.current_span();
+
+                    // Check for inline block: &{ ... } or &(...)
+                    if self.check(&TokenKind::LeftBrace) {
+                        // Inline block: &{ ... }
+                        let block_expr = self.parse_trailing_brace_block()?;
+                        arguments.push(Argument::Block(block_expr));
+                    } else if self.check(&TokenKind::LeftParen) {
+                        // Inline parentheses block: &(...)
+                        self.advance(); // consume (
+                        let params = self.parse_lambda_params_list(&TokenKind::RightParen)?;
+                        self.expect(&TokenKind::RightParen)?;
+                        let block_expr = self.finish_parsing_lambda(params, block_start)?;
+                        let _span = start_span.merge(&block_expr.span);
+                        arguments.push(Argument::Block(block_expr));
+                    } else if let TokenKind::Identifier(_) = &self.peek().kind {
+                        // Block reference: &identifier
+                        let name = self.expect_identifier()?;
+                        let span = start_span.merge(&self.previous_span());
+                        let var_expr = Expr::new(ExprKind::Variable(name), span);
+                        arguments.push(Argument::Block(var_expr));
                     } else {
-                        // This is a positional argument
+                        return Err(ParserError::general(
+                            "invalid block argument, expected identifier or block".to_string(),
+                            block_start,
+                        ));
+                    }
+                } else {
+                    // Check for named argument: identifier followed by colon
+                    if let TokenKind::Identifier(name) = &self.peek().kind {
+                        let name = name.clone();
+                        // Look ahead to see if next token is colon
+                        let next_token = self.peek_nth(1);
+                        if next_token.kind == TokenKind::Colon {
+                            // This is a named argument
+                            self.advance(); // consume identifier
+                            self.advance(); // consume colon
+                            let value = self.expression()?;
+                            let span = start_span.merge(&value.span);
+                            arguments.push(Argument::Named(NamedArgument { name, value, span }));
+                            seen_named = true;
+                        } else {
+                            // This is a positional argument
+                            let expr = self.expression()?;
+                            if seen_named {
+                                return Err(ParserError::general(
+                                    "positional argument cannot follow named argument".to_string(),
+                                    expr.span,
+                                ));
+                            }
+                            arguments.push(Argument::Positional(expr));
+                        }
+                    } else {
+                        // Positional argument (expression starting with literal, etc.)
                         let expr = self.expression()?;
                         if seen_named {
                             return Err(ParserError::general(
@@ -844,16 +928,6 @@ impl Parser {
                         }
                         arguments.push(Argument::Positional(expr));
                     }
-                } else {
-                    // Positional argument (expression starting with literal, etc.)
-                    let expr = self.expression()?;
-                    if seen_named {
-                        return Err(ParserError::general(
-                            "positional argument cannot follow named argument".to_string(),
-                            expr.span,
-                        ));
-                    }
-                    arguments.push(Argument::Positional(expr));
                 }
 
                 if !self.match_token(&TokenKind::Comma) {
@@ -872,6 +946,30 @@ impl Parser {
         let params = self.parse_lambda_params_list(&TokenKind::Pipe)?;
         self.expect(&TokenKind::Pipe)?;
         self.finish_parsing_lambda(params, start_span)
+    }
+
+    /// Parse a trailing brace block: `{ body }` as a lambda expression.
+    fn parse_trailing_brace_block(&mut self) -> ParseResult<Expr> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::LeftBrace)?;
+
+        let mut statements = Vec::new();
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            statements.push(self.statement()?);
+        }
+        self.expect(&TokenKind::RightBrace)?;
+
+        let span = start_span.merge(&self.previous_span());
+
+        // Create a lambda expression with the block as body
+        Ok(Expr::new(
+            ExprKind::Lambda {
+                params: vec![],
+                return_type: None,
+                body: statements,
+            },
+            span,
+        ))
     }
 
     fn parse_lambda(&mut self, start_span: crate::span::Span) -> ParseResult<Expr> {
@@ -922,6 +1020,7 @@ impl Parser {
                     )),
                     default_value: None,
                     span: param_start.merge(&self.previous_span()),
+                    is_block_param: false,
                 });
 
                 if !self.match_token(&TokenKind::Comma) {
@@ -963,6 +1062,7 @@ impl Parser {
                     )),
                     default_value: None,
                     span: param_start.merge(&self.previous_span()),
+                    is_block_param: false,
                 });
 
                 if !self.match_token(&TokenKind::Comma) {

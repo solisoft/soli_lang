@@ -32,6 +32,7 @@ impl Interpreter {
 
         let mut arg_values = Vec::new();
         let mut named_args = HashMap::new();
+        let mut block_arg: Option<Value> = None;
 
         for arg in arguments {
             match arg {
@@ -47,10 +48,13 @@ impl Interpreter {
                     }
                     named_args.insert(named.name.clone(), self.evaluate(&named.value)?);
                 }
+                Argument::Block(expr) => {
+                    block_arg = Some(self.evaluate(expr)?);
+                }
             }
         }
 
-        self.call_value_with_named(callee_val, arg_values, named_args, span)
+        self.call_value_with_named(callee_val, arg_values, named_args, block_arg, span)
     }
 
     /// Call a value with both positional and named arguments.
@@ -59,14 +63,26 @@ impl Interpreter {
         callee: Value,
         positional_args: Vec<Value>,
         named_args: HashMap<String, Value>,
+        block_arg: Option<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
         match callee {
             Value::Function(func) => {
-                let required_arity = func.arity();
-                let full_arity = func.full_arity();
+                // Filter out block parameters from the regular params for arity calculation
+                let non_block_params: Vec<_> =
+                    func.params.iter().filter(|p| !p.is_block_param).collect();
+                let required_arity = non_block_params
+                    .iter()
+                    .filter(|p| p.default_value.is_none())
+                    .count();
+                let full_arity = non_block_params.len();
 
-                let param_names: Vec<String> = func.params.iter().map(|p| p.name.clone()).collect();
+                let param_names: Vec<String> =
+                    non_block_params.iter().map(|p| p.name.clone()).collect();
+
+                // Find block parameter if any
+                let block_param_index = func.params.iter().position(|p| p.is_block_param);
+                let block_param_name = block_param_index.map(|i| func.params[i].name.clone());
 
                 // Check for unknown named arguments
                 for name in named_args.keys() {
@@ -113,25 +129,42 @@ impl Interpreter {
                     }
                 }
 
-                // Final arity check
-                if final_args.len() != full_arity {
-                    return Err(RuntimeError::wrong_arity(
-                        full_arity,
-                        final_args.len(),
-                        span,
-                    ));
+                // Handle block argument - bind to block parameter if exists
+                if let Some(ref block_param) = block_param_name {
+                    if let Some(block_val) = block_arg {
+                        // Add block as a named argument for the block parameter
+                        let block_idx = func
+                            .params
+                            .iter()
+                            .position(|n| n.name == *block_param)
+                            .unwrap();
+                        if block_idx < final_args.len() {
+                            final_args[block_idx] = block_val;
+                        } else {
+                            final_args.push(block_val);
+                        }
+                    } else if !named_args.contains_key(block_param) {
+                        // Block param exists but no block was passed
+                        // This is OK - block will be nil/null
+                        final_args.push(Value::Null);
+                    }
                 }
 
                 self.call_function(&func, final_args)
             }
 
             Value::NativeFunction(native) => {
-                if positional_args.len() + named_args.len()
-                    != native.arity.unwrap_or(positional_args.len())
-                {
+                let mut all_args = positional_args.clone();
+
+                // Add block argument as last positional arg for native functions
+                if let Some(block_val) = block_arg {
+                    all_args.push(block_val);
+                }
+
+                if all_args.len() != native.arity.unwrap_or(all_args.len()) {
                     return Err(RuntimeError::wrong_arity(
                         native.arity.unwrap_or(0),
-                        positional_args.len() + named_args.len(),
+                        all_args.len(),
                         span,
                     ));
                 }
@@ -141,7 +174,7 @@ impl Interpreter {
                         span,
                     ));
                 }
-                let result = (native.func)(positional_args)
+                let result = (native.func)(all_args)
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
 
                 // Check if this is the http_server_listen marker
@@ -364,7 +397,14 @@ impl Interpreter {
                 Ok(Value::Null)
             }
 
-            Value::Method(method) => self.call_method(method, positional_args, span),
+            Value::Method(method) => {
+                let mut args = positional_args;
+                // Forward block argument as last positional arg for method calls
+                if let Some(block_val) = block_arg {
+                    args.push(block_val);
+                }
+                self.call_method(method, args, span)
+            }
 
             _ => Err(RuntimeError::type_error(
                 format!("{} is not callable", callee.type_name()),

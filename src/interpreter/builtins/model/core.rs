@@ -8,7 +8,7 @@ use std::sync::{OnceLock, RwLock};
 use lazy_static::lazy_static;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::interpreter::value::{Class, Function, NativeFunction, Value};
 
 use super::callbacks::{register_callback, ModelCallbacks};
 use super::relations::{
@@ -22,6 +22,7 @@ pub struct ModelMetadata {
     pub validations: Vec<ValidationRule>,
     pub callbacks: ModelCallbacks,
     pub relations: Vec<RelationDef>,
+    pub soft_delete: bool,
 }
 
 /// Cached database configuration to avoid repeated env::var() lookups.
@@ -182,6 +183,166 @@ pub fn get_or_create_metadata(class_name: &str) -> ModelMetadata {
 pub fn update_metadata(class_name: &str, metadata: ModelMetadata) {
     let mut registry = MODEL_REGISTRY.write().unwrap();
     registry.insert(class_name.to_string(), metadata);
+}
+
+/// Check if a model class has soft delete enabled.
+pub fn is_soft_delete(class_name: &str) -> bool {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| m.soft_delete)
+        .unwrap_or(false)
+}
+
+/// Get a Transaction class for a specific model.
+/// Creates a new class each time (not cached due to Class not being Sync).
+pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
+    let _model_name_owned = model_name.to_string();
+    let collection = class_name_to_collection(model_name);
+
+    let methods: std::collections::HashMap<String, Rc<Function>> = std::collections::HashMap::new();
+    let mut native_methods: std::collections::HashMap<String, Rc<NativeFunction>> =
+        std::collections::HashMap::new();
+
+    native_methods.insert(
+        "get".to_string(),
+        Rc::new(NativeFunction::new("Transaction#get", Some(2), {
+            let collection = collection.clone();
+            move |args| {
+                let key = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(other) => {
+                        return Err(format!(
+                            "tx.get() expects string key, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("tx.get() requires key argument".to_string()),
+                };
+                use super::crud::{exec_get_tx, json_to_value};
+                match exec_get_tx(&collection, &key) {
+                    Ok(result) => Ok(json_to_value(&result)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
+            }
+        })),
+    );
+
+    native_methods.insert(
+        "create".to_string(),
+        Rc::new(NativeFunction::new("Transaction#create", Some(2), {
+            let collection = collection.clone();
+            move |args| {
+                let doc = match args.get(1) {
+                    Some(v) => crate::interpreter::value::value_to_json(v)
+                        .map_err(|e| format!("Failed to convert document: {}", e))?,
+                    None => return Err("tx.create() requires document argument".to_string()),
+                };
+                use super::crud::{exec_insert_tx, json_to_value};
+                match exec_insert_tx(&collection, None, doc) {
+                    Ok(result) => Ok(json_to_value(&result)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
+            }
+        })),
+    );
+
+    native_methods.insert(
+        "update".to_string(),
+        Rc::new(NativeFunction::new("Transaction#update", Some(3), {
+            let collection = collection.clone();
+            move |args| {
+                let key = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(other) => {
+                        return Err(format!(
+                            "tx.update() expects string key, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("tx.update() requires key argument".to_string()),
+                };
+                let doc = match args.get(2) {
+                    Some(v) => crate::interpreter::value::value_to_json(v)
+                        .map_err(|e| format!("Failed to convert document: {}", e))?,
+                    None => return Err("tx.update() requires document argument".to_string()),
+                };
+                use super::crud::{exec_update_tx, json_to_value};
+                match exec_update_tx(&collection, &key, doc) {
+                    Ok(result) => Ok(json_to_value(&result)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
+            }
+        })),
+    );
+
+    native_methods.insert(
+        "delete".to_string(),
+        Rc::new(NativeFunction::new("Transaction#delete", Some(2), {
+            let collection = collection.clone();
+            move |args| {
+                let key = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(other) => {
+                        return Err(format!(
+                            "tx.delete() expects string key, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => return Err("tx.delete() requires key argument".to_string()),
+                };
+                use super::crud::{exec_delete_tx, json_to_value};
+                match exec_delete_tx(&collection, &key) {
+                    Ok(result) => Ok(json_to_value(&result)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
+            }
+        })),
+    );
+
+    native_methods.insert(
+        "commit".to_string(),
+        Rc::new(NativeFunction::new(
+            "Transaction#commit",
+            Some(1),
+            |_args| {
+                use super::crud::commit_transaction;
+                match commit_transaction() {
+                    Ok(()) => Ok(Value::Bool(true)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
+            },
+        )),
+    );
+
+    native_methods.insert(
+        "rollback".to_string(),
+        Rc::new(NativeFunction::new(
+            "Transaction#rollback",
+            Some(1),
+            |_args| {
+                use super::crud::rollback_transaction;
+                match rollback_transaction() {
+                    Ok(()) => Ok(Value::Bool(true)),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                }
+            },
+        )),
+    );
+
+    Rc::new(Class {
+        name: format!("{}Transaction", model_name),
+        superclass: None,
+        methods,
+        static_methods: std::collections::HashMap::new(),
+        native_static_methods: std::collections::HashMap::new(),
+        native_methods,
+        static_fields: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        fields: std::collections::HashMap::new(),
+        constructor: None,
+        nested_classes: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        ..Default::default()
+    })
 }
 
 /// Convert PascalCase class name to snake_case collection name with pluralization.
@@ -485,6 +646,8 @@ impl Model {
                         rel_type.clone(),
                         class_override.as_deref(),
                         fk_override.as_deref(),
+                        None,
+                        None,
                     );
                     register_relation(&class_name, relation);
                     Ok(Value::Null)
@@ -1026,6 +1189,40 @@ impl Model {
             })),
         );
 
+        // Model.transaction - Execute SDBQL or get transaction handle
+        // Usage:
+        //   Model.transaction(sdbql_string) - Execute SDBQL in transaction
+        //   Model.transaction() - Get transaction handle: tx = User.transaction(); tx.create({...}); tx.commit()
+        native_static_methods.insert(
+            "transaction".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model.transaction",
+                Some(1),
+                |args| match args.get(1) {
+                    Some(Value::String(s)) => {
+                        use super::crud::exec_transaction_sdbql;
+                        match exec_transaction_sdbql(s) {
+                            Ok(result) => Ok(json_to_value(&result)),
+                            Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                        }
+                    }
+                    Some(Value::Function(_)) | Some(Value::VmClosure(_)) => {
+                        // Block passed - return transaction handle, user can call .run() on it
+                        let class_name = get_class_name_from_class(&args)?;
+                        Ok(Value::Class(get_or_create_transaction_class(&class_name)))
+                    }
+                    None => {
+                        let class_name = get_class_name_from_class(&args)?;
+                        Ok(Value::Class(get_or_create_transaction_class(&class_name)))
+                    }
+                    Some(other) => Err(format!(
+                        "Model.transaction() expects SDBQL string or no arguments, got {}",
+                        other.type_name()
+                    )),
+                },
+            )),
+        );
+
         // Model.count() - Count documents
         use super::crud::exec_query;
         native_static_methods.insert(
@@ -1050,6 +1247,383 @@ impl Model {
                     // Collection doesn't exist yet → count is 0
                     Err(_) => Ok(Value::Int(0)),
                 }
+            })),
+        );
+
+        // Model.with_deleted - Returns a QueryBuilder that includes soft-deleted records
+        native_static_methods.insert(
+            "with_deleted".to_string(),
+            Rc::new(NativeFunction::new("Model.with_deleted", Some(1), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.soft_delete_mode = super::query::SoftDeleteMode::WithDeleted;
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Model.only_deleted - Returns a QueryBuilder with only soft-deleted records
+        native_static_methods.insert(
+            "only_deleted".to_string(),
+            Rc::new(NativeFunction::new("Model.only_deleted", Some(1), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.soft_delete_mode = super::query::SoftDeleteMode::OnlyDeleted;
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Model.offset(n) - Returns a QueryBuilder with offset
+        native_static_methods.insert(
+            "offset".to_string(),
+            Rc::new(NativeFunction::new("Model.offset", Some(2), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let offset = match args.get(1) {
+                    Some(Value::Int(n)) if *n >= 0 => *n as usize,
+                    _ => return Err("offset() expects a positive integer".to_string()),
+                };
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.set_offset(offset);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Model.find_by(field, value) - Find first record matching field=value
+        native_static_methods.insert(
+            "find_by".to_string(),
+            Rc::new(NativeFunction::new("Model.find_by", Some(3), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let field = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("find_by() expects string field name".to_string()),
+                };
+                let value = match args.get(2) {
+                    Some(v) => super::value_to_json(v).map_err(|e| e.to_string())?,
+                    None => return Err("find_by() requires a value".to_string()),
+                };
+                let sdbql = format!(
+                    "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN doc",
+                    collection, field
+                );
+                let mut binds = std::collections::HashMap::new();
+                binds.insert("val".to_string(), value);
+                match super::crud::exec_with_auto_collection(sdbql, Some(binds), &collection) {
+                    Ok(results) if !results.is_empty() => {
+                        Ok(super::crud::json_doc_to_instance(&class, &results[0]))
+                    }
+                    _ => Ok(Value::Null),
+                }
+            })),
+        );
+
+        // Model.first_by(field, value) - Find first record with ordering
+        native_static_methods.insert(
+            "first_by".to_string(),
+            Rc::new(NativeFunction::new("Model.first_by", Some(3), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let field = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("first_by() expects string field name".to_string()),
+                };
+                let value = match args.get(2) {
+                    Some(v) => super::value_to_json(v).map_err(|e| e.to_string())?,
+                    None => return Err("first_by() requires a value".to_string()),
+                };
+                let sdbql = format!(
+                    "FOR doc IN {} FILTER doc.{} == @val SORT doc._key ASC LIMIT 1 RETURN doc",
+                    collection, field
+                );
+                let mut binds = std::collections::HashMap::new();
+                binds.insert("val".to_string(), value);
+                match super::crud::exec_with_auto_collection(sdbql, Some(binds), &collection) {
+                    Ok(results) if !results.is_empty() => {
+                        Ok(super::crud::json_doc_to_instance(&class, &results[0]))
+                    }
+                    _ => Ok(Value::Null),
+                }
+            })),
+        );
+
+        // Model.find_or_create_by(field, value, defaults) - Find or create record
+        native_static_methods.insert(
+            "find_or_create_by".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model.find_or_create_by",
+                Some(4),
+                |args| {
+                    let class = get_class_rc_from_args(&args)?;
+                    let class_name = class.name.clone();
+                    let collection = class_name_to_collection(&class_name);
+                    let field = match args.get(1) {
+                        Some(Value::String(s)) => s.clone(),
+                        _ => {
+                            return Err(
+                                "find_or_create_by() expects string field name".to_string()
+                            )
+                        }
+                    };
+                    let value = args
+                        .get(2)
+                        .ok_or_else(|| "find_or_create_by() requires a value".to_string())?;
+                    let json_val =
+                        super::value_to_json(value).map_err(|e| e.to_string())?;
+
+                    // Try to find existing
+                    let sdbql = format!(
+                        "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN doc",
+                        collection, field
+                    );
+                    let mut binds = std::collections::HashMap::new();
+                    binds.insert("val".to_string(), json_val.clone());
+                    match super::crud::exec_with_auto_collection(sdbql, Some(binds), &collection) {
+                        Ok(results) if !results.is_empty() => {
+                            return Ok(super::crud::json_doc_to_instance(&class, &results[0]));
+                        }
+                        _ => {}
+                    }
+
+                    // Not found — create with defaults
+                    let defaults = match args.get(3) {
+                        Some(Value::Hash(hash)) => {
+                            let mut map = serde_json::Map::new();
+                            for (k, v) in hash.borrow().iter() {
+                                if let crate::interpreter::value::HashKey::String(key) = k {
+                                    if let Ok(jv) = super::value_to_json(v) {
+                                        map.insert(key.clone(), jv);
+                                    }
+                                }
+                            }
+                            map
+                        }
+                        _ => serde_json::Map::new(),
+                    };
+                    let mut doc = defaults;
+                    doc.insert(field, json_val);
+                    match super::crud::exec_insert(
+                        &collection,
+                        None,
+                        serde_json::Value::Object(doc),
+                    ) {
+                        Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
+                        Err(e) => Err(format!("find_or_create_by create failed: {}", e)),
+                    }
+                },
+            )),
+        );
+
+        // Model.upsert(key, data) - Insert or update document
+        native_static_methods.insert(
+            "upsert".to_string(),
+            Rc::new(NativeFunction::new("Model.upsert", Some(3), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let key = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("upsert() expects string key".to_string()),
+                };
+                let data = match args.get(2) {
+                    Some(Value::Hash(hash)) => {
+                        let mut map = serde_json::Map::new();
+                        for (k, v) in hash.borrow().iter() {
+                            if let crate::interpreter::value::HashKey::String(k_str) = k {
+                                if let Ok(jv) = super::value_to_json(v) {
+                                    map.insert(k_str.clone(), jv);
+                                }
+                            }
+                        }
+                        serde_json::Value::Object(map)
+                    }
+                    _ => return Err("upsert() expects hash data".to_string()),
+                };
+
+                // Try update first, create if not found
+                match exec_update(&collection, &key, data.clone(), true) {
+                    Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
+                    Err(_) => {
+                        // Insert with key
+                        let mut obj = match data {
+                            serde_json::Value::Object(m) => m,
+                            _ => serde_json::Map::new(),
+                        };
+                        obj.insert("_key".to_string(), serde_json::Value::String(key));
+                        match super::crud::exec_insert(
+                            &collection,
+                            None,
+                            serde_json::Value::Object(obj),
+                        ) {
+                            Ok(result) => {
+                                Ok(super::crud::json_doc_to_instance(&class, &result))
+                            }
+                            Err(e) => Err(format!("upsert failed: {}", e)),
+                        }
+                    }
+                }
+            })),
+        );
+
+        // Model.create_many(array) - Batch insert
+        native_static_methods.insert(
+            "create_many".to_string(),
+            Rc::new(NativeFunction::new("Model.create_many", Some(2), |args| {
+                let _class = get_class_rc_from_args(&args)?;
+                let class_name = match &args[0] {
+                    Value::Class(c) => c.name.clone(),
+                    _ => return Err("Expected class".to_string()),
+                };
+                let collection = class_name_to_collection(&class_name);
+                let items = match args.get(1) {
+                    Some(Value::Array(arr)) => arr.borrow().clone(),
+                    _ => return Err("create_many() expects an array".to_string()),
+                };
+
+                let mut created = 0;
+                for item in &items {
+                    let doc = match item {
+                        Value::Hash(hash) => {
+                            let mut map = serde_json::Map::new();
+                            for (k, v) in hash.borrow().iter() {
+                                if let crate::interpreter::value::HashKey::String(k_str) = k {
+                                    if let Ok(jv) = super::value_to_json(v) {
+                                        map.insert(k_str.clone(), jv);
+                                    }
+                                }
+                            }
+                            serde_json::Value::Object(map)
+                        }
+                        _ => continue,
+                    };
+                    if super::crud::exec_insert(&collection, None, doc).is_ok() {
+                        created += 1;
+                    }
+                }
+
+                let mut result = crate::interpreter::value::HashPairs::default();
+                result.insert(
+                    crate::interpreter::value::HashKey::String("created".to_string()),
+                    Value::Int(created),
+                );
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            })),
+        );
+
+        // Model.scope(name, query_fn) - Register named scope (stores on class)
+        native_static_methods.insert(
+            "scope".to_string(),
+            Rc::new(NativeFunction::new("Model.scope", Some(3), |_args| {
+                // Scopes are a more advanced feature — just register for now
+                Ok(Value::Null)
+            })),
+        );
+
+        // Model.pluck(field, ...) - Convenience: creates QB and sets pluck fields
+        native_static_methods.insert(
+            "pluck".to_string(),
+            Rc::new(NativeFunction::new("Model.pluck", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let mut fields = Vec::new();
+                for arg in args.iter().skip(1) {
+                    match arg {
+                        Value::String(s) => fields.push(s.clone()),
+                        _ => return Err("pluck() expects string field names".to_string()),
+                    }
+                }
+                if fields.is_empty() {
+                    return Err("pluck() requires at least one field name".to_string());
+                }
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.set_pluck(fields);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
+        );
+
+        // Model.sum(field), Model.avg(field), Model.min(field), Model.max(field) - Aggregations
+        for (name, func) in &[
+            ("sum", super::AggregationFunc::Sum),
+            ("avg", super::AggregationFunc::Avg),
+            ("min", super::AggregationFunc::Min),
+            ("max", super::AggregationFunc::Max),
+        ] {
+            let method_name = name.to_string();
+            let func = func.clone();
+            native_static_methods.insert(
+                method_name.clone(),
+                Rc::new(NativeFunction::new(
+                    Box::leak(format!("Model.{}", method_name).into_boxed_str()),
+                    Some(2),
+                    move |args| {
+                        let class = get_class_rc_from_args(&args)?;
+                        let class_name = class.name.clone();
+                        let collection = class_name_to_collection(&class_name);
+                        let field = match args.get(1) {
+                            Some(Value::String(s)) => s.clone(),
+                            _ => {
+                                return Err(format!(
+                                    "{}() expects string field name",
+                                    method_name
+                                ))
+                            }
+                        };
+                        let mut qb = super::query::QueryBuilder::new_with_class(
+                            class_name, collection, class,
+                        );
+                        qb.aggregation = Some((func.clone(), field));
+                        Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+                    },
+                )),
+            );
+        }
+
+        // Model.group_by(field, func, agg_field) - Group by with aggregation
+        native_static_methods.insert(
+            "group_by".to_string(),
+            Rc::new(NativeFunction::new("Model.group_by", Some(4), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let group_field = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("group_by() expects string group field".to_string()),
+                };
+                let func_name = match args.get(2) {
+                    Some(Value::String(s)) => s.clone().to_lowercase(),
+                    _ => return Err("group_by() expects string function name".to_string()),
+                };
+                let agg_field = match args.get(3) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("group_by() expects string aggregate field".to_string()),
+                };
+                let func = match func_name.as_str() {
+                    "sum" => super::AggregationFunc::Sum,
+                    "avg" => super::AggregationFunc::Avg,
+                    "min" => super::AggregationFunc::Min,
+                    "max" => super::AggregationFunc::Max,
+                    _ => {
+                        return Err(
+                            "group_by() function must be one of: sum, avg, min, max".to_string()
+                        )
+                    }
+                };
+                let mut qb = super::query::QueryBuilder::new_with_class(
+                    class_name, collection, class,
+                );
+                qb.group_by_info = Some((group_field, func, agg_field));
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
         );
 
@@ -1225,7 +1799,7 @@ impl Model {
             })),
         );
 
-        // instance.delete() - Delete the document from DB
+        // instance.delete() - Delete (or soft-delete) the document from DB
         native_methods.insert(
             "delete".to_string(),
             Rc::new(NativeFunction::new("Model#delete", Some(0), |args| {
@@ -1233,6 +1807,107 @@ impl Model {
                     Value::Instance(inst) => inst.clone(),
                     _ => return Err("Expected instance".to_string()),
                 };
+                let inst_ref = instance.borrow();
+                let class_name = inst_ref.class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let key = inst_ref
+                    .get("_key")
+                    .ok_or_else(|| "Instance has no _key field".to_string())?;
+                let key_str = match key {
+                    Value::String(s) => s,
+                    _ => return Err("_key is not a string".to_string()),
+                };
+                drop(inst_ref);
+
+                if is_soft_delete(&class_name) {
+                    // Soft delete: set deleted_at timestamp
+                    let now = chrono::Utc::now().to_rfc3339();
+                    let mut map = serde_json::Map::new();
+                    map.insert(
+                        "deleted_at".to_string(),
+                        serde_json::Value::String(now.clone()),
+                    );
+                    match exec_update(
+                        &collection,
+                        &key_str,
+                        serde_json::Value::Object(map),
+                        true,
+                    ) {
+                        Ok(_) => {
+                            instance
+                                .borrow_mut()
+                                .set("deleted_at".to_string(), Value::String(now));
+                            Ok(Value::Bool(true))
+                        }
+                        Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    }
+                } else {
+                    match exec_delete(&collection, &key_str) {
+                        Ok(result) => Ok(json_to_value(&result)),
+                        Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    }
+                }
+            })),
+        );
+
+        // instance.restore() - Restore a soft-deleted record (clear deleted_at)
+        native_methods.insert(
+            "restore".to_string(),
+            Rc::new(NativeFunction::new("Model#restore", Some(0), |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let inst_ref = instance.borrow();
+                let collection = class_name_to_collection(&inst_ref.class.name);
+                let key = match inst_ref.get("_key") {
+                    Some(k) => k,
+                    None => return Ok(Value::Instance(instance.clone())),
+                };
+                let key_str = match key {
+                    Value::String(s) => s,
+                    _ => return Err("_key is not a string".to_string()),
+                };
+                drop(inst_ref);
+
+                let mut map = serde_json::Map::new();
+                map.insert("deleted_at".to_string(), serde_json::Value::Null);
+                match exec_update(
+                    &collection,
+                    &key_str,
+                    serde_json::Value::Object(map),
+                    true,
+                ) {
+                    Ok(_) => {
+                        instance
+                            .borrow_mut()
+                            .set("deleted_at".to_string(), Value::Null);
+                        Ok(Value::Bool(true))
+                    }
+                    Err(e) => Err(format!("restore failed: {}", e)),
+                }
+            })),
+        );
+
+        // instance.increment(field, amount?) - Increment a numeric field
+        native_methods.insert(
+            "increment".to_string(),
+            Rc::new(NativeFunction::new("Model#increment", None, |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let field = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("increment() expects a string field name".to_string()),
+                };
+                let amount = match args.get(2) {
+                    Some(Value::Int(n)) => *n,
+                    Some(Value::Float(n)) => *n as i64,
+                    None => 1,
+                    _ => return Err("increment() amount must be a number".to_string()),
+                };
+
                 let inst_ref = instance.borrow();
                 let collection = class_name_to_collection(&inst_ref.class.name);
                 let key = inst_ref
@@ -1242,10 +1917,133 @@ impl Model {
                     Value::String(s) => s,
                     _ => return Err("_key is not a string".to_string()),
                 };
+                let current = match inst_ref.get(&field) {
+                    Some(Value::Int(n)) => n,
+                    Some(Value::Float(n)) => n as i64,
+                    _ => 0,
+                };
                 drop(inst_ref);
-                match exec_delete(&collection, &key_str) {
-                    Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+
+                let new_value = current + amount;
+                let mut map = serde_json::Map::new();
+                map.insert(
+                    field.clone(),
+                    serde_json::Value::Number(serde_json::Number::from(new_value)),
+                );
+                match exec_update(
+                    &collection,
+                    &key_str,
+                    serde_json::Value::Object(map),
+                    true,
+                ) {
+                    Ok(_) => {
+                        instance
+                            .borrow_mut()
+                            .set(field, Value::Int(new_value));
+                        Ok(Value::Instance(instance))
+                    }
+                    Err(e) => Err(format!("increment failed: {}", e)),
+                }
+            })),
+        );
+
+        // instance.decrement(field, amount?) - Decrement a numeric field
+        native_methods.insert(
+            "decrement".to_string(),
+            Rc::new(NativeFunction::new("Model#decrement", None, |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let field = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err("decrement() expects a string field name".to_string()),
+                };
+                let amount = match args.get(2) {
+                    Some(Value::Int(n)) => *n,
+                    Some(Value::Float(n)) => *n as i64,
+                    None => 1,
+                    _ => return Err("decrement() amount must be a number".to_string()),
+                };
+
+                let inst_ref = instance.borrow();
+                let collection = class_name_to_collection(&inst_ref.class.name);
+                let key = inst_ref
+                    .get("_key")
+                    .ok_or_else(|| "Instance has no _key field".to_string())?;
+                let key_str = match key {
+                    Value::String(s) => s,
+                    _ => return Err("_key is not a string".to_string()),
+                };
+                let current = match inst_ref.get(&field) {
+                    Some(Value::Int(n)) => n,
+                    Some(Value::Float(n)) => n as i64,
+                    _ => 0,
+                };
+                drop(inst_ref);
+
+                let new_value = current - amount;
+                let mut map = serde_json::Map::new();
+                map.insert(
+                    field.clone(),
+                    serde_json::Value::Number(serde_json::Number::from(new_value)),
+                );
+                match exec_update(
+                    &collection,
+                    &key_str,
+                    serde_json::Value::Object(map),
+                    true,
+                ) {
+                    Ok(_) => {
+                        instance
+                            .borrow_mut()
+                            .set(field, Value::Int(new_value));
+                        Ok(Value::Instance(instance))
+                    }
+                    Err(e) => Err(format!("decrement failed: {}", e)),
+                }
+            })),
+        );
+
+        // instance.touch() - Update the _updated_at timestamp
+        native_methods.insert(
+            "touch".to_string(),
+            Rc::new(NativeFunction::new("Model#touch", Some(0), |args| {
+                let instance = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Err("Expected instance".to_string()),
+                };
+                let inst_ref = instance.borrow();
+                let collection = class_name_to_collection(&inst_ref.class.name);
+                let key = match inst_ref.get("_key") {
+                    Some(k) => k,
+                    None => return Ok(Value::Instance(instance.clone())),
+                };
+                let key_str = match key {
+                    Value::String(s) => s,
+                    _ => return Err("_key is not a string".to_string()),
+                };
+                drop(inst_ref);
+
+                let now = chrono::Utc::now().to_rfc3339();
+                let mut map = serde_json::Map::new();
+                map.insert(
+                    "_updated_at".to_string(),
+                    serde_json::Value::String(now.clone()),
+                );
+                match exec_update(
+                    &collection,
+                    &key_str,
+                    serde_json::Value::Object(map),
+                    true,
+                ) {
+                    Ok(_) => {
+                        instance
+                            .borrow_mut()
+                            .set("_updated_at".to_string(), Value::String(now));
+                        Ok(Value::Instance(instance))
+                    }
+                    Err(e) => Err(format!("touch failed: {}", e)),
                 }
             })),
         );
@@ -1456,6 +2254,18 @@ pub fn register_model_builtins(env: &mut Environment) {
         );
     }
 
+    // soft_delete - Mark a model as using soft delete
+    env.define(
+        "soft_delete".to_string(),
+        Value::NativeFunction(NativeFunction::new("soft_delete", Some(1), |args| {
+            let class_name = get_class_name_from_class(&args)?;
+            let mut metadata = get_or_create_metadata(&class_name);
+            metadata.soft_delete = true;
+            update_metadata(&class_name, metadata);
+            Ok(Value::Null)
+        })),
+    );
+
     // Relation DSL global functions: has_many, has_one, belongs_to
     for (rel_method, rel_type) in &[
         ("has_many", RelationType::HasMany),
@@ -1508,6 +2318,8 @@ pub fn register_model_builtins(env: &mut Environment) {
                     rel_type.clone(),
                     class_override.as_deref(),
                     fk_override.as_deref(),
+                    None,
+                    None,
                 );
                 register_relation(&class_name, relation);
                 Ok(Value::Null)

@@ -46,6 +46,148 @@ where
     }
 }
 
+// Thread-local transaction state for managing database transactions.
+thread_local! {
+    static CURRENT_TX: RefCell<Option<TransactionState>> = const { RefCell::new(None) };
+}
+
+pub struct TransactionState {
+    pub tx_id: String,
+    pub database: String,
+    pub host: String,
+}
+
+/// Get the current transaction ID if one is active.
+pub fn get_current_tx_id() -> Option<String> {
+    CURRENT_TX.with(|tx| tx.borrow().as_ref().map(|t| t.tx_id.clone()))
+}
+
+/// Begin a new transaction.
+pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String> {
+    let host = super::core::DB_CONFIG.host.clone();
+    let database = get_database_name().to_string();
+    let url = format!(
+        "http://{}/_api/database/{}/transaction/begin",
+        host, database
+    );
+
+    let body = serde_json::json!({
+        "database": database,
+        "isolationLevel": isolation_level.unwrap_or("read_committed")
+    });
+
+    run_db_future(async move {
+        let client = get_http_client().clone();
+        let request = apply_db_auth(
+            client
+                .request(reqwest::Method::POST, &url)
+                .header("Content-Type", "application/json")
+                .body(body.to_string()),
+        );
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("Begin transaction failed: {} - {}", status, body));
+        }
+
+        let json: serde_json::Value = serde_json::from_str(
+            &response
+                .text()
+                .await
+                .map_err(|e| format!("Read error: {}", e))?,
+        )
+        .map_err(|e| format!("JSON error: {}", e))?;
+
+        let tx_id = json
+            .get("tx_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "No tx_id in response".to_string())?
+            .to_string();
+
+        CURRENT_TX.with(|tx| {
+            *tx.borrow_mut() = Some(TransactionState {
+                tx_id: tx_id.clone(),
+                database: database.clone(),
+                host: host.clone(),
+            });
+        });
+
+        Ok(tx_id)
+    })
+}
+
+/// Commit the current transaction.
+pub fn commit_transaction() -> Result<(), String> {
+    let tx_id = get_current_tx_id().ok_or_else(|| "No active transaction".to_string())?;
+
+    let host = super::core::DB_CONFIG.host.clone();
+    let database = get_database_name().to_string();
+    let url = format!(
+        "http://{}/_api/database/{}/transaction/{}/commit",
+        host, database, tx_id
+    );
+
+    run_db_future(async move {
+        let client = get_http_client().clone();
+        let request = apply_db_auth(client.request(reqwest::Method::POST, &url));
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("Commit transaction failed: {} - {}", status, body));
+        }
+
+        CURRENT_TX.with(|tx| {
+            tx.borrow_mut().take();
+        });
+        Ok(())
+    })
+}
+
+/// Rollback the current transaction.
+pub fn rollback_transaction() -> Result<(), String> {
+    let tx_id = get_current_tx_id().ok_or_else(|| "No active transaction".to_string())?;
+
+    let host = super::core::DB_CONFIG.host.clone();
+    let database = get_database_name().to_string();
+    let url = format!(
+        "http://{}/_api/database/{}/transaction/{}/rollback",
+        host, database, tx_id
+    );
+
+    run_db_future(async move {
+        let client = get_http_client().clone();
+        let request = apply_db_auth(client.request(reqwest::Method::POST, &url));
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!(
+                "Rollback transaction failed: {} - {}",
+                status, body
+            ));
+        }
+
+        CURRENT_TX.with(|tx| {
+            tx.borrow_mut().take();
+        });
+        Ok(())
+    })
+}
+
 /// Execute DB operation that returns serde_json::Value directly.
 /// This skips the double JSON conversion (Value -> String -> Value).
 pub fn exec_db_json<F>(f: F) -> Value
@@ -341,6 +483,53 @@ fn document_base_url(collection: &str) -> String {
     )
 }
 
+/// Execute a database transaction with SDBQL queries.
+/// The action is a string containing SDBQL statements to execute within the transaction.
+pub fn exec_transaction(action: &str) -> Result<serde_json::Value, String> {
+    let client = get_http_client().clone();
+    let host = DB_CONFIG.host.clone();
+    let _database = get_database_name();
+    let url = format!("http://{}/_api/transaction", host);
+
+    let body = serde_json::json!({
+        "collections": {
+            "allow": [],
+            "exclusive": [],
+            "write": []
+        },
+        "action": action
+    });
+
+    run_db_future(async move {
+        let mut request = apply_db_auth(client.request(reqwest::Method::POST, &url));
+        request = request.header("Content-Type", "application/json");
+
+        let response = request
+            .body(serde_json::to_string(&body).map_err(|e| e.to_string())?)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(format!("Transaction failed: {} - {}", status, error_text));
+        }
+
+        let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+        Ok(json)
+    })
+}
+
+/// Execute a transaction with a single SDBQL query string.
+pub fn exec_transaction_sdbql(sdbql: &str) -> Result<serde_json::Value, String> {
+    let action = format!(
+        "function() {{ return AQL_QUERY('{}', {{}}); }}",
+        sdbql.replace("'", "\\'")
+    );
+    exec_transaction(&action)
+}
+
 /// Execute a direct HTTP document operation using the shared runtime and client.
 fn exec_document_request(
     method: reqwest::Method,
@@ -453,6 +642,96 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
 /// Execute a query with automatic collection creation.
 pub fn exec_query(collection: &str, sdbql: String) -> Result<Vec<serde_json::Value>, String> {
     exec_with_auto_collection(sdbql, None, collection)
+}
+
+/// Transaction-aware document insert.
+/// If a transaction is active, uses the transaction endpoint.
+pub fn exec_insert_tx(
+    collection: &str,
+    key: Option<&str>,
+    mut document: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    if let Some(k) = key {
+        if let Some(obj) = document.as_object_mut() {
+            obj.insert("_key".to_string(), serde_json::json!(k));
+        }
+    }
+
+    if let Some(tx_id) = get_current_tx_id() {
+        let host = super::core::DB_CONFIG.host.clone();
+        let database = get_database_name().to_string();
+        let url = format!(
+            "http://{}/_api/database/{}/transaction/{}/document/{}",
+            host, database, tx_id, collection
+        );
+        exec_document_request(reqwest::Method::POST, url, Some(document))
+    } else {
+        exec_insert(collection, key, document)
+    }
+}
+
+/// Transaction-aware document get.
+/// If a transaction is active, uses the transaction endpoint.
+pub fn exec_get_tx(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    if let Some(tx_id) = get_current_tx_id() {
+        let host = super::core::DB_CONFIG.host.clone();
+        let database = get_database_name().to_string();
+        let url = format!(
+            "http://{}/_api/database/{}/transaction/{}/document/{}/{}",
+            host,
+            database,
+            tx_id,
+            collection,
+            normalize_key(key)
+        );
+        exec_document_request(reqwest::Method::GET, url, None)
+    } else {
+        exec_get(collection, key)
+    }
+}
+
+/// Transaction-aware document update.
+/// If a transaction is active, uses the transaction endpoint.
+pub fn exec_update_tx(
+    collection: &str,
+    key: &str,
+    document: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    if let Some(tx_id) = get_current_tx_id() {
+        let host = super::core::DB_CONFIG.host.clone();
+        let database = get_database_name().to_string();
+        let url = format!(
+            "http://{}/_api/database/{}/transaction/{}/document/{}/{}",
+            host,
+            database,
+            tx_id,
+            collection,
+            normalize_key(key)
+        );
+        exec_document_request(reqwest::Method::PUT, url, Some(document))
+    } else {
+        exec_update(collection, key, document, false)
+    }
+}
+
+/// Transaction-aware document delete.
+/// If a transaction is active, uses the transaction endpoint.
+pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    if let Some(tx_id) = get_current_tx_id() {
+        let host = super::core::DB_CONFIG.host.clone();
+        let database = get_database_name().to_string();
+        let url = format!(
+            "http://{}/_api/database/{}/transaction/{}/document/{}/{}",
+            host,
+            database,
+            tx_id,
+            collection,
+            normalize_key(key)
+        );
+        exec_document_request(reqwest::Method::DELETE, url, None)
+    } else {
+        exec_delete(collection, key)
+    }
 }
 
 #[cfg(test)]

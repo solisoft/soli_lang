@@ -158,7 +158,27 @@ user.delete()</code></pre>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">instance.delete()</code></td>
-                    <td class="py-3 px-4 text-gray-400">Delete the document from DB. Requires <code>_key</code>.</td>
+                    <td class="py-3 px-4 text-gray-400">Delete the document from DB. Requires <code>_key</code>. Supports soft delete.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.reload()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Refresh instance from database.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.increment(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Atomically increment a numeric field by 1 (or specified amount).</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.decrement(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Atomically decrement a numeric field by 1 (or specified amount).</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.touch()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Update <code>_updated_at</code> timestamp without changing other fields.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.restore()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Restore a soft-deleted record (clear <code>deleted_at</code>).</td>
                 </tr>
             </tbody>
         </table>
@@ -226,8 +246,24 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
                     <td class="py-3 px-4 text-gray-400">Insert a new document, returns <code>{ "valid": bool, "record": instance }</code></td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.create_many([data, ...])</code></td>
+                    <td class="py-3 px-4 text-gray-400">Batch insert multiple documents, returns <code>{ created, errors }</code></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.find(id)</code></td>
                     <td class="py-3 px-4 text-gray-400">Get document by ID, returns instance or <code>null</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.find_by(field, value)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Find first record by field value</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.first_by(field, value)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Find first record by field with ordering</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.find_or_create_by(field, value, data?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Find by field, or create if not found</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.where(filter, bind_vars)</code></td>
@@ -242,6 +278,10 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
                     <td class="py-3 px-4 text-gray-400">Start a query chain limited to n results</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.offset(n)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Start a query chain with offset</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.all</code></td>
                     <td class="py-3 px-4 text-gray-400">Get all documents as instances</td>
                 </tr>
@@ -250,12 +290,40 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
                     <td class="py-3 px-4 text-gray-400">Update a document</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.upsert(id, data)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Insert or update document by ID</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.delete(id)</code></td>
                     <td class="py-3 px-4 text-gray-400">Delete a document</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.transaction { }</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute block in a database transaction</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.transaction("aql")</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute AQL in a database transaction</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.transaction()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Get transaction handle for manual control</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.count</code></td>
                     <td class="py-3 px-4 text-gray-400">Count all documents</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.scope(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute a named scope (returns QueryBuilder)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.with_deleted</code></td>
+                    <td class="py-3 px-4 text-gray-400">Include soft-deleted records (QueryBuilder)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.only_deleted</code></td>
+                    <td class="py-3 px-4 text-gray-400">Query only deleted records (QueryBuilder)</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.includes(rel, ...)</code></td>
@@ -307,6 +375,10 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
                     <td class="py-3 px-4"><code class="text-indigo-300">belongs_to(name)</code></td>
                     <td class="py-3 px-4 text-gray-400">Declare an inverse relationship</td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">belongs_to(name, { "polymorphic": true })</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a polymorphic relationship</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -346,6 +418,38 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
                     <td class="py-3 px-4 text-gray-400">Execute, return first result</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.count</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute, return count</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.exists</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set exists mode (chain with <code>.first</code> to execute, <code>.to_query</code> to inspect)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.pluck(field, ...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set pluck mode for specified fields (chain with <code>.all</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.sum(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set sum aggregation (chain with <code>.first</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.avg(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set average aggregation (chain with <code>.first</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.min(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set minimum aggregation (chain with <code>.first</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.max(field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set maximum aggregation (chain with <code>.first</code> to execute)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.group_by(field, func, agg_field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set group-by aggregation (chain with <code>.all</code> to execute)</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.includes(rel, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Eager load relations via subqueries</td>
                 </tr>
@@ -368,10 +472,6 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.join(rel, filter?, binds?)</code></td>
                     <td class="py-3 px-4 text-gray-400">Filter by existence of related records</td>
-                </tr>
-                <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">.count</code></td>
-                    <td class="py-3 px-4 text-gray-400">Execute, return count</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.to_query</code></td>
@@ -709,6 +809,212 @@ end</code></pre>
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Finder Methods</h2>
+    <p class="text-gray-400 mb-6">Find records by specific field values:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Find by exact field match
+let user = User.find_by("email", "alice@example.com")
+
+# Find with ordering (first by field value)
+let user = User.first_by("name", "Alice")
+
+# Find or create - returns existing or creates new
+let user = User.find_or_create_by("email", "new@example.com")
+let user = User.find_or_create_by("email", "new@example.com", { "name": "New User" })</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Aggregations</h2>
+    <p class="text-gray-400 mb-6">Aggregation methods return a QueryBuilder in aggregation mode. Chain with <code>.first</code> to execute, or <code>.to_query</code> to inspect the generated SDBQL:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Sum — chain .first to execute
+let total = User.where("age > @a", { "a": 18 }).sum("balance").first
+
+# Average
+let avg = User.avg("score").first
+
+# Minimum
+let min_score = User.min("score").first
+
+# Maximum
+let max_score = User.max("views").first
+
+# Group by aggregation — chain .all for grouped results
+let by_country = User.group_by("country", "sum", "balance").all
+# Returns: [{ group: "US", result: 1000 }, { group: "FR", result: 500 }, ...]
+
+# Inspect the generated query
+let q = User.where("active = @a", { "a": true }).sum("balance").to_query
+# => FOR doc IN users FILTER doc.active == @a RETURN SUM(doc.balance)</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Pluck and Exists</h2>
+    <p class="text-gray-400 mb-6">Quick queries for specific data:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Get array of single field values — chain .all to execute
+let names = User.where("active = @a", { "a": true }).pluck("name").all
+# Returns: ["Alice", "Bob", "Charlie"]
+
+# Get multiple fields as objects
+let users = User.pluck("name", "email").all
+# Returns: [{ name: "Alice", email: "alice@example.com" }, ...]
+
+# Check if records exist — chain .first to execute (returns boolean)
+let exists = User.where("role = @r", { "r": "admin" }).exists.first
+# Returns: true or false
+
+# Inspect the generated query
+let q = User.where("role = @r", { "r": "admin" }).exists.to_query
+# => FOR doc IN users FILTER doc.role == @r LIMIT 1 RETURN true</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Instance Methods</h2>
+    <p class="text-gray-400 mb-6">Methods available on model instances:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">let user = User.find("user_id")
+
+# Update fields and persist
+user.name = "New Name"
+user.update
+
+# Atomic increment/decrement
+user.increment("view_count")       # +1
+user.increment("view_count", 5)     # +5
+user.decrement("stock")              # -1
+
+# Update timestamp only
+user.touch  # Updates _updated_at
+
+# Refresh from database
+user.reload</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Scopes</h2>
+    <p class="text-gray-400 mb-6">Define reusable query scopes:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+    scope("active", "active = @a", { "a": true })
+    scope("recent", "1 = 1", {})  # no filter, just for chaining
+end
+
+# Use scopes
+let active = User.scope("active").all
+let recent = User.scope("active").limit(10).all</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Soft Delete</h2>
+    <p class="text-gray-400 mb-6">Mark records as deleted without removing them:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Post < Model
+    soft_delete
+end
+
+# Delete sets deleted_at timestamp
+post.delete
+
+# Restore clears deleted_at
+post.restore
+
+# Query without deleted records (default behavior)
+let posts = Post.all
+
+# Include soft-deleted records
+let all = Post.with_deleted.all
+
+# Query only deleted records
+let deleted = Post.only_deleted.all</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Relationship Accessors</h2>
+    <p class="text-gray-400 mb-6">Access related records directly from instances:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">let user = User.find("user_id")
+
+# Access has_many relation
+let posts = user.posts
+
+# Access has_one relation
+let profile = user.profile
+
+# Access belongs_to relation
+let author = post.user
+
+# Chain query builder methods on relations
+let published = user.posts.where("published = @p", { "p": true }).all</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Batch Operations</h2>
+    <p class="text-gray-400 mb-6">Insert or update multiple records:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Batch create
+let result = User.create_many([
+    { "name": "Alice", "email": "alice@example.com" },
+    { "name": "Bob", "email": "bob@example.com" },
+    { "name": "Charlie", "email": "charlie@example.com" }
+])
+# Returns: { "created": 3, "errors": [] }
+
+# Upsert (insert or update by ID)
+User.upsert("user123", { "name": "Updated Name" })
+# Updates if exists, inserts with ID if not</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Transactions</h2>
+    <p class="text-gray-400 mb-6">Execute multiple operations atomically within a database transaction. Use a transaction handle for manual control, or execute AQL directly:</p>
+
+    <h3 class="text-xl font-bold text-white mb-4">Transaction Handle (Recommended)</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Get transaction handle
+let tx = User.transaction()
+
+# Perform operations within the transaction
+tx.create({ name: "Alice", age: 30 })
+tx.create({ name: "Bob", age: 25 })
+
+# Commit all changes
+tx.commit()
+# Or tx.rollback() to undo all changes
+
+# Also available: tx.get(key), tx.update(key, doc), tx.delete(key)</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-xl font-bold text-white mb-4">Execute SDBQL in Transaction</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Execute SDBQL in a transaction (auto-commits)
+let result = User.transaction("
+    INSERT { name: 'Alice', age: 30 } INTO users;
+    INSERT { name: 'Bob', age: 25 } INTO users;
+    RETURN users
+")</code></pre>
+        </div>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Query Generation (SDBQL)</h2>
     <p class="text-gray-400 mb-6">Under the hood, Model methods generate SDBQL (SoliDB Query Language)
 queries:</p>
@@ -765,6 +1071,26 @@ queries:</p>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">User.join("posts")</code></td>
                     <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users FILTER LENGTH(FOR rel IN posts FILTER rel.user_id == doc._key LIMIT 1 RETURN 1) > 0 RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.exists.to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... LIMIT 1 RETURN true</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.pluck("name").to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... RETURN doc.name</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.pluck("name", "email").to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... RETURN {name: doc.name, email: doc.email}</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.sum("balance").to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... RETURN SUM(doc.balance)</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.group_by("country", "sum", "balance").to_query</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users ... COLLECT group = doc.country AGGREGATE result = SUM(doc.balance) RETURN {group: group, result: result}</code></td>
                 </tr>
             </tbody>
         </table>

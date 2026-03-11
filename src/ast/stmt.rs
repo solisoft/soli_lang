@@ -142,6 +142,7 @@ pub struct Parameter {
     pub type_annotation: TypeAnnotation,
     pub default_value: Option<Expr>,
     pub span: Span,
+    pub is_block_param: bool,
 }
 
 /// Class declaration.

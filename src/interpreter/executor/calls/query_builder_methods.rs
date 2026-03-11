@@ -5,7 +5,9 @@ use std::rc::Rc;
 
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::model::{
-    execute_query_builder, execute_query_builder_count, execute_query_builder_first,
+    execute_query_builder, execute_query_builder_aggregate, execute_query_builder_count,
+    execute_query_builder_exists, execute_query_builder_first, execute_query_builder_group_by,
+    AggregationFunc,
 };
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::Value;
@@ -31,6 +33,13 @@ impl Interpreter {
             "all" => self.qb_all(qb, arguments, span),
             "first" => self.qb_first(qb, arguments, span),
             "count" => self.qb_count(qb, arguments, span),
+            "exists" => self.qb_exists(qb, arguments, span),
+            "pluck" => self.qb_pluck(qb, arguments, span),
+            "sum" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Sum),
+            "avg" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Avg),
+            "min" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Min),
+            "max" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Max),
+            "group_by" => self.qb_group_by(qb, arguments, span),
             "to_query" => self.qb_to_query(qb, arguments, span),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "QueryBuilder".to_string(),
@@ -435,7 +444,21 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        Ok(execute_query_builder(&qb.borrow()))
+        let qb_ref = qb.borrow();
+        if qb_ref.exists_mode {
+            Ok(execute_query_builder_exists(&qb_ref))
+        } else if let Some((ref func, ref field)) = qb_ref.aggregation {
+            Ok(execute_query_builder_aggregate(&qb_ref, func.clone(), field))
+        } else if let Some((ref gf, ref func, ref af)) = qb_ref.group_by_info {
+            Ok(execute_query_builder_group_by(
+                &qb_ref,
+                gf,
+                func.clone(),
+                af,
+            ))
+        } else {
+            Ok(execute_query_builder(&qb_ref))
+        }
     }
 
     fn qb_first(
@@ -447,7 +470,21 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        Ok(execute_query_builder_first(&qb.borrow()))
+        let qb_ref = qb.borrow();
+        if qb_ref.exists_mode {
+            Ok(execute_query_builder_exists(&qb_ref))
+        } else if let Some((ref func, ref field)) = qb_ref.aggregation {
+            Ok(execute_query_builder_aggregate(&qb_ref, func.clone(), field))
+        } else if let Some((ref gf, ref func, ref af)) = qb_ref.group_by_info {
+            Ok(execute_query_builder_group_by(
+                &qb_ref,
+                gf,
+                func.clone(),
+                af,
+            ))
+        } else {
+            Ok(execute_query_builder_first(&qb_ref))
+        }
     }
 
     fn qb_count(
@@ -462,6 +499,131 @@ impl Interpreter {
         Ok(execute_query_builder_count(&qb.borrow()))
     }
 
+    fn qb_exists(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        // Sets exists mode on QB — use .first to execute, .to_query to inspect
+        if !arguments.is_empty() {
+            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+        }
+        let mut new_qb = qb.borrow().clone();
+        new_qb.exists_mode = true;
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    fn qb_pluck(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        // pluck accepts one or more field names: pluck("name") or pluck("name", "email")
+        if arguments.is_empty() {
+            return Err(RuntimeError::new(
+                "pluck() requires at least one field name",
+                span,
+            ));
+        }
+        let mut fields = Vec::new();
+        for arg in &arguments {
+            match arg {
+                Value::String(s) => fields.push(s.clone()),
+                _other => {
+                    return Err(RuntimeError::type_error(
+                        "pluck() expects string field names",
+                        span,
+                    ))
+                }
+            }
+        }
+        let mut new_qb = qb.borrow().clone();
+        new_qb.set_pluck(fields);
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    fn qb_aggregate(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+        func: AggregationFunc,
+    ) -> RuntimeResult<Value> {
+        // sum("field"), avg("field"), min("field"), max("field")
+        // Sets aggregation mode on QB — use .first to execute, .to_query to inspect
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let field = match &arguments[0] {
+            Value::String(s) => s.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "aggregate function expects string field name",
+                    span,
+                ))
+            }
+        };
+        let mut new_qb = qb.borrow().clone();
+        new_qb.aggregation = Some((func, field));
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    fn qb_group_by(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        // group_by("field", "sum", "amount") or group_by("field", "avg", "amount")
+        if arguments.len() < 3 {
+            return Err(RuntimeError::wrong_arity(3, arguments.len(), span));
+        }
+        let group_field = match &arguments[0] {
+            Value::String(s) => s.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "group_by() expects string group field name",
+                    span,
+                ))
+            }
+        };
+        let func_name = match &arguments[1] {
+            Value::String(s) => s.clone().to_lowercase(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "group_by() expects string function name",
+                    span,
+                ))
+            }
+        };
+        let agg_field = match &arguments[2] {
+            Value::String(s) => s.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "group_by() expects string aggregate field name",
+                    span,
+                ))
+            }
+        };
+        let func = match func_name.as_str() {
+            "sum" => AggregationFunc::Sum,
+            "avg" => AggregationFunc::Avg,
+            "min" => AggregationFunc::Min,
+            "max" => AggregationFunc::Max,
+            _ => {
+                return Err(RuntimeError::new(
+                    "group_by() function must be one of: sum, avg, min, max",
+                    span,
+                ))
+            }
+        };
+        let mut new_qb = qb.borrow().clone();
+        new_qb.group_by_info = Some((group_field, func, agg_field));
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
     fn qb_to_query(
         &mut self,
         qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
@@ -471,7 +633,23 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let (query, bind_vars) = qb.borrow().build_query();
+        let qb_ref = qb.borrow();
+
+        // Handle special modes
+        let (query, bind_vars) = if qb_ref.exists_mode {
+            qb_ref.build_exists_query()
+        } else if let Some((ref func, ref field)) = qb_ref.aggregation {
+            crate::interpreter::builtins::model::build_aggregation_query(
+                &qb_ref,
+                func.clone(),
+                field,
+            )
+        } else if let Some((ref group_field, ref func, ref agg_field)) = qb_ref.group_by_info {
+            qb_ref.build_group_by_query(group_field, func.clone(), agg_field)
+        } else {
+            qb_ref.build_query()
+        };
+
         if bind_vars.is_empty() {
             Ok(Value::String(query))
         } else {

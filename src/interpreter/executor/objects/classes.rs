@@ -78,6 +78,12 @@ impl Interpreter {
                         }
                         named_args.insert(named.name.clone(), self.evaluate(&named.value)?);
                     }
+                    Argument::Block(_) => {
+                        return Err(RuntimeError::type_error(
+                            "constructor does not support block arguments",
+                            span,
+                        ));
+                    }
                 }
             }
 

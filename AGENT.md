@@ -405,12 +405,55 @@ let results = User
     .offset(20)
     .all();
 
+// Finder Methods
+let user = User.find_by("email", "alice@example.com");
+let user = User.first_by("name", "Alice");  // with ordering
+let user = User.find_or_create_by("email", "new@example.com", { "name": "New" });
+
+// Aggregations
+let total = User.where("age > @a", { "a": 18 }).sum("balance");
+let avg = User.avg("score");
+let min = User.min("price");
+let max = User.max("views");
+let by_country = User.group_by("country", "sum", "balance");
+
+// Query Builder Methods
+let names = User.where(...).pluck("name");  // single field
+let exists = User.where(...).exists();      // boolean
+
+// Instance Methods
+user.increment("view_count");
+user.increment("view_count", 5);  // by 5
+user.decrement("stock");
+user.touch();  // update _updated_at
+
 // Relationships
 class Post extends Model {
-    fn author() -> Any {
-        return User.find(this.author_id);
-    }
+    belongs_to("user")
+    has_many("comments")
 }
+
+// Relationship Accessors (auto-generated)
+let posts = user.comments;
+let author = post.user;
+
+// Scopes
+class User extends Model
+    scope("active", "active = @a", { "a": true })
+    scope("recent", "1 = 1", {})
+end
+
+let active = User.scope("active").all();
+
+// Soft Delete
+class Post extends Model
+    soft_delete
+end
+
+post.delete();           // Sets deleted_at
+post.restore();          // Clears deleted_at
+Post.with_deleted.all(); // Include deleted
+Post.only_deleted.all(); // Deleted only
 ```
 
 ## AI/LLM Code Generation Guide

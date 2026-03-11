@@ -41,6 +41,12 @@ impl Interpreter {
                                             span,
                                         ));
                                     }
+                                    Argument::Block(_) => {
+                                        return Err(RuntimeError::type_error(
+                                            "pipeline method does not support block arguments",
+                                            span,
+                                        ));
+                                    }
                                 }
                             }
                             return self.call_array_method(&items, name, args, span);
@@ -63,6 +69,12 @@ impl Interpreter {
                         Argument::Named(_) => {
                             return Err(RuntimeError::type_error(
                                 "pipeline method does not support named arguments",
+                                span,
+                            ));
+                        }
+                        Argument::Block(_) => {
+                            return Err(RuntimeError::type_error(
+                                "pipeline method does not support block arguments",
                                 span,
                             ));
                         }

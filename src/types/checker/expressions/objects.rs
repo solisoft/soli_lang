@@ -94,6 +94,9 @@ impl TypeChecker {
                 Argument::Named(named) => {
                     self.check_expr(&named.value)?;
                 }
+                Argument::Block(expr) => {
+                    self.check_expr(expr)?;
+                }
             }
         }
         // Return an error type that will be resolved at runtime

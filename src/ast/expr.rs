@@ -25,11 +25,12 @@ pub struct NamedArgument {
     pub span: Span,
 }
 
-/// An argument in a function call (positional or named)
+/// An argument in a function call (positional, named, or block)
 #[derive(Debug, Clone, PartialEq)]
 pub enum Argument {
     Positional(Expr),
     Named(NamedArgument),
+    Block(Expr),
 }
 
 /// All expression variants.

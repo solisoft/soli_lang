@@ -306,6 +306,12 @@ impl Parser {
                 "has_one",
                 "belongs_to",
             ];
+            // Bare class-level macros (no parentheses needed)
+            let bare_class_level_names = ["soft_delete"];
+            if bare_class_level_names.contains(&name.as_str()) {
+                return true;
+            }
+
             if class_level_names.contains(&name.as_str()) {
                 // Look ahead for left paren
                 if let Some(next) = self.tokens.get(self.current + 1) {
@@ -316,9 +322,25 @@ impl Parser {
         false
     }
 
-    /// Parse a class-level statement like validates(...) or before_save(...)
+    /// Parse a class-level statement like validates(...), before_save(...), or soft_delete
     fn parse_class_level_statement(&mut self) -> ParseResult<Stmt> {
         let start_span = self.current_span();
+
+        // Check for bare class-level macro (no parentheses): e.g., soft_delete
+        if let TokenKind::Identifier(name) = &self.peek().kind {
+            let bare_names = ["soft_delete"];
+            if bare_names.contains(&name.as_str()) {
+                let name = name.clone();
+                self.advance(); // consume the identifier
+                let span = start_span.merge(&self.previous_span());
+                self.match_token(&TokenKind::Semicolon);
+                // Wrap as a zero-arg Call so the class executor can process it
+                let callee = Expr::new(ExprKind::Variable(name), start_span);
+                let call = Expr::new(ExprKind::Call { callee: Box::new(callee), arguments: vec![] }, span);
+                return Ok(Stmt::new(StmtKind::Expression(call), span));
+            }
+        }
+
         // Parse as an expression (function call)
         let expr = self.expression()?;
         self.match_token(&TokenKind::Semicolon); // Optional semicolon

@@ -138,6 +138,9 @@ impl Parser {
 
     fn parse_parameter(&mut self) -> ParseResult<Parameter> {
         let start_span = self.current_span();
+
+        let is_block_param = self.match_token(&TokenKind::Ampersand);
+
         let name = self.expect_identifier()?;
 
         let type_annotation = if self.match_token(&TokenKind::Colon) {
@@ -162,6 +165,7 @@ impl Parser {
             type_annotation,
             default_value,
             span,
+            is_block_param,
         })
     }
 }

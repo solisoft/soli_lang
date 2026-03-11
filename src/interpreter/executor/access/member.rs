@@ -5,6 +5,8 @@ use std::rc::Rc;
 
 use crate::ast::Expr;
 use crate::error::RuntimeError;
+use crate::interpreter::builtins::model::get_relation;
+use crate::interpreter::builtins::model::relations::RelationType;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::{Function, Instance, NativeFunction, Value, ValueMethod};
@@ -148,6 +150,117 @@ impl Interpreter {
         }
 
         let inst_ref = inst.borrow();
+
+        // Check if this is a model subclass and the name is a relation
+        if inst_ref.class.is_model_subclass() {
+            let class_name = &inst_ref.class.name;
+            if let Some(relation) = get_relation(class_name, name) {
+                drop(inst_ref);
+
+                // Get the foreign key value based on relation type
+                let inst_ref = inst.borrow();
+                let fk_value = match relation.relation_type {
+                    // For HasMany/HasOne, the FK is on the *related* model,
+                    // so we use the owner's _key as the bind value.
+                    RelationType::HasMany | RelationType::HasOne | RelationType::Polymorphic => {
+                        inst_ref.get("_key")
+                    }
+                    // For BelongsTo, the FK is on this instance
+                    RelationType::BelongsTo => inst_ref.get(&relation.foreign_key),
+                };
+                drop(inst_ref);
+
+                let fk = match fk_value {
+                    Some(Value::String(s)) => s,
+                    Some(Value::Int(n)) => n.to_string(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            format!(
+                                "Foreign key '{}' not found or invalid on instance",
+                                relation.foreign_key
+                            ),
+                            span,
+                        ));
+                    }
+                };
+
+                // Build the query based on relation type
+                let related_collection = &relation.collection;
+                let sdbql = match relation.relation_type {
+                    RelationType::HasMany => {
+                        format!(
+                            "FOR doc IN {} FILTER doc.{} == @fk RETURN doc",
+                            related_collection, relation.foreign_key
+                        )
+                    }
+                    RelationType::HasOne => {
+                        format!(
+                            "FOR doc IN {} FILTER doc.{} == @fk LIMIT 1 RETURN doc",
+                            related_collection, relation.foreign_key
+                        )
+                    }
+                    RelationType::BelongsTo => {
+                        format!(
+                            "FOR doc IN {} FILTER doc._key == @fk LIMIT 1 RETURN doc",
+                            related_collection
+                        )
+                    }
+                    RelationType::Polymorphic => {
+                        let type_field = relation
+                            .polymorphic_type_field
+                            .clone()
+                            .unwrap_or_else(|| format!("{}_type", relation.name));
+                        let type_value = relation
+                            .polymorphic_type_value
+                            .clone()
+                            .unwrap_or_else(|| relation.class_name.clone());
+                        format!(
+                            "FOR doc IN {} FILTER doc.{} == @fk AND doc.{} == \"{}\" RETURN doc",
+                            related_collection, relation.foreign_key, type_field, type_value
+                        )
+                    }
+                };
+
+                let mut bind_vars = std::collections::HashMap::new();
+                bind_vars.insert("fk".to_string(), serde_json::Value::String(fk));
+
+                use crate::interpreter::builtins::model::crud::exec_with_auto_collection;
+                return match exec_with_auto_collection(sdbql, Some(bind_vars), related_collection) {
+                    Ok(results) => {
+                        if results.is_empty() {
+                            return Ok(Value::Null);
+                        }
+                        match relation.relation_type {
+                            RelationType::HasMany => {
+                                // Return array of instances
+                                let class = inst.borrow().class.clone();
+                                let values: Vec<Value> = results
+                                    .iter()
+                                    .map(|json| {
+                                        crate::interpreter::builtins::model::crud::json_doc_to_instance(&class, json)
+                                    })
+                                    .collect();
+                                Ok(Value::Array(Rc::new(RefCell::new(values))))
+                            }
+                            _ => {
+                                // Return single instance
+                                let class = inst.borrow().class.clone();
+                                Ok(
+                                    crate::interpreter::builtins::model::crud::json_doc_to_instance(
+                                        &class,
+                                        &results[0],
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                    Err(e) => Err(RuntimeError::new(
+                        format!("Error fetching relation: {}", e),
+                        span,
+                    )),
+                };
+            }
+        }
 
         // First check for field
         if let Some(value) = inst_ref.get(name) {
@@ -431,7 +544,7 @@ impl Interpreter {
     }
 
     fn query_builder_member_access(
-        &self,
+        &mut self,
         name: &str,
         span: Span,
         obj_val: Value,
@@ -448,10 +561,21 @@ impl Interpreter {
         // Handle QueryBuilder methods for chaining
         match name {
             "where" | "order" | "limit" | "offset" | "includes" | "join" | "select" | "fields"
-            | "all" | "first" | "count" | "to_query" | "is_a?" => Ok(Value::Method(ValueMethod {
+            | "all" | "first" | "count" | "to_query" | "is_a?" | "pluck" | "sum" | "avg"
+            | "min" | "max" | "group_by" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
+            // exists sets exists_mode on QB and returns new QB (chain with .first to execute)
+            "exists" => {
+                if let Value::QueryBuilder(qb) = obj_val {
+                    let mut new_qb = qb.borrow().clone();
+                    new_qb.exists_mode = true;
+                    Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+                } else {
+                    unreachable!()
+                }
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "QueryBuilder".to_string(),
                 property: name.to_string(),

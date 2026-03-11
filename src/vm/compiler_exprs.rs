@@ -371,6 +371,11 @@ impl Compiler {
                     self.compile_expr(&named.value)?;
                     argc += 2; // marker + value
                 }
+                Argument::Block(expr) => {
+                    // Compile block as closure argument
+                    self.compile_expr(expr)?;
+                    argc += 1;
+                }
             }
         }
 
@@ -389,6 +394,10 @@ impl Compiler {
                 }
                 Argument::Named(_) => {
                     // Named args to print don't make sense, but compile them anyway
+                    return self.compile_print_fallback(arguments, line);
+                }
+                Argument::Block(_expr) => {
+                    // Block args to print don't make sense, but compile them anyway
                     return self.compile_print_fallback(arguments, line);
                 }
             }
@@ -413,6 +422,10 @@ impl Compiler {
                     self.emit(Op::NamedArg(name_idx), line);
                     self.compile_expr(&named.value)?;
                     argc += 2;
+                }
+                Argument::Block(expr) => {
+                    self.compile_expr(expr)?;
+                    argc += 1;
                 }
             }
         }
@@ -480,6 +493,10 @@ impl Compiler {
                             self.compile_expr(&named.value)?;
                             argc += 2;
                         }
+                        Argument::Block(expr) => {
+                            self.compile_expr(expr)?;
+                            argc += 1;
+                        }
                     }
                 }
                 self.emit(Op::Call(argc), line);
@@ -543,6 +560,10 @@ impl Compiler {
                     self.emit(Op::NamedArg(name_idx), line);
                     self.compile_expr(&named.value)?;
                     argc += 2;
+                }
+                Argument::Block(expr) => {
+                    self.compile_expr(expr)?;
+                    argc += 1;
                 }
             }
         }

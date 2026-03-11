@@ -478,6 +478,12 @@ impl Interpreter {
                                         stmt.span,
                                     ));
                                 }
+                                Argument::Block(_) => {
+                                    return Err(RuntimeError::type_error(
+                                        "model validation does not support block arguments",
+                                        stmt.span,
+                                    ));
+                                }
                             }
                         }
 

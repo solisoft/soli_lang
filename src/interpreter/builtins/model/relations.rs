@@ -22,6 +22,8 @@ pub enum RelationType {
     HasMany,
     HasOne,
     BelongsTo,
+    /// Polymorphic relation - stores type in a separate field (e.g., commentable_type)
+    Polymorphic,
 }
 
 /// Definition of a single relationship.
@@ -37,6 +39,10 @@ pub struct RelationDef {
     pub collection: String,
     /// The foreign key field, e.g. "user_id"
     pub foreign_key: String,
+    /// For polymorphic relations: the field storing the type (e.g., "commentable_type")
+    pub polymorphic_type_field: Option<String>,
+    /// For polymorphic relations: the expected type value (e.g., "Post")
+    pub polymorphic_type_value: Option<String>,
 }
 
 /// Build a RelationDef applying naming conventions.
@@ -44,12 +50,15 @@ pub struct RelationDef {
 /// - `has_many("posts")` → class `Post`, collection `posts`, fk `user_id`
 /// - `belongs_to("user")` → class `User`, collection `users`, fk `user_id`
 /// - `has_one("profile")` → class `Profile`, collection `profiles`, fk `user_id`
+/// - Polymorphic: `belongs_to("commentable", { "polymorphic": true })`
 pub fn build_relation(
     owner_class: &str,
     name: &str,
     relation_type: RelationType,
     class_name_override: Option<&str>,
     foreign_key_override: Option<&str>,
+    polymorphic_type_field: Option<String>,
+    polymorphic_type_value: Option<String>,
 ) -> RelationDef {
     let class_name = class_name_override
         .map(|s| s.to_string())
@@ -61,7 +70,7 @@ pub fn build_relation(
         // For has_many, name is already plural (e.g. "posts")
         // For belongs_to/has_one, name is singular → pluralize
         match relation_type {
-            RelationType::HasMany => name.to_string(),
+            RelationType::HasMany | RelationType::Polymorphic => name.to_string(),
             RelationType::HasOne | RelationType::BelongsTo => pluralize(name),
         }
     };
@@ -71,7 +80,7 @@ pub fn build_relation(
         .unwrap_or_else(|| {
             match relation_type {
                 // has_many/has_one: FK is on the related model, named after the owner
-                RelationType::HasMany | RelationType::HasOne => {
+                RelationType::HasMany | RelationType::HasOne | RelationType::Polymorphic => {
                     format!("{}_id", to_snake_case(owner_class))
                 }
                 // belongs_to: FK is on the owner model, named after the relation
@@ -85,6 +94,8 @@ pub fn build_relation(
         class_name,
         collection,
         foreign_key,
+        polymorphic_type_field,
+        polymorphic_type_value,
     }
 }
 
@@ -203,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_build_has_many() {
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         assert_eq!(rel.name, "posts");
         assert_eq!(rel.relation_type, RelationType::HasMany);
         assert_eq!(rel.class_name, "Post");
@@ -213,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_build_has_one() {
-        let rel = build_relation("User", "profile", RelationType::HasOne, None, None);
+        let rel = build_relation("User", "profile", RelationType::HasOne, None, None, None, None);
         assert_eq!(rel.name, "profile");
         assert_eq!(rel.relation_type, RelationType::HasOne);
         assert_eq!(rel.class_name, "Profile");
@@ -223,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_build_belongs_to() {
-        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None);
+        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None, None, None);
         assert_eq!(rel.name, "user");
         assert_eq!(rel.relation_type, RelationType::BelongsTo);
         assert_eq!(rel.class_name, "User");
@@ -239,6 +250,8 @@ mod tests {
             RelationType::HasMany,
             Some("Article"),
             Some("author_id"),
+            None,
+            None,
         );
         assert_eq!(rel.class_name, "Article");
         assert_eq!(rel.collection, "articles");
@@ -247,7 +260,15 @@ mod tests {
 
     #[test]
     fn test_build_belongs_to_compound_name() {
-        let rel = build_relation("Comment", "blog_post", RelationType::BelongsTo, None, None);
+        let rel = build_relation(
+            "Comment",
+            "blog_post",
+            RelationType::BelongsTo,
+            None,
+            None,
+            None,
+            None,
+        );
         assert_eq!(rel.class_name, "BlogPost");
         assert_eq!(rel.collection, "blog_posts");
         assert_eq!(rel.foreign_key, "blog_post_id");
@@ -255,7 +276,15 @@ mod tests {
 
     #[test]
     fn test_has_many_on_compound_owner() {
-        let rel = build_relation("BlogPost", "comments", RelationType::HasMany, None, None);
+        let rel = build_relation(
+            "BlogPost",
+            "comments",
+            RelationType::HasMany,
+            None,
+            None,
+            None,
+            None,
+        );
         assert_eq!(rel.foreign_key, "blog_post_id");
         assert_eq!(rel.collection, "comments");
         assert_eq!(rel.class_name, "Comment");

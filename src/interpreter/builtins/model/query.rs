@@ -33,6 +33,18 @@ pub struct JoinClause {
     pub bind_vars: HashMap<String, serde_json::Value>,
 }
 
+/// Controls how soft-deleted records are handled in queries.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum SoftDeleteMode {
+    /// Default: exclude soft-deleted records (add `FILTER doc.deleted_at == null`)
+    #[default]
+    Default,
+    /// Include all records, including soft-deleted
+    WithDeleted,
+    /// Only return soft-deleted records (add `FILTER doc.deleted_at != null`)
+    OnlyDeleted,
+}
+
 /// A query builder for chainable database queries.
 /// Uses SDBQL filter expressions with symbol-based bind variables for O(1) lookup.
 #[derive(Debug, Clone)]
@@ -48,6 +60,15 @@ pub struct QueryBuilder {
     pub includes: Vec<IncludeClause>,
     pub joins: Vec<JoinClause>,
     pub select_fields: Option<Vec<String>>,
+    pub pluck_fields: Option<Vec<String>>,
+    pub soft_delete_mode: SoftDeleteMode,
+    pub is_soft_delete_model: bool,
+    /// Aggregation mode: (func, field) — set by sum/avg/min/max
+    pub aggregation: Option<(AggregationFunc, String)>,
+    /// Exists mode — set by .exists
+    pub exists_mode: bool,
+    /// Group-by mode: (group_field, func, agg_field) — set by .group_by
+    pub group_by_info: Option<(String, AggregationFunc, String)>,
 }
 
 impl QueryBuilder {
@@ -66,10 +87,17 @@ impl QueryBuilder {
             includes: Vec::new(),
             joins: Vec::new(),
             select_fields: None,
+            pluck_fields: None,
+            soft_delete_mode: SoftDeleteMode::Default,
+            is_soft_delete_model: false,
+            aggregation: None,
+            exists_mode: false,
+            group_by_info: None,
         }
     }
 
     pub fn new_with_class(class_name: String, collection: String, class: Rc<Class>) -> Self {
+        let is_sd = super::core::is_soft_delete(&class_name);
         let class_id = crate::interpreter::get_symbol(&class_name);
         let collection_id = crate::interpreter::get_symbol(&collection);
         Self {
@@ -84,7 +112,17 @@ impl QueryBuilder {
             includes: Vec::new(),
             joins: Vec::new(),
             select_fields: None,
+            pluck_fields: None,
+            soft_delete_mode: SoftDeleteMode::Default,
+            is_soft_delete_model: is_sd,
+            aggregation: None,
+            exists_mode: false,
+            group_by_info: None,
         }
+    }
+
+    pub fn set_pluck(&mut self, fields: Vec<String>) {
+        self.pluck_fields = Some(fields);
     }
 
     pub fn set_filter(&mut self, filter: String, bind_vars: HashMap<String, serde_json::Value>) {
@@ -173,6 +211,20 @@ impl QueryBuilder {
                     // FK is on the owner: doc.{fk} == rel._key
                     format!("doc.{} == rel._key", rel.foreign_key)
                 }
+                RelationType::Polymorphic => {
+                    let type_field = rel
+                        .polymorphic_type_field
+                        .clone()
+                        .unwrap_or_else(|| format!("{}_type", rel.name));
+                    let type_value = rel
+                        .polymorphic_type_value
+                        .clone()
+                        .unwrap_or_else(|| rel.class_name.clone());
+                    format!(
+                        "rel.{} == doc._key AND rel.{} == \"{}\"",
+                        rel.foreign_key, type_field, type_value
+                    )
+                }
             };
 
             let subquery_filter = if let Some(extra) = &join.filter {
@@ -196,6 +248,21 @@ impl QueryBuilder {
             query.push_str(&format!(" FILTER {}", aql_filter));
         }
 
+        // Soft delete filtering
+        if self.is_soft_delete_model {
+            match self.soft_delete_mode {
+                SoftDeleteMode::Default => {
+                    query.push_str(" FILTER doc.deleted_at == null");
+                }
+                SoftDeleteMode::OnlyDeleted => {
+                    query.push_str(" FILTER doc.deleted_at != null");
+                }
+                SoftDeleteMode::WithDeleted => {
+                    // Include all records — no additional filter
+                }
+            }
+        }
+
         // Include subqueries (LET statements)
         for inc in &self.includes {
             let rel = &inc.relation;
@@ -207,6 +274,20 @@ impl QueryBuilder {
                 }
                 RelationType::BelongsTo => {
                     format!("rel._key == doc.{}", rel.foreign_key)
+                }
+                RelationType::Polymorphic => {
+                    let type_field = rel
+                        .polymorphic_type_field
+                        .clone()
+                        .unwrap_or_else(|| format!("{}_type", rel.name));
+                    let type_value = rel
+                        .polymorphic_type_value
+                        .clone()
+                        .unwrap_or_else(|| rel.class_name.clone());
+                    format!(
+                        "rel._key == doc.{} AND rel.{} == \"{}\"",
+                        rel.foreign_key, type_field, type_value
+                    )
                 }
             };
 
@@ -229,7 +310,9 @@ impl QueryBuilder {
 
             let limit_clause = match rel.relation_type {
                 RelationType::HasMany => "",
-                RelationType::HasOne | RelationType::BelongsTo => " LIMIT 1",
+                RelationType::HasOne | RelationType::BelongsTo | RelationType::Polymorphic => {
+                    " LIMIT 1"
+                }
             };
 
             query.push_str(&format!(
@@ -254,17 +337,28 @@ impl QueryBuilder {
             } else {
                 query.push_str(&format!(" LIMIT {}", limit));
             }
+        } else if let Some(offset) = self.offset_val {
+            // Offset without explicit limit — use a large default
+            query.push_str(&format!(" LIMIT {}, 1000000", offset));
         }
 
-        // RETURN clause — with optional select projection and MERGE for includes
-        let doc_return = match &self.select_fields {
-            Some(fields) => {
-                let mut pairs: Vec<String> =
+        // RETURN clause — with optional select projection, pluck, and MERGE for includes
+        // pluck_fields takes precedence over select_fields
+        let doc_return = if let Some(fields) = &self.pluck_fields {
+            if fields.len() == 1 {
+                format!("doc.{}", fields[0])
+            } else {
+                let pairs: Vec<String> =
                     fields.iter().map(|f| format!("{}: doc.{}", f, f)).collect();
-                pairs.push("_key: doc._key".to_string());
                 format!("{{{}}}", pairs.join(", "))
             }
-            None => "doc".to_string(),
+        } else if let Some(fields) = &self.select_fields {
+            let mut pairs: Vec<String> =
+                fields.iter().map(|f| format!("{}: doc.{}", f, f)).collect();
+            pairs.push("_key: doc._key".to_string());
+            format!("{{{}}}", pairs.join(", "))
+        } else {
+            "doc".to_string()
         };
 
         if self.includes.is_empty() {
@@ -279,7 +373,9 @@ impl QueryBuilder {
                         RelationType::HasMany => {
                             format!("{}: {}", inc.relation_name, var_name)
                         }
-                        RelationType::HasOne | RelationType::BelongsTo => {
+                        RelationType::HasOne
+                        | RelationType::BelongsTo
+                        | RelationType::Polymorphic => {
                             format!("{}: FIRST({})", inc.relation_name, var_name)
                         }
                     }
@@ -291,6 +387,86 @@ impl QueryBuilder {
                 merge_fields.join(", ")
             ));
         }
+
+        let bind_vars_str: HashMap<String, serde_json::Value> = self
+            .bind_vars
+            .iter()
+            .map(|(k, v)| {
+                (
+                    crate::interpreter::symbol_string(*k)
+                        .unwrap_or("")
+                        .to_string(),
+                    v.clone(),
+                )
+            })
+            .collect();
+
+        (query, bind_vars_str)
+    }
+
+    /// Build an EXISTS query: FOR doc IN coll ... LIMIT 1 RETURN true
+    pub fn build_exists_query(&self) -> (String, HashMap<String, serde_json::Value>) {
+        let collection_str =
+            crate::interpreter::symbol_string(self.collection).unwrap_or("unknown");
+        let mut query = format!("FOR doc IN {}", collection_str);
+
+        if let Some(filter) = &self.filter {
+            let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
+            let aql_filter = Self::normalize_equality_ops(&aql_filter);
+            let aql_filter = Self::prefix_bare_fields(&aql_filter);
+            query.push_str(&format!(" FILTER {}", aql_filter));
+        }
+
+        // Soft-delete filter
+        if self.is_soft_delete_model {
+            match self.soft_delete_mode {
+                SoftDeleteMode::Default => query.push_str(" FILTER doc.deleted_at == null"),
+                SoftDeleteMode::OnlyDeleted => query.push_str(" FILTER doc.deleted_at != null"),
+                SoftDeleteMode::WithDeleted => {}
+            }
+        }
+
+        query.push_str(" LIMIT 1 RETURN true");
+
+        let bind_vars_str: HashMap<String, serde_json::Value> = self
+            .bind_vars
+            .iter()
+            .map(|(k, v)| {
+                (
+                    crate::interpreter::symbol_string(*k)
+                        .unwrap_or("")
+                        .to_string(),
+                    v.clone(),
+                )
+            })
+            .collect();
+
+        (query, bind_vars_str)
+    }
+
+    /// Build a GROUP BY query
+    pub fn build_group_by_query(
+        &self,
+        group_field: &str,
+        func: AggregationFunc,
+        agg_field: &str,
+    ) -> (String, HashMap<String, serde_json::Value>) {
+        let collection_str =
+            crate::interpreter::symbol_string(self.collection).unwrap_or("unknown");
+        let mut query = format!("FOR doc IN {}", collection_str);
+
+        if let Some(filter) = &self.filter {
+            let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
+            let aql_filter = Self::normalize_equality_ops(&aql_filter);
+            let aql_filter = Self::prefix_bare_fields(&aql_filter);
+            query.push_str(&format!(" FILTER {}", aql_filter));
+        }
+
+        let agg_expr = func.to_sdbql(agg_field);
+        query.push_str(&format!(
+            " COLLECT group = doc.{} AGGREGATE result = {} RETURN {{group: group, result: result}}",
+            group_field, agg_expr
+        ));
 
         let bind_vars_str: HashMap<String, serde_json::Value> = self
             .bind_vars
@@ -516,6 +692,20 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
             RelationType::BelongsTo => {
                 format!("doc.{} == rel._key", rel.foreign_key)
             }
+            RelationType::Polymorphic => {
+                let type_field = rel
+                    .polymorphic_type_field
+                    .clone()
+                    .unwrap_or_else(|| format!("{}_type", rel.name));
+                let type_value = rel
+                    .polymorphic_type_value
+                    .clone()
+                    .unwrap_or_else(|| rel.class_name.clone());
+                format!(
+                    "rel.{} == doc._key AND rel.{} == \"{}\"",
+                    rel.foreign_key, type_field, type_value
+                )
+            }
         };
 
         let subquery_filter = if let Some(extra) = &join.filter {
@@ -556,6 +746,214 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
     result
 }
 
+/// Execute a QueryBuilder for exists check - returns boolean.
+pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
+    let mut query = format!("FOR doc IN {}", collection);
+
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb
+        .bind_vars
+        .iter()
+        .map(|(k, v)| {
+            (
+                crate::interpreter::symbol_string(*k)
+                    .unwrap_or("")
+                    .to_string(),
+                v.clone(),
+            )
+        })
+        .collect();
+
+    // Join filters for exists queries too
+    for join in &qb.joins {
+        let rel = &join.relation;
+        let fk_condition = match rel.relation_type {
+            RelationType::HasMany | RelationType::HasOne => {
+                format!("rel.{} == doc._key", rel.foreign_key)
+            }
+            RelationType::BelongsTo => {
+                format!("doc.{} == rel._key", rel.foreign_key)
+            }
+            RelationType::Polymorphic => {
+                let type_field = rel
+                    .polymorphic_type_field
+                    .clone()
+                    .unwrap_or_else(|| format!("{}_type", rel.name));
+                let type_value = rel
+                    .polymorphic_type_value
+                    .clone()
+                    .unwrap_or_else(|| rel.class_name.clone());
+                format!(
+                    "rel.{} == doc._key AND rel.{} == \"{}\"",
+                    rel.foreign_key, type_field, type_value
+                )
+            }
+        };
+
+        let subquery_filter = if let Some(extra) = &join.filter {
+            let normalized = QueryBuilder::normalize_equality_ops(extra);
+            let prefixed = QueryBuilder::prefix_bare_fields_with_alias(&normalized, "rel");
+            format!("{} AND {}", fk_condition, prefixed)
+        } else {
+            fk_condition
+        };
+
+        query.push_str(&format!(
+            " FILTER LENGTH(FOR rel IN {} FILTER {} LIMIT 1 RETURN 1) > 0",
+            rel.collection, subquery_filter
+        ));
+    }
+
+    if let Some(filter) = &qb.filter {
+        let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
+        let aql_filter = QueryBuilder::normalize_equality_ops(&aql_filter);
+        let aql_filter = QueryBuilder::prefix_bare_fields(&aql_filter);
+        query.push_str(&format!(" FILTER {}", aql_filter));
+    }
+
+    query.push_str(" LIMIT 1 RETURN true");
+
+    let result = if bind_vars_str.is_empty() {
+        exec_auto_collection(query, &collection)
+    } else {
+        exec_auto_collection_with_binds(query, bind_vars_str, &collection)
+    };
+
+    // Return true if any result, false otherwise
+    if let Value::Array(arr) = &result {
+        Value::Bool(!arr.borrow().is_empty())
+    } else {
+        Value::Bool(false)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AggregationFunc {
+    Sum,
+    Avg,
+    Min,
+    Max,
+}
+
+impl AggregationFunc {
+    pub fn to_sdbql(&self, field: &str) -> String {
+        match self {
+            AggregationFunc::Sum => format!("SUM(doc.{})", field),
+            AggregationFunc::Avg => format!("AVG(doc.{})", field),
+            AggregationFunc::Min => format!("MIN(doc.{})", field),
+            AggregationFunc::Max => format!("MAX(doc.{})", field),
+        }
+    }
+}
+
+pub fn build_aggregation_query(
+    qb: &QueryBuilder,
+    func: AggregationFunc,
+    field: &str,
+) -> (String, HashMap<String, serde_json::Value>) {
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
+    let mut query = format!("FOR doc IN {}", collection);
+
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb
+        .bind_vars
+        .iter()
+        .map(|(k, v)| {
+            (
+                crate::interpreter::symbol_string(*k)
+                    .unwrap_or("")
+                    .to_string(),
+                v.clone(),
+            )
+        })
+        .collect();
+
+    if let Some(filter) = &qb.filter {
+        let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
+        let aql_filter = QueryBuilder::normalize_equality_ops(&aql_filter);
+        let aql_filter = QueryBuilder::prefix_bare_fields(&aql_filter);
+        query.push_str(&format!(" FILTER {}", aql_filter));
+    }
+
+    query.push_str(&format!(" RETURN {}", func.to_sdbql(field)));
+
+    (query, bind_vars_str)
+}
+
+/// Execute aggregation: sum, avg, min, max
+pub fn execute_query_builder_aggregate(
+    qb: &QueryBuilder,
+    func: AggregationFunc,
+    field: &str,
+) -> Value {
+    let (query, bind_vars_str) = build_aggregation_query(qb, func, field);
+
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
+
+    let result = if bind_vars_str.is_empty() {
+        exec_auto_collection(query, &collection)
+    } else {
+        exec_auto_collection_with_binds(query, bind_vars_str, &collection)
+    };
+
+    if let Value::Array(arr) = &result {
+        if let Some(val) = arr.borrow().first() {
+            return val.clone();
+        }
+    }
+    Value::Null
+}
+
+/// Execute group by aggregation
+pub fn execute_query_builder_group_by(
+    qb: &QueryBuilder,
+    group_field: &str,
+    func: AggregationFunc,
+    agg_field: &str,
+) -> Value {
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
+    let mut query = format!("FOR doc IN {}", collection);
+
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb
+        .bind_vars
+        .iter()
+        .map(|(k, v)| {
+            (
+                crate::interpreter::symbol_string(*k)
+                    .unwrap_or("")
+                    .to_string(),
+                v.clone(),
+            )
+        })
+        .collect();
+
+    if let Some(filter) = &qb.filter {
+        let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
+        let aql_filter = QueryBuilder::normalize_equality_ops(&aql_filter);
+        let aql_filter = QueryBuilder::prefix_bare_fields(&aql_filter);
+        query.push_str(&format!(" FILTER {}", aql_filter));
+    }
+
+    let agg_expr = func.to_sdbql(agg_field);
+    query.push_str(&format!(
+        " COLLECT group = doc.{} AGGREGATE result = {} RETURN {{group: group, result: result}}",
+        group_field, agg_expr
+    ));
+
+    if bind_vars_str.is_empty() {
+        exec_auto_collection(query, &collection)
+    } else {
+        exec_auto_collection_with_binds(query, bind_vars_str, &collection)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,7 +974,7 @@ mod tests {
     #[test]
     fn test_includes_has_many() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
@@ -588,7 +986,7 @@ mod tests {
     #[test]
     fn test_includes_has_one() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "profile", RelationType::HasOne, None, None);
+        let rel = build_relation("User", "profile", RelationType::HasOne, None, None, None, None);
         qb.add_include("profile".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
@@ -600,7 +998,7 @@ mod tests {
     #[test]
     fn test_includes_belongs_to() {
         let mut qb = make_qb("Post", "posts");
-        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None);
+        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None, None, None);
         qb.add_include("user".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert_eq!(
@@ -612,8 +1010,8 @@ mod tests {
     #[test]
     fn test_includes_multiple() {
         let mut qb = make_qb("User", "users");
-        let posts_rel = build_relation("User", "posts", RelationType::HasMany, None, None);
-        let profile_rel = build_relation("User", "profile", RelationType::HasOne, None, None);
+        let posts_rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
+        let profile_rel = build_relation("User", "profile", RelationType::HasOne, None, None, None, None);
         qb.add_include("posts".to_string(), posts_rel, None, HashMap::new(), None);
         qb.add_include(
             "profile".to_string(),
@@ -633,7 +1031,7 @@ mod tests {
     #[test]
     fn test_join_has_many() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         qb.add_join("posts".to_string(), rel, None, HashMap::new());
         let (query, _) = qb.build_query();
         assert_eq!(
@@ -645,7 +1043,7 @@ mod tests {
     #[test]
     fn test_join_with_filter() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
         qb.add_join(
@@ -662,7 +1060,7 @@ mod tests {
     #[test]
     fn test_includes_with_where() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
@@ -677,7 +1075,7 @@ mod tests {
     #[test]
     fn test_join_belongs_to() {
         let mut qb = make_qb("Post", "posts");
-        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None);
+        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None, None, None);
         qb.add_join("user".to_string(), rel, None, HashMap::new());
         let (query, _) = qb.build_query();
         assert!(query.contains("doc.user_id == rel._key"));
@@ -686,7 +1084,7 @@ mod tests {
     #[test]
     fn test_filtered_include_has_many() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
         qb.add_include(
@@ -705,7 +1103,7 @@ mod tests {
     #[test]
     fn test_filtered_include_has_one() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "profile", RelationType::HasOne, None, None);
+        let rel = build_relation("User", "profile", RelationType::HasOne, None, None, None, None);
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
         qb.add_include(
@@ -724,7 +1122,7 @@ mod tests {
     #[test]
     fn test_filtered_include_belongs_to() {
         let mut qb = make_qb("Post", "posts");
-        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None);
+        let rel = build_relation("Post", "user", RelationType::BelongsTo, None, None, None, None);
         let mut bind_vars = HashMap::new();
         bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
         qb.add_include(
@@ -743,7 +1141,7 @@ mod tests {
     #[test]
     fn test_include_with_fields() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         qb.add_include(
             "posts".to_string(),
             rel,
@@ -758,7 +1156,7 @@ mod tests {
     #[test]
     fn test_filtered_include_with_fields() {
         let mut qb = make_qb("User", "users");
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         let mut bind_vars = HashMap::new();
         bind_vars.insert("p".to_string(), serde_json::Value::Bool(true));
         qb.add_include(
@@ -789,7 +1187,7 @@ mod tests {
     fn test_select_with_includes() {
         let mut qb = make_qb("User", "users");
         qb.set_select(vec!["name".to_string(), "email".to_string()]);
-        let rel = build_relation("User", "posts", RelationType::HasMany, None, None);
+        let rel = build_relation("User", "posts", RelationType::HasMany, None, None, None, None);
         qb.add_include("posts".to_string(), rel, None, HashMap::new(), None);
         let (query, _) = qb.build_query();
         assert!(query.contains(

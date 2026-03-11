@@ -113,12 +113,23 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | Method | Description |
 |--------|-------------|
 | `Model.create(data)` | Insert a new document |
+| `Model.create_many([data, ...])` | Batch insert multiple documents, returns `{ created, errors }` |
 | `Model.find(id)` | Get document by ID |
+| `Model.find_by(field, value)` | Find first record by field value |
+| `Model.first_by(field, value)` | Find first record by field with ordering |
+| `Model.find_or_create_by(field, value, data?)` | Find by field, or create if not found |
 | `Model.where(filter, bind_vars)` | Query with SDBQL filter (returns QueryBuilder) |
 | `Model.all()` | Get all documents |
 | `Model.update(id, data)` | Update a document |
+| `Model.upsert(id, data)` | Insert or update document by ID |
 | `Model.delete(id)` | Delete a document |
 | `Model.count()` | Count all documents |
+| `Model.transaction { }` | Execute block in a database transaction |
+| `Model.transaction("aql")` | Execute AQL in a database transaction |
+| `Model.transaction()` | Get transaction handle for manual control |
+| `Model.scope(name)` | Execute a named scope (returns QueryBuilder) |
+| `Model.with_deleted()` | Include soft-deleted records (QueryBuilder) |
+| `Model.only_deleted()` | Query only deleted records (QueryBuilder) |
 | `Model.includes(rel, ...)` | Eager load relations (returns QueryBuilder) |
 | `Model.includes(rel, filter, binds)` | Eager load with filter condition (returns QueryBuilder) |
 | `Model.includes({ rel: [fields] })` | Eager load with field selection (returns QueryBuilder) |
@@ -127,6 +138,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `Model.join(rel, filter?, binds?)` | Filter by related existence (returns QueryBuilder) |
 | `Model.order(field, dir?)` | Order results (returns QueryBuilder) |
 | `Model.limit(n)` | Limit results (returns QueryBuilder) |
+| `Model.offset(n)` | Offset results (returns QueryBuilder) |
 
 ## Relationship DSL
 
@@ -150,9 +162,16 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `.select(field, ...)` | Select specific fields on the main collection |
 | `.fields(field, ...)` | Alias for `.select()` |
 | `.join(rel, filter?, binds?)` | Filter by existence of related records |
+| `.pluck(field, ...)` | Return only specified fields (single or array) |
 | `.all()` | Execute query, return all results |
 | `.first()` | Execute query, return first result |
 | `.count()` | Execute query, return count |
+| `.exists()` | Execute query, return boolean (true if records exist) |
+| `.sum(field)` | Execute aggregation, return sum of field |
+| `.avg(field)` | Execute aggregation, return average of field |
+| `.min(field)` | Execute aggregation, return minimum of field |
+| `.max(field)` | Execute aggregation, return maximum of field |
+| `.group_by(field, func, agg_field)` | Execute grouping aggregation |
 | `.to_query` | Return the generated SDBQL string (for debugging) |
 
 ## Validations
@@ -386,6 +405,203 @@ class Post extends Model
         User.find(this.author_id)
     end
 end
+```
+
+## Finder Methods
+
+Find records by specific field values:
+
+```soli
+# Find by exact field match
+let user = User.find_by("email", "alice@example.com");
+
+# Find with ordering (first by field value)
+let user = User.first_by("name", "Alice");
+
+# Find or create - returns existing or creates new
+let user = User.find_or_create_by("email", "new@example.com");
+let user = User.find_or_create_by("email", "new@example.com", { "name": "New User" });
+```
+
+## Aggregations
+
+Calculate sums, averages, min, max on query results:
+
+```soli
+# Sum
+let total = User.where("age > @a", { "a": 18 }).sum("balance");
+
+# Average
+let avg = User.avg("score");
+
+# Minimum
+let min_score = User.min("score");
+
+# Maximum
+let max_score = User.max("views");
+
+# Group by aggregation
+let by_country = User.group_by("country", "sum", "balance");
+# Returns: [{ group: "US", result: 1000 }, { group: "FR", result: 500 }, ...]
+```
+
+## Pluck and Exists
+
+Quick queries for specific data:
+
+```soli
+# Get array of single field values
+let names = User.where("active = @a", { "a": true }).pluck("name");
+# Returns: ["Alice", "Bob", "Charlie"]
+
+# Get multiple fields as objects
+let users = User.pluck("name", "email");
+# Returns: [{ name: "Alice", email: "alice@example.com" }, ...]
+
+# Check if records exist (returns boolean)
+let exists = User.where("role = @r", { "r": "admin" }).exists();
+# Returns: true or false
+```
+
+## Instance Methods
+
+Methods available on model instances:
+
+```soli
+let user = User.find("user_id");
+
+# Update fields and persist
+user.name = "New Name";
+user.update();
+
+# Atomic increment/decrement
+user.increment("view_count");      # +1
+user.increment("view_count", 5);  # +5
+user.decrement("stock");           # -1
+
+# Update timestamp only
+user.touch();  # Updates _updated_at
+
+# Refresh from database
+user.reload();
+```
+
+## Scopes
+
+Define reusable query scopes:
+
+```soli
+class User extends Model
+    scope("active", "active = @a", { "a": true })
+    scope("recent", "1 = 1", {})  # no filter, just for chaining
+end
+
+# Use scopes
+let active = User.scope("active").all();
+let recent = User.scope("active").limit(10).all();
+```
+
+## Soft Delete
+
+Mark records as deleted without removing them:
+
+```soli
+class Post extends Model
+    soft_delete
+end
+
+# Delete sets deleted_at timestamp
+post.delete();
+
+# Restore clears deleted_at
+post.restore();
+
+# Query without deleted records (default behavior)
+let posts = Post.all();
+
+# Include soft-deleted records
+let all = Post.with_deleted.all();
+
+# Query only deleted records
+let deleted = Post.only_deleted.all();
+```
+
+## Relationship Accessors
+
+Access related records directly from instances:
+
+```soli
+let user = User.find("user_id");
+
+# Access has_many relation
+let posts = user.posts;
+
+# Access has_one relation
+let profile = user.profile;
+
+# Access belongs_to relation
+let author = post.user;
+
+# Chain query builder methods on relations
+let published = user.posts.where("published = @p", { "p": true }).all();
+```
+
+## Batch Operations
+
+Insert or update multiple records:
+
+```soli
+# Batch create
+let result = User.create_many([
+    { "name": "Alice", "email": "alice@example.com" },
+    { "name": "Bob", "email": "bob@example.com" },
+    { "name": "Charlie", "email": "charlie@example.com" }
+]);
+# Returns: { "created": 3, "errors": [] }
+
+# Upsert (insert or update by ID)
+User.upsert("user123", { "name": "Updated Name" });
+# Updates if exists, inserts with ID if not
+```
+
+## Transactions
+
+Execute multiple operations atomically within a database transaction:
+
+### Using a Block (Recommended)
+
+```soli
+# Execute block in a transaction
+User.transaction {
+    User.create({ name: "Alice", age: 30 });
+    User.create({ name: "Bob", age: 25 });
+}
+# All operations commit together, or rollback on error
+```
+
+### Using AQL String
+
+```soli
+# Execute AQL in a transaction
+let result = User.transaction("
+    INSERT { name: 'Alice', age: 30 } INTO users;
+    INSERT { name: 'Bob', age: 25 } INTO users;
+    RETURN users
+");
+```
+
+### Using Transaction Object (Manual Control)
+
+```soli
+# Get transaction handle for manual control
+let tx = User.transaction();
+tx.create({ name: "Alice" });
+tx.create({ name: "Bob" });
+tx.commit();
+# Or tx.rollback() to undo all changes
+```
+
+All operations within the transaction either all succeed or all fail together.
 
 class User extends Model
     fn posts()

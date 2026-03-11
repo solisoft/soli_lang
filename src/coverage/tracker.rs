@@ -481,6 +481,9 @@ impl CoverageTracker {
                         Argument::Named(named) => {
                             self.collect_lines_from_expr(path, lines, &named.value);
                         }
+                        Argument::Block(expr) => {
+                            self.collect_lines_from_expr(path, lines, expr);
+                        }
                     }
                 }
             }
@@ -503,6 +506,9 @@ impl CoverageTracker {
                         }
                         Argument::Named(named) => {
                             self.collect_lines_from_expr(path, lines, &named.value);
+                        }
+                        Argument::Block(expr) => {
+                            self.collect_lines_from_expr(path, lines, expr);
                         }
                     }
                 }
