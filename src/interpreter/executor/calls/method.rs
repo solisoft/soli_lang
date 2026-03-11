@@ -1127,11 +1127,7 @@ impl Interpreter {
         Ok(Value::String(parts.join(&delim)))
     }
 
-    fn cache_fetch(
-        &mut self,
-        arguments: Vec<Value>,
-        span: Span,
-    ) -> RuntimeResult<Value> {
+    fn cache_fetch(&mut self, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
         use crate::interpreter::builtins::cache::{cache_get_impl, cache_set_impl};
 
         if arguments.is_empty() {
@@ -1159,8 +1155,8 @@ impl Interpreter {
         }
 
         // Check cache
-        let cached = cache_get_impl(&key)
-            .map_err(|e| RuntimeError::General { message: e, span })?;
+        let cached =
+            cache_get_impl(&key).map_err(|e| RuntimeError::General { message: e, span })?;
         if !matches!(cached, Value::Null) {
             return Ok(cached);
         }
