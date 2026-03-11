@@ -1,0 +1,258 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">KV Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Full-featured key-value store backed by SoliKV. Supports strings, counters, lists, sets, and hashes with Redis-compatible commands via REST API.
+        </p>
+    </div>
+
+    <!-- Configuration -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Configuration</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <p class="text-gray-400 mb-4">KV shares the same SoliKV connection as Cache:</p>
+            <ul class="text-gray-300 space-y-2 ml-4 mb-4">
+                <li><code class="text-purple-400">SOLIKV_RESP_HOST</code> - SoliKV host (default: <code>localhost</code>)</li>
+                <li><code class="text-purple-400">SOLIKV_RESP_PORT</code> - SoliKV RESP port (default: <code>6380</code>)</li>
+                <li><code class="text-purple-400">SOLIKV_TOKEN</code> - Optional token</li>
+            </ul>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># Programmatic configuration
+KV.configure("my-solikv-host", "my-token")</code></pre>
+            <p class="text-gray-400 mt-4"><strong>Note:</strong> Unlike Cache, KV operates on raw keys without any prefix.</p>
+        </div>
+    </section>
+
+    <!-- Basic Operations -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Basic Operations</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.set(key, value, ttl?)</h3>
+                <p class="text-gray-400 mb-4">Store a value. Optionally set TTL in seconds.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto"><code>KV.set("user:1", { "name": "Alice" })
+KV.set("temp", "data", 60)  # expires in 60 seconds</code></pre>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.get(key)</h3>
+                <p class="text-gray-400">Retrieve a value. Returns null if key doesn't exist.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>let user = KV.get("user:1")  # => { "name": "Alice" }</code></pre>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.delete(key)</h3>
+                <p class="text-gray-400">Delete a key. Returns true if the key was removed.</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.exists(key)</h3>
+                <p class="text-gray-400">Check if a key exists. Returns Bool.</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.keys(pattern?)</h3>
+                <p class="text-gray-400">List keys matching a glob pattern. Default: <code>"*"</code></p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>let all = KV.keys()             # all keys
+let users = KV.keys("user:*")  # keys starting with "user:"</code></pre>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.type(key)</h3>
+                <p class="text-gray-400">Get the type of a key (string, list, set, hash, etc.).</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.rename(key, newkey)</h3>
+                <p class="text-gray-400">Rename a key.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- TTL Operations -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">TTL Operations</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.ttl(key)</h3>
+                <p class="text-gray-400">Get remaining TTL in seconds. Returns null if key doesn't exist or has no expiry.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.expire(key, seconds)</h3>
+                <p class="text-gray-400">Set TTL on an existing key. Returns true if successful.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.persist(key)</h3>
+                <p class="text-gray-400">Remove TTL from a key (make it persistent). Returns true if successful.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Numeric Operations -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Counters</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.incr(key) / KV.decr(key)</h3>
+                <p class="text-gray-400 mb-4">Atomically increment or decrement by 1. Creates the key with value 0 if it doesn't exist.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto"><code>KV.incr("visits")     # => 1
+KV.incr("visits")     # => 2
+KV.decr("visits")     # => 1</code></pre>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.incrby(key, amount) / KV.decrby(key, amount)</h3>
+                <p class="text-gray-400">Increment or decrement by a specified amount. Returns the new value.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>KV.incrby("score", 10)   # => 10
+KV.decrby("score", 3)   # => 7</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- List Operations -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Lists</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.lpush(key, ...values) / KV.rpush(key, ...values)</h3>
+                <p class="text-gray-400 mb-4">Push values to the head (left) or tail (right) of a list. Returns the new list length.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto"><code>KV.rpush("queue", "job1")
+KV.rpush("queue", "job2")
+KV.lpush("queue", "priority")</code></pre>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.lpop(key) / KV.rpop(key)</h3>
+                <p class="text-gray-400">Remove and return the first (left) or last (right) element.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.lrange(key, start, stop)</h3>
+                <p class="text-gray-400">Get a range of elements. Use <code>0, -1</code> for all elements.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>let all = KV.lrange("queue", 0, -1)</code></pre>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.llen(key)</h3>
+                <p class="text-gray-400">Get the length of a list.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Set Operations -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Sets</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.sadd(key, ...members) / KV.srem(key, ...members)</h3>
+                <p class="text-gray-400">Add or remove members from a set. Returns the number of elements added/removed.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>KV.sadd("tags", "rust")
+KV.sadd("tags", "soli")
+KV.srem("tags", "rust")</code></pre>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.smembers(key)</h3>
+                <p class="text-gray-400">Get all members of a set.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.sismember(key, member)</h3>
+                <p class="text-gray-400">Check if a value is a member of a set. Returns Bool.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.scard(key)</h3>
+                <p class="text-gray-400">Get the number of members in a set.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Hash Operations -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Hashes</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.hset(key, field, value)</h3>
+                <p class="text-gray-400">Set a field in a hash.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>KV.hset("user:1", "name", "Alice")
+KV.hset("user:1", "email", "alice@example.com")</code></pre>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.hget(key, field)</h3>
+                <p class="text-gray-400">Get a field value from a hash.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.hgetall(key)</h3>
+                <p class="text-gray-400">Get all fields and values as a Hash.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>let user = KV.hgetall("user:1")
+# => { "name": "Alice", "email": "alice@example.com" }</code></pre>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.hdel(key, ...fields)</h3>
+                <p class="text-gray-400">Delete fields from a hash.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.hexists(key, field)</h3>
+                <p class="text-gray-400">Check if a field exists in a hash. Returns Bool.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.hkeys(key) / KV.hlen(key)</h3>
+                <p class="text-gray-400">Get all field names or the number of fields in a hash.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Server Commands -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Server Commands</h2>
+        <div class="space-y-6">
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.ping()</h3>
+                <p class="text-gray-400">Check connectivity. Returns "PONG".</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.dbsize()</h3>
+                <p class="text-gray-400">Get the total number of keys in the database.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.flushdb()</h3>
+                <p class="text-gray-400">Delete all keys in the database. Use with caution.</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">KV.cmd(...args)</h3>
+                <p class="text-gray-400 mb-4">Run any raw SoliKV command.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto"><code>KV.cmd("SET", "key", "value")
+KV.cmd("GET", "key")
+KV.cmd("EXPIRE", "key", 60)</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Complete Example -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># Rate limiting with counters
+def check_rate_limit(ip)
+    let key = "rate:" + ip
+    let count = KV.incr(key)
+    if count == 1 {
+        KV.expire(key, 60)  # 60 second window
+    }
+    count <= 100  # 100 requests per minute
+end
+
+# Job queue with lists
+KV.rpush("jobs", JSON.stringify({ "type": "email", "to": "alice@example.com" }))
+let job = KV.lpop("jobs")
+
+# User sessions with hashes
+KV.hset("session:abc", "user_id", "123")
+KV.hset("session:abc", "role", "admin")
+KV.expire("session:abc", 3600)
+let session = KV.hgetall("session:abc")
+
+# Feature flags with sets
+KV.sadd("features:beta", "user:1")
+KV.sadd("features:beta", "user:2")
+if KV.sismember("features:beta", "user:1") {
+    println("User has beta access")
+}</code></pre>
+        </div>
+    </section>
+</div>

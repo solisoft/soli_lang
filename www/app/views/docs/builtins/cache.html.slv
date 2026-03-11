@@ -4,9 +4,34 @@
             <span class="bg-gradient-to-r from-yellow-400 via-orange-400 to-amber-400 bg-clip-text text-transparent">Cache Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            In-memory caching with TTL support. Use static methods on the Cache class for a clean API.
+            Persistent caching backed by SoliKV with automatic TTL expiration. Data persists across restarts and is shared between server instances.
         </p>
     </div>
+
+    <!-- Configuration -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Configuration</h2>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <p class="text-gray-400 mb-4">Cache connects to a SoliKV instance via environment variables or programmatic configuration:</p>
+            <ul class="text-gray-300 space-y-2 ml-4 mb-4">
+                <li><code class="text-purple-400">SOLIKV_RESP_HOST</code> - SoliKV host (default: <code>localhost</code>)</li>
+                <li><code class="text-purple-400">SOLIKV_RESP_PORT</code> - SoliKV RESP port (default: <code>6380</code>)</li>
+                <li><code class="text-purple-400">SOLIKV_TOKEN</code> - Optional token for authentication</li>
+                <li><strong>Default TTL:</strong> 3600 seconds (1 hour)</li>
+                <li><strong>Key prefix:</strong> <code>soli:cache:</code> (isolates cache keys from other KV data)</li>
+            </ul>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># In .env file
+SOLIKV_RESP_HOST=localhost
+SOLIKV_RESP_PORT=6380
+SOLIKV_TOKEN=my-secret-token
+
+# Or configure programmatically
+Cache.configure("my-solikv-host", "my-secret-token")
+
+# Set default TTL
+cache_config(1800)  # 30 minute default TTL</code></pre>
+        </div>
+    </section>
 
     <!-- Cache Static Methods -->
     <section class="mb-16">
@@ -44,26 +69,25 @@ if user != null {
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">Cache.has(key)</h3>
-                <p class="text-gray-400">Checks if a key exists and is not expired.</p>
+                <p class="text-gray-400">Checks if a key exists in the cache.</p>
                 <p class="text-gray-400">Returns: Bool</p>
             </div>
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.clear</h3>
-                <p class="text-gray-400">Removes all entries from the cache.</p>
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.clear()</h3>
+                <p class="text-gray-400">Removes all cache entries (only keys with the <code>soli:cache:</code> prefix).</p>
                 <p class="text-gray-400">Returns: null</p>
             </div>
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">Cache.clear_expired()</h3>
-                <p class="text-gray-400">Removes only expired entries.</p>
+                <p class="text-gray-400">No-op. SoliKV handles TTL expiration automatically.</p>
                 <p class="text-gray-400">Returns: null</p>
             </div>
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.keys</h3>
-                <p class="text-gray-400">Returns all valid (non-expired)
-cache keys.</p>
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.keys()</h3>
+                <p class="text-gray-400">Returns all cache keys (prefix stripped).</p>
                 <p class="text-gray-400">Returns: Array</p>
             </div>
 
@@ -76,13 +100,46 @@ cache keys.</p>
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">Cache.ttl(key)</h3>
                 <p class="text-gray-400">Gets the remaining TTL for a key in seconds.</p>
-                <p class="text-gray-400">Returns: Int|null</p>
+                <p class="text-gray-400">Returns: Int|null - Seconds remaining, or null if key doesn't exist</p>
             </div>
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">Cache.touch(key, ttl)</h3>
-                <p class="text-gray-400">Extends or sets the TTL for an existing key.</p>
-                <p class="text-gray-400">Returns: Bool</p>
+                <p class="text-gray-400">Sets or updates the TTL for an existing key.</p>
+                <p class="text-gray-400">Returns: Bool - true if key existed and was updated</p>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.fetch(key, ttl?) do...end</h3>
+                <p class="text-gray-400 mb-4">Cache-aside pattern: returns cached value on hit, or executes the block on miss, caches and returns the result.</p>
+                <ul class="text-gray-300 space-y-1 ml-4 mb-4">
+                    <li><code class="text-purple-400">key</code> (String) - Cache key</li>
+                    <li><code class="text-purple-400">ttl</code> (Int, optional) - Time to live in seconds (default: 3600)</li>
+                    <li><code class="text-purple-400">do...end</code> - Block to execute on cache miss</li>
+                </ul>
+                <p class="text-gray-400">Returns: Any - Cached value or block result</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code># Basic usage
+let user = Cache.fetch("user:123") do
+    User.find(123)
+end
+
+# With TTL (5 minutes)
+let user = Cache.fetch("user:123", 300) do
+    User.find(123)
+end
+
+# Without block — acts like Cache.get()
+let user = Cache.fetch("user:123")</code></pre>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Cache.configure(host, token?)</h3>
+                <p class="text-gray-400">Programmatically configure the SoliKV connection.</p>
+                <ul class="text-gray-300 space-y-1 ml-4 mb-4">
+                    <li><code class="text-purple-400">host</code> (String) - SoliKV URL</li>
+                    <li><code class="text-purple-400">token</code> (String, optional) - Bearer token</li>
+                </ul>
+                <p class="text-gray-400">Returns: null</p>
             </div>
         </div>
     </section>
@@ -90,9 +147,9 @@ cache keys.</p>
     <!-- Cache Instance -->
     <section class="mb-16">
         <h2 class="text-2xl font-bold text-white mb-6">Cache Instance</h2>
-        <p class="text-gray-400 mb-4">Create a Cache instance using <code class="text-purple-400">cache()</code>. All instances share the same underlying store.</p>
+        <p class="text-gray-400 mb-4">Create a Cache instance using <code class="text-purple-400">cache()</code>. All instances share the same underlying SoliKV store.</p>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let c = cache
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let c = cache()
 c.set("key", "value")
 let value = c.get("key")</code></pre>
         </div>
@@ -100,8 +157,8 @@ let value = c.get("key")</code></pre>
 
     <!-- Global Functions -->
     <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Global Functions (Backward Compatibility)</h2>
-        <p class="text-gray-400 mb-4">Global cache functions are also available and share the same store.</p>
+        <h2 class="text-2xl font-bold text-white mb-6">Global Functions</h2>
+        <p class="text-gray-400 mb-4">Global cache functions are also available and share the same SoliKV store.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">cache_set(key, value, ttl?)</h3>
@@ -121,11 +178,27 @@ let value = c.get("key")</code></pre>
             </div>
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">cache_clear()</h3>
-                <p class="text-gray-400 text-sm">Clear all entries</p>
+                <p class="text-gray-400 text-sm">Clear all cache entries</p>
             </div>
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_config(ttl?, max_size?)</h3>
-                <p class="text-gray-400 text-sm">Configure cache defaults</p>
+                <h3 class="text-lg font-semibold text-white mb-2">cache_config(ttl)</h3>
+                <p class="text-gray-400 text-sm">Set default TTL in seconds</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_keys()</h3>
+                <p class="text-gray-400 text-sm">List all cache keys</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_size()</h3>
+                <p class="text-gray-400 text-sm">Get number of cache entries</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_ttl(key)</h3>
+                <p class="text-gray-400 text-sm">Get remaining TTL for a key</p>
+            </div>
+            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">cache_touch(key, ttl)</h3>
+                <p class="text-gray-400 text-sm">Update TTL for existing key</p>
             </div>
         </div>
     </section>
@@ -152,20 +225,14 @@ if Cache.has("user:123") {
 # Update TTL
 Cache.touch("user:123", 3600)
 
-# List keys
-let keys = Cache.keys
-
-# Check size
-let count = Cache.size
+# List keys and size
+let keys = Cache.keys()
+let count = Cache.size()
 
 # Clear cache
-Cache.clear
+Cache.clear()
 
-# Or use a Cache instance
-let c = cache
-c.set("instance_key", "value")
-
-# Global functions also work (share the same store)
+# Global functions also work
 cache_set("global_key", "value")
 let value = cache_get("global_key")</code></pre>
         </div>
@@ -175,37 +242,25 @@ let value = cache_get("global_key")</code></pre>
     <section class="mb-16">
         <h2 class="text-2xl font-bold text-white mb-6">Practical Example: Database Query Caching</h2>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>def get_user_cached(user_id)
+            <p class="text-gray-400 mb-4">Using <code class="text-purple-400">Cache.fetch</code> for concise cache-aside pattern:</p>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># Cache-aside with Cache.fetch — one line instead of five
+let user = Cache.fetch("user:" + str(user_id), 300) do
+    User.find(user_id)
+end
+
+# Equivalent manual approach:
+def get_user_cached(user_id)
     let cache_key = "user:" + str(user_id)
     let cached = Cache.get(cache_key)
 
-    if cached != null {
-        println("Cache hit!")
+    if cached != null
         return cached
-    }
+    end
 
-    println("Cache miss - querying database...")
-    let user = db.query("SELECT * FROM users WHERE id = ?", [user_id])
-
-    # Cache for 5 minutes
+    let user = User.find(user_id)
     Cache.set(cache_key, user, 300)
-
     user
 end</code></pre>
-        </div>
-    </section>
-
-    <!-- Configuration -->
-    <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Configuration</h2>
-        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <p class="text-gray-400 mb-4">Configure global cache settings:</p>
-            <ul class="text-gray-300 space-y-2 ml-4 mb-4">
-                <li><strong>Default TTL:</strong> 3600 seconds (1 hour)</li>
-                <li><strong>Max Size:</strong> 10000 entries</li>
-            </ul>
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code># Configure cache
-cache_config(1800, 5000)  # 30 min TTL, 5000 max entries</code></pre>
         </div>
     </section>
 </div>

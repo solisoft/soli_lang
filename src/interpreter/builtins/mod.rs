@@ -30,12 +30,14 @@ pub mod http_class;
 pub mod i18n;
 pub mod json;
 pub mod jwt;
+pub mod kv;
 pub mod markdown;
 pub mod math;
 pub mod model;
 pub mod rate_limit;
 pub mod regex;
 pub mod request_helpers;
+pub mod resp;
 pub mod response_helpers;
 pub mod router;
 pub mod security_headers;
@@ -44,6 +46,7 @@ pub mod session;
 pub mod session_helpers;
 pub mod soap;
 pub mod solidb;
+pub mod solikv;
 pub mod strings;
 pub mod system;
 pub mod template;
@@ -268,6 +271,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register cache builtins
     cache::register_cache_builtins(env);
+
+    // Register KV builtins
+    kv::register_kv_builtins(env);
 
     // Register rate limit builtins
     rate_limit::register_rate_limit_builtins(env);

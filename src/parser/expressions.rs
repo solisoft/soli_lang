@@ -740,6 +740,10 @@ impl Parser {
                 } else if self.check(&TokenKind::LeftBrace) {
                     let block = self.parse_trailing_brace_block()?;
                     arguments.push(Argument::Block(block));
+                // Check for trailing do block: obj.method(args) do body end
+                } else if self.check(&TokenKind::Do) {
+                    let block = self.parse_trailing_do_block()?;
+                    arguments.push(Argument::Block(block));
                 }
 
                 let span = start_span.merge(&self.previous_span());
@@ -778,6 +782,24 @@ impl Parser {
                 // Check for trailing brace block: obj.method { body }
                 } else if self.check(&TokenKind::LeftBrace) {
                     let block = self.parse_trailing_brace_block()?;
+                    let span = start_span.merge(&self.previous_span());
+                    let member = Expr::new(
+                        ExprKind::Member {
+                            object: Box::new(left),
+                            name,
+                        },
+                        member_span,
+                    );
+                    Ok(Expr::new(
+                        ExprKind::Call {
+                            callee: Box::new(member),
+                            arguments: vec![Argument::Block(block)],
+                        },
+                        span,
+                    ))
+                // Check for trailing do block: obj.method do body end
+                } else if self.check(&TokenKind::Do) {
+                    let block = self.parse_trailing_do_block()?;
                     let span = start_span.merge(&self.previous_span());
                     let member = Expr::new(
                         ExprKind::Member {
@@ -1043,6 +1065,29 @@ impl Parser {
         let params = self.parse_lambda_params_list(&TokenKind::Pipe)?;
         self.expect(&TokenKind::Pipe)?;
         self.finish_parsing_lambda(params, start_span)
+    }
+
+    /// Parse a trailing do block: `do body end` as a 0-param lambda expression.
+    fn parse_trailing_do_block(&mut self) -> ParseResult<Expr> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::Do)?;
+
+        let mut statements = Vec::new();
+        while !self.check(&TokenKind::End) && !self.is_at_end() {
+            statements.push(self.statement()?);
+        }
+        self.expect(&TokenKind::End)?;
+
+        let span = start_span.merge(&self.previous_span());
+
+        Ok(Expr::new(
+            ExprKind::Lambda {
+                params: vec![],
+                return_type: None,
+                body: statements,
+            },
+            span,
+        ))
     }
 
     /// Parse a trailing brace block: `{ body }` as a lambda expression.

@@ -139,6 +139,13 @@ impl Interpreter {
             Value::Bool(b) => self.call_bool_method(b, &method.method_name, arguments, span),
             Value::Null => self.call_null_method(&method.method_name, arguments, span),
             Value::Decimal(d) => self.call_decimal_method(d, &method.method_name, arguments, span),
+            Value::Class(ref class) => match (class.name.as_str(), method.method_name.as_str()) {
+                ("Cache", "fetch") => self.cache_fetch(arguments, span),
+                _ => Err(RuntimeError::type_error(
+                    format!("{}.{}() is not supported", class.name, method.method_name),
+                    span,
+                )),
+            },
             _ => Err(RuntimeError::type_error(
                 format!("{} does not support methods", method.receiver.type_name()),
                 span,
@@ -1118,5 +1125,65 @@ impl Interpreter {
         };
         let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
         Ok(Value::String(parts.join(&delim)))
+    }
+
+    fn cache_fetch(
+        &mut self,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        use crate::interpreter::builtins::cache::{cache_get_impl, cache_set_impl};
+
+        if arguments.is_empty() {
+            return Err(RuntimeError::wrong_arity(1, 0, span));
+        }
+        let key = match &arguments[0] {
+            Value::String(s) => s.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "Cache.fetch() expects string key",
+                    span,
+                ))
+            }
+        };
+
+        // Parse optional TTL and block from remaining args
+        let mut ttl: Option<u64> = None;
+        let mut block = None;
+        for arg in arguments.iter().skip(1) {
+            match arg {
+                Value::Int(i) => ttl = Some(*i as u64),
+                Value::Function(f) => block = Some(f.clone()),
+                _ => {}
+            }
+        }
+
+        // Check cache
+        let cached = cache_get_impl(&key)
+            .map_err(|e| RuntimeError::General { message: e, span })?;
+        if !matches!(cached, Value::Null) {
+            return Ok(cached);
+        }
+
+        // Cache miss — no block means return null
+        let func = match block {
+            Some(f) => f,
+            None => return Ok(Value::Null),
+        };
+
+        // Execute block
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let result = match self.execute_block(&func.body, call_env)? {
+            ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
+            ControlFlow::Throw(_) => {
+                return Err(RuntimeError::new("Exception in Cache.fetch block", span))
+            }
+        };
+
+        // Store in cache
+        cache_set_impl(&key, &result, ttl)
+            .map_err(|e| RuntimeError::General { message: e, span })?;
+
+        Ok(result)
     }
 }

@@ -95,6 +95,7 @@ get("/docs/builtins/session", "docs#builtins_session");
 get("/docs/builtins/testing", "docs#builtins_testing");
 get("/docs/builtins/i18n", "docs#builtins_i18n");
 get("/docs/builtins/cache", "docs#builtins_cache");
+get("/docs/builtins/kv", "docs#builtins_kv");
 get("/docs/builtins/rate-limit", "docs#builtins_rate_limit");
 get("/docs/builtins/security-headers", "docs#builtins_security_headers");
 get("/docs/builtins/upload", "docs#builtins_upload");

@@ -298,6 +298,10 @@ fn builtins_cache(req)
     render_docs("docs/builtins/cache", "Cache Functions", "builtins", "cache")
 end
 
+fn builtins_kv(req)
+    render_docs("docs/builtins/kv", "KV Store", "builtins", "kv")
+end
+
 fn builtins_rate_limit(req)
     render_docs("docs/builtins/rate-limit", "Rate Limiting Functions", "builtins", "rate_limit")
 end

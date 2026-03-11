@@ -536,6 +536,30 @@ impl TypeEnvironment {
             },
         );
 
+        // Cache global functions
+        for name in &[
+            "cache_set",
+            "cache_get",
+            "cache_delete",
+            "cache_has",
+            "cache_clear",
+            "cache_clear_expired",
+            "cache_keys",
+            "cache_size",
+            "cache_ttl",
+            "cache_touch",
+            "cache_config",
+            "cache",
+        ] {
+            self.functions.insert(
+                name.to_string(),
+                Type::Function {
+                    params: vec![Type::Any],
+                    return_type: Box::new(Type::Any),
+                },
+            );
+        }
+
         // Register built-in classes
         self.register_builtin_classes();
     }
@@ -1314,6 +1338,88 @@ impl TypeEnvironment {
             },
         );
         self.classes.insert("Markdown".to_string(), markdown_class);
+
+        // Cache class
+        let mut cache_class = ClassType::new("Cache".to_string());
+        for name in &[
+            "set",
+            "get",
+            "delete",
+            "has",
+            "clear",
+            "clear_expired",
+            "keys",
+            "size",
+            "ttl",
+            "touch",
+            "configure",
+        ] {
+            cache_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![("args".to_string(), Type::Any)],
+                    return_type: Type::Any,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("Cache".to_string(), cache_class);
+
+        // KV class
+        let mut kv_class = ClassType::new("KV".to_string());
+        for name in &[
+            "set",
+            "get",
+            "delete",
+            "exists",
+            "keys",
+            "ttl",
+            "expire",
+            "persist",
+            "rename",
+            "type",
+            "incr",
+            "decr",
+            "incrby",
+            "decrby",
+            "lpush",
+            "rpush",
+            "lpop",
+            "rpop",
+            "lrange",
+            "llen",
+            "sadd",
+            "srem",
+            "smembers",
+            "sismember",
+            "scard",
+            "hset",
+            "hget",
+            "hdel",
+            "hgetall",
+            "hexists",
+            "hkeys",
+            "hlen",
+            "ping",
+            "dbsize",
+            "flushdb",
+            "cmd",
+            "configure",
+        ] {
+            kv_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![("args".to_string(), Type::Any)],
+                    return_type: Type::Any,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("KV".to_string(), kv_class);
     }
 
     /// Enter a new scope.

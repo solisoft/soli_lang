@@ -2479,26 +2479,22 @@ Awaits an asynchronous operation (used internally for async HTTP).
 
 ## Cache Functions
 
-In-memory cache for storing and retrieving data with TTL support.
+Persistent caching backed by SoliKV with automatic TTL expiration. Data persists across restarts and is shared between server instances. All cache keys are prefixed with `soli:cache:` to isolate them from other KV data.
 
-### cache_set(key, value, ttl_seconds?)
+**Configuration:** Set `SOLIKV_RESP_HOST` (default: `localhost`), `SOLIKV_RESP_PORT` (default: `6380`), and optionally `SOLIKV_TOKEN` in your `.env` file, or use `Cache.configure(host, token?)`.
+
+### Cache.set(key, value, ttl_seconds?)
 
 Stores a value in the cache.
 
 **Parameters:**
 - `key` (String) - Cache key
-- `value` (Any) - Value to cache (will be JSON serialized)
+- `value` (Any) - Value to cache (JSON serialized)
 - `ttl_seconds` (Int, optional) - Time to live in seconds (default: 3600)
 
 **Returns:** null
 
-**Example:**
-```soli
-cache_set("user:123", { "name": "Alice", "email": "alice@example.com" })
-cache_set("session", session_data, 1800)  # 30 minute TTL
-```
-
-### cache_get(key)
+### Cache.get(key)
 
 Retrieves a value from the cache.
 
@@ -2507,84 +2503,134 @@ Retrieves a value from the cache.
 
 **Returns:** Any|null - Cached value or null if not found/expired
 
-**Example:**
-```soli
-let user = cache_get("user:123")
-if user != null
-    println("Cached user: " + user["name"])
-end
-```
-
-### cache_delete(key)
+### Cache.delete(key)
 
 Removes a value from the cache.
 
-**Parameters:**
-- `key` (String) - Cache key
-
 **Returns:** Bool - true if key was removed
 
-### cache_has(key)
+### Cache.has(key)
 
-Checks if a key exists in the cache (and is not expired).
-
-**Parameters:**
-- `key` (String) - Cache key
+Checks if a key exists in the cache.
 
 **Returns:** Bool
 
-### cache_clear()
+### Cache.clear()
 
-Removes all entries from the cache.
-
-**Returns:** null
-
-### cache_clear_expired()
-
-Removes only expired entries from the cache.
+Removes all cache entries (only keys with the `soli:cache:` prefix).
 
 **Returns:** null
 
-### cache_keys()
+### Cache.clear_expired()
 
-Returns all valid (non-expired) cache keys.
+No-op. SoliKV handles TTL expiration automatically.
 
-**Returns:** Array - Array of key strings
+**Returns:** null
 
-### cache_ttl(key)
+### Cache.keys()
 
-Gets the remaining TTL for a key.
+Returns all cache keys (prefix stripped).
 
-**Parameters:**
-- `key` (String) - Cache key
+**Returns:** Array
 
-**Returns:** Int|null - Seconds remaining, or null if not found/expired
+### Cache.size()
 
-### cache_touch(key, ttl)
-
-Extends or sets the TTL for an existing key.
-
-**Parameters:**
-- `key` (String) - Cache key
-- `ttl` (Int) - New TTL in seconds
-
-**Returns:** Bool - true if key existed and was updated
-
-### cache_size()
-
-Returns the number of entries in the cache.
+Returns the number of cache entries.
 
 **Returns:** Int
 
-### cache_config(ttl?, max_size?)
+### Cache.ttl(key)
 
-Configures cache defaults.
+Gets the remaining TTL for a key in seconds.
+
+**Returns:** Int|null
+
+### Cache.touch(key, ttl)
+
+Sets or updates the TTL for an existing key.
+
+**Returns:** Bool
+
+### Cache.configure(host, token?)
+
+Programmatically configure the SoliKV connection.
 
 **Parameters:**
-- `ttl` (Int|null, optional) - Default TTL in seconds
-- `max_size` (Int|null, optional) - Maximum entries (default: 10000)
+- `host` (String) - SoliKV URL
+- `token` (String, optional) - Bearer token
 
 **Returns:** null
+
+### Global functions
+
+`cache_set`, `cache_get`, `cache_delete`, `cache_has`, `cache_clear`, `cache_clear_expired`, `cache_keys`, `cache_size`, `cache_ttl`, `cache_touch` — thin wrappers around the Cache static methods.
+
+### cache_config(ttl)
+
+Set the default TTL in seconds.
+
+**Returns:** null
+
+---
+
+## KV Class
+
+Full-featured key-value store backed by SoliKV. Supports strings, counters, lists, sets, and hashes with Redis-compatible commands via REST API. Unlike Cache, KV operates on raw keys without any prefix.
+
+**Configuration:** Same as Cache — `SOLIKV_RESP_HOST`, `SOLIKV_RESP_PORT`, `SOLIKV_TOKEN`, or `KV.configure(host, token?)`.
+
+### Basic Operations
+
+- **KV.set(key, value, ttl?)** — Store a value. Optional TTL in seconds. Returns null.
+- **KV.get(key)** — Retrieve a value. Returns null if missing.
+- **KV.delete(key)** — Delete a key. Returns Bool.
+- **KV.exists(key)** — Check if key exists. Returns Bool.
+- **KV.keys(pattern?)** — List keys matching glob pattern (default `"*"`). Returns Array.
+- **KV.type(key)** — Get the type of a key. Returns String.
+- **KV.rename(key, newkey)** — Rename a key.
+
+### TTL Operations
+
+- **KV.ttl(key)** — Remaining TTL in seconds, or null.
+- **KV.expire(key, seconds)** — Set TTL on existing key. Returns Bool.
+- **KV.persist(key)** — Remove TTL. Returns Bool.
+
+### Counters
+
+- **KV.incr(key)** / **KV.decr(key)** — Increment/decrement by 1. Returns new value.
+- **KV.incrby(key, amount)** / **KV.decrby(key, amount)** — Increment/decrement by amount. Returns new value.
+
+### Lists
+
+- **KV.lpush(key, ...values)** / **KV.rpush(key, ...values)** — Push to head/tail. Returns new length.
+- **KV.lpop(key)** / **KV.rpop(key)** — Pop from head/tail.
+- **KV.lrange(key, start, stop)** — Get range of elements (use `0, -1` for all).
+- **KV.llen(key)** — List length.
+
+### Sets
+
+- **KV.sadd(key, ...members)** / **KV.srem(key, ...members)** — Add/remove set members.
+- **KV.smembers(key)** — All members.
+- **KV.sismember(key, member)** — Check membership. Returns Bool.
+- **KV.scard(key)** — Set cardinality.
+
+### Hashes
+
+- **KV.hset(key, field, value)** — Set hash field.
+- **KV.hget(key, field)** — Get hash field.
+- **KV.hgetall(key)** — Get all fields as a Hash.
+- **KV.hdel(key, ...fields)** — Delete fields.
+- **KV.hexists(key, field)** — Check field existence. Returns Bool.
+- **KV.hkeys(key)** — All field names.
+- **KV.hlen(key)** — Number of fields.
+
+### Server
+
+- **KV.ping()** — Check connectivity.
+- **KV.dbsize()** — Total number of keys.
+- **KV.flushdb()** — Delete all keys.
+- **KV.cmd(...args)** — Run any raw SoliKV command.
+- **KV.configure(host, token?)** — Configure connection.
 
 ---
 

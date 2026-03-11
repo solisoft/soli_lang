@@ -363,6 +363,14 @@ impl Interpreter {
         span: Span,
         class_val: &Value,
     ) -> RuntimeResult<Value> {
+        // Cache.fetch needs interpreter-level dispatch for block execution
+        if class.name == "Cache" && name == "fetch" {
+            return Ok(Value::Method(ValueMethod {
+                receiver: Box::new(class_val.clone()),
+                method_name: "fetch".to_string(),
+            }));
+        }
+
         // Static method access - search up superclass chain
         if let Some(method) = class.find_static_method(name) {
             return Ok(Value::Function(method));

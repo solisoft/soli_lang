@@ -1,74 +1,140 @@
+use super::solikv::{
+    get_solikv_config, solikv_cmd, solikv_configure, solikv_del, solikv_get, solikv_set,
+};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{
     json_to_value, stringify_to_string, Class, Instance, NativeFunction, Value,
 };
-use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::RwLock;
-use std::time::{Duration, Instant};
-
-lazy_static! {
-    static ref CACHE_STORE: RwLock<CacheStore> = RwLock::new(CacheStore::new());
-    static ref CACHE_CONFIG: RwLock<CacheConfig> = RwLock::new(CacheConfig::default());
-}
 
 const DEFAULT_TTL_SECONDS: u64 = 3600;
-const DEFAULT_MAX_SIZE: usize = 10000;
 
-struct CacheEntry {
-    value: String,
-    expires_at: Instant,
+fn prefixed_key(key: &str) -> String {
+    let cfg = get_solikv_config().read().unwrap();
+    format!("{}{}", cfg.prefix, key)
 }
 
-struct CacheStore {
-    entries: HashMap<String, CacheEntry>,
+fn strip_prefix(full_key: &str) -> String {
+    let cfg = get_solikv_config().read().unwrap();
+    full_key
+        .strip_prefix(cfg.prefix.as_str())
+        .unwrap_or(full_key)
+        .to_string()
 }
 
-impl CacheStore {
-    fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
+pub(crate) fn cache_set_impl(key: &str, value: &Value, ttl: Option<u64>) -> Result<Value, String> {
+    let pkey = prefixed_key(key);
+    let ttl = ttl.unwrap_or_else(|| {
+        get_solikv_config()
+            .read()
+            .map(|c| c.default_ttl)
+            .unwrap_or(DEFAULT_TTL_SECONDS)
+    });
+
+    let json_str = stringify_to_string(value)
+        .map_err(|e| format!("Cache.set() failed to serialize value: {}", e))?;
+
+    solikv_set(&pkey, &json_str, Some(ttl))?;
+    Ok(Value::Null)
+}
+
+pub(crate) fn cache_get_impl(key: &str) -> Result<Value, String> {
+    let pkey = prefixed_key(key);
+    match solikv_get(&pkey)? {
+        None => Ok(Value::Null),
+        Some(s) => {
+            let parsed: serde_json::Value = serde_json::from_str(&s)
+                .map_err(|e| format!("Cache deserialization error: {}", e))?;
+            json_to_value(parsed)
         }
     }
 }
 
-struct CacheConfig {
-    default_ttl: Duration,
-    max_size: usize,
+fn cache_has_impl(key: &str) -> Result<Value, String> {
+    let pkey = prefixed_key(key);
+    let result = solikv_cmd(&["EXISTS", &pkey])?;
+    let exists = result.as_i64().unwrap_or(0) > 0;
+    Ok(Value::Bool(exists))
 }
 
-impl Default for CacheConfig {
-    fn default() -> Self {
-        Self {
-            default_ttl: Duration::from_secs(DEFAULT_TTL_SECONDS),
-            max_size: DEFAULT_MAX_SIZE,
+fn cache_delete_impl(key: &str) -> Result<Value, String> {
+    let pkey = prefixed_key(key);
+    let count = solikv_del(&pkey)?;
+    Ok(Value::Bool(count > 0))
+}
+
+fn cache_clear_impl() -> Result<Value, String> {
+    let pattern = {
+        let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
+        format!("{}*", cfg.prefix)
+    };
+    let keys_result = solikv_cmd(&["KEYS", &pattern])?;
+
+    if let Some(arr) = keys_result.as_array() {
+        for key in arr {
+            if let Some(k) = key.as_str() {
+                solikv_cmd(&["DEL", k])?;
+            }
         }
+    }
+    Ok(Value::Null)
+}
+
+fn cache_keys_impl() -> Result<Value, String> {
+    let pattern = {
+        let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
+        format!("{}*", cfg.prefix)
+    };
+    let keys_result = solikv_cmd(&["KEYS", &pattern])?;
+
+    let keys: Vec<Value> = keys_result
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| Value::String(strip_prefix(s))))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Value::Array(Rc::new(RefCell::new(keys))))
+}
+
+fn cache_size_impl() -> Result<Value, String> {
+    let pattern = {
+        let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
+        format!("{}*", cfg.prefix)
+    };
+    let keys_result = solikv_cmd(&["KEYS", &pattern])?;
+    let count = keys_result.as_array().map(|a| a.len()).unwrap_or(0);
+    Ok(Value::Int(count as i64))
+}
+
+fn cache_ttl_impl(key: &str) -> Result<Value, String> {
+    let pkey = prefixed_key(key);
+    let result = solikv_cmd(&["TTL", &pkey])?;
+    match result.as_i64() {
+        Some(ttl) if ttl >= 0 => Ok(Value::Int(ttl)),
+        _ => Ok(Value::Null),
     }
 }
 
-fn evict_expired_or_oldest(store: &mut CacheStore) {
-    let now = Instant::now();
-    let mut expired: Vec<String> = store
-        .entries
-        .iter()
-        .filter(|(_, entry)| entry.expires_at <= now)
-        .map(|(k, _)| k.clone())
-        .collect();
+fn cache_touch_impl(key: &str, ttl: u64) -> Result<Value, String> {
+    let pkey = prefixed_key(key);
+    let ttl_str = ttl.to_string();
+    let result = solikv_cmd(&["EXPIRE", &pkey, &ttl_str])?;
+    let ok = result.as_i64().unwrap_or(0) > 0;
+    Ok(Value::Bool(ok))
+}
 
-    if expired.is_empty() {
-        if let Some((oldest_key, _)) = store
-            .entries
-            .iter()
-            .min_by_key(|(_, entry)| entry.expires_at)
-        {
-            expired.push(oldest_key.clone());
-        }
-    }
-
-    for key in expired {
-        store.entries.remove(&key);
+fn extract_string_key(args: &[Value], fn_name: &str) -> Result<String, String> {
+    match &args[0] {
+        Value::String(s) => Ok(s.clone()),
+        other => Err(format!(
+            "{}() expects string key, got {}",
+            fn_name,
+            other.type_name()
+        )),
     }
 }
 
@@ -77,142 +143,51 @@ pub fn register_cache_builtins(env: &mut Environment) {
 
     cache_static_methods.insert(
         "set".to_string(),
-        Rc::new(NativeFunction::new("Cache.set", Some(2), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Cache.set() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-            let value = &args[1];
-            let ttl = args
-                .get(2)
-                .and_then(|v| match v {
-                    Value::Int(i) => Some(*i as u64),
-                    _ => None,
-                })
-                .unwrap_or(DEFAULT_TTL_SECONDS);
-
-            let json_str = stringify_to_string(value)
-                .map_err(|e| format!("Cache.set() failed to serialize value: {}", e))?;
-
-            let mut store = CACHE_STORE
-                .write()
-                .map_err(|e| format!("Cache error: {}", e))?;
-
-            let config = CACHE_CONFIG
-                .read()
-                .map_err(|e| format!("Cache config error: {}", e))?;
-            if store.entries.len() >= config.max_size {
-                evict_expired_or_oldest(&mut store);
+        Rc::new(NativeFunction::new("Cache.set", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "Cache.set() expects 2-3 arguments, got {}",
+                    args.len()
+                ));
             }
-
-            store.entries.insert(
-                key,
-                CacheEntry {
-                    value: json_str,
-                    expires_at: Instant::now() + Duration::from_secs(ttl),
-                },
-            );
-
-            Ok(Value::Null)
+            let key = extract_string_key(&args, "Cache.set")?;
+            let value = &args[1];
+            let ttl = args.get(2).and_then(|v| match v {
+                Value::Int(i) => Some(*i as u64),
+                _ => None,
+            });
+            cache_set_impl(&key, value, ttl)
         })),
     );
 
     cache_static_methods.insert(
         "get".to_string(),
         Rc::new(NativeFunction::new("Cache.get", Some(1), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Cache.get() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let store_try = CACHE_STORE.try_read();
-            let store = match store_try {
-                Ok(s) => s,
-                Err(_) => return Err("Cache is busy".to_string()),
-            };
-
-            if let Some(entry) = store.entries.get(&key) {
-                if entry.expires_at > Instant::now() {
-                    drop(store);
-                    let store = CACHE_STORE
-                        .read()
-                        .map_err(|e| format!("Cache error: {}", e))?;
-                    if let Some(entry) = store.entries.get(&key) {
-                        if entry.expires_at > Instant::now() {
-                            let json: serde_json::Value = serde_json::from_str(&entry.value)
-                                .map_err(|e| format!("Cache deserialization error: {}", e))?;
-                            return json_to_value(json);
-                        }
-                    }
-                }
-            }
-
-            Ok(Value::Null)
+            let key = extract_string_key(&args, "Cache.get")?;
+            cache_get_impl(&key)
         })),
     );
 
     cache_static_methods.insert(
         "delete".to_string(),
         Rc::new(NativeFunction::new("Cache.delete", Some(1), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Cache.delete() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let mut store = CACHE_STORE
-                .write()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            let removed = store.entries.remove(&key);
-            Ok(Value::Bool(removed.is_some()))
+            let key = extract_string_key(&args, "Cache.delete")?;
+            cache_delete_impl(&key)
         })),
     );
 
     cache_static_methods.insert(
         "has".to_string(),
         Rc::new(NativeFunction::new("Cache.has", Some(1), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Cache.has() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let store = CACHE_STORE
-                .read()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            if let Some(entry) = store.entries.get(&key) {
-                return Ok(Value::Bool(entry.expires_at > Instant::now()));
-            }
-            Ok(Value::Bool(false))
+            let key = extract_string_key(&args, "Cache.has")?;
+            cache_has_impl(&key)
         })),
     );
 
     cache_static_methods.insert(
         "clear".to_string(),
         Rc::new(NativeFunction::new("Cache.clear", Some(0), |_args| {
-            let mut store = CACHE_STORE
-                .write()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            store.entries.clear();
-            Ok(Value::Null)
+            cache_clear_impl()
         })),
     );
 
@@ -222,11 +197,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
             "Cache.clear_expired",
             Some(0),
             |_args| {
-                let mut store = CACHE_STORE
-                    .write()
-                    .map_err(|e| format!("Cache error: {}", e))?;
-                let now = Instant::now();
-                store.entries.retain(|_, entry| entry.expires_at > now);
+                // No-op: SoliKV handles TTL expiration automatically
                 Ok(Value::Null)
             },
         )),
@@ -235,68 +206,29 @@ pub fn register_cache_builtins(env: &mut Environment) {
     cache_static_methods.insert(
         "keys".to_string(),
         Rc::new(NativeFunction::new("Cache.keys", Some(0), |_args| {
-            let store = CACHE_STORE
-                .read()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            let now = Instant::now();
-            let keys: Vec<Value> = store
-                .entries
-                .iter()
-                .filter(|(_, entry)| entry.expires_at > now)
-                .map(|(k, _)| Value::String(k.clone()))
-                .collect();
-            Ok(Value::Array(Rc::new(RefCell::new(keys))))
+            cache_keys_impl()
         })),
     );
 
     cache_static_methods.insert(
         "size".to_string(),
         Rc::new(NativeFunction::new("Cache.size", Some(0), |_args| {
-            let store = CACHE_STORE
-                .read()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            Ok(Value::Int(store.entries.len() as i64))
+            cache_size_impl()
         })),
     );
 
     cache_static_methods.insert(
         "ttl".to_string(),
         Rc::new(NativeFunction::new("Cache.ttl", Some(1), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Cache.ttl() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let store = CACHE_STORE
-                .read()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            if let Some(entry) = store.entries.get(&key) {
-                if entry.expires_at > Instant::now() {
-                    let remaining = entry.expires_at.duration_since(Instant::now());
-                    return Ok(Value::Int(remaining.as_secs() as i64));
-                }
-            }
-            Ok(Value::Null)
+            let key = extract_string_key(&args, "Cache.ttl")?;
+            cache_ttl_impl(&key)
         })),
     );
 
     cache_static_methods.insert(
         "touch".to_string(),
         Rc::new(NativeFunction::new("Cache.touch", Some(2), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Cache.touch() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
+            let key = extract_string_key(&args, "Cache.touch")?;
             let ttl = match &args[1] {
                 Value::Int(i) => *i as u64,
                 other => {
@@ -306,17 +238,34 @@ pub fn register_cache_builtins(env: &mut Environment) {
                     ))
                 }
             };
+            cache_touch_impl(&key, ttl)
+        })),
+    );
 
-            let mut store = CACHE_STORE
-                .write()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            if let Some(entry) = store.entries.get_mut(&key) {
-                if entry.expires_at > Instant::now() {
-                    entry.expires_at = Instant::now() + Duration::from_secs(ttl);
-                    return Ok(Value::Bool(true));
-                }
+    cache_static_methods.insert(
+        "configure".to_string(),
+        Rc::new(NativeFunction::new("Cache.configure", None, |args| {
+            if args.is_empty() || args.len() > 2 {
+                return Err(format!(
+                    "Cache.configure() expects 1-2 arguments, got {}",
+                    args.len()
+                ));
             }
-            Ok(Value::Bool(false))
+            let host = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Cache.configure() expects string host, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let token = args.get(1).and_then(|v| match v {
+                Value::String(s) => Some(s.clone()),
+                _ => None,
+            });
+            solikv_configure(&host, token);
+            Ok(Value::Null)
         })),
     );
 
@@ -348,144 +297,55 @@ pub fn register_cache_builtins(env: &mut Environment) {
         })),
     );
 
+    // Global function wrappers
+
     env.define(
         "cache_set".to_string(),
-        Value::NativeFunction(NativeFunction::new("cache_set", Some(2), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "cache_set() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-            let value = &args[1];
-            let ttl = args
-                .get(2)
-                .and_then(|v| match v {
-                    Value::Int(i) => Some(*i as u64),
-                    _ => None,
-                })
-                .unwrap_or(DEFAULT_TTL_SECONDS);
-
-            let json_str = stringify_to_string(value)
-                .map_err(|e| format!("cache_set() failed to serialize value: {}", e))?;
-
-            let mut store = CACHE_STORE
-                .write()
-                .map_err(|e| format!("Cache error: {}", e))?;
-
-            let config = CACHE_CONFIG
-                .read()
-                .map_err(|e| format!("Cache config error: {}", e))?;
-            if store.entries.len() >= config.max_size {
-                evict_expired_or_oldest(&mut store);
+        Value::NativeFunction(NativeFunction::new("cache_set", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "cache_set() expects 2-3 arguments, got {}",
+                    args.len()
+                ));
             }
-
-            store.entries.insert(
-                key,
-                CacheEntry {
-                    value: json_str,
-                    expires_at: Instant::now() + Duration::from_secs(ttl),
-                },
-            );
-
-            Ok(Value::Null)
+            let key = extract_string_key(&args, "cache_set")?;
+            let value = &args[1];
+            let ttl = args.get(2).and_then(|v| match v {
+                Value::Int(i) => Some(*i as u64),
+                _ => None,
+            });
+            cache_set_impl(&key, value, ttl)
         })),
     );
 
     env.define(
         "cache_get".to_string(),
         Value::NativeFunction(NativeFunction::new("cache_get", Some(1), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "cache_get() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let store_try = CACHE_STORE.try_read();
-            let store = match store_try {
-                Ok(s) => s,
-                Err(_) => return Err("Cache is busy".to_string()),
-            };
-
-            if let Some(entry) = store.entries.get(&key) {
-                if entry.expires_at > Instant::now() {
-                    drop(store);
-                    let store = CACHE_STORE
-                        .read()
-                        .map_err(|e| format!("Cache error: {}", e))?;
-                    if let Some(entry) = store.entries.get(&key) {
-                        if entry.expires_at > Instant::now() {
-                            let json: serde_json::Value = serde_json::from_str(&entry.value)
-                                .map_err(|e| format!("Cache deserialization error: {}", e))?;
-                            return json_to_value(json);
-                        }
-                    }
-                }
-            }
-
-            Ok(Value::Null)
+            let key = extract_string_key(&args, "cache_get")?;
+            cache_get_impl(&key)
         })),
     );
 
     env.define(
         "cache_delete".to_string(),
         Value::NativeFunction(NativeFunction::new("cache_delete", Some(1), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "cache_delete() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let mut store = CACHE_STORE
-                .write()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            let removed = store.entries.remove(&key);
-            Ok(Value::Bool(removed.is_some()))
+            let key = extract_string_key(&args, "cache_delete")?;
+            cache_delete_impl(&key)
         })),
     );
 
     env.define(
         "cache_has".to_string(),
         Value::NativeFunction(NativeFunction::new("cache_has", Some(1), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "cache_has() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let store = CACHE_STORE
-                .read()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            if let Some(entry) = store.entries.get(&key) {
-                return Ok(Value::Bool(entry.expires_at > Instant::now()));
-            }
-            Ok(Value::Bool(false))
+            let key = extract_string_key(&args, "cache_has")?;
+            cache_has_impl(&key)
         })),
     );
 
     env.define(
         "cache_clear".to_string(),
         Value::NativeFunction(NativeFunction::new("cache_clear", Some(0), |_args| {
-            let mut store = CACHE_STORE
-                .write()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            store.entries.clear();
-            Ok(Value::Null)
+            cache_clear_impl()
         })),
     );
 
@@ -494,72 +354,29 @@ pub fn register_cache_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new(
             "cache_clear_expired",
             Some(0),
-            |_args| {
-                let mut store = CACHE_STORE
-                    .write()
-                    .map_err(|e| format!("Cache error: {}", e))?;
-                let now = Instant::now();
-                store.entries.retain(|_, entry| entry.expires_at > now);
-                Ok(Value::Null)
-            },
+            |_args| Ok(Value::Null),
         )),
     );
 
     env.define(
         "cache_keys".to_string(),
         Value::NativeFunction(NativeFunction::new("cache_keys", Some(0), |_args| {
-            let store = CACHE_STORE
-                .read()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            let now = Instant::now();
-            let keys: Vec<Value> = store
-                .entries
-                .iter()
-                .filter(|(_, entry)| entry.expires_at > now)
-                .map(|(k, _)| Value::String(k.clone()))
-                .collect();
-            Ok(Value::Array(Rc::new(RefCell::new(keys))))
+            cache_keys_impl()
         })),
     );
 
     env.define(
         "cache_ttl".to_string(),
         Value::NativeFunction(NativeFunction::new("cache_ttl", Some(1), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "cache_ttl() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let store = CACHE_STORE
-                .read()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            if let Some(entry) = store.entries.get(&key) {
-                if entry.expires_at > Instant::now() {
-                    let remaining = entry.expires_at.duration_since(Instant::now());
-                    return Ok(Value::Int(remaining.as_secs() as i64));
-                }
-            }
-            Ok(Value::Null)
+            let key = extract_string_key(&args, "cache_ttl")?;
+            cache_ttl_impl(&key)
         })),
     );
 
     env.define(
         "cache_touch".to_string(),
         Value::NativeFunction(NativeFunction::new("cache_touch", Some(2), |args| {
-            let key = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "cache_touch() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
+            let key = extract_string_key(&args, "cache_touch")?;
             let ttl = match &args[1] {
                 Value::Int(i) => *i as u64,
                 other => {
@@ -569,36 +386,23 @@ pub fn register_cache_builtins(env: &mut Environment) {
                     ))
                 }
             };
-
-            let mut store = CACHE_STORE
-                .write()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            if let Some(entry) = store.entries.get_mut(&key) {
-                if entry.expires_at > Instant::now() {
-                    entry.expires_at = Instant::now() + Duration::from_secs(ttl);
-                    return Ok(Value::Bool(true));
-                }
-            }
-            Ok(Value::Bool(false))
+            cache_touch_impl(&key, ttl)
         })),
     );
 
     env.define(
         "cache_size".to_string(),
         Value::NativeFunction(NativeFunction::new("cache_size", Some(0), |_args| {
-            let store = CACHE_STORE
-                .read()
-                .map_err(|e| format!("Cache error: {}", e))?;
-            Ok(Value::Int(store.entries.len() as i64))
+            cache_size_impl()
         })),
     );
 
     env.define(
         "cache_config".to_string(),
-        Value::NativeFunction(NativeFunction::new("cache_config", Some(2), |args| {
+        Value::NativeFunction(NativeFunction::new("cache_config", Some(1), |args| {
             let ttl = match &args[0] {
-                Value::Int(i) => Some(*i as u64),
-                Value::Null => None,
+                Value::Int(i) => *i as u64,
+                Value::Null => return Ok(Value::Null),
                 other => {
                     return Err(format!(
                         "cache_config() expects int or null ttl, got {}",
@@ -606,26 +410,9 @@ pub fn register_cache_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            let max_size = match &args[1] {
-                Value::Int(i) => Some(*i as usize),
-                Value::Null => None,
-                other => {
-                    return Err(format!(
-                        "cache_config() expects int or null max_size, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let mut config = CACHE_CONFIG
-                .write()
-                .map_err(|e| format!("Cache config error: {}", e))?;
-            if let Some(t) = ttl {
-                config.default_ttl = Duration::from_secs(t);
-            }
-            if let Some(m) = max_size {
-                config.max_size = m;
-            }
+            let cfg = get_solikv_config();
+            let mut w = cfg.write().map_err(|e| e.to_string())?;
+            w.default_ttl = ttl;
             Ok(Value::Null)
         })),
     );
