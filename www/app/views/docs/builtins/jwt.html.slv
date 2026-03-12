@@ -75,12 +75,12 @@
                     <code class="text-purple-400">Hash</code> - The payload if valid, or <code>{ "error": true, "message": String }</code> if invalid
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let result = jwt_verify(token, "my-secret-key")
-if has_key(result, "error") {
+if has_key(result, "error")
     println("Invalid token: " + result["message"])
-} else {
+else
     println("User: " + result["sub"])
     println("Role: " + result["role"])
-}</code></pre>
+end</code></pre>
             </div>
         </section>
 
@@ -117,9 +117,9 @@ println(payload["sub"])  # User ID without verification</code></pre>
             <pre data-filename="Example"><code class="language-soli text-sm"># Login endpoint
 def login(email: String, password: String) -> Hash
     let user = User.find_by_email(email)
-    if !user || !argon2_verify(password, user["password_hash"]) {
+    if !user || !argon2_verify(password, user["password_hash"])
         return { "error": "Invalid credentials" }
-    }
+    end
 
     let token = jwt_sign(
         { "sub": str(user["id"]), "role": user["role"] },
@@ -133,14 +133,14 @@ end
 # Protected endpoint middleware
 def authenticate(req: Hash) -> Hash?
     let auth_header = req["headers"]["Authorization"] ?? ""
-    if !contains(auth_header, "Bearer ") {
+    if !contains(auth_header, "Bearer ")
         return null
-    }
+    end
 
     let token = substring(auth_header, 7)
     let result = jwt_verify(token, getenv("JWT_SECRET"))
 
-    if has_key(result, "error") {
+    if has_key(result, "error")
         return null
     }
 

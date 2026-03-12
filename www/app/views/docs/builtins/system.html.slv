@@ -87,9 +87,9 @@ print(files.stdout)
 
 # Access exit code
 let status = `grep pattern file`
-if status.exit_code != 0 {
+if status.exit_code != 0
     println("Pattern not found")
-}</code></pre>
+end</code></pre>
 
             <div class="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                 <p class="text-amber-300">

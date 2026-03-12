@@ -83,6 +83,7 @@ get("/docs/builtins", "docs#builtins_index");
 get("/docs/builtins/core", "docs#builtins_core");
 get("/docs/builtins/system", "docs#builtins_system");
 get("/docs/builtins/http", "docs#builtins_http");
+get("/docs/builtins/s3", "docs#builtins_s3");
 get("/docs/builtins/json", "docs#builtins_json");
 get("/docs/builtins/crypto", "docs#builtins_crypto");
 get("/docs/builtins/jwt", "docs#builtins_jwt");

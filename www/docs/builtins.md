@@ -684,6 +684,158 @@ let responses = http_parallel([
 ])
 ```
 
+## S3 Functions
+
+The S3 class provides static methods for interacting with Amazon S3 and S3-compatible storage (MinIO, DigitalOcean Spaces, etc.).
+
+### Configuration
+
+Credentials are loaded from environment variables automatically at app startup from `.env` files.
+
+**Environment Variables:**
+- `AWS_ACCESS_KEY_ID` or `S3_ACCESS_KEY` - Access key
+- `AWS_SECRET_ACCESS_KEY` or `S3_SECRET_KEY` - Secret key  
+- `AWS_REGION` or `S3_REGION` - Region (default: `us-east-1`)
+- `S3_ENDPOINT` - Custom endpoint for S3-compatible services (optional)
+
+**Example .env:**
+```bash
+S3_ACCESS_KEY=your_access_key
+S3_SECRET_KEY=your_secret_key
+S3_REGION=us-east-1
+# For MinIO or other S3-compatible storage:
+# S3_ENDPOINT=http://localhost:9000
+```
+
+### S3.list_buckets()
+
+Lists all buckets in the S3 account.
+
+**Returns:** Array of bucket names
+
+**Example:**
+```soli
+let buckets = S3.list_buckets()
+print(buckets)  # ["bucket1", "bucket2"]
+```
+
+### S3.create_bucket(name)
+
+Creates a new bucket.
+
+**Parameters:**
+- `name` (String) - Bucket name
+
+**Returns:** Boolean - `true` on success
+
+**Example:**
+```soli
+S3.create_bucket("my-app-files")
+```
+
+### S3.delete_bucket(name)
+
+Deletes a bucket.
+
+**Parameters:**
+- `name` (String) - Bucket name
+
+**Returns:** Boolean - `true` on success
+
+**Example:**
+```soli
+S3.delete_bucket("my-app-files")
+```
+
+### S3.put_object(bucket, key, body, options?)
+
+Uploads an object to S3.
+
+**Parameters:**
+- `bucket` (String) - Bucket name
+- `key` (String) - Object key (path in bucket)
+- `body` (String) - Object content
+- `options` (Hash, optional) - Additional options
+  - `content_type` (String) - Content MIME type (default: `application/octet-stream`)
+
+**Returns:** Boolean - `true` on success
+
+**Example:**
+```soli
+# Simple upload
+S3.put_object("my-bucket", "hello.txt", "Hello World!")
+
+# With content type
+S3.put_object("my-bucket", "data.json", '{"key": "value"}', {
+    "content_type": "application/json"
+})
+```
+
+### S3.get_object(bucket, key)
+
+Downloads an object from S3.
+
+**Parameters:**
+- `bucket` (String) - Bucket name
+- `key` (String) - Object key
+
+**Returns:** String - Object content
+
+**Example:**
+```soli
+let content = S3.get_object("my-bucket", "hello.txt")
+print(content)  # "Hello World!"
+```
+
+### S3.delete_object(bucket, key)
+
+Deletes an object from S3.
+
+**Parameters:**
+- `bucket` (String) - Bucket name
+- `key` (String) - Object key
+
+**Returns:** Boolean - `true` on success
+
+**Example:**
+```soli
+S3.delete_object("my-bucket", "hello.txt")
+```
+
+### S3.list_objects(bucket, prefix?)
+
+Lists objects in a bucket.
+
+**Parameters:**
+- `bucket` (String) - Bucket name
+- `prefix` (String, optional) - Filter by prefix
+
+**Returns:** Array of object keys
+
+**Example:**
+```soli
+# List all objects
+let files = S3.list_objects("my-bucket")
+
+# List objects with prefix
+let files = S3.list_objects("my-bucket", "documents/")
+```
+
+### S3.copy_object(source, dest)
+
+Copies an object within S3.
+
+**Parameters:**
+- `source` (String) - Source in format `bucket/key`
+- `dest` (String) - Destination in format `bucket/key`
+
+**Returns:** Boolean - `true` on success
+
+**Example:**
+```soli
+S3.copy_object("source-bucket/file.txt", "dest-bucket/file.txt")
+```
+
 ## HTTP Server Functions
 
 Create a lightweight HTTP server without the full MVC framework. For MVC apps, use `get/post` in `config/routes.sl` instead.

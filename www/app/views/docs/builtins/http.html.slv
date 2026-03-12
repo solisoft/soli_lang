@@ -52,9 +52,9 @@ let response = HTTP.request("DELETE", "https://api.example.com/users/1")</code><
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP GET request. Returns a Future that resolves to the response body as a string.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.get("https://api.example.com/users")
-if resp["status"] == 200 {
+if resp["status"] == 200
     println(resp["body"])
-}</code></pre>
+end</code></pre>
         </section>
 
         <section id="def-http-post" class="scroll-mt-20 mb-6">
@@ -454,8 +454,8 @@ end</code></pre>
             </svg>
             Core Functions
         </a>
-        <a href="/docs/builtins/json" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
-            JSON Functions
+        <a href="/docs/builtins/s3" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            S3 Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>

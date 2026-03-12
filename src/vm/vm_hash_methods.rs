@@ -178,18 +178,32 @@ impl Vm {
             }
             "to_string" | "to_s" => {
                 let h = hash.borrow();
-                let parts: Vec<String> = h
-                    .iter()
-                    .map(|(k, v)| {
-                        let key_str = match k {
-                            HashKey::String(s) => format!("\"{}\"", s),
-                            HashKey::Int(n) => n.to_string(),
-                            _ => format!("{:?}", k),
-                        };
-                        format!("{}: {}", key_str, v)
-                    })
-                    .collect();
-                Ok(Value::String(format!("{{{}}}", parts.join(", "))))
+                if h.is_empty() {
+                    return Ok(Value::String("{}".to_string()));
+                }
+                let mut total_len = 2;
+                for (i, (k, _)) in h.iter().enumerate() {
+                    total_len += k.display_len();
+                    total_len += 2;
+                    if i > 0 {
+                        total_len += 2;
+                    }
+                }
+                for (_, v) in h.iter() {
+                    total_len += v.display_len();
+                }
+                let mut result = String::with_capacity(total_len);
+                result.push('{');
+                for (i, (k, v)) in h.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(", ");
+                    }
+                    k.write_key_to_string(&mut result);
+                    result.push_str(": ");
+                    v.write_to_string(&mut result);
+                }
+                result.push('}');
+                Ok(Value::String(result))
             }
             // Universal methods
             "class" => Ok(Value::String("hash".to_string())),
@@ -198,18 +212,32 @@ impl Vm {
             "present?" => Ok(Value::Bool(!hash.borrow().is_empty())),
             "inspect" => {
                 let h = hash.borrow();
-                let parts: Vec<String> = h
-                    .iter()
-                    .map(|(k, v)| {
-                        let key_str = match k {
-                            HashKey::String(s) => format!("\"{}\"", s),
-                            HashKey::Int(n) => n.to_string(),
-                            _ => format!("{:?}", k),
-                        };
-                        format!("{}: {}", key_str, v)
-                    })
-                    .collect();
-                Ok(Value::String(format!("{{{}}}", parts.join(", "))))
+                if h.is_empty() {
+                    return Ok(Value::String("{}".to_string()));
+                }
+                let mut total_len = 2;
+                for (i, (k, _)) in h.iter().enumerate() {
+                    total_len += k.display_len();
+                    total_len += 2;
+                    if i > 0 {
+                        total_len += 2;
+                    }
+                }
+                for (_, v) in h.iter() {
+                    total_len += v.display_len();
+                }
+                let mut result = String::with_capacity(total_len);
+                result.push('{');
+                for (i, (k, v)) in h.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(", ");
+                    }
+                    k.write_key_to_string(&mut result);
+                    result.push_str(": ");
+                    v.write_to_string(&mut result);
+                }
+                result.push('}');
+                Ok(Value::String(result))
             }
             "is_a?" => {
                 if args.len() != 1 {

@@ -91,13 +91,14 @@ let token_with_exp = jwt_sign(
             </div>
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">let result = jwt_verify(token, secret)
-if result["error"] == true {
+if result["error"] == true
     # Handle invalid token
-    print("Auth Error:", result["message"])    { "error": "Unauthorized" }
-} else {
+    print("Auth Error:", result["message"])
+else
     # Token is valid, access claims
     let user_id = result["sub"]
-    print("Authenticated User:", user_id)}</code></pre>
+    print("Authenticated User:", user_id)
+end</code></pre>
             </div>
         </div>
     </section>

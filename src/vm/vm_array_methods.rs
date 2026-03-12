@@ -194,8 +194,21 @@ impl Vm {
                     }
                 };
                 let items = arr.borrow();
-                let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-                Ok(Value::String(parts.join(sep)))
+                if items.is_empty() {
+                    return Ok(Value::String(String::new()));
+                }
+                let mut total_len = sep.len() * (items.len() - 1);
+                for v in items.iter() {
+                    total_len += v.display_len();
+                }
+                let mut result = String::with_capacity(total_len);
+                for (i, v) in items.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(sep);
+                    }
+                    v.write_to_string(&mut result);
+                }
+                Ok(Value::String(result))
             }
             "get" => {
                 if args.len() != 1 {
@@ -253,8 +266,26 @@ impl Vm {
             }
             "to_string" | "to_s" => {
                 let items = arr.borrow();
-                let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-                Ok(Value::String(format!("[{}]", parts.join(", "))))
+                if items.is_empty() {
+                    return Ok(Value::String("[]".to_string()));
+                }
+                let mut total_len = 2;
+                for (i, v) in items.iter().enumerate() {
+                    total_len += v.display_len();
+                    if i > 0 {
+                        total_len += 2;
+                    }
+                }
+                let mut result = String::with_capacity(total_len);
+                result.push('[');
+                for (i, v) in items.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(", ");
+                    }
+                    v.write_to_string(&mut result);
+                }
+                result.push(']');
+                Ok(Value::String(result))
             }
             // Universal methods
             "class" => Ok(Value::String("array".to_string())),
@@ -263,8 +294,26 @@ impl Vm {
             "present?" => Ok(Value::Bool(!arr.borrow().is_empty())),
             "inspect" => {
                 let items = arr.borrow();
-                let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-                Ok(Value::String(format!("[{}]", parts.join(", "))))
+                if items.is_empty() {
+                    return Ok(Value::String("[]".to_string()));
+                }
+                let mut total_len = 2;
+                for (i, v) in items.iter().enumerate() {
+                    total_len += v.display_len();
+                    if i > 0 {
+                        total_len += 2;
+                    }
+                }
+                let mut result = String::with_capacity(total_len);
+                result.push('[');
+                for (i, v) in items.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(", ");
+                    }
+                    v.write_to_string(&mut result);
+                }
+                result.push(']');
+                Ok(Value::String(result))
             }
             "is_a?" => {
                 if args.len() != 1 {

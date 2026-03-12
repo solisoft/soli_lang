@@ -231,9 +231,9 @@ KV.cmd("EXPIRE", "key", 60)</code></pre>
 def check_rate_limit(ip)
     let key = "rate:" + ip
     let count = KV.incr(key)
-    if count == 1 {
+    if count == 1
         KV.expire(key, 60)  # 60 second window
-    }
+    end
     count <= 100  # 100 requests per minute
 end
 
@@ -250,9 +250,9 @@ let session = KV.hgetall("session:abc")
 # Feature flags with sets
 KV.sadd("features:beta", "user:1")
 KV.sadd("features:beta", "user:2")
-if KV.sismember("features:beta", "user:1") {
+if KV.sismember("features:beta", "user:1")
     println("User has beta access")
-}</code></pre>
+end</code></pre>
         </div>
     </section>
 </div>

@@ -58,14 +58,14 @@ let result = SOAP.call(
     envelope
 )
 
-if result["status"] == 200 {
+if result["status"] == 200
     let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
     let temp = response["Temperature"]
     let condition = response["Condition"]
     
     println("Temperature: " + temp)
     println("Condition: " + condition)
-}</code></pre>
+end</code></pre>
             </div>
         </section>
     </section>
@@ -277,16 +277,16 @@ let result = SOAP.call(
 )
 
 # Handle the response
-if result["status"] == 200 {
+if result["status"] == 200
     let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
     let temp = response["Temperature"]
     let condition = response["Condition"]
     
     println("Temperature: " + temp)
     println("Condition: " + condition)
-} else {
+else
     println("Error: " + result["body"])
-}</code></pre>
+end</code></pre>
         </div>
     </section>
 
@@ -317,11 +317,11 @@ if result["status"] == 200 {
 
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
-        <a href="/docs/builtins/http" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+        <a href="/docs/builtins/s3" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
-            HTTP Functions
+            S3 Functions
         </a>
         <a href="/docs/builtins/crypto" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
             Crypto Functions

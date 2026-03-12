@@ -124,16 +124,19 @@
                 <pre data-filename="Example"><code class="language-soli text-sm">let age = 25
 let has_license = true
 
-if (age >= 18 && has_license) {
-    print("Can drive")}</code></pre>
+if age >= 18 && has_license
+    print("Can drive")
+end</code></pre>
 
                 <p class="text-gray-400 mb-3">At least one condition must be true.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">if (is_weekend || is_holiday) {
-    print("Day off!")}</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">if is_weekend || is_holiday
+    print("Day off!")
+end</code></pre>
 
                 <p class="text-gray-400 mb-3">Negates the condition.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">if (!is_raining) {
-    print("No umbrella needed")}</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">if !is_raining
+    print("No umbrella needed")
+end</code></pre>
 
                 <p class="text-gray-400 mb-3">String Concatenation.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Concatenation
@@ -200,9 +203,9 @@ print("hello world".truncate(5)); # "he..."</code></pre>
 
 # Traditional null check
 let email = user["email"]
-if (email == null) {
+if email == null
     email = "unknown"
-}
+end
 
 # Null coalescing operator
 let display_email = user["email"] ?? "unknown"
@@ -229,12 +232,12 @@ let display_name = user&.name ?? "Anonymous"</code></pre>
 
                 <p class="text-gray-400 mb-3">Creates a range of integers (exclusive end).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Range creates an array
-let numbers = 1..5;  # [1, 2, 3, 4]
+let numbers = 1..5  # [1, 2, 3, 4]
 
 # Use in for loops
-for (i in 0..10) {
-    print(i);  # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-}</code></pre>
+for i in 0..10
+    print(i)  # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+end</code></pre>
     </section>
 
     <!-- Compound Assignment Operators -->
@@ -344,10 +347,10 @@ let old = i--  # old is 2, i is now 1
 
 # Common pattern: loop counter
 let n = 0
-while (n < 5) {
+while n < 5
     println(n)
-    n++
-}</code></pre>
+    n = n + 1
+end</code></pre>
     </section>
 
     <!-- Navigation -->

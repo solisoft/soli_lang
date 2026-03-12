@@ -165,13 +165,13 @@ const PI = 3.14159265359
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let x = 1
 
-if (true) {
-    let y = 2;      # y only visible in this block
-    let x = 3;      # shadows outer x
-    print(x);       # Output: 3 (inner x)
-}
+if true
+    let y = 2      # y only visible in this block
+    let x = 3      # shadows outer x
+    print(x)       # Output: 3 (inner x)
+end
 
-print(x);           # Output: 1 (outer x)</code></pre>
+print(x)           # Output: 1 (outer x)</code></pre>
             </div>
         </div>
     </section>

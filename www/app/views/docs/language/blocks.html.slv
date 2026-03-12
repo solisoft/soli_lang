@@ -42,7 +42,8 @@
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">def greet(name: String) {
-    print("Hello, " + name + "!")}
+    print("Hello, " + name + "!")
+}
 
 def add(a: Int, b: Int) -> Int {
     a + b
@@ -56,9 +57,9 @@ def add(a: Int, b: Int) -> Int {
                 <pre data-filename="Example"><code class="language-soli text-sm">def greet(name: String)
 end
 
-def add(a: Int, b: Int) -> Int {
+def add(a: Int, b: Int) -> Int
     a + b
-}</code></pre>
+end</code></pre>
             </div>
         </section>
     </section>
@@ -79,12 +80,15 @@ def add(a: Int, b: Int) -> Int {
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
 
-if (age >= 18) {
-    print("Adult")}
+if age >= 18
+    print("Adult")
+end
 
-if (age >= 21) {
-    print("Can drink")} else {
-    print("Too young")}</code></pre>
+if age >= 21
+    print("Can drink")
+else
+    print("Too young")
+end</code></pre>
             </div>
         </section>
 
@@ -93,18 +97,15 @@ if (age >= 21) {
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
 
-if (age >= 18)
+if age >= 18
+    print("Adult")
 end
 
-if (age >= 21)
-end
-else {
-    print("Too young")}
-
-if (age >= 18) {
-    print("Adult")} elsif (age >= 21)
-end
-else end</code></pre>
+if age >= 21
+    print("Can drink")
+else
+    print("Too young")
+end</code></pre>
             </div>
         </section>
     </section>
@@ -124,10 +125,10 @@ else end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
-while (i < 5) {
+while i < 5
     print(i)
-i = i + 1
-}</code></pre>
+    i = i + 1
+end</code></pre>
             </div>
         </section>
 
@@ -135,14 +136,14 @@ i = i + 1
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
-while (i < 5)
+while i < 5
 end
 
 let j = 0
-while (j < 5) {
+while j < 5
     print(j)
-j = j + 1
-}</code></pre>
+    j = j + 1
+end</code></pre>
             </div>
         </section>
     </section>
@@ -161,8 +162,9 @@ j = j + 1
         <section id="for-braces" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">for item in items {
-    print(item)}</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">for item in items
+    print(item)
+end</code></pre>
             </div>
         </section>
 
@@ -171,8 +173,9 @@ j = j + 1
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">for item in items end
 
-for item in items {
-    print(item)}</code></pre>
+for item in items
+    print(item)
+end</code></pre>
             </div>
         </section>
     </section>
@@ -191,16 +194,17 @@ for item in items {
         <section id="class-braces" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">class Person {
+                <pre data-filename="Example"><code class="language-soli text-sm">class Person
     name: String
 
-    new(name: String) {
+    new(name: String)
         this.name = name
-    }
+    end
 
-    def greet {
-        print("Hello, " + this.name)    }
-}</code></pre>
+    def greet
+        print("Hello, " + this.name)
+    end
+end</code></pre>
             </div>
         </section>
 
@@ -212,8 +216,7 @@ for item in items {
 class Person
     name: String
 
-    new(name: String)
-end
+    new(name: String) end
 
     def greet end
 end</code></pre>
@@ -237,29 +240,32 @@ end</code></pre>
             <pre data-filename="Example"><code class="language-soli text-sm"># Empty function - use end
 def placeholder end
 
-# Function with body - use braces
-def process_data(data) {
+# Function with body - use end
+def process_data(data)
     validate(data)
-transform(data)
-save(data)}
+    transform(data)
+    save(data)
+end
 
 # Empty class - use end
 class EmptyMarker end
 
-# Class with methods - mix both
+# Class with methods - use end
 class Service
     def init end
 
-    def process {
-        fetch_data()    }
+    def process
+        fetch_data()
+    end
 end
 
 # Control flow - use end for simple guards
 if user.is_admin()
 end
 
-if user.is_valid() {
-    authorize(user)}</code></pre>
+if user.is_valid()
+    authorize(user)
+end</code></pre>
         </div>
     </section>
 
@@ -305,4 +311,20 @@ if user.is_valid() {
             </table>
         </div>
     </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/language/functions" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Functions
+        </a>
+        <a href="/docs/language/integers" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Integers
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
 </div>

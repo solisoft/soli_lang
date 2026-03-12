@@ -181,11 +181,11 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Bool</code> - true if password matches, false otherwise
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">if Crypto.argon2_verify(user_input, stored_hash) {
+                <pre data-filename="Example"><code class="language-soli text-sm">if Crypto.argon2_verify(user_input, stored_hash)
     println("Password correct!")
-} else {
+else
     println("Invalid password")
-}</code></pre>
+end</code></pre>
             </div>
         </section>
     </section>

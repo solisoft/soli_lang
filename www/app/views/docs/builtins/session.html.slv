@@ -161,9 +161,9 @@ session_regenerate  # Security: generate new session ID</code></pre>
             <pre data-filename="Example"><code class="language-soli text-sm"># Login
 def login(email: String, password: String) -> Bool
     let user = User.find_by_email(email)
-    if !user || !argon2_verify(password, user["password_hash"]) {
+    if !user || !argon2_verify(password, user["password_hash"])
         return false
-    }
+    end
 
     session_set("user_id", user["id"])
     session_regenerate  # Prevent session fixation
@@ -173,9 +173,9 @@ end
 # Check authentication
 def current_user -> Hash?
     let user_id = session_get("user_id")
-    if !user_id {
+    if !user_id
         return null
-    }
+    end
     User.find(user_id)
 end
 

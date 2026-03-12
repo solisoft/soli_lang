@@ -12,6 +12,7 @@ use super::vm::Vm;
 impl Vm {
     /// Dispatch a string method call. The string and args are already available.
     /// Returns the result value.
+    #[inline]
     pub fn vm_call_string_method(
         &self,
         s: &str,

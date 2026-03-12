@@ -176,17 +176,20 @@ will return an error if:</p>
                 <li>The decoded bytes are not valid UTF-8</li>
             </ul>
 <pre data-filename="Example"><code class="language-soli text-sm"># Invalid Base64 (wrong padding)
-try {
-    Base64.decode("invalid==")} catch e {
-    print("Error: " + e);  # "Error: Invalid Base64: ..."
-}
+try
+    Base64.decode("invalid==")
+catch e
+    print("Error: " + e)  # "Error: Invalid Base64: ..."
+end
 
 # Valid Base64 with proper error handling
 def safe_decode(input: String) -> String
-    try {
-        return Base64.decode(input)    } catch e {
-        print("Failed to decode: " + e)        ""
-    }
+    try
+        return Base64.decode(input)
+    catch e
+        print("Failed to decode: " + e)
+        ""
+    end
 end</code></pre>
         </div>
     </section>

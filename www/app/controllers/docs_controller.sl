@@ -250,6 +250,10 @@ fn builtins_http(req)
     render_docs("docs/builtins/http", "HTTP Functions", "builtins", "http")
 end
 
+fn builtins_s3(req)
+    render_docs("docs/builtins/s3", "S3 Functions", "builtins", "s3")
+end
+
 fn builtins_json(req)
     render_docs("docs/builtins/json", "JSON Functions", "builtins", "json")
 end

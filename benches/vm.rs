@@ -66,6 +66,17 @@ fn run_vm(source: &str) {
             }),
         ),
     );
+    vm.globals.insert(
+        "len".to_string(),
+        solilang::interpreter::value::Value::NativeFunction(
+            solilang::interpreter::value::NativeFunction::new("len", Some(1), |args| {
+                let resolved = args.into_iter().next().unwrap();
+                Ok(solilang::interpreter::value::Value::Int(
+                    resolved.display_len() as i64,
+                ))
+            }),
+        ),
+    );
     vm.execute(&module.main).expect("vm runtime error");
 }
 
@@ -173,6 +184,46 @@ fn json_ops_large_comparison(c: &mut Criterion) {
     group.finish();
 }
 
+fn array_ops_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("array_ops_comparison");
+    let source = load_program("array_ops");
+
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
+
+    group.finish();
+}
+
+fn string_ops_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("string_ops_comparison");
+    let source = load_program("string_ops");
+
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
+
+    group.finish();
+}
+
+fn hash_ops_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("hash_ops_comparison");
+    let source = load_program("hash_ops");
+
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
+
+    group.finish();
+}
+
+fn class_ops_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("class_ops_comparison");
+    let source = load_program("class_ops");
+
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     fibonacci_comparison,
@@ -182,6 +233,10 @@ criterion_group!(
     compilation_overhead,
     json_ops_comparison,
     json_ops_large_comparison,
+    array_ops_comparison,
+    string_ops_comparison,
+    hash_ops_comparison,
+    class_ops_comparison,
 );
 
 criterion_main!(benches);

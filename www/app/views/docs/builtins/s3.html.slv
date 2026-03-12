@@ -1,0 +1,269 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">S3</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">S3 Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Amazon S3 and S3-compatible storage for buckets, objects, and file operations. Works with MinIO, DigitalOcean Spaces, and other S3-compatible services.
+        </p>
+    </div>
+
+    <!-- Configuration -->
+    <section id="section-configuration" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </span>
+            Configuration
+        </h2>
+        <p class="text-gray-400 mb-4">Environment variables are loaded automatically at app startup from <code class="text-indigo-400">.env</code> files.</p>
+        
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Environment Variables</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <code class="text-amber-400">AWS_ACCESS_KEY_ID</code> or <code class="text-amber-400">S3_ACCESS_KEY</code>
+                    <p class="text-gray-500 text-xs">Access key</p>
+                </div>
+                <div>
+                    <code class="text-amber-400">AWS_SECRET_ACCESS_KEY</code> or <code class="text-amber-400">S3_SECRET_KEY</code>
+                    <p class="text-gray-500 text-xs">Secret key</p>
+                </div>
+                <div>
+                    <code class="text-amber-400">AWS_REGION</code> or <code class="text-amber-400">S3_REGION</code>
+                    <p class="text-gray-500 text-xs">Region (default: us-east-1)</p>
+                </div>
+                <div>
+                    <code class="text-amber-400">S3_ENDPOINT</code>
+                    <p class="text-gray-500 text-xs">Custom endpoint for S3-compatible services</p>
+                </div>
+            </div>
+        </div>
+
+        <pre data-filename=".env"><code class="language-bash text-sm"># Amazon S3
+S3_ACCESS_KEY=your_access_key
+S3_SECRET_KEY=your_secret_key
+S3_REGION=us-east-1
+
+# Or MinIO / DigitalOcean Spaces / Custom S3
+# S3_ENDPOINT=http://localhost:9000</code></pre>
+    </section>
+
+    <!-- Bucket Operations -->
+    <section id="section-bucket-operations" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+            </span>
+            Bucket Operations
+        </h2>
+
+        <section id="def-s3-list-buckets" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-s3-list-buckets" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">S3.list_buckets()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Lists all buckets in the S3 account.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">Array of bucket names</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let buckets = S3.list_buckets()
+print(buckets)  # ["bucket1", "bucket2"]</code></pre>
+            </div>
+        </section>
+
+        <section id="def-s3-create-bucket" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-s3-create-bucket" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">S3.create_bucket(name)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Creates a new bucket.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">name</code> : <code class="text-purple-400">String</code> - Bucket name</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">Boolean - true on success</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">S3.create_bucket("my-app-files")</code></pre>
+            </div>
+        </section>
+
+        <section id="def-s3-delete-bucket" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-s3-delete-bucket" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">S3.delete_bucket(name)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Deletes a bucket.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">name</code> : <code class="text-purple-400">String</code> - Bucket name</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">Boolean - true on success</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">S3.delete_bucket("my-app-files")</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Object Operations -->
+    <section id="section-object-operations" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+            </span>
+            Object Operations
+        </h2>
+
+        <section id="def-s3-put-object" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-s3-put-object" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">S3.put_object(bucket, key, body, options?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Uploads an object to S3.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">bucket</code> : <code class="text-purple-400">String</code> - Bucket name</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - Object key (path in bucket)</div>
+                    <div><code class="text-amber-400">body</code> : <code class="text-purple-400">String</code> - Object content</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash</code> - Optional options (content_type)</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">Boolean - true on success</p>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Simple upload
+S3.put_object("my-bucket", "hello.txt", "Hello World!")
+
+# With content type
+S3.put_object("my-bucket", "data.json", '{"key": "value"}', {
+    "content_type": "application/json"
+})</code></pre>
+            </div>
+        </section>
+
+        <section id="def-s3-get-object" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-s3-get-object" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">S3.get_object(bucket, key)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Downloads an object from S3.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">bucket</code> : <code class="text-purple-400">String</code> - Bucket name</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - Object key</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">String - Object content</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let content = S3.get_object("my-bucket", "hello.txt")
+print(content)  # "Hello World!"</code></pre>
+            </div>
+        </section>
+
+        <section id="def-s3-delete-object" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-s3-delete-object" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">S3.delete_object(bucket, key)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Deletes an object from S3.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">bucket</code> : <code class="text-purple-400">String</code> - Bucket name</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - Object key</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">Boolean - true on success</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">S3.delete_object("my-bucket", "hello.txt")</code></pre>
+            </div>
+        </section>
+
+        <section id="def-s3-list-objects" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-s3-list-objects" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">S3.list_objects(bucket, prefix?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Lists objects in a bucket.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">bucket</code> : <code class="text-purple-400">String</code> - Bucket name</div>
+                    <div><code class="text-amber-400">prefix</code> : <code class="text-purple-400">String</code> - Optional prefix filter</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">Array of object keys</p>
+                <pre data-filename="Example"><code class="language-soli text-sm"># List all objects
+let files = S3.list_objects("my-bucket")
+
+# List objects with prefix
+let files = S3.list_objects("my-bucket", "documents/")</code></pre>
+            </div>
+        </section>
+
+        <section id="def-s3-copy-object" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-s3-copy-object" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">S3.copy_object(source, dest)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Copies an object within S3.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">source</code> : <code class="text-purple-400">String</code> - Source in format "bucket/key"</div>
+                    <div><code class="text-amber-400">dest</code> : <code class="text-purple-400">String</code> - Destination in format "bucket/key"</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">Boolean - true on success</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">S3.copy_object("source-bucket/file.txt", "dest-bucket/file.txt")</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/http" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            HTTP Functions
+        </a>
+        <a href="/docs/builtins/soap" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            SOAP Class
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

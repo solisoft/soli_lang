@@ -74,10 +74,10 @@ for file in files {
                 <span class="text-gray-300">Hash with <code class="text-purple-400">blob_id</code>, <code class="text-purple-400">filename</code>, <code class="text-purple-400">size</code>, <code class="text-purple-400">content_type</code></span>
             </div>
             <pre class="text-sm text-gray-300 overflow-x-auto"><code>let result = upload_to_solidb(req, "uploads", "avatar")
-if has_key(result, "blob_id") {
+if has_key(result, "blob_id")
     println("Uploaded: " + result["filename"])
     println("Blob ID: " + result["blob_id"])
-}</code></pre>
+end</code></pre>
         </div>
     </section>
 
@@ -98,13 +98,13 @@ if has_key(result, "blob_id") {
                 <span class="text-gray-300">Array of result hashes (one per file, or error hash if failed)</span>
             </div>
             <pre class="text-sm text-gray-300 overflow-x-auto"><code>let results = upload_all_to_solidb(req, "uploads")
-for result in results {
-    if has_key(result, "blob_id") {
+for result in results
+    if has_key(result, "blob_id")
         println("Uploaded: " + result["filename"])
-    } else {
+    else
         println("Failed: " + result["error"])
-    }
-}</code></pre>
+    end
+end</code></pre>
         </div>
     </section>
 
@@ -191,12 +191,12 @@ def upload_avatar(req)
 
     let result = upload_to_solidb(req, collection, "avatar")
 
-    if has_key(result, "error") {
+    if has_key(result, "error")
         return {
             "status": 400,
             "body": json_stringify({ "error": result["error"] })
         }
-    }
+    end
 
     let blob_url = get_blob_url(collection, result["blob_id"])
 
@@ -219,9 +219,9 @@ def get_file(req)
     let db = Solidb("localhost:8529", "myapp")
 
     let metadata = db.get_blob_metadata("avatars", blob_id)
-    if metadata["_key"] == null {
+    if metadata["_key"] == null
         return { "status": 404, "body": "Not found" }
-    }
+    end
 
     let data = db.get_blob("avatars", blob_id)
 

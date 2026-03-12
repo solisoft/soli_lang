@@ -794,6 +794,20 @@ impl Vm {
                     self.stack
                         .push(Value::Array(Rc::new(RefCell::new(elements))));
                 }
+                Op::ArrayPush => {
+                    let value = self.stack.pop().unwrap();
+                    // Array is at stack.len() - 1 (right below the value we just popped)
+                    // Stack: [..., array, value] -> pop value, push to array -> [..., array]
+                    let arr_idx = self.stack.len() - 1;
+                    if let Some(Value::Array(arr)) = self.stack.get(arr_idx).cloned() {
+                        arr.borrow_mut().push(value);
+                    } else {
+                        return Err(RuntimeError::type_error(
+                            "can only push to arrays",
+                            self.current_span(),
+                        ));
+                    }
+                }
                 Op::Hash(n) => {
                     let mut map = HashPairs::default();
                     let mut pairs = Vec::with_capacity(n as usize);
@@ -1175,6 +1189,492 @@ impl Vm {
                     let val = self.pop();
                     let base = self.frames.last().unwrap().stack_base;
                     self.stack[base + slot as usize] = val;
+                }
+                Op::SubLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => Value::Int(x - y),
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x - y),
+                        _ => {
+                            let a = a.clone();
+                            let b = b.clone();
+                            let span = self.current_span();
+                            self.op_subtract(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::MulLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => Value::Int(x * y),
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x * y),
+                        _ => {
+                            let a = a.clone();
+                            let b = b.clone();
+                            let span = self.current_span();
+                            self.op_multiply(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::DivLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => {
+                            if *y == 0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            Value::Int(x / y)
+                        }
+                        (Value::Float(x), Value::Float(y)) => {
+                            if *y == 0.0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            Value::Float(x / y)
+                        }
+                        _ => {
+                            let a = a.clone();
+                            let b = b.clone();
+                            let span = self.current_span();
+                            self.op_divide(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::ModLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => {
+                            if *y == 0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            Value::Int(x % y)
+                        }
+                        _ => {
+                            let a = a.clone();
+                            let b = b.clone();
+                            let span = self.current_span();
+                            self.op_modulo(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::SubLocalConst(slot, const_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => Value::Int(x - y),
+                        (Value::Float(x), Constant::Float(y)) => Value::Float(x - y),
+                        _ => {
+                            let a = local.clone();
+                            let b = constant_to_value(constant);
+                            let span = self.current_span();
+                            self.op_subtract(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::MulLocalConst(slot, const_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => Value::Int(x * y),
+                        (Value::Float(x), Constant::Float(y)) => Value::Float(x * y),
+                        _ => {
+                            let a = local.clone();
+                            let b = constant_to_value(constant);
+                            let span = self.current_span();
+                            self.op_multiply(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::DivLocalConst(slot, const_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => {
+                            if *y == 0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            Value::Int(x / y)
+                        }
+                        (Value::Float(x), Constant::Float(y)) => {
+                            if *y == 0.0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            Value::Float(x / y)
+                        }
+                        _ => {
+                            let a = local.clone();
+                            let b = constant_to_value(constant);
+                            let span = self.current_span();
+                            self.op_divide(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::GetLocal2(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = self.stack[base + slot_a as usize].clone();
+                    let b = self.stack[base + slot_b as usize].clone();
+                    self.stack.push(a);
+                    self.stack.push(b);
+                }
+                Op::LessLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => *x < *y,
+                        (Value::Float(x), Value::Float(y)) => *x < *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less(a, b, span)?
+                        }
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::GreaterLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => *x > *y,
+                        (Value::Float(x), Value::Float(y)) => *x > *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less(b, a, span)?
+                        }
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::NotEqualLocalConst(slot, const_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => *x != *y,
+                        (Value::Float(x), Constant::Float(y)) => *x != *y,
+                        (Value::String(x), Constant::String(y)) => x != y,
+                        _ => local != &constant_to_value(constant),
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::EqualLocalConst(slot, const_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => *x == *y,
+                        (Value::Float(x), Constant::Float(y)) => *x == *y,
+                        (Value::String(x), Constant::String(y)) => x == y,
+                        _ => local == &constant_to_value(constant),
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                // --- Test + Jump super-instructions ---
+                Op::TestGreaterJump(offset) => {
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => *x > *y,
+                        (Value::Float(x), Value::Float(y)) => *x > *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less(&b, &a, span)?
+                        }
+                    };
+                    if !result {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+                Op::TestGreaterEqualJump(offset) => {
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => *x >= *y,
+                        (Value::Float(x), Value::Float(y)) => *x >= *y,
+                        _ => {
+                            let span = self.current_span();
+                            self.op_compare_less_equal(&b, &a, span)?
+                        }
+                    };
+                    if !result {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+                Op::TestNotEqualJump(offset) => {
+                    let (a, b) = self.pop2();
+                    let result = match (&a, &b) {
+                        (Value::Int(x), Value::Int(y)) => x != y,
+                        (Value::Bool(x), Value::Bool(y)) => x != y,
+                        _ => a != b,
+                    };
+                    if !result {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+
+                // --- Null/boolean checks ---
+                Op::IsNull => {
+                    let val = self.stack.last().unwrap();
+                    self.stack.push(Value::Bool(matches!(val, Value::Null)));
+                }
+                Op::NotNull => {
+                    let val = self.stack.last().unwrap();
+                    self.stack.push(Value::Bool(!matches!(val, Value::Null)));
+                }
+                Op::JumpIfNull(offset) => {
+                    let val = self.stack.last().unwrap();
+                    if matches!(val, Value::Null) {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+                Op::JumpIfNotNull(offset) => {
+                    let val = self.stack.last().unwrap();
+                    if !matches!(val, Value::Null) {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+                Op::IsTruthyLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let val = &self.stack[base + slot as usize];
+                    self.stack.push(Value::Bool(val.is_truthy()));
+                }
+                Op::IsFalsyLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let val = &self.stack[base + slot as usize];
+                    self.stack.push(Value::Bool(!val.is_truthy()));
+                }
+                Op::AddLocalInt(slot, n) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let result = match local {
+                        Value::Int(x) => Value::Int(x + n as i64),
+                        Value::Float(x) => Value::Float(*x + n as f64),
+                        _ => {
+                            let a = local.clone();
+                            let span = self.current_span();
+                            self.op_add(a, Value::Int(n as i64), span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::IncrLocalFast(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let idx = base + slot as usize;
+                    if let Value::Int(n) = self.stack[idx] {
+                        self.stack[idx] = Value::Int(n + 1);
+                    } else {
+                        let val = self.stack[idx].clone();
+                        let result = match val {
+                            Value::Float(n) => Value::Float(n + 1.0),
+                            _ => {
+                                let span = self.current_span();
+                                self.op_add(val, Value::Int(1), span)?
+                            }
+                        };
+                        self.stack[idx] = result;
+                    }
+                }
+                Op::GetAndNullLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let val = self.stack[base + slot as usize].clone();
+                    self.stack[base + slot as usize] = Value::Null;
+                    self.stack.push(val);
+                }
+                Op::IsZeroLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let result = match local {
+                        Value::Int(x) => *x == 0,
+                        Value::Float(x) => *x == 0.0,
+                        _ => false,
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::NotZeroLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let result = match local {
+                        Value::Int(x) => *x != 0,
+                        Value::Float(x) => *x != 0.0,
+                        _ => true,
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::GetAndIncrLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let idx = base + slot as usize;
+                    let old_val = self.stack[idx].clone();
+                    if let Value::Int(n) = self.stack[idx] {
+                        self.stack[idx] = Value::Int(n + 1);
+                    } else {
+                        let val = self.stack[idx].clone();
+                        let result = match val {
+                            Value::Float(n) => Value::Float(n + 1.0),
+                            _ => {
+                                let span = self.current_span();
+                                let result = self.op_add(val, Value::Int(1), span).unwrap();
+                                self.stack[idx] = result;
+                                self.stack.push(old_val.clone());
+                                return Ok(Value::Null);
+                            }
+                        };
+                        self.stack[idx] = result;
+                    }
+                    self.stack.push(old_val);
+                }
+                Op::GetAndDecrLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let idx = base + slot as usize;
+                    let old_val = self.stack[idx].clone();
+                    if let Value::Int(n) = self.stack[idx] {
+                        self.stack[idx] = Value::Int(n - 1);
+                    } else {
+                        let val = self.stack[idx].clone();
+                        let result = match val {
+                            Value::Float(n) => Value::Float(n - 1.0),
+                            _ => {
+                                let span = self.current_span();
+                                let result = self.op_subtract(val, Value::Int(1), span).unwrap();
+                                self.stack[idx] = result;
+                                self.stack.push(old_val.clone());
+                                return Ok(Value::Null);
+                            }
+                        };
+                        self.stack[idx] = result;
+                    }
+                    self.stack.push(old_val);
+                }
+                Op::SwapSetLocal(slot) => {
+                    let new_val = self.pop();
+                    let base = self.frames.last().unwrap().stack_base;
+                    let old_val = self.stack[base + slot as usize].clone();
+                    self.stack[base + slot as usize] = new_val;
+                    self.stack.push(old_val);
+                }
+                Op::GetGlobalNullCheck(idx) => {
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        let name = match &frame.closure.proto.chunk.constants[idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
+                        self.globals.get(name).cloned()
+                    };
+                    match val {
+                        Some(v) => self.stack.push(v),
+                        None => self.stack.push(Value::Null),
+                    };
+                }
+                Op::GetGlobalCall(idx, argc) => {
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        let name = match &frame.closure.proto.chunk.constants[idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
+                        self.globals.get(name).cloned()
+                    };
+                    match val {
+                        Some(v) => {
+                            self.stack.push(v);
+                            let span = self.current_span();
+                            self.call_value(argc as usize, span)?;
+                        }
+                        None => {
+                            let name = self.read_string_constant_owned(idx);
+                            return Err(RuntimeError::undefined_variable(
+                                name,
+                                self.current_span(),
+                            ));
+                        }
+                    };
+                }
+                Op::NotLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let val = self.stack[base + slot as usize].clone();
+                    self.stack.push(Value::Bool(!val.is_truthy()));
+                }
+                Op::NegateLocal(slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let val = self.stack[base + slot as usize].clone();
+                    let result = match val {
+                        Value::Int(n) => Value::Int(-n),
+                        Value::Float(n) => Value::Float(-n),
+                        _ => {
+                            return Err(RuntimeError::type_error(
+                                format!("Cannot negate {}", val.type_name()),
+                                self.current_span(),
+                            ));
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::EqualLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => x == y,
+                        (Value::Bool(x), Value::Bool(y)) => x == y,
+                        _ => a == b,
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::NotEqualLocalLocal(slot_a, slot_b) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => x != y,
+                        (Value::Bool(x), Value::Bool(y)) => x != y,
+                        _ => a != b,
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::PopNull => {
+                    self.stack.pop();
+                    self.stack.push(Value::Null);
+                }
+                Op::DupN(n) => {
+                    let len = self.stack.len();
+                    for _ in 0..n {
+                        self.stack.push(self.stack[len - 1].clone());
+                    }
+                }
+                Op::GetLocalProperty(slot, idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let object = self.stack[base + slot as usize].clone();
+                    let name = self.read_string_constant_owned(idx);
+                    let span = self.current_span();
+                    let result = self.op_get_property(&object, &name, span)?;
+                    self.stack.push(result);
+                }
+                Op::GetLocalIndex(slot, idx_slot) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let object = self.stack[base + slot as usize].clone();
+                    let index_val = self.stack[base + idx_slot as usize].clone();
+                    let span = self.current_span();
+                    let result = self.op_get_index(&object, &index_val, span)?;
+                    self.stack.push(result);
                 }
 
                 // --- JSON ---

@@ -109,6 +109,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::Return => out.push_str("RETURN"),
         Op::Array(n) => out.push_str(&format!("ARRAY        {:>5}", n)),
+        Op::ArrayPush => out.push_str("ARRAY_PUSH"),
         Op::Hash(n) => out.push_str(&format!("HASH         {:>5}", n)),
         Op::Range => out.push_str("RANGE"),
         Op::GetIndex => out.push_str("GET_INDEX"),
@@ -211,6 +212,74 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
                 "CALL_MID     {:>5} ({}) argc={} mid={}",
                 idx, name, argc, mid
             ));
+        }
+        Op::SubLocalLocal(a, b) => out.push_str(&format!("SUB_LL       {:>3},{:>3}", a, b)),
+        Op::MulLocalLocal(a, b) => out.push_str(&format!("MUL_LL       {:>3},{:>3}", a, b)),
+        Op::DivLocalLocal(a, b) => out.push_str(&format!("DIV_LL       {:>3},{:>3}", a, b)),
+        Op::ModLocalLocal(a, b) => out.push_str(&format!("MOD_LL       {:>3},{:>3}", a, b)),
+        Op::SubLocalConst(slot, cidx) => {
+            out.push_str(&format!("SUB_LC       {:>3},{:>3}", slot, cidx))
+        }
+        Op::MulLocalConst(slot, cidx) => {
+            out.push_str(&format!("MUL_LC       {:>3},{:>3}", slot, cidx))
+        }
+        Op::DivLocalConst(slot, cidx) => {
+            out.push_str(&format!("DIV_LC       {:>3},{:>3}", slot, cidx))
+        }
+        Op::GetLocal2(a, b) => out.push_str(&format!("GET_LOCAL_2  {:>3},{:>3}", a, b)),
+        Op::LessLocalLocal(a, b) => out.push_str(&format!("LESS_LL      {:>3},{:>3}", a, b)),
+        Op::GreaterLocalLocal(a, b) => out.push_str(&format!("GREATER_LL   {:>3},{:>3}", a, b)),
+        Op::NotEqualLocalConst(slot, cidx) => {
+            out.push_str(&format!("NE_LC        {:>3},{:>3}", slot, cidx))
+        }
+        Op::EqualLocalConst(slot, cidx) => {
+            out.push_str(&format!("EQ_LC        {:>3},{:>3}", slot, cidx))
+        }
+        Op::TestGreaterJump(offset) => out.push_str(&format!("TEST_GT_JUMP {:>5}", offset)),
+        Op::TestGreaterEqualJump(offset) => out.push_str(&format!("TEST_GE_JUMP {:>5}", offset)),
+        Op::TestNotEqualJump(offset) => out.push_str(&format!("TEST_NE_JUMP {:>5}", offset)),
+        Op::IsNull => out.push_str("IS_NULL"),
+        Op::NotNull => out.push_str("NOT_NULL"),
+        Op::JumpIfNull(offset) => out.push_str(&format!("JUMP_IF_NULL {:>5}", offset)),
+        Op::JumpIfNotNull(offset) => out.push_str(&format!("JUMP_IF_NOT_NULL {:>4}", offset)),
+        Op::IsTruthyLocal(slot) => out.push_str(&format!("IS_TRUTHY_LOCAL {:>3}", slot)),
+        Op::IsFalsyLocal(slot) => out.push_str(&format!("IS_FALSY_LOCAL {:>3}", slot)),
+        Op::AddLocalInt(slot, n) => out.push_str(&format!("ADD_LOCAL_INT {:>3},{:>3}", slot, n)),
+        Op::IncrLocalFast(slot) => out.push_str(&format!("INCR_LOCAL_FAST {:>2}", slot)),
+        Op::GetAndNullLocal(slot) => out.push_str(&format!("GET_AND_NULL_LOCAL {:>2}", slot)),
+        Op::IsZeroLocal(slot) => out.push_str(&format!("IS_ZERO_LOCAL  {:>3}", slot)),
+        Op::NotZeroLocal(slot) => out.push_str(&format!("NOT_ZERO_LOCAL {:>3}", slot)),
+        Op::GetAndIncrLocal(slot) => out.push_str(&format!("GET_AND_INCR_LOCAL {:>2}", slot)),
+        Op::GetAndDecrLocal(slot) => out.push_str(&format!("GET_AND_DECR_LOCAL {:>2}", slot)),
+        Op::SwapSetLocal(slot) => out.push_str(&format!("SWAP_SET_LOCAL   {:>3}", slot)),
+        Op::GetGlobalNullCheck(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("GET_GLOBAL_NULL  {:>5} ({})", idx, name))
+        }
+        Op::GetGlobalCall(idx, argc) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "GET_GLOBAL_CALL  {:>5} ({}) argc={}",
+                idx, name, argc
+            ))
+        }
+        Op::NotLocal(slot) => out.push_str(&format!("NOT_LOCAL        {:>3}", slot)),
+        Op::NegateLocal(slot) => out.push_str(&format!("NEGATE_LOCAL     {:>3}", slot)),
+        Op::EqualLocalLocal(a, b) => out.push_str(&format!("EQ_LL            {:>3},{:>3}", a, b)),
+        Op::NotEqualLocalLocal(a, b) => {
+            out.push_str(&format!("NE_LL            {:>3},{:>3}", a, b))
+        }
+        Op::PopNull => out.push_str("POP_NULL"),
+        Op::DupN(n) => out.push_str(&format!("DUP_N            {:>3}", n)),
+        Op::GetLocalProperty(slot, idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "GET_LOCAL_PROP   {:>3},{:>3} ({})",
+                slot, idx, name
+            ))
+        }
+        Op::GetLocalIndex(slot, idx_slot) => {
+            out.push_str(&format!("GET_LOCAL_INDEX  {:>3},{:>3}", slot, idx_slot))
         }
     }
 }

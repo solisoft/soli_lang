@@ -338,6 +338,16 @@ impl Compiler {
                 .iter()
                 .all(|a| matches!(a, Argument::Positional(_)));
             if all_positional && arguments.len() <= 255 {
+                // Special optimization: arr.push(x) -> ArrayPush opcode
+                // This avoids method dispatch overhead for the common push operation
+                if name == "push" && arguments.len() == 1 {
+                    if let Argument::Positional(expr) = &arguments[0] {
+                        self.compile_expr(object)?;
+                        self.compile_expr(expr)?;
+                        self.emit(Op::ArrayPush, line);
+                        return Ok(());
+                    }
+                }
                 self.compile_expr(object)?;
                 let mut argc = 0u8;
                 for arg in arguments {

@@ -56,9 +56,9 @@ Cache.set("session", data, 1800)  # 30 minute TTL</code></pre>
                 <p class="text-gray-400 mb-4">Retrieves a value from the cache.</p>
                 <p class="text-gray-400">Returns: Any|null - Cached value or null if not found/expired</p>
                 <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>let user = Cache.get("user:123")
-if user != null {
+if user != null
     println("Cached user: " + user["name"])
-}</code></pre>
+end</code></pre>
             </div>
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
@@ -213,14 +213,14 @@ Cache.set("session", session_data, 1800)  # 30 minute TTL
 
 # Retrieve data
 let user = Cache.get("user:123")
-if user != null {
+if user != null
     println("Cached user: " + user["name"])
-}
+end
 
 # Check existence
-if Cache.has("user:123") {
+if Cache.has("user:123")
     println("User still cached")
-}
+end
 
 # Update TTL
 Cache.touch("user:123", 3600)

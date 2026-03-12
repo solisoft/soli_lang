@@ -43,9 +43,9 @@ let limiter = RateLimiter("api:user123", 100, 60)</code></pre>
             </div>
             <pre class="text-sm text-gray-300 overflow-x-auto"><code># Limit API calls to 100 per minute per IP
 let limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
-if !limiter.allowed() {
+if !limiter.allowed()
     return { "status": 429, "body": "Too Many Requests" }
-}</code></pre>
+end</code></pre>
         </div>
     </section>
 
@@ -136,7 +136,7 @@ def rate_limit_middleware(req)
     let limiter = RateLimiter("api:" + ip, 100, 60)
     
     # Check rate limit (100 requests per minute)
-    if !limiter.allowed() {
+    if !limiter.allowed()
         let status = limiter.status
         let headers = limiter.headers
         
@@ -151,7 +151,7 @@ def rate_limit_middleware(req)
                 })
             }
         }
-    }
+    end
     
     { "continue": true, "request": req }
 end</code></pre></code></pre>

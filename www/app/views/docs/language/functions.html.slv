@@ -131,21 +131,20 @@ def square(x: Int) -> Int
     x * x
 end
 
-let result = apply(5, double);   # 10
-let squared = apply(5, square);  # 25
+let result = apply(5, double)   # 10
+let squared = apply(5, square)  # 25
 
 # Passing anonymous functions
 def transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
     let result = []
-    for (item in arr) {
+    for item in arr
         push(result, transformer(item))
-end
+    end
     result
 end
 
 let numbers = [1, 2, 3, 4, 5]
-let doubled = transform_array(numbers, def(x)
-x * 2);  # [2, 4, 6, 8, 10]</code></pre>
+let doubled = transform_array(numbers, def(x) x * 2)  # [2, 4, 6, 8, 10]</code></pre>
             </div>
         </div>
     </section>
@@ -463,30 +462,30 @@ let user3 = new User(name: "Charlie", role: "moderator");</code></pre>
 def add(a: Int, b: Int) -> Int
     a + b
 end
-print(add(2, 3));  # 5
+print(add(2, 3))  # 5
 
 # Works with if/else expressions
 def abs(x: Int) -> Int
-    if (x < 0) { -x } else { x }
+    if x < 0 then -x else x end
 end
-print(abs(-5));  # 5
+print(abs(-5))  # 5
 
 # Works with lambdas
-let doubled = [1, 2, 3].map(def(x) { x * 2 })
-print(doubled);  # [2, 4, 6]
+let doubled = [1, 2, 3].map(def(x) x * 2)
+print(doubled)  # [2, 4, 6]
 
 # Works with closures
 def make_adder(n: Int) -> (Int) -> Int
-    def(x) { x + n }
+    def(x) x + n
 end
 let add5 = make_adder(5)
-print(add5(3));  # 8
+print(add5(3))  # 8
 
 # Note: `let` as last statement returns null
 def nothing
     let x = 1
 end
-print(nothing());  # null</code></pre>
+print(nothing())  # null</code></pre>
             </div>
         </div>
 
@@ -535,8 +534,8 @@ let result = find_first_even([1, 3, 5, 4, 7]);  # 4</code></pre>
             </svg>
             Error Handling
         </a>
-        <a href="/docs/language/collections" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
-            Collections
+        <a href="/docs/language/blocks" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Blocks
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>

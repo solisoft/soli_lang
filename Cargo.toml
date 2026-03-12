@@ -1,6 +1,6 @@
 [package]
 name = "solilang"
-version = "0.44.0"
+version = "0.45.0"
 edition = "2021"
 description = "A dynamically-typed, class-based OOP language with optional type annotations and pipeline operators"
 authors = ["Solilang Team"]
@@ -111,6 +111,11 @@ quick-xml = { version = "0.36", features = ["serialize"] }
 
 # Markdown rendering for .md views
 pulldown-cmark = "0.12"
+
+# S3 support
+rusoto_s3 = "0.48"
+rusoto_core = "0.48"
+rusoto_credential = "0.48"
 
 # Archive extraction for git archive
 flate2 = "1.0"

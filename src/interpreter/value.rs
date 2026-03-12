@@ -148,6 +148,43 @@ impl HashKey {
             HashKey::Symbol(s) => Value::Symbol(s.clone()),
         }
     }
+
+    #[inline]
+    pub fn display_len(&self) -> usize {
+        match self {
+            HashKey::Int(n) => n.to_string().len(),
+            HashKey::Decimal(d) => d.to_string().len(),
+            HashKey::String(s) => s.len() + 2,
+            HashKey::Bool(b) => {
+                if *b {
+                    4
+                } else {
+                    5
+                }
+            }
+            HashKey::Null => 4,
+            HashKey::Symbol(s) => s.len() + 1,
+        }
+    }
+
+    #[inline]
+    pub fn write_key_to_string(&self, s: &mut String) {
+        match self {
+            HashKey::Int(n) => s.push_str(&n.to_string()),
+            HashKey::Decimal(d) => s.push_str(&d.to_string()),
+            HashKey::String(st) => {
+                s.push('"');
+                s.push_str(st);
+                s.push('"');
+            }
+            HashKey::Bool(b) => s.push_str(if *b { "true" } else { "false" }),
+            HashKey::Null => s.push_str("null"),
+            HashKey::Symbol(sym) => {
+                s.push(':');
+                s.push_str(sym);
+            }
+        }
+    }
 }
 
 impl std::fmt::Display for HashKey {
@@ -389,6 +426,139 @@ impl Value {
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Null, Value::Null) => true,
             _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn display_len(&self) -> usize {
+        match self {
+            Value::Int(n) => n.to_string().len(),
+            Value::Float(n) => n.to_string().len(),
+            Value::Decimal(d) => d.to_string().len(),
+            Value::String(s) => s.len(),
+            Value::Symbol(s) => s.len() + 1,
+            Value::Bool(b) => {
+                if *b {
+                    4
+                } else {
+                    5
+                }
+            }
+            Value::Null => 4,
+            Value::Array(arr) => {
+                let arr = arr.borrow();
+                if arr.is_empty() {
+                    return 2;
+                }
+                let mut len = 1;
+                for (i, v) in arr.iter().enumerate() {
+                    len += v.display_len();
+                    if i > 0 {
+                        len += 2;
+                    }
+                }
+                len + 1
+            }
+            Value::Hash(hash) => {
+                let hash = hash.borrow();
+                if hash.is_empty() {
+                    return 2;
+                }
+                let mut len = 1;
+                for (i, (k, v)) in hash.iter().enumerate() {
+                    len += k.to_value().display_len();
+                    len += 4;
+                    len += v.display_len();
+                    if i > 0 {
+                        len += 2;
+                    }
+                }
+                len + 1
+            }
+            Value::Function(func) => func.name.len() + 5,
+            Value::NativeFunction(func) => func.name.len() + 13,
+            Value::Class(class) => class.name.len() + 8,
+            Value::Instance(inst) => {
+                let inst = inst.borrow();
+                inst.class.name.len() + 15
+            }
+            Value::Future(_) => 7,
+            Value::Method(_) => 8,
+            Value::Breakpoint => 10,
+            Value::QueryBuilder(_) => 13,
+            Value::Super(_) => 7,
+            Value::VmClosure(func) => func.proto.name.len() + 5,
+        }
+    }
+
+    #[inline]
+    pub fn write_to_string(&self, s: &mut String) {
+        match self {
+            Value::Int(n) => s.push_str(&n.to_string()),
+            Value::Float(n) => s.push_str(&n.to_string()),
+            Value::Decimal(d) => s.push_str(&d.to_string()),
+            Value::String(st) => s.push_str(st),
+            Value::Symbol(sym) => {
+                s.push(':');
+                s.push_str(sym);
+            }
+            Value::Bool(b) => s.push_str(if *b { "true" } else { "false" }),
+            Value::Null => s.push_str("null"),
+            Value::Array(arr) => {
+                s.push('[');
+                let arr = arr.borrow();
+                for (i, v) in arr.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    v.write_to_string(s);
+                }
+                s.push(']');
+            }
+            Value::Hash(hash) => {
+                s.push('{');
+                let hash = hash.borrow();
+                for (i, (k, v)) in hash.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    k.to_value().write_to_string(s);
+                    s.push_str(" => ");
+                    v.write_to_string(s);
+                }
+                s.push('}');
+            }
+            Value::Function(func) => {
+                s.push_str("<fn ");
+                s.push_str(&func.name);
+                s.push('>');
+            }
+            Value::NativeFunction(func) => {
+                s.push_str("<native fn ");
+                s.push_str(&func.name);
+                s.push('>');
+            }
+            Value::Class(class) => {
+                s.push_str("<class ");
+                s.push_str(&class.name);
+                s.push('>');
+            }
+            Value::Instance(inst) => {
+                let inst = inst.borrow();
+                s.push('<');
+                s.push_str(&inst.class.name);
+                s.push_str(" instance>");
+            }
+            Value::Future(_) => s.push_str("<Future>"),
+            Value::Method(_) => s.push_str("<Method>"),
+            Value::Breakpoint => s.push_str("<Breakpoint>"),
+            Value::QueryBuilder(_) => s.push_str("<QueryBuilder>"),
+            Value::Super(_) => s.push_str("<Super>"),
+            Value::VmClosure(func) => {
+                s.push_str("<fn ");
+                s.push_str(&func.proto.name);
+                s.push('>');
+            }
         }
     }
 }

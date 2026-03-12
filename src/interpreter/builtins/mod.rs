@@ -40,6 +40,7 @@ pub mod request_helpers;
 pub mod resp;
 pub mod response_helpers;
 pub mod router;
+pub mod s3;
 pub mod security_headers;
 pub mod server;
 pub mod session;
@@ -191,6 +192,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register HTTP class
     http_class::register_http_class(env);
+
+    // Register S3 class
+    s3::register_s3_class(env);
 
     // Register SOAP class
     soap::register_soap_class(env);

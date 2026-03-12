@@ -89,12 +89,13 @@ let user_schema = {
 # 2. Validate input data (e.g., from a POST request)
 let result = validate(req["body"], user_schema)
 # 3. Handle results
-if result["valid"] {
+if result["valid"]
     # result["data"] contains the clean, coerced data
-    create_user(result["data"])} else {
+    create_user(result["data"])
+else
     # result["errors"] contains validation messages
     render("register", { "errors": result["errors"] })
-}</code></pre>
+end</code></pre>
             </div>
         </div>
     </section>

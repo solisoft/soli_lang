@@ -205,14 +205,14 @@ let result = validate({
     "age": 30
 }, schema)
 
-if result["valid"] {
+if result["valid"]
     println("Data is valid!")
     println(result["data"])  # Validated & sanitized data
-} else {
-    for error in result["errors"] {
+else
+    for error in result["errors"]
         println(error["field"] + ": " + error["message"])
-    }
-}</code></pre>
+    end
+end</code></pre>
 
             </div>
         </section>
@@ -234,9 +234,9 @@ if result["valid"] {
 
 def register(params: Hash) -> Hash
     let result = validate(params, user_schema)
-    if !result["valid"] {
+    if !result["valid"]
         return { "error": result["errors"] }
-    }
+    end
 
     let user = User.create(result["data"])
     { "user": user }

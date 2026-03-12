@@ -502,6 +502,436 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
+        // Pattern: Less, JumpIfFalse(offset) → TestLessJump(offset+1)
+        if i + 1 < len {
+            if let (Op::Less, Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::TestLessJump(offset + 1);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: Greater, JumpIfFalse(offset) → TestGreaterJump(offset+1)
+        if i + 1 < len {
+            if let (Op::Greater, Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::TestGreaterJump(offset + 1);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GreaterEqual, JumpIfFalse(offset) → TestGreaterEqualJump(offset+1)
+        if i + 1 < len {
+            if let (Op::GreaterEqual, Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::TestGreaterEqualJump(offset + 1);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: NotEqual, JumpIfFalse(offset) → TestNotEqualJump(offset+1)
+        if i + 1 < len {
+            if let (Op::NotEqual, Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::TestNotEqualJump(offset + 1);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), GetLocal(b), Subtract → SubLocalLocal(a, b)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b), Op::Subtract) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    code[i] = Op::SubLocalLocal(slot_a, slot_b);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), GetLocal(b), Multiply → MulLocalLocal(a, b)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b), Op::Multiply) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    code[i] = Op::MulLocalLocal(slot_a, slot_b);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), GetLocal(b), Divide → DivLocalLocal(a, b)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b), Op::Divide) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    code[i] = Op::DivLocalLocal(slot_a, slot_b);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), GetLocal(b), Modulo → ModLocalLocal(a, b)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b), Op::Modulo) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    code[i] = Op::ModLocalLocal(slot_a, slot_b);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), GetLocal(b), Less → LessLocalLocal(a, b)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b), Op::Less) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    code[i] = Op::LessLocalLocal(slot_a, slot_b);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), GetLocal(b), Greater → GreaterLocalLocal(a, b)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b), Op::Greater) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    code[i] = Op::GreaterLocalLocal(slot_a, slot_b);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: a = a - b  (GetLocal, GetLocal, Subtract, SetLocal, Pop)
+        if i + 4 < len {
+            if let (
+                Op::GetLocal(slot_a),
+                Op::GetLocal(slot_b),
+                Op::Subtract,
+                Op::SetLocal(slot_target),
+                Op::Pop,
+            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
+            {
+                if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
+                    code[i] = Op::SubLocalLocal(slot_a, slot_b);
+                    code[i + 1] = Op::SetLocalPop(slot_a);
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: a = a * b  (GetLocal, GetLocal, Multiply, SetLocal, Pop)
+        if i + 4 < len {
+            if let (
+                Op::GetLocal(slot_a),
+                Op::GetLocal(slot_b),
+                Op::Multiply,
+                Op::SetLocal(slot_target),
+                Op::Pop,
+            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
+            {
+                if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
+                    code[i] = Op::MulLocalLocal(slot_a, slot_b);
+                    code[i + 1] = Op::SetLocalPop(slot_a);
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: a = a / b  (GetLocal, GetLocal, Divide, SetLocal, Pop)
+        if i + 4 < len {
+            if let (
+                Op::GetLocal(slot_a),
+                Op::GetLocal(slot_b),
+                Op::Divide,
+                Op::SetLocal(slot_target),
+                Op::Pop,
+            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
+            {
+                if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
+                    code[i] = Op::DivLocalLocal(slot_a, slot_b);
+                    code[i + 1] = Op::SetLocalPop(slot_a);
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(slot), Constant(c), Add → AddLocalConst(slot, c)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Add) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(_)) | Some(Constant::Float(_)) =
+                        constants.get(cidx as usize)
+                    {
+                        code[i] = Op::AddLocalConst(slot, cidx);
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Pattern: GetLocal(slot), Constant(c), Subtract → SubLocalConst(slot, c)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Subtract) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(_)) | Some(Constant::Float(_)) =
+                        constants.get(cidx as usize)
+                    {
+                        code[i] = Op::SubLocalConst(slot, cidx);
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Pattern: GetLocal(slot), Constant(c), Multiply → MulLocalConst(slot, c)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Multiply) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(_)) | Some(Constant::Float(_)) =
+                        constants.get(cidx as usize)
+                    {
+                        code[i] = Op::MulLocalConst(slot, cidx);
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Pattern: GetLocal(slot), Constant(c), Divide → DivLocalConst(slot, c)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Divide) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(_)) | Some(Constant::Float(_)) =
+                        constants.get(cidx as usize)
+                    {
+                        code[i] = Op::DivLocalConst(slot, cidx);
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Pattern: Two consecutive GetLocal → GetLocal2
+        if i + 1 < len {
+            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::GetLocal2(slot_a, slot_b);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal, Constant(1), Add → AddLocalInt(slot, 1)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Add) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(n)) = constants.get(cidx as usize) {
+                        if *n == 1 {
+                            code[i] = Op::AddLocalInt(slot, 1);
+                            code[i + 1] = NOP;
+                            code[i + 2] = NOP;
+                            i += 3;
+                            continue;
+                        }
+                        // For small negative numbers
+                        if *n > -32768 && *n < 32767 {
+                            code[i] = Op::AddLocalInt(slot, *n as i32);
+                            code[i + 1] = NOP;
+                            code[i + 2] = NOP;
+                            i += 3;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pattern: GetLocal, Constant(-1), Add → AddLocalInt(slot, -1)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Add) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(n)) = constants.get(cidx as usize) {
+                        if *n == -1 {
+                            code[i] = Op::AddLocalInt(slot, -1);
+                            code[i + 1] = NOP;
+                            code[i + 2] = NOP;
+                            i += 3;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pattern: Null, JumpIfFalse → JumpIfNull (but we don't have JumpIfFalse directly, it's an operand)
+        // This needs special handling since JumpIfFalse has an operand
+
+        // Pattern: GetLocal, Not, JumpIfFalse → IsFalsyLocal + jump
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Not, Op::JumpIfFalse(offset)) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    code[i] = Op::IsFalsyLocal(slot);
+                    code[i + 1] = NOP;
+                    code[i + 2] = Op::JumpIfFalse(offset);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal, JumpIfFalse → IsFalsyLocal + jump (when truthy should NOT jump)
+        if i + 1 < len {
+            if let (Op::GetLocal(slot), Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::IsFalsyLocal(slot);
+                    code[i + 1] = Op::JumpIfFalse(offset);
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal, JumpIfFalseNoPop → IsFalsyLocal + JumpIfFalseNoPop
+        if i + 1 < len {
+            if let (Op::GetLocal(slot), Op::JumpIfFalseNoPop(offset)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::IsFalsyLocal(slot);
+                    code[i + 1] = Op::JumpIfFalseNoPop(offset);
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: NullishJump (??) - could optimize but it's already specialized
+
+        // Pattern: GetLocal, GetLocal, NotEqual → NotEqualLocalLocal (if we had it, but we don't have this yet)
+
+        // Pattern: GetLocal(a), Constant(0), NotEqual → NotZeroLocal
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::NotEqual) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(0)) = constants.get(cidx as usize) {
+                        code[i] = Op::NotZeroLocal(slot);
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), Constant(0), Equal → IsZeroLocal (inverted logic)
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Equal) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(0)) = constants.get(cidx as usize) {
+                        code[i] = Op::IsZeroLocal(slot);
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Pattern: GetLocal(slot), SetLocal(slot) → SwapSetLocal (swap old and new)
+        if i + 1 < len {
+            if let (Op::GetLocal(slot_a), Op::SetLocal(slot_b)) = (code[i], code[i + 1]) {
+                if slot_a == slot_b && !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::SwapSetLocal(slot_a);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
         i += 1;
     }
 
