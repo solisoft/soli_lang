@@ -329,6 +329,7 @@ impl Interpreter {
             Value::Super(c) => format!("\"<super of {}>\"", c.name),
             Value::VmClosure(c) => format!("\"<fn {}>\"", c.proto.name),
             Value::Symbol(s) => format!("\"{}\"", s),
+            Value::Image(_) => "\"<Image>\"".to_string(),
         }
     }
 

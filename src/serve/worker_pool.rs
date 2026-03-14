@@ -25,6 +25,8 @@ pub(crate) struct HotReloadVersions {
     pub routes: AtomicU64,
     /// Incremented when view helpers change
     pub helpers: AtomicU64,
+    /// Incremented when models change
+    pub models: AtomicU64,
 }
 
 impl HotReloadVersions {
@@ -36,6 +38,7 @@ impl HotReloadVersions {
             static_files: AtomicU64::new(0),
             routes: AtomicU64::new(0),
             helpers: AtomicU64::new(0),
+            models: AtomicU64::new(0),
         }
     }
 }

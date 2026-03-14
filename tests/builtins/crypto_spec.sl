@@ -142,6 +142,54 @@ describe("Crypto Class Static Methods", fn() {
         let derived_public = Crypto.x25519_public_key(keypair["private"]);
         assert_eq(derived_public, keypair["public"]);
     });
+
+    test("Crypto.totp_generate() generates 6-digit code", fn() {
+        // RFC 6238 test vector: secret "12345678901234567890" in base32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+        // Time = 59s, period = 30s -> counter = 1
+        // Expected: "287082"
+        let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30);
+        assert_eq(code, "287082");
+    });
+
+    test("Crypto.totp_verify() verifies valid code", fn() {
+        // Using the same test vector
+        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        let valid = Crypto.totp_verify(secret, "287082", 59, 30);
+        assert(valid);
+    });
+
+    test("Crypto.totp_verify() rejects invalid code", fn() {
+        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        let valid = Crypto.totp_verify(secret, "000000", 59, 30);
+        assert_not(valid);
+    });
+
+    test("Crypto.totp_generate() with current time", fn() {
+        // Should not panic - just verify it returns 6 digits
+        let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
+        assert_eq(len(code), 6);
+    });
+
+    test("Crypto.totp_verify() validates code format", fn() {
+        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        // Invalid: not 6 digits
+        try {
+            Crypto.totp_verify(secret, "123", 59, 30);
+            assert(false);  // Should have thrown
+        } catch (e) {
+            assert(true);  // Expected
+        }
+    });
+
+    test("Crypto.totp_uri() generates otpauth URI", fn() {
+        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        let uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30);
+        assert(uri.starts_with("otpauth://totp/"));
+        assert(uri.contains("secret="));
+        assert(uri.contains("algorithm=SHA1"));
+        assert(uri.contains("digits=6"));
+        assert(uri.contains("period=30"));
+    });
 });
 
 describe("Hash Function Consistency", fn() {

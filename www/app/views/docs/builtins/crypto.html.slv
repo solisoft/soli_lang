@@ -12,7 +12,7 @@
             <span class="bg-gradient-to-r from-red-400 to-rose-400 bg-clip-text text-transparent">Cryptography Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Hash functions (SHA-256, SHA-512, MD5, HMAC), password hashing with Argon2, X25519 key exchange, Ed25519 signatures, and Base64 encoding.
+            Hash functions (SHA-256, SHA-512, MD5, HMAC), password hashing with Argon2, X25519 key exchange, Ed25519 signatures, TOTP codes, and Base64 encoding.
         </p>
     </div>
 
@@ -285,6 +285,112 @@ let derived_public = Crypto.x25519_public_key(keypair["private"])
                 <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.ed25519_keypair
 # Use keypair["private"] to sign messages
 # Share keypair["public"] for verification</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- TOTP (Time-based One-Time Password) -->
+    <section id="section-totp" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            TOTP (Time-based One-Time Password)
+        </h2>
+        <p class="text-gray-400 mb-4">RFC 6238 compliant TOTP generation and verification. Compatible with Google Authenticator, Authy, and other authenticator apps.</p>
+
+        <section id="def-totp-generate" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-totp-generate" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.totp_generate(secret, time?, period?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate a TOTP code (6-digit time-based one-time password). Uses HMAC-SHA1 per RFC 6238.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - Base32-encoded secret key</div>
+                    <div><code class="text-amber-400">time</code> : <code class="text-purple-400">Int?</code> - Optional Unix timestamp (defaults to current time)</div>
+                    <div><code class="text-amber-400">period</code> : <code class="text-purple-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - 6-digit TOTP code
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Generate code for current time
+let code = Crypto.totp_generate("JBSWY3DPEHPK3PXP")
+
+# Generate code for specific time
+let code = Crypto.totp_generate("JBSWY3DPEHPK3PXP", 1704067200, 30)
+
+# Use RFC 6238 test vector
+let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
+# Returns "287082"</code></pre>
+            </div>
+        </section>
+
+        <section id="def-totp-verify" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-totp-verify" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.totp_verify(secret, code, time?, period?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Verify a TOTP code against a secret. Accepts the current code and the previous/next code (1 step window) to handle clock drift.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - Base32-encoded secret key</div>
+                    <div><code class="text-amber-400">code</code> : <code class="text-purple-400">String</code> - 6-digit TOTP code to verify</div>
+                    <div><code class="text-amber-400">time</code> : <code class="text-purple-400">Int?</code> - Optional Unix timestamp (defaults to current time)</div>
+                    <div><code class="text-amber-400">period</code> : <code class="text-purple-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Bool</code> - true if code is valid, false otherwise
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let secret = "JBSWY3DPEHPK3PXP"
+let user_code = request.body["code"]
+
+if Crypto.totp_verify(secret, user_code)
+    println("Authentication successful!")
+else
+    println("Invalid code")
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="def-totp-uri" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-totp-uri" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.totp_uri(secret, account_name?, issuer?, period?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate an <code class="text-indigo-400">otpauth://</code> URI for easy TOTP setup in authenticator apps. This URI can be encoded into a QR code.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - Base32-encoded secret key</div>
+                    <div><code class="text-amber-400">account_name</code> : <code class="text-purple-400">String?</code> - Optional account name (e.g., email)</div>
+                    <div><code class="text-amber-400">issuer</code> : <code class="text-purple-400">String?</code> - Optional service name (e.g., "MyApp")</div>
+                    <div><code class="text-amber-400">period</code> : <code class="text-purple-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - otpauth:// URI
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let secret = "JBSWY3DPEHPK3PXP"
+let uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30)
+
+# Returns: otpauth://totp/MyApp:user%40example.com?secret=...&algorithm=SHA1&digits=6&period=30
+
+# Use with QR code library
+let qr_data = QRCode.encode(uri)
+# Display qr_data to user for scanning</code></pre>
             </div>
         </section>
     </section>

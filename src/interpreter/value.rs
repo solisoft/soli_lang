@@ -262,6 +262,8 @@ pub enum Value {
     Super(Rc<Class>),
     /// VM bytecode closure (used by the bytecode VM)
     VmClosure(Rc<VmClosure>),
+    /// Image value (holds DynamicImage and metadata)
+    Image(Rc<RefCell<crate::interpreter::builtins::image::ImageData>>),
 }
 
 /// The type of HTTP future result
@@ -333,6 +335,7 @@ impl Value {
             Value::QueryBuilder(_) => "QueryBuilder".to_string(),
             Value::Super(_) => "Super".to_string(),
             Value::VmClosure(_) => "Function".to_string(),
+            Value::Image(_) => "Image".to_string(),
         }
     }
 
@@ -488,6 +491,7 @@ impl Value {
             Value::QueryBuilder(_) => 13,
             Value::Super(_) => 7,
             Value::VmClosure(func) => func.proto.name.len() + 5,
+            Value::Image(_) => 7,
         }
     }
 
@@ -559,6 +563,7 @@ impl Value {
                 s.push_str(&func.proto.name);
                 s.push('>');
             }
+            Value::Image(_) => s.push_str("<Image>"),
         }
     }
 }
@@ -694,6 +699,7 @@ impl fmt::Display for Value {
             }
             Value::Super(class) => write!(f, "<super of {}>", class.name),
             Value::VmClosure(c) => write!(f, "<fn {}>", c.proto.name),
+            Value::Image(_) => write!(f, "<Image>"),
         }
     }
 }

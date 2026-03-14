@@ -537,14 +537,16 @@ impl Interpreter {
             _ => {}
         }
         match name {
-            "length" | "size" | "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?"
-            | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "flatten" | "first"
-            | "last" | "empty?" | "includes?" | "contains" | "sample" | "shuffle" | "take"
-            | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get"
-            | "to_string" | "to_json" | "join" | "is_a?" => Ok(Value::Method(ValueMethod {
-                receiver: Box::new(obj_val),
-                method_name: name.to_string(),
-            })),
+            "length" | "len" | "size" | "map" | "filter" | "each" | "reduce" | "find" | "any?"
+            | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "flatten"
+            | "first" | "last" | "empty?" | "includes?" | "contains" | "sample" | "shuffle"
+            | "take" | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear"
+            | "get" | "to_string" | "to_json" | "join" | "is_a?" => {
+                Ok(Value::Method(ValueMethod {
+                    receiver: Box::new(obj_val),
+                    method_name: name.to_string(),
+                }))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),

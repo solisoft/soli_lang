@@ -191,7 +191,7 @@ impl Interpreter {
             "pop" => self.array_pop(items, arguments, span),
             "clear" => self.array_clear(items, arguments, span),
             "get" => self.array_get(items, arguments, span),
-            "length" => self.array_length(items, arguments, span),
+            "length" | "len" => self.array_length(items, arguments, span),
             "to_string" => self.array_to_string(items, arguments, span),
             "to_json" => match crate::interpreter::value::stringify_array_to_string(items) {
                 Ok(json) => Ok(Value::String(json)),

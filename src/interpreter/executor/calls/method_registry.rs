@@ -1004,6 +1004,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "len",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
         name: "length",
         zero_arg: true,
         ret: "int",

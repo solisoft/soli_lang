@@ -13,6 +13,7 @@ use curve25519_dalek::scalar::Scalar;
 use hmac::{Hmac, Mac};
 use md5::Md5;
 use rand_core::RngCore;
+use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::interpreter::environment::Environment;
@@ -152,6 +153,65 @@ fn do_ed25519_keypair() -> (String, String) {
     let scalar = Scalar::from_bytes_mod_order(seed);
     let public_key = EdwardsPoint::mul_base(&scalar).compress().to_bytes();
     (bytes_to_hex(&seed), bytes_to_hex(&public_key))
+}
+
+const BASE32_ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+fn base32_decode(input: &str) -> Result<Vec<u8>, String> {
+    let input = input.to_uppercase().replace('=', "");
+    if input.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut output = Vec::with_capacity(input.len() * 5 / 8);
+    let mut buffer: u64 = 0;
+    let mut bits_in_buffer = 0;
+
+    for c in input.chars() {
+        let value = BASE32_ALPHABET
+            .iter()
+            .position(|&x| x == c as u8)
+            .ok_or_else(|| format!("Invalid Base32 character: {}", c))?;
+        buffer = (buffer << 5) | (value as u64);
+        bits_in_buffer += 5;
+        if bits_in_buffer >= 8 {
+            bits_in_buffer -= 8;
+            output.push((buffer >> bits_in_buffer) as u8);
+            buffer &= (1 << bits_in_buffer) - 1;
+        }
+    }
+    Ok(output)
+}
+
+fn do_totp_generate(secret: &str, time: u64, period: u64) -> Result<String, String> {
+    let secret_bytes = base32_decode(secret)?;
+    if secret_bytes.is_empty() {
+        return Err("Secret cannot be empty".to_string());
+    }
+    let counter = time / period;
+    let counter_bytes = counter.to_be_bytes();
+
+    type HmacSha1 = hmac::Hmac<Sha1>;
+    let mut mac =
+        HmacSha1::new_from_slice(&secret_bytes).map_err(|e| format!("HMAC error: {}", e))?;
+    mac.update(&counter_bytes);
+    let result = mac.finalize().into_bytes();
+
+    let offset = (result[19] & 0x0f) as usize;
+    let code = ((result[offset] & 0x7f) as u32) << 24
+        | (result[offset + 1] as u32) << 16
+        | (result[offset + 2] as u32) << 8
+        | (result[offset + 3] as u32);
+    let code = code % 1_000_000;
+    Ok(format!("{:06}", code))
+}
+
+fn do_totp_verify(secret: &str, code: &str, time: u64, period: u64) -> Result<bool, String> {
+    let code_str = code.trim();
+    if code_str.len() != 6 || !code_str.chars().all(|c| c.is_ascii_digit()) {
+        return Err("Code must be 6 digits".to_string());
+    }
+    let expected = do_totp_generate(secret, time, period)?;
+    Ok(expected == code_str)
 }
 
 /// Register cryptographic functions and Crypto class in the given environment.
@@ -434,6 +494,210 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 ]))
             },
         )),
+    );
+
+    // Crypto.totp_generate(secret, time?, period?) -> String
+    crypto_static_methods.insert(
+        "totp_generate".to_string(),
+        Rc::new(NativeFunction::new("Crypto.totp_generate", None, |args| {
+            if args.is_empty() || args.len() > 3 {
+                return Err(format!(
+                    "Crypto.totp_generate() expects 1-3 arguments (secret, time?, period?), got {}",
+                    args.len()
+                ));
+            }
+            let secret = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Crypto.totp_generate() expects string secret, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let time = if args.len() > 1 {
+                match &args[1] {
+                    Value::Int(t) => *t as u64,
+                    other => {
+                        return Err(format!(
+                            "Crypto.totp_generate() expects optional Int time, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|e| e.to_string())?
+                    .as_secs()
+            };
+            let period = if args.len() > 2 {
+                match &args[2] {
+                    Value::Int(p) => *p as u64,
+                    other => {
+                        return Err(format!(
+                            "Crypto.totp_generate() expects optional Int period, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                30
+            };
+            let code = do_totp_generate(&secret, time, period)?;
+            Ok(Value::String(code))
+        })),
+    );
+
+    // Crypto.totp_verify(secret, code, time?, period?) -> Bool
+    crypto_static_methods.insert(
+        "totp_verify".to_string(),
+        Rc::new(NativeFunction::new("Crypto.totp_verify", None, |args| {
+            if args.len() < 2 || args.len() > 4 {
+                return Err(format!(
+                    "Crypto.totp_verify() expects 2-4 arguments (secret, code, time?, period?), got {}",
+                    args.len()
+                ));
+            }
+            let secret = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Crypto.totp_verify() expects string secret, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let code = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Crypto.totp_verify() expects string code, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let time = if args.len() > 2 {
+                match &args[2] {
+                    Value::Int(t) => *t as u64,
+                    other => {
+                        return Err(format!(
+                            "Crypto.totp_verify() expects optional Int time, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|e| e.to_string())?
+                    .as_secs()
+            };
+            let period = if args.len() > 3 {
+                match &args[3] {
+                    Value::Int(p) => *p as u64,
+                    other => {
+                        return Err(format!(
+                            "Crypto.totp_verify() expects optional Int period, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                30
+            };
+            let valid = do_totp_verify(&secret, &code, time, period)?;
+            Ok(Value::Bool(valid))
+        })),
+    );
+
+    // Crypto.totp_uri(secret, account_name?, issuer?, period?) -> String
+    crypto_static_methods.insert(
+        "totp_uri".to_string(),
+        Rc::new(NativeFunction::new("Crypto.totp_uri", None, |args| {
+            if args.is_empty() || args.len() > 4 {
+                return Err(format!(
+                    "Crypto.totp_uri() expects 1-4 arguments (secret, account_name?, issuer?, period?), got {}",
+                    args.len()
+                ));
+            }
+            let secret = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Crypto.totp_uri() expects string secret, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let account_name = if args.len() > 1 {
+                match &args[1] {
+                    Value::String(s) => Some(s.clone()),
+                    other if other.type_name() == "Null" => None,
+                    other => {
+                        return Err(format!(
+                            "Crypto.totp_uri() expects optional string account_name, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                None
+            };
+            let issuer = if args.len() > 2 {
+                match &args[2] {
+                    Value::String(s) => Some(s.clone()),
+                    other if other.type_name() == "Null" => None,
+                    other => {
+                        return Err(format!(
+                            "Crypto.totp_uri() expects optional string issuer, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                None
+            };
+            let period = if args.len() > 3 {
+                match &args[3] {
+                    Value::Int(p) => *p as u32,
+                    other => {
+                        return Err(format!(
+                            "Crypto.totp_uri() expects optional Int period, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                30
+            };
+
+            // Build otpauth:// URI
+            // Format: otpauth://totp/ISSUER:ACCOUNT?secret=SECRET&issuer=ISSUER&algorithm=SHA1&digits=6&period=30
+            let mut uri = String::from("otpauth://totp/");
+
+            if let (Some(i), Some(a)) = (&issuer, &account_name) {
+                uri.push_str(&urlencoding::encode(i));
+                uri.push(':');
+                uri.push_str(&urlencoding::encode(a));
+            } else if let Some(a) = &account_name {
+                uri.push_str(&urlencoding::encode(a));
+            } else if let Some(i) = &issuer {
+                uri.push_str(&urlencoding::encode(i));
+            }
+
+            uri.push_str("?secret=");
+            uri.push_str(&secret);
+            uri.push_str("&algorithm=SHA1&digits=6&period=");
+            uri.push_str(&period.to_string());
+
+            if let Some(i) = &issuer {
+                uri.push_str("&issuer=");
+                uri.push_str(&urlencoding::encode(i));
+            }
+
+            Ok(Value::String(uri))
+        })),
     );
 
     // Create and register the Crypto class

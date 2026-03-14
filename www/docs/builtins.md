@@ -3392,6 +3392,339 @@ The command substitution uses `System.run()` internally, so it returns a Future 
 
 ---
 
+## Image Class
+
+The Image class provides image manipulation capabilities using pure Rust (no system dependencies). All transform methods return a **new Image** instance, so you can chain operations fluently.
+
+### Loading Images
+
+#### Image.new(path)
+
+Loads an image from a file path. Supports JPEG, PNG, GIF, BMP, ICO, TIFF, and WebP.
+
+**Parameters:**
+- `path` (String) - Path to the image file
+
+**Returns:** Image instance
+
+**Example:**
+```soli
+let img = Image.new("photo.jpg")
+println(img.width)   # 1920
+println(img.height)  # 1080
+```
+
+#### Image.from_buffer(base64_string)
+
+Loads an image from a base64-encoded string. Useful for processing images received from HTTP requests, S3, or databases.
+
+**Parameters:**
+- `base64_string` (String) - Base64-encoded image data
+
+**Returns:** Image instance
+
+**Example:**
+```soli
+let data = S3.get_object("my-bucket", "photo.jpg")
+# Encode raw bytes to base64 first, then:
+let img = Image.from_buffer(base64_data)
+```
+
+### Properties
+
+#### img.width
+
+Returns the image width in pixels.
+
+**Returns:** Int
+
+#### img.height
+
+Returns the image height in pixels.
+
+**Returns:** Int
+
+**Example:**
+```soli
+let img = Image.new("photo.jpg")
+println("Size: " + str(img.width) + "x" + str(img.height))
+```
+
+### Resizing
+
+#### img.resize(width, height)
+
+Resizes the image to the specified dimensions using Lanczos3 filtering (high quality).
+
+**Parameters:**
+- `width` (Int) - Target width in pixels
+- `height` (Int) - Target height in pixels
+
+**Returns:** New Image instance
+
+**Example:**
+```soli
+let resized = Image.new("photo.jpg").resize(800, 600)
+resized.to_file("photo_resized.jpg")
+```
+
+#### img.thumbnail(max_size)
+
+Creates a thumbnail that fits within a square of the given size, preserving the original aspect ratio.
+
+**Parameters:**
+- `max_size` (Int) - Maximum width or height in pixels
+
+**Returns:** New Image instance
+
+**Example:**
+```soli
+let thumb = Image.new("photo.jpg").thumbnail(200)
+thumb.to_file("thumb.jpg")
+```
+
+### Cropping
+
+#### img.crop(x, y, width, height)
+
+Crops a rectangular region from the image. Coordinates must be non-negative.
+
+**Parameters:**
+- `x` (Int) - Left offset (>= 0)
+- `y` (Int) - Top offset (>= 0)
+- `width` (Int) - Crop width in pixels
+- `height` (Int) - Crop height in pixels
+
+**Returns:** New Image instance
+
+**Example:**
+```soli
+let cropped = Image.new("photo.jpg").crop(100, 50, 400, 300)
+cropped.to_file("cropped.jpg")
+```
+
+### Transforms
+
+#### img.grayscale()
+
+Converts the image to grayscale.
+
+**Returns:** New Image instance
+
+#### img.flip_horizontal()
+
+Flips the image horizontally (mirror).
+
+**Returns:** New Image instance
+
+#### img.flip_vertical()
+
+Flips the image vertically.
+
+**Returns:** New Image instance
+
+#### img.rotate90()
+
+Rotates the image 90 degrees clockwise.
+
+**Returns:** New Image instance
+
+#### img.rotate180()
+
+Rotates the image 180 degrees.
+
+**Returns:** New Image instance
+
+#### img.rotate270()
+
+Rotates the image 270 degrees clockwise (90 degrees counter-clockwise).
+
+**Returns:** New Image instance
+
+#### img.invert()
+
+Inverts all colors in the image.
+
+**Returns:** New Image instance
+
+**Example:**
+```soli
+let img = Image.new("photo.jpg")
+    .grayscale()
+    .flip_horizontal()
+    .rotate90()
+img.to_file("transformed.jpg")
+```
+
+### Adjustments
+
+#### img.blur(sigma)
+
+Applies a Gaussian blur.
+
+**Parameters:**
+- `sigma` (Float or Int) - Blur intensity (higher = more blur)
+
+**Returns:** New Image instance
+
+**Example:**
+```soli
+let blurred = Image.new("photo.jpg").blur(3.5)
+```
+
+#### img.brightness(value)
+
+Adjusts image brightness.
+
+**Parameters:**
+- `value` (Int) - Brightness adjustment (positive = brighter, negative = darker)
+
+**Returns:** New Image instance
+
+#### img.contrast(value)
+
+Adjusts image contrast.
+
+**Parameters:**
+- `value` (Float or Int) - Contrast adjustment (positive = more contrast, negative = less)
+
+**Returns:** New Image instance
+
+#### img.hue_rotate(degrees)
+
+Rotates the hue of all pixels.
+
+**Parameters:**
+- `degrees` (Int) - Hue rotation in degrees
+
+**Returns:** New Image instance
+
+**Example:**
+```soli
+let adjusted = Image.new("photo.jpg")
+    .brightness(20)
+    .contrast(1.5)
+    .hue_rotate(90)
+adjusted.to_file("adjusted.jpg")
+```
+
+### Output Settings
+
+#### img.quality(n)
+
+Sets the output quality for JPEG encoding. Only affects JPEG output.
+
+**Parameters:**
+- `n` (Int) - Quality from 1 (worst) to 100 (best), default is 85
+
+**Returns:** New Image instance
+
+#### img.format(fmt)
+
+Sets the output format.
+
+**Parameters:**
+- `fmt` (String) - Format name: `"jpeg"`, `"png"`, `"gif"`, `"bmp"`, `"ico"`, `"tiff"`, `"webp"`
+
+**Returns:** New Image instance
+
+**Example:**
+```soli
+# Convert PNG to JPEG at 70% quality
+let img = Image.new("photo.png")
+    .format("jpeg")
+    .quality(70)
+img.to_file("photo.jpg")
+```
+
+### Saving & Exporting
+
+#### img.to_file(path)
+
+Saves the image to a file. The format is determined by: the format set via `.format()`, or the file extension, or PNG as fallback.
+
+**Parameters:**
+- `path` (String) - Output file path
+
+**Returns:** Boolean - `true` on success
+
+**Example:**
+```soli
+Image.new("photo.jpg").thumbnail(200).to_file("thumb.jpg")
+```
+
+#### img.to_buffer()
+
+Encodes the image to a base64 string. Useful for storing in databases, sending in HTTP responses, or passing to S3.
+
+**Returns:** String - Base64-encoded image data
+
+**Example:**
+```soli
+let img = Image.new("photo.jpg").thumbnail(100)
+let base64_data = img.to_buffer()
+
+# Store in S3
+S3.put_object("my-bucket", "thumb.jpg", base64_data, {
+    "content_type": "image/jpeg"
+})
+```
+
+### Complete Examples
+
+**Thumbnail generation in a controller:**
+```soli
+def upload(req)
+    let file = req.files["avatar"]
+    let img = Image.from_buffer(file.data)
+
+    # Create multiple sizes
+    let large = img.resize(800, 800)
+    let medium = img.thumbnail(400)
+    let small = img.thumbnail(100)
+
+    large.to_file("public/uploads/avatar_large.jpg")
+    medium.to_file("public/uploads/avatar_medium.jpg")
+    small.to_file("public/uploads/avatar_small.jpg")
+
+    return { "status": 200, "body": "Upload complete" }
+end
+```
+
+**Image processing pipeline:**
+```soli
+let img = Image.new("raw_photo.jpg")
+    .resize(1200, 900)
+    .brightness(10)
+    .contrast(1.2)
+    .quality(85)
+
+img.to_file("processed.jpg")
+
+# Also create a grayscale thumbnail
+img.grayscale().thumbnail(200).to_file("thumb_gray.jpg")
+```
+
+**Format conversion:**
+```soli
+# Convert all PNGs to WebP
+let files = S3.list_objects("images", "photos/")
+for file in files
+    if file.ends_with(".png")
+        let data = S3.get_object("images", file)
+        let img = Image.from_buffer(data)
+            .format("webp")
+            .quality(80)
+        let new_key = file.replace(".png", ".webp")
+        S3.put_object("images", new_key, img.to_buffer(), {
+            "content_type": "image/webp"
+        })
+    end
+end
+```
+
+---
+
 ## See Also
 
 - [Soli Language Reference](/docs/soli-language) - Core language syntax and features

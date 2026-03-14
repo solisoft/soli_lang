@@ -81,7 +81,10 @@ impl Parser {
                     let arguments = self.parse_command_arguments()?;
 
                     // Check for trailing block: puts("args") { body } or puts "args" { body }
-                    if self.check(&TokenKind::LeftBrace) {
+                    if !self.no_trailing_brace
+                        && self.check(&TokenKind::LeftBrace)
+                        && !self.looks_like_hash_literal()
+                    {
                         let block = self.parse_trailing_brace_block()?;
                         let mut args = arguments;
                         args.push(Argument::Block(block));
@@ -737,7 +740,10 @@ impl Parser {
                     let block = self.parse_trailing_block()?;
                     arguments.push(Argument::Block(block));
                 // Check for trailing brace block: obj.method(args) { body }
-                } else if self.check(&TokenKind::LeftBrace) {
+                } else if !self.no_trailing_brace
+                    && self.check(&TokenKind::LeftBrace)
+                    && !self.looks_like_hash_literal()
+                {
                     let block = self.parse_trailing_brace_block()?;
                     arguments.push(Argument::Block(block));
                 // Check for trailing do block: obj.method(args) do body end
@@ -780,7 +786,10 @@ impl Parser {
                         span,
                     ))
                 // Check for trailing brace block: obj.method { body }
-                } else if self.check(&TokenKind::LeftBrace) {
+                } else if !self.no_trailing_brace
+                    && self.check(&TokenKind::LeftBrace)
+                    && !self.looks_like_hash_literal()
+                {
                     let block = self.parse_trailing_brace_block()?;
                     let span = start_span.merge(&self.previous_span());
                     let member = Expr::new(

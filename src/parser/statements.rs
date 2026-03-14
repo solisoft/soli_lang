@@ -46,7 +46,11 @@ impl Parser {
 
         // Parentheses are optional around the condition
         let has_paren = self.match_token(&TokenKind::LeftParen);
-        let condition = self.expression()?;
+        let condition = if has_paren {
+            self.expression()?
+        } else {
+            self.expression_no_trailing_brace()?
+        };
         if has_paren {
             self.expect(&TokenKind::RightParen)?;
         }
@@ -85,7 +89,11 @@ impl Parser {
 
         // Parentheses are optional around the condition
         let has_paren = self.match_token(&TokenKind::LeftParen);
-        let condition = self.expression()?;
+        let condition = if has_paren {
+            self.expression()?
+        } else {
+            self.expression_no_trailing_brace()?
+        };
         if has_paren {
             self.expect(&TokenKind::RightParen)?;
         }
@@ -124,7 +132,11 @@ impl Parser {
 
         // Parentheses are optional around the condition
         let has_paren = self.match_token(&TokenKind::LeftParen);
-        let condition = self.expression()?;
+        let condition = if has_paren {
+            self.expression()?
+        } else {
+            self.expression_no_trailing_brace()?
+        };
         if has_paren {
             self.expect(&TokenKind::RightParen)?;
         }
@@ -151,7 +163,11 @@ impl Parser {
         };
 
         self.expect(&TokenKind::In)?;
-        let iterable = self.expression()?;
+        let iterable = if has_paren {
+            self.expression()?
+        } else {
+            self.expression_no_trailing_brace()?
+        };
         if has_paren {
             self.expect(&TokenKind::RightParen)?;
         }

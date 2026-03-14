@@ -28,6 +28,7 @@ pub mod html;
 pub mod http;
 pub mod http_class;
 pub mod i18n;
+pub mod image;
 pub mod json;
 pub mod jwt;
 pub mod kv;
@@ -187,6 +188,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register JSON class (replaces json_parse and json_stringify functions)
     json::register_json_class(env);
+
+    // Register Image class
+    image::register_image_class(env);
 
     // ===== Register other submodule builtins =====
 

@@ -326,6 +326,10 @@ fn builtins_markdown(req)
     render_docs("docs/builtins/markdown", "Markdown Class", "builtins", "markdown")
 end
 
+fn builtins_image(req)
+    render_docs("docs/builtins/image", "Image Class", "builtins", "image")
+end
+
 # ============================================================================
 # Utility
 # ============================================================================

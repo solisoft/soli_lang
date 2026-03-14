@@ -11,11 +11,28 @@ pub type ParseResult<T> = Result<T, ParserError>;
 pub struct Parser {
     pub(crate) tokens: Vec<Token>,
     pub(crate) current: usize,
+    /// When true, trailing `{` blocks are NOT consumed after call expressions.
+    /// Set while parsing if/while/for conditions to avoid stealing the statement body.
+    pub(crate) no_trailing_brace: bool,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+        Self {
+            tokens,
+            current: 0,
+            no_trailing_brace: false,
+        }
+    }
+
+    /// Parse an expression with trailing brace blocks suppressed.
+    /// Used for if/while/for conditions where `{` starts the statement body.
+    pub(crate) fn expression_no_trailing_brace(&mut self) -> ParseResult<Expr> {
+        let old = self.no_trailing_brace;
+        self.no_trailing_brace = true;
+        let result = self.expression();
+        self.no_trailing_brace = old;
+        result
     }
 
     /// Parse a complete program.

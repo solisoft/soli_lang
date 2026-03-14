@@ -334,58 +334,130 @@
       "keywords": ["file", "write", "io"]
     },
     {
-      "title": "http_get",
-      "type": "function",
+      "title": "HTTP",
+      "type": "class",
       "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-get",
-      "signature": "http_get(url, options?)",
+      "path": "/docs/builtins/http#section-class-overview",
+      "signature": "HTTP",
+      "description": "HTTP client class with methods for GET, POST, PUT, PATCH, DELETE, HEAD requests and JSON helpers",
+      "keywords": ["http", "request", "api", "client", "class"]
+    },
+    {
+      "title": "HTTP.get",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-get",
+      "signature": "HTTP.get(url, options?)",
       "description": "Perform an HTTP GET request",
-      "keywords": ["http", "request", "fetch", "api"]
+      "keywords": ["http", "get", "request", "fetch", "api"]
     },
     {
-      "title": "http_post",
-      "type": "function",
+      "title": "HTTP.post",
+      "type": "method",
       "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-post",
-      "signature": "http_post(url, body, options?)",
+      "path": "/docs/builtins/http#def-http-post",
+      "signature": "HTTP.post(url, body, options?)",
       "description": "Perform an HTTP POST request with a body",
-      "keywords": ["http", "request", "api", "send"]
+      "keywords": ["http", "post", "request", "api", "send"]
     },
     {
-      "title": "http_get_json",
-      "type": "function",
+      "title": "HTTP.put",
+      "type": "method",
       "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-get-json",
-      "signature": "http_get_json(url)",
+      "path": "/docs/builtins/http#def-http-put",
+      "signature": "HTTP.put(url, body, options?)",
+      "description": "Perform an HTTP PUT request",
+      "keywords": ["http", "put", "request", "api", "update"]
+    },
+    {
+      "title": "HTTP.delete",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-delete",
+      "signature": "HTTP.delete(url, options?)",
+      "description": "Perform an HTTP DELETE request",
+      "keywords": ["http", "delete", "request", "api", "remove"]
+    },
+    {
+      "title": "HTTP.patch",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-patch",
+      "signature": "HTTP.patch(url, body, options?)",
+      "description": "Perform an HTTP PATCH request",
+      "keywords": ["http", "patch", "request", "api", "update"]
+    },
+    {
+      "title": "HTTP.head",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-head",
+      "signature": "HTTP.head(url, options?)",
+      "description": "Perform an HTTP HEAD request",
+      "keywords": ["http", "head", "request", "api", "headers"]
+    },
+    {
+      "title": "HTTP.get_json",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-get-json",
+      "signature": "HTTP.get_json(url)",
       "description": "GET request with automatic JSON parsing",
-      "keywords": ["http", "json", "api", "fetch"]
+      "keywords": ["http", "json", "api", "fetch", "get"]
     },
     {
-      "title": "http_post_json",
-      "type": "function",
+      "title": "HTTP.post_json",
+      "type": "method",
       "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-post-json",
-      "signature": "http_post_json(url, data)",
+      "path": "/docs/builtins/http#def-http-post-json",
+      "signature": "HTTP.post_json(url, data)",
       "description": "POST request with automatic JSON serialization",
-      "keywords": ["http", "json", "api", "send"]
+      "keywords": ["http", "json", "api", "send", "post"]
     },
     {
-      "title": "http_request",
-      "type": "function",
+      "title": "HTTP.put_json",
+      "type": "method",
       "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-request",
-      "signature": "http_request(method, url, options?)",
+      "path": "/docs/builtins/http#def-http-put-json",
+      "signature": "HTTP.put_json(url, data)",
+      "description": "PUT request with automatic JSON serialization",
+      "keywords": ["http", "json", "api", "update", "put"]
+    },
+    {
+      "title": "HTTP.patch_json",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-patch-json",
+      "signature": "HTTP.patch_json(url, data)",
+      "description": "PATCH request with automatic JSON serialization",
+      "keywords": ["http", "json", "api", "update", "patch"]
+    },
+    {
+      "title": "HTTP.request",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-request",
+      "signature": "HTTP.request(method, url, options?)",
       "description": "Perform any HTTP method (GET, POST, PUT, PATCH, DELETE)",
-      "keywords": ["http", "request", "api"]
+      "keywords": ["http", "request", "api", "method"]
     },
     {
-      "title": "http_success",
-      "type": "function",
+      "title": "HTTP.get_all",
+      "type": "method",
       "category": "HTTP",
-      "path": "/docs/builtins/http#fn-http-success",
-      "signature": "http_success(resp)",
-      "description": "Check if HTTP status is 2xx",
-      "keywords": ["http", "status", "response"]
+      "path": "/docs/builtins/http#def-http-get-all",
+      "signature": "HTTP.get_all(urls)",
+      "description": "Perform multiple GET requests in parallel",
+      "keywords": ["http", "parallel", "batch", "concurrent", "get"]
+    },
+    {
+      "title": "HTTP.parallel",
+      "type": "method",
+      "category": "HTTP",
+      "path": "/docs/builtins/http#def-http-parallel",
+      "signature": "HTTP.parallel(requests)",
+      "description": "Execute multiple HTTP requests in parallel",
+      "keywords": ["http", "parallel", "batch", "concurrent", "request"]
     },
     {
       "title": "JSON",
@@ -395,6 +467,24 @@
       "signature": "JSON",
       "description": "Class for parsing and serializing JSON: JSON.parse(), JSON.stringify()",
       "keywords": ["json", "parse", "stringify", "encode", "serialize", "class"]
+    },
+    {
+      "title": "JSON.parse",
+      "type": "method",
+      "category": "JSON",
+      "path": "/docs/builtins/json#def-json-parse",
+      "signature": "JSON.parse(string)",
+      "description": "Parse a JSON string into a Soli value",
+      "keywords": ["json", "parse", "decode", "deserialize"]
+    },
+    {
+      "title": "JSON.stringify",
+      "type": "method",
+      "category": "JSON",
+      "path": "/docs/builtins/json#def-json-stringify",
+      "signature": "JSON.stringify(value)",
+      "description": "Serialize a Soli value into a JSON string",
+      "keywords": ["json", "stringify", "encode", "serialize"]
     },
     {
       "title": "SOAP",
@@ -674,6 +764,60 @@
       "signature": "ed25519_keypair()",
       "description": "Generate an Ed25519 signing key pair (alias for Crypto.ed25519_keypair)",
       "keywords": ["crypto", "signature", "key", "signing", "ed25519"]
+    },
+    {
+      "title": "Crypto.totp_generate",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-totp-generate",
+      "signature": "Crypto.totp_generate(secret, time?, period?)",
+      "description": "Generate a TOTP one-time password from a shared secret",
+      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "authenticator", "generate"]
+    },
+    {
+      "title": "totp_generate",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-totp-generate",
+      "signature": "totp_generate(secret, time?, period?)",
+      "description": "Generate a TOTP one-time password (alias for Crypto.totp_generate)",
+      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "authenticator", "generate"]
+    },
+    {
+      "title": "Crypto.totp_verify",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-totp-verify",
+      "signature": "Crypto.totp_verify(secret, code, time?, period?)",
+      "description": "Verify a TOTP code against a shared secret",
+      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "authenticator", "verify"]
+    },
+    {
+      "title": "totp_verify",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-totp-verify",
+      "signature": "totp_verify(secret, code, time?, period?)",
+      "description": "Verify a TOTP code (alias for Crypto.totp_verify)",
+      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "authenticator", "verify"]
+    },
+    {
+      "title": "Crypto.totp_uri",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-totp-uri",
+      "signature": "Crypto.totp_uri(secret, account_name?, issuer?, period?)",
+      "description": "Generate an otpauth:// URI for QR code provisioning",
+      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "uri", "qr", "provision"]
+    },
+    {
+      "title": "totp_uri",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-totp-uri",
+      "signature": "totp_uri(secret, account_name?, issuer?, period?)",
+      "description": "Generate an otpauth:// URI (alias for Crypto.totp_uri)",
+      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "uri", "qr", "provision"]
     },
     {
       "title": "jwt_sign",

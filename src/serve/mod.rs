@@ -432,21 +432,8 @@ fn run_hyper_server_worker_pool(
     let worker_queues = Arc::new(WorkerQueues::new(num_workers, capacity_per_worker));
     let worker_queues_for_tokio = worker_queues.clone();
 
-    println!("\nServer listening on http://0.0.0.0:{}", port);
-    if dev_mode {
-        println!("Development mode - hot reload enabled, no caching");
-        println!("  Edit controllers/middleware/views to see changes");
-        println!("  Browsers will auto-refresh on changes");
-    } else {
-        println!("Production mode - caching enabled, no hot reload");
-    }
-    if public_dir.exists() {
-        println!("Static files served from {}", public_dir.display());
-    }
-    println!(
-        "Using hyper async HTTP server with {} worker threads\n",
-        num_workers
-    );
+    // Channel to pass actual bound port from tokio thread to main thread
+    let (bound_port_tx, bound_port_rx) = std::sync::mpsc::channel::<u16>();
 
     // Wrap public_dir in Arc for cheap cloning across connections
     let public_dir_arc = Arc::new(public_dir.clone());
@@ -468,8 +455,32 @@ fn run_hyper_server_worker_pool(
         runtime.block_on(async move {
             // Send runtime handle to main thread for workers to use
             let _ = runtime_handle_tx.send(tokio::runtime::Handle::current());
-            let addr = SocketAddr::from(([0, 0, 0, 0], port));
-            let listener = TcpListener::bind(addr).await.expect("Failed to bind");
+
+            // Try the requested port, then scan for a free one
+            let mut try_port = port;
+            let listener = loop {
+                let addr = SocketAddr::from(([0, 0, 0, 0], try_port));
+                match TcpListener::bind(addr).await {
+                    Ok(l) => break l,
+                    Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                        if try_port == port {
+                            eprintln!(
+                                "Port {} is already in use, looking for a free port...",
+                                port
+                            );
+                        }
+                        try_port = try_port.checked_add(1).unwrap_or_else(|| {
+                            eprintln!("No free port found");
+                            std::process::exit(1);
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to bind: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            };
+            let _ = bound_port_tx.send(try_port);
 
             loop {
                 let (stream, _) = match listener.accept().await {
@@ -539,6 +550,7 @@ fn run_hyper_server_worker_pool(
         let watch_views_dir = views_dir.clone();
         let watch_middleware_dir = middleware_dir.clone();
         let watch_helpers_dir = helpers_dir.clone();
+        let watch_models_dir = models_dir.clone();
         let watch_public_dir = public_dir.clone();
         let watch_routes_file = routes_file.clone();
         let watch_assets_css_dir = folder.join("app/assets/css");
@@ -575,6 +587,13 @@ fn run_hyper_server_worker_pool(
             if watch_helpers_dir.exists()
                 && watcher
                     .watch(&watch_helpers_dir, RecursiveMode::NonRecursive)
+                    .is_ok()
+            {
+                watch_count += 1;
+            }
+            if watch_models_dir.exists()
+                && watcher
+                    .watch(&watch_models_dir, RecursiveMode::NonRecursive)
                     .is_ok()
             {
                 watch_count += 1;
@@ -678,6 +697,7 @@ fn run_hyper_server_worker_pool(
                 let mut controllers_changed = false;
                 let mut middleware_changed = false;
                 let mut helpers_changed = false;
+                let mut models_changed = false;
                 let mut static_files_changed = false;
                 let mut routes_changed = false;
                 let mut asset_css_changed = false;
@@ -717,6 +737,8 @@ fn run_hyper_server_worker_pool(
                             middleware_changed = true;
                         } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
                             helpers_changed = true;
+                        } else if name.ends_with(".sl") && path.starts_with(&watch_models_dir) {
+                            models_changed = true;
                         } else if name.ends_with(".erb")
                             || name.ends_with(".slv")
                             || name.ends_with(".md")
@@ -744,6 +766,12 @@ fn run_hyper_server_worker_pool(
                         .helpers
                         .fetch_add(1, Ordering::Release);
                     println!("   ✓ Signaled view helpers reload to all workers");
+                }
+                if models_changed {
+                    hot_reload_versions_for_watcher
+                        .models
+                        .fetch_add(1, Ordering::Release);
+                    println!("   ✓ Signaled models reload to all workers");
                 }
                 if views_changed {
                     hot_reload_versions_for_watcher
@@ -822,6 +850,34 @@ fn run_hyper_server_worker_pool(
     let runtime_handle = runtime_handle_rx
         .recv()
         .expect("Failed to receive runtime handle from tokio thread");
+
+    // Receive the actual bound port (may differ from requested if it was in use)
+    let actual_port = bound_port_rx
+        .recv()
+        .expect("Failed to receive bound port from tokio thread");
+
+    println!("\nServer listening on http://0.0.0.0:{}", actual_port);
+    if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(addr) = socket.local_addr() {
+                println!("  Local network:    http://{}:{}", addr.ip(), actual_port);
+            }
+        }
+    }
+    if dev_mode {
+        println!("Development mode - hot reload enabled, no caching");
+        println!("  Edit models/controllers/middleware/views to see changes");
+        println!("  Browsers will auto-refresh on changes");
+    } else {
+        println!("Production mode - caching enabled, no hot reload");
+    }
+    if public_dir.exists() {
+        println!("Static files served from {}", public_dir.display());
+    }
+    println!(
+        "Using hyper async HTTP server with {} worker threads\n",
+        num_workers
+    );
 
     // Eagerly initialize the shared HTTP client within the tokio runtime context.
     // reqwest::Client requires a Tokio reactor during construction.
@@ -1008,6 +1064,7 @@ fn worker_loop(
     let mut last_controllers_version = hot_reload_versions.controllers.load(Ordering::Acquire);
     let mut last_middleware_version = hot_reload_versions.middleware.load(Ordering::Acquire);
     let mut last_helpers_version = hot_reload_versions.helpers.load(Ordering::Acquire);
+    let mut last_models_version = hot_reload_versions.models.load(Ordering::Acquire);
     let mut last_views_version = hot_reload_versions.views.load(Ordering::Acquire);
     let mut last_static_files_version = hot_reload_versions.static_files.load(Ordering::Acquire);
     let mut last_routes_version = hot_reload_versions.routes.load(Ordering::Acquire);
@@ -1017,6 +1074,7 @@ fn worker_loop(
         let current_controllers = hot_reload_versions.controllers.load(Ordering::Acquire);
         let current_middleware = hot_reload_versions.middleware.load(Ordering::Acquire);
         let current_helpers = hot_reload_versions.helpers.load(Ordering::Acquire);
+        let current_models = hot_reload_versions.models.load(Ordering::Acquire);
         let current_views = hot_reload_versions.views.load(Ordering::Acquire);
         let current_static_files = hot_reload_versions.static_files.load(Ordering::Acquire);
         let current_routes = hot_reload_versions.routes.load(Ordering::Acquire);
@@ -1054,6 +1112,14 @@ fn worker_loop(
             if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir)
             {
                 eprintln!("Worker {}: Error reloading view helpers: {}", worker_id, e);
+            }
+        }
+
+        if current_models != last_models_version {
+            last_models_version = current_models;
+            // Re-load all models
+            if let Err(e) = load_models(interpreter, &_models_dir) {
+                eprintln!("Worker {}: Error reloading models: {}", worker_id, e);
             }
         }
 
