@@ -795,14 +795,14 @@ mod tests {
         let class = Rc::new(Class::default());
         let json = serde_json::json!({
             "count": 42,
-            "score": 3.14
+            "score": std::f64::consts::PI
         });
         let val = json_doc_to_instance(&class, &json);
         match val {
             Value::Instance(inst) => {
                 let inst_ref = inst.borrow();
                 assert_eq!(inst_ref.get("count"), Some(Value::Int(42)));
-                assert_eq!(inst_ref.get("score"), Some(Value::Float(3.14)));
+                assert_eq!(inst_ref.get("score"), Some(Value::Float(std::f64::consts::PI)));
             }
             _ => panic!("Expected Value::Instance"),
         }
@@ -823,9 +823,10 @@ mod tests {
 
     #[test]
     fn test_json_doc_to_instance_preserves_class() {
-        let mut class = Class::default();
-        class.name = "User".to_string();
-        let class = Rc::new(class);
+        let class = Rc::new(Class {
+            name: "User".to_string(),
+            ..Default::default()
+        });
         let json = serde_json::json!({ "name": "Bob" });
         let val = json_doc_to_instance(&class, &json);
         match val {
