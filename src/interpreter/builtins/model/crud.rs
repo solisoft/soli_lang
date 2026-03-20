@@ -802,7 +802,10 @@ mod tests {
             Value::Instance(inst) => {
                 let inst_ref = inst.borrow();
                 assert_eq!(inst_ref.get("count"), Some(Value::Int(42)));
-                assert_eq!(inst_ref.get("score"), Some(Value::Float(std::f64::consts::PI)));
+                assert_eq!(
+                    inst_ref.get("score"),
+                    Some(Value::Float(std::f64::consts::PI))
+                );
             }
             _ => panic!("Expected Value::Instance"),
         }
