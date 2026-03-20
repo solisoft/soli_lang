@@ -645,6 +645,7 @@ nested.to_json  # '[{"name":"Alice"},{"name":"Bob"}]'</code></pre>
                     <p class="text-gray-400 mb-3">Returns the number of elements in the array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
 arr.length  # 3
+arr.len     # 3
 arr.size    # 3</code></pre>
                 </div>
             </section>

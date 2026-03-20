@@ -8,6 +8,8 @@ use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
+use glob::Pattern;
+
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{json_to_value, Class, NativeFunction, Value};
 
@@ -258,6 +260,24 @@ fn register_file_class(env: &mut Environment) {
         })),
     );
 
+    // File.modified(path) - Get file modification timestamp (Unix epoch in seconds)
+    file_static_methods.insert(
+        "modified".to_string(),
+        Rc::new(NativeFunction::new("File.modified", Some(1), |args| {
+            let path = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.modified() expects string path".to_string()),
+            };
+            fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .map(|t| {
+                    let duration = t.duration_since(std::time::UNIX_EPOCH).unwrap();
+                    Value::Int(duration.as_secs() as i64)
+                })
+                .map_err(|e| format!("File.modified() failed: {}", e))
+        })),
+    );
+
     // File.append(path, content) - Append content to file
     file_static_methods.insert(
         "append".to_string(),
@@ -336,6 +356,94 @@ fn register_file_class(env: &mut Environment) {
                 .map(|_| Value::Bool(true))
                 .map_err(|e| format!("File.rename() failed: {}", e))
         })),
+    );
+
+    // File.glob(pattern) - Match files using glob pattern
+    file_static_methods.insert(
+        "glob".to_string(),
+        Rc::new(NativeFunction::new("File.glob", Some(1), |args| {
+            let pattern_str = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("File.glob() expects string pattern".to_string()),
+            };
+            let pattern = Pattern::new(&pattern_str)
+                .map_err(|e| format!("File.glob() invalid pattern: {}", e))?;
+
+            // Get directory and file pattern
+            let path = Path::new(&pattern_str);
+            let dir = path
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            let entries = std::fs::read_dir(&dir)
+                .map_err(|e| format!("File.glob() failed to read directory: {}", e))?;
+
+            let matches: Vec<Value> = entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| {
+                    let name = p
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    pattern.matches(&name)
+                })
+                .map(|p| Value::String(p.to_string_lossy().to_string()))
+                .collect();
+
+            Ok(Value::Array(Rc::new(RefCell::new(matches))))
+        })),
+    );
+
+    // File.glob_recursive(pattern) - Match files using glob pattern (recursive)
+    file_static_methods.insert(
+        "glob_recursive".to_string(),
+        Rc::new(NativeFunction::new(
+            "File.glob_recursive",
+            Some(1),
+            |args| {
+                let pattern_str = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("File.glob_recursive() expects string pattern".to_string()),
+                };
+                let pattern = Pattern::new(&pattern_str)
+                    .map_err(|e| format!("File.glob_recursive() invalid pattern: {}", e))?;
+
+                // For recursive, we need to find the base directory and walk recursively
+                // Simple approach: use walkdir for recursive patterns
+                let path = Path::new(&pattern_str);
+                let base_dir = path
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or(".".to_string());
+
+                let mut matches: Vec<Value> = Vec::new();
+                for entry in walkdir::WalkDir::new(&base_dir)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    let path_str = entry.path().to_string_lossy().to_string();
+                    // Strip base_dir prefix for pattern matching
+                    let relative = if path_str.starts_with(&base_dir) {
+                        let after = &path_str[base_dir.len()..];
+                        if after.starts_with("/") || after.starts_with("\\") {
+                            after[1..].to_string()
+                        } else {
+                            after.to_string()
+                        }
+                    } else {
+                        path_str.clone()
+                    };
+
+                    if pattern.matches(&relative) || pattern.matches(&path_str) {
+                        matches.push(Value::String(path_str));
+                    }
+                }
+
+                Ok(Value::Array(Rc::new(RefCell::new(matches))))
+            },
+        )),
     );
 
     let file_class = Class {

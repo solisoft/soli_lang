@@ -144,13 +144,15 @@ float(42)     # 42.0</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Returns the length of a string, array, or hash. Works with both primitives and class instances.</p>
+                    <p class="text-gray-400 mb-3">Returns the length of a string, array, or hash. Also available as a method: <code>.len</code>, <code>.length</code>, <code>.size</code> are all aliases.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">len("hello")      # 5
 len([1, 2, 3])    # 3
 len({"a": 1})     # 1
-let arr = Array.new
-arr.push(1)
-len(arr)  # 1</code></pre>
+
+# Method syntax (all equivalent)
+[1, 2, 3].len     # 3
+[1, 2, 3].length  # 3
+[1, 2, 3].size    # 3</code></pre>
                 </div>
             </section>
         </div>
@@ -573,6 +575,94 @@ let elapsed = clock() - start</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Write content to a file.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">barf("output.txt", "Hello, World!")</code></pre>
+                </div>
+            </section>
+
+            <!-- File Class -->
+            <section id="def-file-class" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <h3 class="text-lg font-semibold text-white mb-4">File Class</h3>
+                    <p class="text-gray-400 mb-4">Static methods for file operations.</p>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <code class="text-indigo-400">File.read(path)</code>
+                            <p class="text-gray-500 text-sm mt-1">Read file contents as string.</p>
+                            <pre data-filename="Example"><code class="language-soli text-sm">let content = File.read("config.json")</code></pre>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.write(path, content)</code>
+                            <p class="text-gray-500 text-sm mt-1">Write content to file.</p>
+                            <pre data-filename="Example"><code class="language-soli text-sm">File.write("output.txt", "Hello!")</code></pre>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.exists(path)</code>
+                            <p class="text-gray-500 text-sm mt-1">Check if file exists.</p>
+                            <pre data-filename="Example"><code class="language-soli text-sm">if File.exists("config.json")</code></pre>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.delete(path)</code>
+                            <p class="text-gray-500 text-sm mt-1">Delete a file.</p>
+                            <pre data-filename="Example"><code class="language-soli text-sm">File.delete("old.txt")</code></pre>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.glob(pattern)</code>
+                            <p class="text-gray-500 text-sm mt-1">Match files using glob pattern (non-recursive).</p>
+                            <pre data-filename="Example"><code class="language-soli text-sm">let files = File.glob("docs/*.md")</code></pre>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.glob_recursive(pattern)</code>
+                            <p class="text-gray-500 text-sm mt-1">Match files using glob pattern (recursive).</p>
+                            <pre data-filename="Example"><code class="language-soli text-sm">let files = File.glob_recursive("docs/**/*.md")</code></pre>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.lines(path)</code>
+                            <p class="text-gray-500 text-sm mt-1">Read file as array of lines.</p>
+                            <pre data-filename="Example"><code class="language-soli text-sm">let lines = File.lines("data.txt")</code></pre>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.is_dir(path)</code>
+                            <p class="text-gray-500 text-sm mt-1">Check if path is a directory.</p>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.is_file(path)</code>
+                            <p class="text-gray-500 text-sm mt-1">Check if path is a file.</p>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.size(path)</code>
+                            <p class="text-gray-500 text-sm mt-1">Get file size in bytes.</p>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.modified(path)</code>
+                            <p class="text-gray-500 text-sm mt-1">Get file modification timestamp (Unix epoch in seconds).</p>
+                            <pre data-filename="Example"><code class="language-soli text-sm">let time = File.modified("config.json")</code></pre>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.copy(src, dest)</code>
+                            <p class="text-gray-500 text-sm mt-1">Copy file from source to destination.</p>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.rename(old, new)</code>
+                            <p class="text-gray-500 text-sm mt-1">Rename/move a file.</p>
+                        </div>
+                        
+                        <div>
+                            <code class="text-indigo-400">File.append(path, content)</code>
+                            <p class="text-gray-500 text-sm mt-1">Append content to file.</p>
+                        </div>
+                    </div>
                 </div>
             </section>
         </div>

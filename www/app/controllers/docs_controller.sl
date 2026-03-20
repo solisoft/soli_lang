@@ -444,3 +444,15 @@ end
 fn core_concepts_state_machines(req)
     render_docs("docs/core-concepts/state-machines", "State Machines", "core_concepts", "state_machines")
 end
+
+# ============================================================================
+# Blog
+# ============================================================================
+
+fn blog_index(req)
+    render_docs("docs/blog/index", "Blog", "blog", "index")
+end
+
+fn blog_google_oauth(req)
+    render_docs("docs/blog/google-oauth", "Implementing Google OAuth in SoliLang", "blog", "google_oauth")
+end

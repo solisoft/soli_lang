@@ -112,6 +112,13 @@ get("/docs/testing", "docs#testing");
 get("/docs/testing-quick-reference", "docs#testing_quick_reference");
 
 # ============================================================================
+# Blog
+# ============================================================================
+
+get("/docs/blog", "blog#index")
+get("/docs/blog/:slug", "blog#show")
+
+# ============================================================================
 # Backward Compatibility Redirects (old flat URLs -> new hierarchical URLs)
 # ============================================================================
 

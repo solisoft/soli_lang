@@ -1270,8 +1270,11 @@ print(result);  # [4, 16, 36]
 ```soli
 let arr = [1, 2, 3, 4, 5];
 
-# Length
-print(len(arr));  # 5
+# Length (function or method — .len, .length, .size are all aliases)
+print(len(arr));      # 5
+print(arr.len);       # 5
+print(arr.length);    # 5
+print(arr.size);      # 5
 
 # Push - add element to end
 push(arr, 6);
@@ -1458,8 +1461,9 @@ print(doubled);  # [10, 20]
 ```soli
 let person = {"name": "Alice", "age": 30, "city": "Paris", "country": "France"};
 
-# Get length
-print(len(person));  # 4
+# Get length (also available as .len, .length, .size methods)
+print(len(person));    # 4
+print(person.len);     # 4
 
 # Get all keys
 let keys_list = keys(person);
@@ -2784,8 +2788,9 @@ print(type(null));   # "Null"
 ```soli
 let arr = [1, 2, 3, 4, 5];
 
-# Length
+# Length (also available as .len, .length, .size methods)
 print(len(arr));  # 5
+print(arr.len);   # 5
 
 # Range
 let nums = range(1, 6);  # [1, 2, 3, 4, 5]

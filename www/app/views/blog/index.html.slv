@@ -1,0 +1,21 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Blog</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates about building web applications with SoliLang.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Recent Posts</h2>
+
+    <div class="space-y-6">
+        <% for post in posts %>
+        <a href="/docs/blog/<%= post["slug"] %>" class="block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all">
+            <h3 class="text-xl font-semibold text-white mb-2"><%= post["title"] %></h3>
+            <p class="text-gray-400"><%= post["description"] %></p>
+        </a>
+        <% end %>
+    </div>
+</div>

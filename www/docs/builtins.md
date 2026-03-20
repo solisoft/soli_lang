@@ -124,7 +124,7 @@ float(42)      # 42.0
 
 #### len(value)
 
-Returns the length of a string, array, or hash.
+Returns the length of a string, array, or hash. Also available as a method: `.len`, `.length`, `.size` are all aliases.
 
 **Parameters:**
 - `value` (String|Array|Hash) - The collection to measure
@@ -136,6 +136,11 @@ Returns the length of a string, array, or hash.
 len("hello")      # 5
 len([1, 2, 3])    # 3
 len({"a": 1})     # 1
+
+# Method syntax (all equivalent)
+[1, 2, 3].len     # 3
+[1, 2, 3].length  # 3
+[1, 2, 3].size    # 3
 ```
 
 ---
