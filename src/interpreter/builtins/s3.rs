@@ -20,7 +20,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use rusoto_core::Region;
 use rusoto_credential::StaticProvider;
@@ -102,13 +101,8 @@ fn build_s3_client() -> Result<S3Client, String> {
     ))
 }
 
-fn get_s3_client() -> Result<&'static S3Client, String> {
-    static CLIENT: OnceLock<S3Client> = OnceLock::new();
-    if let Some(c) = CLIENT.get() {
-        return Ok(c);
-    }
-    let c = build_s3_client()?;
-    Ok(CLIENT.get_or_init(|| c))
+fn get_s3_client() -> Result<S3Client, String> {
+    build_s3_client()
 }
 
 pub fn register_s3_class(env: &mut Environment) {
@@ -116,7 +110,7 @@ pub fn register_s3_class(env: &mut Environment) {
 
     s3_static_methods.insert(
         "list_buckets".to_string(),
-        Rc::new(NativeFunction::new("S3.list_buckets", Some(0), |_args| {
+        Rc::new(NativeFunction::new("S3.list_buckets", None, |_args| {
             let client = get_s3_client()?;
             run_s3_future(async move {
                 match client.list_buckets().await {

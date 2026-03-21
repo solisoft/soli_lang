@@ -38,7 +38,12 @@ describe("S3", fn() {
     });
 
     test("S3.list_buckets fails without credentials", fn() {
-        let result = S3.list_buckets()
-        assert_eq(type(result), "Error")
+        let did_fail = false
+        try {
+            S3.list_buckets()
+        } catch e {
+            did_fail = true
+        }
+        assert(did_fail)
     });
 });
