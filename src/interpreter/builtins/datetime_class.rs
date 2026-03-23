@@ -437,7 +437,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         let mut inst = Instance::new(Rc::new(Class {
                             name: "DateTime".to_string(),
                             superclass: None,
-                            methods: HashMap::new(),
+                            methods: Rc::new(RefCell::new(HashMap::new())),
                             static_methods: HashMap::new(),
                             native_static_methods: HashMap::new(),
                             native_methods: methods.clone(),
@@ -477,7 +477,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         let mut inst = Instance::new(Rc::new(Class {
                             name: "DateTime".to_string(),
                             superclass: None,
-                            methods: HashMap::new(),
+                            methods: Rc::new(RefCell::new(HashMap::new())),
                             static_methods: HashMap::new(),
                             native_static_methods: HashMap::new(),
                             native_methods: methods.clone(),
@@ -517,7 +517,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         let mut inst = Instance::new(Rc::new(Class {
                             name: "DateTime".to_string(),
                             superclass: None,
-                            methods: HashMap::new(),
+                            methods: Rc::new(RefCell::new(HashMap::new())),
                             static_methods: HashMap::new(),
                             native_static_methods: HashMap::new(),
                             native_methods: methods.clone(),
@@ -557,7 +557,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         let mut inst = Instance::new(Rc::new(Class {
                             name: "DateTime".to_string(),
                             superclass: None,
-                            methods: HashMap::new(),
+                            methods: Rc::new(RefCell::new(HashMap::new())),
                             static_methods: HashMap::new(),
                             native_static_methods: HashMap::new(),
                             native_methods: methods.clone(),
@@ -630,7 +630,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let mut inst = Instance::new(Rc::new(Class {
                 name: "DateTime".to_string(),
                 superclass: None,
-                methods: HashMap::new(),
+                methods: Rc::new(RefCell::new(HashMap::new())),
                 static_methods: HashMap::new(),
                 native_static_methods: HashMap::new(),
                 native_methods: dt_methods_for_now.clone(),
@@ -655,7 +655,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let mut inst = Instance::new(Rc::new(Class {
                 name: "DateTime".to_string(),
                 superclass: None,
-                methods: HashMap::new(),
+                methods: Rc::new(RefCell::new(HashMap::new())),
                 static_methods: HashMap::new(),
                 native_static_methods: HashMap::new(),
                 native_methods: dt_methods_for_utc.clone(),
@@ -687,7 +687,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let mut inst = Instance::new(Rc::new(Class {
                     name: "DateTime".to_string(),
                     superclass: None,
-                    methods: HashMap::new(),
+                    methods: Rc::new(RefCell::new(HashMap::new())),
                     static_methods: HashMap::new(),
                     native_static_methods: HashMap::new(),
                     native_methods: dt_methods_for_parse.clone(),
@@ -731,7 +731,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let mut inst = Instance::new(Rc::new(Class {
                     name: "DateTime".to_string(),
                     superclass: None,
-                    methods: HashMap::new(),
+                    methods: Rc::new(RefCell::new(HashMap::new())),
                     static_methods: HashMap::new(),
                     native_static_methods: HashMap::new(),
                     native_methods: dt_methods_for_epoch.clone(),
@@ -762,7 +762,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let mut inst = Instance::new(Rc::new(Class {
                 name: "DateTime".to_string(),
                 superclass: None,
-                methods: HashMap::new(),
+                methods: Rc::new(RefCell::new(HashMap::new())),
                 static_methods: HashMap::new(),
                 native_static_methods: HashMap::new(),
                 native_methods: dt_methods_for_from_unix.clone(),
@@ -781,7 +781,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     let date_time_class = Class {
         name: "DateTime".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: dt_static_methods,
         native_methods: dt_native_methods,
@@ -820,7 +820,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         let mut dur = Instance::new(Rc::new(Class {
                             name: "Duration".to_string(),
                             superclass: None,
-                            methods: HashMap::new(),
+                            methods: Rc::new(RefCell::new(HashMap::new())),
                             static_methods: HashMap::new(),
                             native_static_methods: HashMap::new(),
                             native_methods: dur_methods_for_between.clone(),
@@ -853,7 +853,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let mut dur = Instance::new(Rc::new(Class {
                     name: "Duration".to_string(),
                     superclass: None,
-                    methods: HashMap::new(),
+                    methods: Rc::new(RefCell::new(HashMap::new())),
                     static_methods: HashMap::new(),
                     native_static_methods: HashMap::new(),
                     native_methods: methods.clone(),
@@ -883,7 +883,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let mut dur = Instance::new(Rc::new(Class {
                     name: "Duration".to_string(),
                     superclass: None,
-                    methods: HashMap::new(),
+                    methods: Rc::new(RefCell::new(HashMap::new())),
                     static_methods: HashMap::new(),
                     native_static_methods: HashMap::new(),
                     native_methods: methods.clone(),
@@ -913,7 +913,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let mut dur = Instance::new(Rc::new(Class {
                     name: "Duration".to_string(),
                     superclass: None,
-                    methods: HashMap::new(),
+                    methods: Rc::new(RefCell::new(HashMap::new())),
                     static_methods: HashMap::new(),
                     native_static_methods: HashMap::new(),
                     native_methods: methods.clone(),
@@ -943,7 +943,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let mut dur = Instance::new(Rc::new(Class {
                     name: "Duration".to_string(),
                     superclass: None,
-                    methods: HashMap::new(),
+                    methods: Rc::new(RefCell::new(HashMap::new())),
                     static_methods: HashMap::new(),
                     native_static_methods: HashMap::new(),
                     native_methods: methods.clone(),
@@ -973,7 +973,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let mut dur = Instance::new(Rc::new(Class {
                     name: "Duration".to_string(),
                     superclass: None,
-                    methods: HashMap::new(),
+                    methods: Rc::new(RefCell::new(HashMap::new())),
                     static_methods: HashMap::new(),
                     native_static_methods: HashMap::new(),
                     native_methods: methods.clone(),
@@ -1015,7 +1015,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     let duration_class = Class {
         name: "Duration".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: dur_static_methods,
         native_methods: HashMap::new(),

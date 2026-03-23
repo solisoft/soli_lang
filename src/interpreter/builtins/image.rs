@@ -461,7 +461,7 @@ fn build_image_class() -> Rc<Class> {
     let image_class = Class {
         name: "Image".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: static_methods,
         native_methods,

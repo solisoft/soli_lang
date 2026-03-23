@@ -272,7 +272,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
     let cache_class_rc = Rc::new(Class {
         name: "Cache".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: cache_static_methods,
         native_methods: HashMap::new(),

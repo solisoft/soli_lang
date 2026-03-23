@@ -405,7 +405,7 @@ impl Interpreter {
         let class = Class {
             name: decl.name.clone(),
             superclass,
-            methods,
+            methods: Rc::new(RefCell::new(methods)),
             static_methods,
             native_static_methods,
             native_methods: HashMap::new(),

@@ -584,7 +584,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
     let kv_class_rc = Rc::new(Class {
         name: "KV".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: kv_static_methods,
         native_methods: HashMap::new(),

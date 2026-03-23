@@ -13,7 +13,7 @@ pub fn register_range_class(env: &mut Environment) {
     let empty_class = Rc::new(Class {
         name: "Range".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
@@ -54,7 +54,7 @@ pub fn register_range_class(env: &mut Environment) {
     let range_class = Class {
         name: "Range".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: range_static_methods,
         native_methods: range_native_methods,

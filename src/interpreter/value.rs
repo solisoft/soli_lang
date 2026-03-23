@@ -863,7 +863,8 @@ pub enum ArrayMethodKind {
 pub struct Class {
     pub name: String,
     pub superclass: Option<Rc<Class>>,
-    pub methods: HashMap<String, Rc<Function>>,
+    /// Instance methods - using RefCell for interior mutability to support define_method
+    pub methods: Rc<RefCell<HashMap<String, Rc<Function>>>>,
     pub static_methods: HashMap<String, Rc<Function>>,
     pub native_static_methods: HashMap<String, Rc<NativeFunction>>,
     pub native_methods: HashMap<String, Rc<NativeFunction>>,
@@ -890,7 +891,7 @@ impl Default for Class {
         Self {
             name: String::new(),
             superclass: None,
-            methods: HashMap::new(),
+            methods: Rc::new(RefCell::new(HashMap::new())),
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
             native_methods: HashMap::new(),
@@ -924,7 +925,7 @@ impl Class {
         Self {
             name,
             superclass,
-            methods,
+            methods: Rc::new(RefCell::new(methods)),
             static_methods,
             native_static_methods,
             native_methods,
@@ -969,7 +970,9 @@ impl Class {
         }
 
         // Then, override with methods from this class
-        all_methods.extend(self.methods.clone());
+        for (k, v) in self.methods.borrow().iter() {
+            all_methods.insert(k.clone(), v.clone());
+        }
 
         // Store in cache
         *self.all_methods_cache.borrow_mut() = Some(all_methods);
@@ -1081,7 +1084,7 @@ impl Instance {
             return Some(value.clone());
         }
         // Then check class methods - convert Rc<Function> to Value::Function
-        if let Some(func) = self.class.methods.get(name) {
+        if let Some(func) = self.class.methods.borrow().get(name) {
             return Some(Value::Function(func.clone()));
         }
         None

@@ -358,6 +358,39 @@ impl Interpreter {
                     },
                 )));
             }
+            // Metaprogramming: define_method - define a method on the instance's class
+            // Usage: obj.define_method("method_name", def(args) { body })
+            "define_method" => {
+                let inst_clone = inst.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "define_method",
+                    Some(2),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let method_name = match args.first() {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err("define_method expects method name as first argument"
+                                    .to_string())
+                            }
+                        };
+
+                        let func = match args.get(1) {
+                            Some(Value::Function(f)) => f.clone(),
+                            _ => {
+                                return Err("define_method expects a function as second argument"
+                                    .to_string())
+                            }
+                        };
+
+                        let class = inst_clone.borrow().class.clone();
+                        class.methods.borrow_mut().insert(method_name, func);
+                        class.all_methods_cache.borrow_mut().take();
+
+                        Ok(Value::Null)
+                    },
+                )));
+            }
             // Metaprogramming: instance_eval - execute block with self bound to instance
             // Usage: obj.instance_eval { this.name }
             "instance_eval" => {

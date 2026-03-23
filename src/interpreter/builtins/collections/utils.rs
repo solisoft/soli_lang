@@ -29,7 +29,7 @@ fn register_string_class(env: &mut Environment) {
     let empty_class = Rc::new(Class {
         name: "String".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
@@ -488,7 +488,7 @@ fn register_string_class(env: &mut Environment) {
     let string_class = Class {
         name: "String".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: string_static_methods,
         native_methods: string_native_methods,
@@ -568,7 +568,7 @@ pub fn register_base64_class(env: &mut Environment) {
     let base64_class = Class {
         name: "Base64".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: base64_static_methods,
         native_methods: HashMap::new(),

@@ -220,7 +220,7 @@ pub fn register_regex_class(env: &mut Environment) {
     let regex_class = Class {
         name: "Regex".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: static_methods,
         native_methods: HashMap::new(),

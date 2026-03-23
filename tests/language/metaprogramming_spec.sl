@@ -160,3 +160,35 @@ describe("class_eval", fn() {
         assert_eq(result, 42)
     });
 });
+
+describe("define_method", fn() {
+    test("defines a method on instance's class", fn() {
+        let foo = Foo.new();
+        foo.define_method("greet2", || { "Hello!" });
+        assert(foo.respond_to?("greet2"));
+        assert_eq(foo.greet2(), "Hello!");
+    });
+
+    test("defined method can take arguments", fn() {
+        class Calculator { }
+        let calc = Calculator.new();
+        calc.define_method("add", |a, b| { a + b });
+        assert_eq(calc.add(1, 2), 3);
+    });
+});
+
+describe("define_method", fn() {
+    test("defines a method on instance's class", fn() {
+        let foo = Foo.new();
+        foo.define_method("greet2", || { "Hello!" });
+        assert(foo.respond_to?("greet2"));
+        assert_eq(foo.greet2(), "Hello!");
+    });
+
+    test("defined method can take arguments", fn() {
+        class Calculator { }
+        let calc = Calculator.new();
+        calc.define_method("add", |a, b| { a + b });
+        assert_eq(calc.add(1, 2), 3);
+    });
+});

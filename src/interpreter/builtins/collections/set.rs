@@ -12,7 +12,7 @@ pub fn register_set_class(env: &mut Environment) {
     let empty_class = Rc::new(Class {
         name: "Set".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
@@ -50,7 +50,7 @@ pub fn register_set_class(env: &mut Environment) {
     let set_class = Class {
         name: "Set".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: set_static_methods,
         native_methods: set_native_methods,

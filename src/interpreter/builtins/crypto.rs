@@ -704,7 +704,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
     let crypto_class = Class {
         name: "Crypto".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: crypto_static_methods,
         native_methods: HashMap::new(),

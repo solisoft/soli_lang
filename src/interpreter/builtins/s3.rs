@@ -354,7 +354,7 @@ pub fn register_s3_class(env: &mut Environment) {
     let s3_class = Class {
         name: "S3".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: s3_static_methods,
         native_methods: HashMap::new(),

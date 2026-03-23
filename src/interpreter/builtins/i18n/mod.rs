@@ -327,7 +327,7 @@ pub fn register_i18n_class(env: &mut Environment) {
     let i18n_class = Class {
         name: "I18n".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: i18n_static_methods,
         native_methods: HashMap::new(),

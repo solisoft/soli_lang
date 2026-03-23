@@ -95,7 +95,7 @@ fn register_v_class(env: &mut Environment) {
     let v_class = Class {
         name: "V".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods,
         native_methods: HashMap::new(),

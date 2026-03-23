@@ -42,7 +42,7 @@ pub fn register_json_class(env: &mut Environment) {
     let json_class = Class {
         name: "JSON".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: json_static_methods,
         native_methods: HashMap::new(),

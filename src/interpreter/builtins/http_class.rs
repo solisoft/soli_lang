@@ -1132,7 +1132,7 @@ pub fn register_http_class(env: &mut Environment) {
     let http_class = Class {
         name: "HTTP".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: http_static_methods,
         native_methods: HashMap::new(),

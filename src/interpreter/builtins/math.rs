@@ -210,7 +210,7 @@ fn register_math_class(env: &mut Environment) {
     let math_class = Class {
         name: "Math".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: math_static_methods,
         native_methods: HashMap::new(),

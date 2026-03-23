@@ -184,7 +184,7 @@ impl Vm {
             let new_class = Class::new(
                 sub.name.clone(),
                 Some(superclass.clone()),
-                sub.methods.clone(),
+                sub.methods.borrow().clone(),
                 sub.static_methods.clone(),
                 sub.native_static_methods.clone(),
                 sub.native_methods.clone(),
@@ -223,7 +223,6 @@ impl Vm {
             // Get the current class from the stack
             let top = self.stack.len() - 1;
             if let Value::Class(current) = &self.stack[top] {
-                let mut methods = current.methods.clone();
                 let mut static_methods = current.static_methods.clone();
 
                 match method {
@@ -235,7 +234,7 @@ impl Vm {
                         if is_static {
                             static_methods.insert(name.to_string(), func);
                         } else {
-                            methods.insert(name.to_string(), func);
+                            current.methods.borrow_mut().insert(name.to_string(), func);
                         }
                     }
                     _ => {}
@@ -244,7 +243,7 @@ impl Vm {
                 let new_class = Class::new(
                     current.name.clone(),
                     current.superclass.clone(),
-                    methods,
+                    current.methods.borrow().clone(),
                     static_methods,
                     current.native_static_methods.clone(),
                     current.native_methods.clone(),

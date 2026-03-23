@@ -11,7 +11,7 @@ pub fn register_hash_class(env: &mut Environment) {
     let empty_class = Rc::new(Class {
         name: "Hash".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
@@ -317,7 +317,7 @@ pub fn register_hash_class(env: &mut Environment) {
     let hash_class = Class {
         name: "Hash".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: hash_static_methods,
         native_methods: hash_native_methods,

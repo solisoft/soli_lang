@@ -11,7 +11,7 @@ pub fn register_array_class(env: &mut Environment) {
     let empty_class = Rc::new(Class {
         name: "Array".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
@@ -547,7 +547,7 @@ pub fn register_array_class(env: &mut Environment) {
     let array_class = Class {
         name: "Array".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: array_static_methods,
         native_methods: array_native_methods,

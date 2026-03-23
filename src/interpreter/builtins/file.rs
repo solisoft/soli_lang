@@ -449,7 +449,7 @@ fn register_file_class(env: &mut Environment) {
     let file_class = Class {
         name: "File".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: file_static_methods,
         native_methods: HashMap::new(),

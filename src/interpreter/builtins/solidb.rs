@@ -236,7 +236,7 @@ fn register_solidb_class(env: &mut Environment) {
     let solidb_class = Rc::new(crate::interpreter::value::Class {
         name: "Solidb".to_string(),
         superclass: None,
-        methods: std::collections::HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: std::collections::HashMap::new(),
         native_static_methods: std::collections::HashMap::new(),
         native_methods: std::collections::HashMap::new(),

@@ -361,7 +361,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
     Rc::new(Class {
         name: format!("{}Transaction", model_name),
         superclass: None,
-        methods,
+        methods: Rc::new(RefCell::new(methods)),
         static_methods: std::collections::HashMap::new(),
         native_static_methods: std::collections::HashMap::new(),
         native_methods,
@@ -2280,7 +2280,7 @@ impl Model {
         let model_class = Class {
             name: "Model".to_string(),
             superclass: None,
-            methods: HashMap::new(),
+            methods: Rc::new(RefCell::new(HashMap::new())),
             static_methods: HashMap::new(),
             native_static_methods,
             native_methods,

@@ -371,7 +371,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
     let class = Class {
         name: "RateLimiter".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: static_methods,
         native_methods: class_methods,

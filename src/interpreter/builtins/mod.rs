@@ -310,7 +310,7 @@ fn register_error_classes(env: &mut Environment) {
     let error_class = Rc::new(Class {
         name: "Error".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: HashMap::new(),
         native_methods: HashMap::new(),
@@ -327,7 +327,7 @@ fn register_error_classes(env: &mut Environment) {
         let subclass = Class {
             name: name.to_string(),
             superclass: Some(error_class.clone()),
-            methods: HashMap::new(),
+            methods: Rc::new(RefCell::new(HashMap::new())),
             static_methods: HashMap::new(),
             native_static_methods: HashMap::new(),
             native_methods: HashMap::new(),

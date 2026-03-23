@@ -1409,7 +1409,7 @@ impl TuiRepl {
         if let Some(Value::Class(class)) = val {
             let mut names: Vec<String> = Vec::new();
             // User-defined instance methods
-            for name in class.methods.keys() {
+            for name in class.methods.borrow().keys() {
                 names.push(name.to_string());
             }
             // Native instance methods

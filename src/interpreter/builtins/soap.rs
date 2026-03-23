@@ -260,7 +260,7 @@ pub fn register_soap_class(env: &mut Environment) {
     let soap_class = Class {
         name: "SOAP".to_string(),
         superclass: None,
-        methods: HashMap::new(),
+        methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: soap_static_methods,
         native_methods: HashMap::new(),
