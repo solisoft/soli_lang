@@ -16,7 +16,7 @@
         </p>
             <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4">
             <p class="text-emerald-200 text-sm">
-                <strong class="text-emerald-400">Available:</strong> respond_to?, send, method_missing, instance_variables, instance_variable_get, instance_variable_set, methods, instance_eval, class_eval, define_method. See <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for examples.
+                <strong class="text-emerald-400">Available:</strong> respond_to?, send, method_missing, instance_variables, instance_variable_get, instance_variable_set, methods, instance_eval, class_eval, define_method, alias_method, inherited. See <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for examples.
             </p>
         </div>
     </div>
@@ -232,30 +232,71 @@ class.methods.insert(method_name, function_rc);
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli (Planned)</h3>
-            <pre><code class="language-soli text-sm">class Calculator
-    def add(a, b)
-        a + b
-    end
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">class Foo {
+    fn greet(name) {
+        return "Hello, " + name + "!";
+    }
+}
 
-    alias_method("plus", "add")
-
-    def add(a, b)
-        print("Computing...")
-        this.plus(a, b)
-    end
-end
-
-let calc = Calculator()
-calc.plus(1, 2)        # => 3
-calc.add(1, 2)         # prints "Computing..." then => 3</code></pre>
+let foo = Foo.new()
+foo.alias_method("say_hello", "greet")
+foo.say_hello("World")  # => "Hello, World!"</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm">
-                Simple HashMap copy: <code class="text-pink-400">class.methods.insert(new_name, class.methods.get(old_name).clone())</code>. The cloned Rc&lt;Function&gt; ensures both names point to the same method implementation.
+                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code>:
             </p>
+            <pre><code class="language-rust text-sm">// alias_method copies the method function to the new name
+class.methods.borrow_mut().insert(new_name, method.clone());
+class.all_methods_cache.borrow_mut().take();</code></pre>
+        </div>
+    </section>
+
+    <!-- inherited -->
+    <section id="section-inherited" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </span>
+            Inheritance Hook: inherited()
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Called automatically when a class inherits from another class. Define <code class="text-pink-400">static fn inherited(child)</code> on a class to be notified when subclasses are created.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">class Parent {
+    static fn inherited(child) {
+        print("Child class created: " + child.to_string())
+    }
+}
+
+class Child < Parent { }
+# Output: "Child class created: &lt;class Child&gt;"</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                Implemented in <code class="text-pink-400">src/interpreter/executor/statements.rs</code>:
+            </p>
+            <pre><code class="language-rust text-sm">// After class creation, call inherited hook if superclass has one
+if let Some(inherited_func) = superclass.find_static_method("inherited") {
+    self.call_function(&inherited_func, vec![Value::Class(class_rc.clone())])?;
+}
+if let Some(inherited_native) = superclass.find_native_static_method("inherited") {
+    let span = Span::new(0, 0, 1, 1);
+    let result: Result&lt;Value, String&gt; =
+        (inherited_native.func)(vec![Value::Class(class_rc.clone())]);
+    result.map_err(|e| RuntimeError::new(e, span))?;
+}</code></pre>
         </div>
     </section>
 
@@ -533,15 +574,20 @@ User.find_by_name_and_status("Bob", "active")  # => "Finding by name_and_status"
                             <td class="py-2 px-4 text-white">define_method()</td>
                             <td class="py-2 px-4 text-gray-400">Implemented - defines methods on instance's class</td>
                         </tr>
-                        <tr class="bg-yellow-500/5">
-                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs">Medium</span></td>
+                        <tr class="bg-emerald-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs">Medium</span></td>
                             <td class="py-2 px-4 text-white">alias_method()</td>
-                            <td class="py-2 px-4 text-gray-400">Create method aliases (easy to add now)</td>
+                            <td class="py-2 px-4 text-gray-400">Implemented - creates method aliases</td>
+                        </tr>
+                        <tr class="bg-emerald-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs">Medium</span></td>
+                            <td class="py-2 px-4 text-white">inherited()</td>
+                            <td class="py-2 px-4 text-gray-400">Implemented - called when class inherits from another</td>
                         </tr>
                         <tr class="bg-orange-500/5">
                             <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs">Low</span></td>
-                            <td class="py-2 px-4 text-white">Module hooks</td>
-                            <td class="py-2 px-4 text-gray-400">Nice-to-have for module mixins</td>
+                            <td class="py-2 px-4 text-white">included / extended / prepended</td>
+                            <td class="py-2 px-4 text-gray-400">Module hooks for mixins (not yet implemented)</td>
                         </tr>
                     </tbody>
                 </table>

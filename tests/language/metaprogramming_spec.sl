@@ -175,20 +175,63 @@ describe("define_method", fn() {
         calc.define_method("add", |a, b| { a + b });
         assert_eq(calc.add(1, 2), 3);
     });
+
+    test("method is available on all instances of class", fn() {
+        class Bar { }
+        let bar1 = Bar.new();
+        let bar2 = Bar.new();
+        bar1.define_method("hello", || { "Hi!" });
+        assert_eq(bar2.hello(), "Hi!");
+    });
 });
 
-describe("define_method", fn() {
-    test("defines a method on instance's class", fn() {
+describe("alias_method", fn() {
+    test("creates alias for existing method", fn() {
         let foo = Foo.new();
-        foo.define_method("greet2", || { "Hello!" });
-        assert(foo.respond_to?("greet2"));
-        assert_eq(foo.greet2(), "Hello!");
+        foo.alias_method("say_hello", "greet");
+        assert(foo.respond_to?("say_hello"));
+        assert_eq(foo.say_hello("World"), "Hello, World!");
     });
 
-    test("defined method can take arguments", fn() {
-        class Calculator { }
-        let calc = Calculator.new();
-        calc.define_method("add", |a, b| { a + b });
-        assert_eq(calc.add(1, 2), 3);
+    test("alias works independently of original", fn() {
+        class Counter {
+            fn count() { 1 }
+        }
+        let c = Counter.new();
+        c.alias_method("counter", "count");
+        assert_eq(c.counter(), 1);
+        assert_eq(c.count(), 1);
+    });
+
+    test("error when aliasing nonexistent method", fn() {
+        let foo = Foo.new();
+        let result = foo.alias_method("fake", "nonexistent");
+        assert(result != null);
+        assert(result.contains("alias_method"));
+        assert(result.contains("nonexistent"));
+    });
+});
+
+describe("inherited", fn() {
+    test("is called when class inherits from another", fn() {
+        let called = false;
+        class Parent {
+            static fn inherited(child) {
+                called = true;
+            }
+        }
+        class Child < Parent { }
+        assert(called);
+    });
+
+    test("receives the child class as argument", fn() {
+        let received_class = null;
+        class Base {
+            static fn inherited(c) {
+                received_class = c;
+            }
+        }
+        class Derived < Base { }
+        assert(received_class != null);
     });
 });

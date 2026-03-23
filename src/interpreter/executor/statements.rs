@@ -9,6 +9,7 @@ use crate::ast::*;
 use crate::error::RuntimeError;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, Function, Value};
+use crate::span::Span;
 
 use super::{ControlFlow, Interpreter, RuntimeResult};
 
@@ -422,6 +423,21 @@ impl Interpreter {
         self.environment
             .borrow_mut()
             .define(decl.name.clone(), Value::Class(class_rc.clone()));
+
+        // Call inherited hook if superclass has one
+        if let Some(ref superclass) = class_rc.superclass {
+            // Check for inherited static method
+            if let Some(inherited_func) = superclass.find_static_method("inherited") {
+                self.call_function(&inherited_func, vec![Value::Class(class_rc.clone())])?;
+            }
+            // Check for inherited native static method
+            if let Some(inherited_native) = superclass.find_native_static_method("inherited") {
+                let span = Span::new(0, 0, 1, 1);
+                let result: Result<Value, String> =
+                    (inherited_native.func)(vec![Value::Class(class_rc.clone())]);
+                result.map_err(|e| RuntimeError::new(e, span))?;
+            }
+        }
 
         // Initialize static fields
         for (field_name, field_initializer) in static_field_initializers {

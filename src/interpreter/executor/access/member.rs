@@ -391,6 +391,50 @@ impl Interpreter {
                     },
                 )));
             }
+            // Metaprogramming: alias_method - create an alias for an existing method
+            // Usage: obj.alias_method("new_name", "old_name")
+            "alias_method" => {
+                let inst_clone = inst.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "alias_method",
+                    Some(2),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let new_name = match args.first() {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "alias_method expects new name as first argument".to_string()
+                                )
+                            }
+                        };
+
+                        let old_name = match args.get(1) {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "alias_method expects old name as second argument".to_string()
+                                )
+                            }
+                        };
+
+                        let class = inst_clone.borrow().class.clone();
+                        let old_method = class.methods.borrow().get(&old_name).cloned();
+
+                        if let Some(method) = old_method {
+                            class.methods.borrow_mut().insert(new_name, method);
+                            class.all_methods_cache.borrow_mut().take();
+                            Ok(Value::Null)
+                        } else {
+                            Ok(Value::String(format!(
+                                "alias_method: method '{}' not found",
+                                old_name
+                            )))
+                        }
+                    },
+                )));
+            }
             // Metaprogramming: instance_eval - execute block with self bound to instance
             // Usage: obj.instance_eval { this.name }
             "instance_eval" => {
