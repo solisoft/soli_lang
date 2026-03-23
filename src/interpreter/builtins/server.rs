@@ -177,9 +177,16 @@ pub fn find_route(
             let routes = routes.borrow();
             let index = index.borrow();
 
+            // Normalize path: remove trailing slash except for root
+            let normalized_path = if path != "/" && path.ends_with('/') {
+                &path[..path.len() - 1]
+            } else {
+                path
+            };
+
             // Fast path: nested HashMap lookup avoids format!("{}:{}", method, path) allocation
             if let Some(path_map) = index.exact_matches.get(method) {
-                if let Some(&idx) = path_map.get(path) {
+                if let Some(&idx) = path_map.get(normalized_path) {
                     if let Some(route) = routes.get(idx) {
                         let middleware = resolve_middleware(route);
                         return Some((route.handler_name.clone(), middleware, HashMap::new()));
@@ -191,9 +198,32 @@ pub fn find_route(
             if let Some(indices) = index.by_method.get(method) {
                 for &idx in indices {
                     if let Some(route) = routes.get(idx) {
-                        if let Some(params) = match_path(&route.path_pattern, path) {
+                        if let Some(params) = match_path(&route.path_pattern, normalized_path) {
                             let middleware = resolve_middleware(route);
                             return Some((route.handler_name.clone(), middleware, params));
+                        }
+                    }
+                }
+            }
+
+            // Try with trailing slash if normalization changed the path
+            if normalized_path != path {
+                if let Some(path_map) = index.exact_matches.get(method) {
+                    if let Some(&idx) = path_map.get(path) {
+                        if let Some(route) = routes.get(idx) {
+                            let middleware = resolve_middleware(route);
+                            return Some((route.handler_name.clone(), middleware, HashMap::new()));
+                        }
+                    }
+                }
+
+                if let Some(indices) = index.by_method.get(method) {
+                    for &idx in indices {
+                        if let Some(route) = routes.get(idx) {
+                            if let Some(params) = match_path(&route.path_pattern, path) {
+                                let middleware = resolve_middleware(route);
+                                return Some((route.handler_name.clone(), middleware, params));
+                            }
                         }
                     }
                 }
