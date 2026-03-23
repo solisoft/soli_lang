@@ -414,6 +414,11 @@ User.new.to_json</code></pre>
                             <td class="py-2 px-4 text-gray-400">Get instance variable value</td>
                         </tr>
                         <tr>
+                            <td class="py-2 px-4"><code class="text-pink-400">instance_variable_set(name, value)</code></td>
+                            <td class="py-2 px-4 text-gray-400">Any</td>
+                            <td class="py-2 px-4 text-gray-400">Set instance variable value</td>
+                        </tr>
+                        <tr>
                             <td class="py-2 px-4"><code class="text-pink-400">class_variables()</code></td>
                             <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
                             <td class="py-2 px-4 text-gray-400">Class variable names</td>

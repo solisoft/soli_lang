@@ -318,6 +318,46 @@ impl Interpreter {
                     },
                 )));
             }
+            // Metaprogramming: instance_variable_set
+            // Usage: obj.instance_variable_set("@name", value)
+            "instance_variable_set" => {
+                let inst_clone = inst.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "instance_variable_set",
+                    Some(2),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let var_name = match args.first() {
+                            Some(Value::String(s)) => {
+                                if let Some(stripped) = s.strip_prefix('@') {
+                                    stripped.to_string()
+                                } else {
+                                    s.clone()
+                                }
+                            }
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "instance_variable_set expects a string or symbol as first argument"
+                                        .to_string(),
+                                )
+                            }
+                        };
+
+                        let value = match args.get(1) {
+                            Some(v) => v.clone(),
+                            None => {
+                                return Err(
+                                    "instance_variable_set expects a value as second argument"
+                                        .to_string(),
+                                )
+                            }
+                        };
+
+                        inst_clone.borrow_mut().set(var_name, value.clone());
+                        Ok(value)
+                    },
+                )));
+            }
             // Metaprogramming: methods (lists all accessible method names)
             "methods" => {
                 let inst_ref = inst.borrow();

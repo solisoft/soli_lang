@@ -83,6 +83,21 @@ describe("instance_variable_get", fn() {
     });
 });
 
+describe("instance_variable_set", fn() {
+    test("sets instance variable", fn() {
+        let foo = Foo.new();
+        let value = foo.instance_variable_set("@_name", "set_value");
+        assert_eq(value, "set_value");
+        assert_eq(foo.instance_variable_get("@_name"), "set_value");
+    });
+
+    test("works without @ prefix", fn() {
+        let foo = Foo.new();
+        foo.instance_variable_set("_count", 42);
+        assert_eq(foo.instance_variable_get("@_count"), 42);
+    });
+});
+
 describe("methods", fn() {
     test("lists method names", fn() {
         let foo = Foo.new();
