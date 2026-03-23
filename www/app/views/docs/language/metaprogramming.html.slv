@@ -16,7 +16,7 @@
         </p>
         <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4">
             <p class="text-emerald-200 text-sm">
-                <strong class="text-emerald-400">Available:</strong> These metaprogramming features are now implemented in soli lang. See the test suite at <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for usage examples.
+                <strong class="text-emerald-400">Available:</strong> respond_to?, send, method_missing, instance_variables, instance_variable_get, instance_variable_set, methods, instance_eval, class_eval. See <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for examples.
             </p>
         </div>
     </div>
@@ -529,25 +529,15 @@ User.find_by_name_and_status("Bob", "active")  # => "Finding by name_and_status"
                             <td class="py-2 px-4 text-white">method_missing()</td>
                             <td class="py-2 px-4 text-gray-400">Core expressiveness, enables DSLs and dynamic proxies</td>
                         </tr>
-                        <tr class="bg-yellow-500/5">
-                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs">Medium</span></td>
+                        <tr class="bg-emerald-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs">High</span></td>
                             <td class="py-2 px-4 text-white">define_method()</td>
-                            <td class="py-2 px-4 text-gray-400">Essential for meta-DSLs, depends on send</td>
+                            <td class="py-2 px-4 text-gray-400">Requires Class.methods to use RefCell (architectural change)</td>
                         </tr>
                         <tr class="bg-yellow-500/5">
                             <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs">Medium</span></td>
                             <td class="py-2 px-4 text-white">alias_method()</td>
-                            <td class="py-2 px-4 text-gray-400">Straightforward HashMap copy, low complexity</td>
-                        </tr>
-                        <tr class="bg-yellow-500/5">
-                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs">Medium</span></td>
-                            <td class="py-2 px-4 text-white">Introspection API</td>
-                            <td class="py-2 px-4 text-gray-400">Debugging and serialization support</td>
-                        </tr>
-                        <tr class="bg-orange-500/5">
-                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs">Low</span></td>
-                            <td class="py-2 px-4 text-white">class_eval / instance_eval</td>
-                            <td class="py-2 px-4 text-gray-400">Advanced use cases, define_method covers most needs</td>
+                            <td class="py-2 px-4 text-gray-400">Same as define_method, depends on it</td>
                         </tr>
                         <tr class="bg-orange-500/5">
                             <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs">Low</span></td>
