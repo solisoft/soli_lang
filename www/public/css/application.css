@@ -2433,6 +2433,10 @@ video {
   background-color: rgb(16 185 129 / 0.2);
 }
 
+.bg-emerald-500\/5 {
+  background-color: rgb(16 185 129 / 0.05);
+}
+
 .bg-emerald-600 {
   --tw-bg-opacity: 1;
   background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));
@@ -2567,6 +2571,10 @@ video {
   background-color: rgb(249 115 22 / 0.2);
 }
 
+.bg-orange-500\/5 {
+  background-color: rgb(249 115 22 / 0.05);
+}
+
 .bg-pink-400 {
   --tw-bg-opacity: 1;
   background-color: rgb(244 114 182 / var(--tw-bg-opacity, 1));
@@ -2679,6 +2687,10 @@ video {
 
 .bg-yellow-500\/20 {
   background-color: rgb(234 179 8 / 0.2);
+}
+
+.bg-yellow-500\/5 {
+  background-color: rgb(234 179 8 / 0.05);
 }
 
 .bg-yellow-500\/80 {
@@ -3466,6 +3478,11 @@ video {
 .text-cyan-400 {
   --tw-text-opacity: 1;
   color: rgb(34 211 238 / var(--tw-text-opacity, 1));
+}
+
+.text-emerald-200 {
+  --tw-text-opacity: 1;
+  color: rgb(167 243 208 / var(--tw-text-opacity, 1));
 }
 
 .text-emerald-300 {

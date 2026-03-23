@@ -1,0 +1,584 @@
+    <div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Metaprogramming</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Metaprogramming</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8 mb-4">
+            Advanced runtime code generation and introspection capabilities for building dynamic, expressive applications.
+        </p>
+        <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4">
+            <p class="text-emerald-200 text-sm">
+                <strong class="text-emerald-400">Available:</strong> These metaprogramming features are now implemented in soli lang. See the test suite at <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for usage examples.
+            </p>
+        </div>
+    </div>
+
+    <!-- Dynamic Method Dispatch -->
+    <section id="section-send" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Dynamic Method Dispatch: send()
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Call a method by its name as a string. This enables dynamic method invocation at runtime.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">class Person
+    def greet
+        "Hello!"
+    end
+
+    def greet_with(name)
+        "Hello, " + name + "!"
+    end
+end
+
+let person = Person.new
+person.send("greet")                    # => "Hello!"
+person.send("greet_with", "World")     # => "Hello, World!"</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code> within <code class="text-pink-400">instance_member_access</code>:
+            </p>
+            <pre><code class="language-rust text-sm">// Implementation flow:
+// 1. Check native methods via find_native_method
+// 2. Check user-defined methods via find_method
+// 3. If neither found, check for method_missing and call it
+// 4. If method_missing exists, execute it with method name and args
+// 5. Return error "undefined method" if nothing found</code></pre>
+        </div>
+    </section>
+
+    <!-- method_missing -->
+    <section id="section-method-missing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Ghost Methods: method_missing()
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Called automatically when code tries to invoke a method that doesn't exist. This enables "ghost methods" - methods that appear to exist but are dynamically handled.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">class Person
+    def method_missing(method_name)
+        if (method_name.starts_with("find_by_"))
+            let field = method_name.sub("find_by_", "")
+            return "Finding person by " + field
+        end
+        return "Method '" + method_name + "' was called"
+    end
+end
+
+let person = Person.new
+person.find_by_name("Alice")   # => "Finding person by name"
+person.find_by_email("a@b.c")  # => "Finding person by email"
+person.any_undefined_method     # => "Method 'any_undefined_method' was called"</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code> at the end of <code class="text-pink-400">instance_member_access</code>:
+            </p>
+            <pre><code class="language-rust text-sm">// When a method is not found:
+// 1. Check if class has method_missing defined
+// 2. If yes, return a NativeFunction that wraps method_missing
+// 3. When invoked, builds args [method_name, ...original_args]
+// 4. Executes method_missing with proper 'this' binding
+// 5. Returns error if method_missing also not found</code></pre>
+        </div>
+    </section>
+
+    <!-- respond_to? -->
+    <section id="section-respond-to" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Introspection: respond_to?()
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Check if an object can respond to a method call. Essential for duck typing and safe dynamic dispatch.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">class Person
+    def greet
+        "Hello"
+    end
+end
+
+let person = Person.new
+person.respond_to?("greet")        # => true
+person.respond_to?("find_by_name") # => false
+person.respond_to?("send")          # => true
+person.respond_to?("inspect")      # => true (universal method)</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code> as a universal instance method:
+            </p>
+            <pre><code class="language-rust text-sm">// Checks class methods, native methods, AND universal methods
+// Universal methods (inspect, class, nil?, etc.) are handled inline
+// and need explicit inclusion in respond_to? checks
+let is_universal = matches!(method_name.as_str(),
+    "inspect" | "class" | "nil?" | "blank?" | "present?"
+    | "respond_to?" | "send" | "instance_variables"
+    | "instance_variable_get" | "instance_variable_set"
+    | "methods" | "method_missing"
+);</code></pre>
+        </div>
+    </section>
+
+    <!-- define_method -->
+    <section id="section-define-method" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+            </span>
+            Dynamic Methods: define_method()
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Create or modify methods at runtime. Essential for building DSLs and dynamic proxies.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli (Planned)</h3>
+            <pre><code class="language-soli text-sm">class DynamicFactory
+    def initialize
+        this.define_method("create", def(name) {
+            "Creating: " + name
+        })
+
+        DynamicFactory.define_method("default_factory", def {
+            "Default Factory"
+        })
+    end
+end
+
+let factory = DynamicFactory()
+factory.create("widget")             # => "Creating: widget"
+DynamicFactory.default_factory       # => "Default Factory"</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                Methods are stored in <code class="text-pink-400">Class.methods: HashMap&lt;String, Rc&lt;Function&gt;&gt;</code> (see <code class="text-pink-400">src/interpreter/value.rs:866</code>):
+            </p>
+            <pre><code class="language-rust text-sm">// define_method would add to Class.methods
+// The Function could come from:
+// - A lambda passed as argument
+// - Parsed from a string (using the existing parser)
+// - Compiled from AST
+
+// Instance method:
+inst.class.methods.insert(method_name, function_rc);
+
+// Class/static method:
+class.methods.insert(method_name, function_rc);
+
+// Important: Invalidate the all_methods_cache when adding methods
+// See Class::ensure_methods_cached() - it rebuilds lazily on next access</code></pre>
+        </div>
+    </section>
+
+    <!-- alias_method -->
+    <section id="section-alias-method" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Method Aliasing: alias_method()
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Create an alias for an existing method. Useful for AOP-style wrapping and maintaining backward compatibility.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli (Planned)</h3>
+            <pre><code class="language-soli text-sm">class Calculator
+    def add(a, b)
+        a + b
+    end
+
+    alias_method("plus", "add")
+
+    def add(a, b)
+        print("Computing...")
+        this.plus(a, b)
+    end
+end
+
+let calc = Calculator()
+calc.plus(1, 2)        # => 3
+calc.add(1, 2)         # prints "Computing..." then => 3</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm">
+                Simple HashMap copy: <code class="text-pink-400">class.methods.insert(new_name, class.methods.get(old_name).clone())</code>. The cloned Rc&lt;Function&gt; ensures both names point to the same method implementation.
+            </p>
+        </div>
+    </section>
+
+    <!-- class_eval and instance_eval -->
+    <section id="section-eval" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+            </span>
+            Contextual Evaluation: class_eval() & instance_eval()
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Evaluate code in the context of a class or instance, giving direct access to private members and defining methods.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli (Planned)</h3>
+            <pre><code class="language-soli text-sm"># Define instance method on String
+String.class_eval(def {
+    String.define_method("shout", def {
+        this.up + "!"
+    })
+})
+
+"hello".shout  # => "HELLO!"
+
+# Define class method
+String.class_eval(def {
+    String.define_method("create_greeting", def {
+        "Hello from String class!"
+    })
+})
+
+String.create_greeting  # => "Hello from String class!"</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                These methods would accept a lambda/function and execute it with modified <code class="text-pink-400">self</code> context:
+            </p>
+            <pre><code class="language-rust text-sm">// class_eval: sets self=Class, allows defining methods on the class
+// instance_eval: sets self=Instance, allows direct field access
+
+// The closure captures the target class/instance as its `self`
+// This integrates with existing self resolution in the interpreter</code></pre>
+        </div>
+    </section>
+
+    <!-- Module Hooks -->
+    <section id="section-module-hooks" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+            </span>
+            Module Hooks: included, extended, prepended
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Callbacks invoked when a module is included in a class, extended onto an object, or prepended before a class.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli (Planned)</h3>
+            <pre><code class="language-soli text-sm">module Serializable
+    static def included(base)
+        base.define_method("to_json", def {
+            JSON.encode(this.as_hash)
+        })
+        base.define_method("as_hash", def {
+            let result = {}
+            for v in this.instance_variables
+                result[v] = this.instance_variable_get(v)
+            end
+            result
+        })
+    end
+end
+
+class User
+    include Serializable
+end
+
+User.new.to_json</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                Hook into the <code class="text-pink-400">include</code> statement resolution in the parser/interpreter. The <code class="text-pink-400">included</code> static method would be called automatically:
+            </p>
+            <pre><code class="language-rust text-sm">// When processing `include ModuleName`:
+// 1. Load the module (existing behavior)
+// 2. Check if Module has static method "included"
+// 3. If yes, call Module.included(including_class)
+// 4. The hook can modify the class's methods, etc.</code></pre>
+        </div>
+    </section>
+
+    <!-- Introspection Methods -->
+    <section id="section-introspection" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+            </span>
+            Introspection API
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            Methods for discovering an object's structure at runtime.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-white/10">
+                            <th class="py-2 px-4 text-gray-400 font-medium">Method</th>
+                            <th class="py-2 px-4 text-gray-400 font-medium">Returns</th>
+                            <th class="py-2 px-4 text-gray-400 font-medium">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                        <tr>
+                            <td class="py-2 px-4"><code class="text-pink-400">methods()</code></td>
+                            <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
+                            <td class="py-2 px-4 text-gray-400">All accessible method names</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-4"><code class="text-pink-400">public_methods()</code></td>
+                            <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
+                            <td class="py-2 px-4 text-gray-400">Public method names</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-4"><code class="text-pink-400">private_methods()</code></td>
+                            <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
+                            <td class="py-2 px-4 text-gray-400">Private method names</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-4"><code class="text-pink-400">instance_variables()</code></td>
+                            <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
+                            <td class="py-2 px-4 text-gray-400">Instance variable names (including @)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-4"><code class="text-pink-400">instance_variable_get(name)</code></td>
+                            <td class="py-2 px-4 text-gray-400">Any</td>
+                            <td class="py-2 px-4 text-gray-400">Get instance variable value</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-4"><code class="text-pink-400">class_variables()</code></td>
+                            <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
+                            <td class="py-2 px-4 text-gray-400">Class variable names</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-4"><code class="text-pink-400">constants()</code></td>
+                            <td class="py-2 px-4 text-gray-400">Hash</td>
+                            <td class="py-2 px-4 text-gray-400">Constants defined in class/module</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Example Usage</h3>
+            <pre><code class="language-soli text-sm">class User
+    name: String
+    email: String
+
+    def greet
+        "Hello!"
+    end
+end
+
+let user = User.new
+user.instance_variables   # => ["@name", "@email"]
+user.methods             # => ["greet", "to_s", ...]
+user.respond_to?("greet") # => true</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mt-4">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                These use existing data structures in <code class="text-pink-400">Class</code> and <code class="text-pink-400">Instance</code>:
+            </p>
+            <pre><code class="language-rust text-sm">// Instance.fields: HashMap<String, Value>
+// Class.methods: HashMap<String, Rc<Function>>
+// Class.native_methods: HashMap<String, Rc<NativeFunction>>
+
+// methods() would iterate and flatten from
+// inheritance chain using find_method</code></pre>
+        </div>
+    </section>
+
+    <!-- Real-World Example: Dynamic Finders -->
+    <section id="section-dynamic-finders" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </span>
+            Real-World Example: Dynamic Finders
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            A practical application combining <code class="text-pink-400">method_missing</code> and <code class="text-pink-400">respond_to?</code> to create Rails-style dynamic finders.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre><code class="language-soli text-sm">class ApplicationRecord
+    static def method_missing(method_name)
+        if (method_name.starts_with("find_by_"))
+            let field = method_name.sub("find_by_", "")
+            return "Finding by " + field
+        end
+        return "Method '" + method_name + "' was called"
+    end
+end
+
+class User < ApplicationRecord
+    # Inherit dynamic finder capability
+end
+
+# These all work automatically:
+User.find_by_name("Alice")        # => "Finding by name"
+User.find_by_email("alice@example.com")  # => "Finding by email"
+User.find_by_name_and_status("Bob", "active")  # => "Finding by name_and_status"</code></pre>
+        </div>
+    </section>
+
+    <!-- Priority -->
+    <section id="section-priority" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Implementation Priority</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-white/10">
+                            <th class="py-2 px-4 text-gray-400 font-medium">Priority</th>
+                            <th class="py-2 px-4 text-gray-400 font-medium">Feature</th>
+                            <th class="py-2 px-4 text-gray-400 font-medium">Rationale</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                        <tr class="bg-emerald-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs">High</span></td>
+                            <td class="py-2 px-4 text-white">respond_to?()</td>
+                            <td class="py-2 px-4 text-gray-400">Foundation for safe dynamic dispatch, minimal API surface</td>
+                        </tr>
+                        <tr class="bg-emerald-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs">High</span></td>
+                            <td class="py-2 px-4 text-white">send()</td>
+                            <td class="py-2 px-4 text-gray-400">Enables dynamic method calls without method_missing dependency</td>
+                        </tr>
+                        <tr class="bg-emerald-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs">High</span></td>
+                            <td class="py-2 px-4 text-white">method_missing()</td>
+                            <td class="py-2 px-4 text-gray-400">Core expressiveness, enables DSLs and dynamic proxies</td>
+                        </tr>
+                        <tr class="bg-yellow-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs">Medium</span></td>
+                            <td class="py-2 px-4 text-white">define_method()</td>
+                            <td class="py-2 px-4 text-gray-400">Essential for meta-DSLs, depends on send</td>
+                        </tr>
+                        <tr class="bg-yellow-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs">Medium</span></td>
+                            <td class="py-2 px-4 text-white">alias_method()</td>
+                            <td class="py-2 px-4 text-gray-400">Straightforward HashMap copy, low complexity</td>
+                        </tr>
+                        <tr class="bg-yellow-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs">Medium</span></td>
+                            <td class="py-2 px-4 text-white">Introspection API</td>
+                            <td class="py-2 px-4 text-gray-400">Debugging and serialization support</td>
+                        </tr>
+                        <tr class="bg-orange-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs">Low</span></td>
+                            <td class="py-2 px-4 text-white">class_eval / instance_eval</td>
+                            <td class="py-2 px-4 text-gray-400">Advanced use cases, define_method covers most needs</td>
+                        </tr>
+                        <tr class="bg-orange-500/5">
+                            <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs">Low</span></td>
+                            <td class="py-2 px-4 text-white">Module hooks</td>
+                            <td class="py-2 px-4 text-gray-400">Nice-to-have for module mixins</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- See Also -->
+    <section id="section-see-also" class="scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-4">See Also</h2>
+        <div class="flex flex-wrap gap-3">
+            <a href="/docs/language/classes-oop" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Classes & OOP
+            </a>
+            <a href="/docs/language/modules" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Modules
+            </a>
+            <a href="/docs/language/pattern-matching" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Pattern Matching
+            </a>
+        </div>
+    </section>
+</div>

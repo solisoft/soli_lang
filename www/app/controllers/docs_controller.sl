@@ -230,6 +230,10 @@ fn language_linting(req)
     render_docs("docs/language/linting", "Linting", "language", "linting")
 end
 
+fn language_metaprogramming(req)
+    render_docs("docs/language/metaprogramming", "Metaprogramming", "language", "metaprogramming")
+end
+
 # ============================================================================
 # Builtins Reference
 # ============================================================================

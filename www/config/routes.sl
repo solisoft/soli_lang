@@ -77,6 +77,7 @@ get("/docs/language/symbols", "docs#language_symbols");
 get("/docs/language/modules", "docs#language_modules");
 get("/docs/language/blocks", "docs#language_blocks");
 get("/docs/language/linting", "docs#language_linting");
+get("/docs/language/metaprogramming", "docs#language_metaprogramming");
 
 # Builtins Reference
 get("/docs/builtins", "docs#builtins_index");

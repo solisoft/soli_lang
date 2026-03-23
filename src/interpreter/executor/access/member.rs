@@ -151,9 +151,222 @@ impl Interpreter {
             "nil?" => return Ok(Value::Bool(false)),
             "blank?" => return Ok(Value::Bool(false)),
             "present?" => return Ok(Value::Bool(true)),
+            // Metaprogramming: respond_to?
+            "respond_to?" => {
+                let inst_clone = inst.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "respond_to?",
+                    Some(1),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let method_name = match args.first() {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "respond_to? expects a string or symbol argument".to_string()
+                                )
+                            }
+                        };
+                        let inst_ref = inst_clone.borrow();
+                        let has_method = inst_ref.class.find_method(&method_name).is_some()
+                            || inst_ref.class.find_native_method(&method_name).is_some();
+                        // Also check universal methods (handled inline, not in class methods)
+                        let is_universal = matches!(
+                            method_name.as_str(),
+                            "inspect"
+                                | "class"
+                                | "nil?"
+                                | "blank?"
+                                | "present?"
+                                | "respond_to?"
+                                | "send"
+                                | "instance_variables"
+                                | "instance_variable_get"
+                                | "instance_variable_set"
+                                | "methods"
+                                | "method_missing"
+                        );
+                        Ok(Value::Bool(has_method || is_universal))
+                    },
+                )));
+            }
+            // Metaprogramming: send - calls a method by name
+            // Usage: obj.send("method_name", arg1, arg2)
+            "send" => {
+                let inst_clone = inst.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "send",
+                    None, // Variable arity
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let method_name = match args.first() {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "send expects a method name as first argument".to_string()
+                                )
+                            }
+                        };
+                        let call_args: Vec<Value> = args[1..].to_vec();
+
+                        let inst_ref = inst_clone.borrow();
+
+                        // Check native methods first
+                        if let Some(native_method) = inst_ref.class.find_native_method(&method_name)
+                        {
+                            drop(inst_ref);
+                            let mut new_args = vec![Value::Instance(inst_clone.clone())];
+                            new_args.extend(call_args.iter().cloned());
+                            (native_method.func)(new_args)
+                        } else if let Some(method) = inst_ref.class.find_method(&method_name) {
+                            // User-defined method - execute it directly
+                            drop(inst_ref);
+                            let mut bound_env = Environment::with_enclosing(method.closure.clone());
+                            bound_env
+                                .define("this".to_string(), Value::Instance(inst_clone.clone()));
+
+                            // Bind call arguments to parameters
+                            for (i, arg) in call_args.iter().enumerate() {
+                                if i < method.params.len() {
+                                    bound_env.define(method.params[i].name.clone(), arg.clone());
+                                }
+                            }
+
+                            let call_env_rc = Rc::new(RefCell::new(bound_env));
+                            let env_clone = call_env_rc.borrow().clone();
+
+                            let mut interpreter = Interpreter::default();
+                            match interpreter.execute_block(&method.body, env_clone) {
+                                Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
+                                Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
+                                Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
+                                    Err(format!("Exception in send: {}", e))
+                                }
+                                Err(e) => Err(format!("Error in send: {}", e)),
+                            }
+                        } else if let Some(mm_method) = inst_ref.class.find_method("method_missing")
+                        {
+                            // Fall back to method_missing
+                            drop(inst_ref);
+                            let mut mm_args = vec![Value::String(method_name.clone())];
+                            mm_args.extend(call_args);
+
+                            let mut bound_env =
+                                Environment::with_enclosing(mm_method.closure.clone());
+                            bound_env
+                                .define("this".to_string(), Value::Instance(inst_clone.clone()));
+
+                            for (i, arg) in mm_args.iter().enumerate() {
+                                if i < mm_method.params.len() {
+                                    bound_env.define(mm_method.params[i].name.clone(), arg.clone());
+                                }
+                            }
+
+                            let call_env_rc = Rc::new(RefCell::new(bound_env));
+                            let env_clone = call_env_rc.borrow().clone();
+
+                            let mut interpreter = Interpreter::default();
+                            match interpreter.execute_block(&mm_method.body, env_clone) {
+                                Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
+                                Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
+                                Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
+                                    Err(format!("Exception in method_missing: {}", e))
+                                }
+                                Err(e) => Err(format!("Error in method_missing: {}", e)),
+                            }
+                        } else {
+                            Err(format!("undefined method `{}`", method_name))
+                        }
+                    },
+                )));
+            }
+            // Metaprogramming: instance_variables
+            "instance_variables" => {
+                let inst_ref = inst.borrow();
+                let vars: Vec<Value> = inst_ref
+                    .fields
+                    .keys()
+                    .map(|k| Value::String(format!("@{}", k)))
+                    .collect();
+                return Ok(Value::Array(Rc::new(RefCell::new(vars))));
+            }
+            // Metaprogramming: instance_variable_get
+            "instance_variable_get" => {
+                let inst_clone = inst.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "instance_variable_get",
+                    Some(1),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let var_name = match args.first() {
+                            Some(Value::String(s)) => {
+                                if let Some(stripped) = s.strip_prefix('@') {
+                                    stripped.to_string()
+                                } else {
+                                    s.clone()
+                                }
+                            }
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "instance_variable_get expects a string or symbol argument"
+                                        .to_string(),
+                                )
+                            }
+                        };
+                        let inst_ref = inst_clone.borrow();
+                        Ok(inst_ref.get(&var_name).unwrap_or(Value::Null))
+                    },
+                )));
+            }
+            // Metaprogramming: methods (lists all accessible method names)
+            "methods" => {
+                let inst_ref = inst.borrow();
+                // Trigger cache building by calling find_method (it calls ensure_methods_cached internally)
+                let _ = inst_ref.class.find_method("__methods_dummy__");
+                let _ = inst_ref.class.find_native_method("__methods_dummy__");
+                let mut method_names: Vec<Value> = Vec::new();
+                if let Some(ref cache) = *inst_ref.class.all_methods_cache.borrow() {
+                    method_names = cache.keys().map(|k| Value::String(k.clone())).collect();
+                }
+                if let Some(ref cache) = *inst_ref.class.all_native_methods_cache.borrow() {
+                    for k in cache.keys() {
+                        if !method_names
+                            .iter()
+                            .any(|v| matches!(v, Value::String(s) if s == k))
+                        {
+                            method_names.push(Value::String(k.clone()));
+                        }
+                    }
+                }
+                // Add universal methods that are handled inline, not in class methods
+                let universal_methods = [
+                    "inspect",
+                    "class",
+                    "nil?",
+                    "blank?",
+                    "present?",
+                    "respond_to?",
+                    "send",
+                    "instance_variables",
+                    "instance_variable_get",
+                    "instance_variable_set",
+                    "methods",
+                    "method_missing",
+                ];
+                for m in universal_methods {
+                    if !method_names
+                        .iter()
+                        .any(|v| matches!(v, Value::String(s) if s == m))
+                    {
+                        method_names.push(Value::String(m.to_string()));
+                    }
+                }
+                return Ok(Value::Array(Rc::new(RefCell::new(method_names))));
+            }
             _ => {}
         }
 
+        // If we get here, name didn't match any universal method, proceed to field lookup
         let inst_ref = inst.borrow();
 
         // Check if this is a model subclass and the name is a relation
@@ -348,7 +561,50 @@ impl Interpreter {
             return Ok(Value::Function(Rc::new(bound_method)));
         }
 
+        // Method not found - check for method_missing
         let class_name = inst_ref.class.name.clone();
+        if let Some(mm_method) = inst_ref.class.find_method("method_missing") {
+            drop(inst_ref);
+            let inst_clone = inst.clone();
+            let method_name = name.to_string();
+
+            // Return a function that will call method_missing when invoked
+            return Ok(Value::NativeFunction(NativeFunction::new(
+                format!("{}.method_missing", class_name),
+                None, // Variable arity
+                move |args: Vec<Value>| -> Result<Value, String> {
+                    // Build the method_missing call arguments: [method_name, ...original_args]
+                    let mut mm_args = vec![Value::String(method_name.clone())];
+                    mm_args.extend(args);
+
+                    // Build environment for method_missing execution
+                    let call_env = Environment::with_enclosing(mm_method.closure.clone());
+                    let mut env_inner = call_env;
+                    env_inner.define("this".to_string(), Value::Instance(inst_clone.clone()));
+
+                    // Bind method_missing parameters
+                    for (i, arg) in mm_args.iter().enumerate() {
+                        if i < mm_method.params.len() {
+                            env_inner.define(mm_method.params[i].name.clone(), arg.clone());
+                        }
+                    }
+                    let call_env_rc = Rc::new(RefCell::new(env_inner));
+                    let env_clone = call_env_rc.borrow().clone();
+
+                    let mut interpreter = Interpreter::default();
+                    let result = match interpreter.execute_block(&mm_method.body, env_clone) {
+                        Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
+                        Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
+                        Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
+                            Err(format!("Exception in method_missing: {}", e))
+                        }
+                        Err(e) => Err(format!("Error in method_missing: {}", e)),
+                    };
+                    result
+                },
+            )));
+        }
+
         Err(RuntimeError::NoSuchProperty {
             value_type: class_name,
             property: name.to_string(),
@@ -440,6 +696,95 @@ impl Interpreter {
             "blank?" => return Ok(Value::Bool(false)),
             "present?" => return Ok(Value::Bool(true)),
             "to_s" | "to_string" => return Ok(Value::String(format!("<class {}>", class.name))),
+            // Metaprogramming: respond_to? (checks if class has static method)
+            "respond_to?" => {
+                let class_clone = class.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "respond_to?",
+                    Some(1),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let method_name = match args.first() {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "respond_to? expects a string or symbol argument".to_string()
+                                )
+                            }
+                        };
+                        let has_method = class_clone.find_static_method(&method_name).is_some()
+                            || class_clone
+                                .find_native_static_method(&method_name)
+                                .is_some();
+                        Ok(Value::Bool(has_method))
+                    },
+                )));
+            }
+            // Metaprogramming: send (call static method dynamically)
+            "send" => {
+                let class_clone = class.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "send",
+                    None,
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        if args.is_empty() {
+                            return Err("send expects at least a method name argument".to_string());
+                        }
+                        let method_name = match &args[0] {
+                            Value::String(s) => s.clone(),
+                            Value::Symbol(s) => s.clone(),
+                            _ => {
+                                return Err("send expects method name as first argument".to_string())
+                            }
+                        };
+                        let call_args: Vec<Value> = args[1..].to_vec();
+
+                        // Check static methods
+                        if let Some(method) = class_clone.find_static_method(&method_name) {
+                            // Build environment for method execution
+                            let call_env = Environment::with_enclosing(method.closure.clone());
+                            let mut env_inner = call_env;
+
+                            // Bind call arguments to parameters
+                            for (i, arg) in call_args.iter().enumerate() {
+                                if i < method.params.len() {
+                                    env_inner.define(method.params[i].name.clone(), arg.clone());
+                                }
+                            }
+                            let call_env_rc = Rc::new(RefCell::new(env_inner));
+                            let env_clone = call_env_rc.borrow().clone();
+
+                            let mut interpreter = Interpreter::default();
+                            let result = match interpreter.execute_block(&method.body, env_clone) {
+                                Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
+                                Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
+                                Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
+                                    Err(format!("Exception in send: {}", e))
+                                }
+                                Err(e) => Err(format!("Error in send: {}", e)),
+                            };
+                            result
+                        } else if let Some(native_method) =
+                            class_clone.find_native_static_method(&method_name)
+                        {
+                            (native_method.func)(call_args)
+                        } else {
+                            Err(format!("undefined method `{}`", method_name))
+                        }
+                    },
+                )));
+            }
+            // Metaprogramming: methods (lists all static method names)
+            "methods" => {
+                // Trigger cache building by calling find_method
+                let _ = class.find_static_method("__methods_dummy__");
+                let _ = class.find_native_static_method("__methods_dummy__");
+                let mut method_names: Vec<Value> = Vec::new();
+                if let Some(ref cache) = *class.all_methods_cache.borrow() {
+                    method_names = cache.keys().map(|k| Value::String(k.clone())).collect();
+                }
+                return Ok(Value::Array(Rc::new(RefCell::new(method_names))));
+            }
             _ => {}
         }
 
