@@ -142,3 +142,21 @@ describe("instance_eval", fn() {
         assert_eq(result, 10)
     });
 });
+
+describe("class_eval", fn() {
+    test("executes block with self bound to class", fn() {
+        class Foo {
+            static name: String = "FooClass"
+        }
+        let result = Foo.class_eval { self.name }
+        assert_eq(result, "FooClass")
+    });
+
+    test("can access static methods via self", fn() {
+        class Foo {
+            static value: Int = 42
+        }
+        let result = Foo.class_eval { self.value }
+        assert_eq(result, 42)
+    });
+});

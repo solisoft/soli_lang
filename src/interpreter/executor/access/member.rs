@@ -853,6 +853,48 @@ impl Interpreter {
                     },
                 )));
             }
+            // Metaprogramming: class_eval - execute block with self bound to class
+            // Usage: MyClass.class_eval { self.some_method }
+            "class_eval" => {
+                let class_val_clone = class_val.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "class_eval",
+                    Some(1),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let block = match args.first() {
+                            Some(Value::Function(f)) => f.clone(),
+                            _ => {
+                                return Err(
+                                    "class_eval expects a block/function argument".to_string()
+                                )
+                            }
+                        };
+
+                        let class_rc = match &class_val_clone {
+                            Value::Class(c) => c.clone(),
+                            _ => return Err("class_eval requires a class".to_string()),
+                        };
+
+                        // Create environment with self bound to class
+                        let mut eval_env = Environment::with_enclosing(block.closure.clone());
+                        eval_env.define("this".to_string(), Value::Class(class_rc.clone()));
+                        eval_env.define("self".to_string(), Value::Class(class_rc.clone()));
+
+                        let eval_env_rc = Rc::new(RefCell::new(eval_env));
+                        let env_clone = eval_env_rc.borrow().clone();
+
+                        let mut interpreter = Interpreter::default();
+                        match interpreter.execute_block(&block.body, env_clone) {
+                            Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
+                            Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
+                            Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
+                                Err(format!("Exception in class_eval: {}", e))
+                            }
+                            Err(e) => Err(format!("Error in class_eval: {}", e)),
+                        }
+                    },
+                )));
+            }
             // Metaprogramming: methods (lists all static method names)
             "methods" => {
                 // Trigger cache building by calling find_method
