@@ -178,60 +178,71 @@ pub fn find_route(
             let index = index.borrow();
 
             // Normalize path: remove trailing slash except for root
-            let normalized_path = if path != "/" && path.ends_with('/') {
+            let path_had_trailing_slash = path != "/" && path.ends_with('/');
+            let normalized_path = if path_had_trailing_slash {
                 &path[..path.len() - 1]
             } else {
                 path
             };
 
-            // Fast path: nested HashMap lookup avoids format!("{}:{}", method, path) allocation
-            if let Some(path_map) = index.exact_matches.get(method) {
-                if let Some(&idx) = path_map.get(normalized_path) {
-                    if let Some(route) = routes.get(idx) {
-                        let middleware = resolve_middleware(route);
-                        return Some((route.handler_name.clone(), middleware, HashMap::new()));
-                    }
-                }
+            // Get method-specific indices once
+            let method_exact_map = index.exact_matches.get(method);
+            let method_pattern_indices = index.by_method.get(method);
+
+            // Try normalized path first (most common case)
+            if let Some(result) = try_find_route(
+                &routes,
+                method_exact_map,
+                method_pattern_indices,
+                normalized_path,
+            ) {
+                return Some(result);
             }
 
-            // Fall back to method-indexed search with pattern matching
-            if let Some(indices) = index.by_method.get(method) {
-                for &idx in indices {
-                    if let Some(route) = routes.get(idx) {
-                        if let Some(params) = match_path(&route.path_pattern, normalized_path) {
-                            let middleware = resolve_middleware(route);
-                            return Some((route.handler_name.clone(), middleware, params));
-                        }
-                    }
-                }
-            }
-
-            // Try with trailing slash if normalization changed the path
-            if normalized_path != path {
-                if let Some(path_map) = index.exact_matches.get(method) {
-                    if let Some(&idx) = path_map.get(path) {
-                        if let Some(route) = routes.get(idx) {
-                            let middleware = resolve_middleware(route);
-                            return Some((route.handler_name.clone(), middleware, HashMap::new()));
-                        }
-                    }
-                }
-
-                if let Some(indices) = index.by_method.get(method) {
-                    for &idx in indices {
-                        if let Some(route) = routes.get(idx) {
-                            if let Some(params) = match_path(&route.path_pattern, path) {
-                                let middleware = resolve_middleware(route);
-                                return Some((route.handler_name.clone(), middleware, params));
-                            }
-                        }
-                    }
+            // If path had trailing slash, try original path as fallback
+            if path_had_trailing_slash {
+                if let Some(result) =
+                    try_find_route(&routes, method_exact_map, method_pattern_indices, path)
+                {
+                    return Some(result);
                 }
             }
 
             None
         })
     })
+}
+
+/// Helper function to try finding a route with exact and pattern matching.
+fn try_find_route(
+    routes: &[Route],
+    exact_map: Option<&std::collections::HashMap<String, usize>>,
+    pattern_indices: Option<&Vec<usize>>,
+    path: &str,
+) -> Option<(String, Vec<Value>, HashMap<String, String>)> {
+    // Fast path: nested HashMap lookup for exact matches
+    if let Some(path_map) = exact_map {
+        if let Some(&idx) = path_map.get(path) {
+            if let Some(route) = routes.get(idx) {
+                let middleware = resolve_middleware(route);
+                return Some((route.handler_name.clone(), middleware, HashMap::new()));
+            }
+        }
+    }
+
+    // Fall back to method-indexed search with pattern matching
+    if let Some(indices) = pattern_indices {
+        for &idx in indices {
+            if let Some(route) = routes.get(idx) {
+                if let Some(params) = match_path(&route.path_pattern, path) {
+                    let middleware = resolve_middleware(route);
+                    return Some((route.handler_name.clone(), middleware, params));
+                }
+            }
+        }
+    }
+
+    None
 }
 
 /// Resolve middleware for a route.

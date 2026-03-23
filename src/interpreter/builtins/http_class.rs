@@ -19,6 +19,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::net::{IpAddr, ToSocketAddrs};
 use std::rc::Rc;
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
@@ -91,9 +92,76 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn is_blocked_host(_host: &str) -> bool {
-    // Allow all hosts including localhost and private networks
+fn is_blocked_host(host: &str) -> bool {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return is_blocked_ip(ip);
+    }
+
+    let lower_host = host.to_lowercase();
+    if lower_host == "localhost"
+        || lower_host == "localhost."
+        || lower_host.starts_with("localhost.")
+    {
+        return true;
+    }
+
+    if let Ok(addrs) = (host, 0u16).to_socket_addrs() {
+        for addr in addrs {
+            if is_blocked_ip(addr.ip()) {
+                return true;
+            }
+        }
+    }
+
     false
+}
+
+fn is_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ipv4) => {
+            let octets = ipv4.octets();
+            if octets[0] == 127 {
+                return true;
+            }
+            if octets[0] == 10 {
+                return true;
+            }
+            if octets[0] == 172 && (octets[1] & 0xf0) == 16 {
+                return true;
+            }
+            if octets[0] == 192 && octets[1] == 168 {
+                return true;
+            }
+            if octets[0] == 169 && octets[1] == 254 {
+                return true;
+            }
+            if octets[0] == 0 {
+                return true;
+            }
+            if octets[0] == 100 && (octets[1] & 0xc0) == 64 {
+                return true;
+            }
+            false
+        }
+        IpAddr::V6(ipv6) => {
+            let segments = ipv6.segments();
+            if segments[0] == 0xfe80 {
+                return true;
+            }
+            if segments[0] == 0xff01 {
+                return true;
+            }
+            for segment in &segments[..8] {
+                if *segment == 0 {
+                    continue;
+                }
+                if *segment == 1 {
+                    return true;
+                }
+            }
+            false
+        }
+    }
 }
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();

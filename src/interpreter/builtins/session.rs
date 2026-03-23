@@ -201,11 +201,13 @@ pub fn extract_session_id_from_cookie(cookie_header: Option<&str>) -> Option<Str
 }
 
 /// Create Set-Cookie header value for session.
-pub fn create_session_cookie(session_id: &str) -> String {
+pub fn create_session_cookie(session_id: &str, secure: bool) -> String {
+    let secure_flag = if secure { "; Secure" } else { "" };
     format!(
-        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
         session_id,
-        24 * 60 * 60 // 24 hours
+        24 * 60 * 60, // 24 hours
+        secure_flag
     )
 }
 

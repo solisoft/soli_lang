@@ -355,12 +355,21 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
 
 /// Hardcoded query - exact same pattern as HTTP.request for comparison.
 pub fn exec_query_hardcoded(sdbql: String) -> Value {
-    // Hardcoded values - exactly like test-cursor does
-    let url = "http://localhost:6745/_api/database/solipay/cursor";
-    let api_key = "sk_8bc935c8fc837e147a0ab100747d197b354d5cdf80635bbd5951bc1a313a1ab8";
-    let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\"#));
+    // Use environment variables for credentials
+    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let api_key = std::env::var("SOLIDB_API_KEY").unwrap_or_else(|_| {
+        eprintln!("WARNING: SOLIDB_API_KEY not set, database queries will fail");
+        String::new()
+    });
+    let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\""#));
 
     let client = get_http_client().clone();
+    let db_name = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "solipay".to_string());
+    let url = format!(
+        "{}/_api/database/{}/cursor",
+        host.trim_end_matches('/'),
+        db_name
+    );
     match run_db_future(async move {
         let request = client
             .post(url)

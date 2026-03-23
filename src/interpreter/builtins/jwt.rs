@@ -167,6 +167,16 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 }
             };
 
+            // Enforce minimum secret length for security
+            const MIN_SECRET_LENGTH: usize = 16;
+            if secret.len() < MIN_SECRET_LENGTH {
+                return Err(format!(
+                    "jwt_verify() secret must be at least {} characters for security (got {})",
+                    MIN_SECRET_LENGTH,
+                    secret.len()
+                ));
+            }
+
             // Try to decode and verify the token
             let mut validation = Validation::default();
             validation.validate_exp = true;

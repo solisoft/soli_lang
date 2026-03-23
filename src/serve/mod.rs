@@ -1543,11 +1543,36 @@ async fn handle_hyper_request(
     // Check for static file in public directory
     if method == "GET" && public_dir.exists() {
         let relative_path = path.trim_start_matches('/');
+        // Decode URL-encoded characters to prevent %2e%2e%2f bypass
+        let decoded_path = match urlencoding::decode(relative_path) {
+            Ok(d) => d.into_owned(),
+            Err(_) => relative_path.to_string(),
+        };
         // Do not allow directory traversal or absolute paths in URL
-        if !relative_path.contains("..") && !relative_path.starts_with('/') {
-            let file_path = public_dir.join(relative_path);
+        if !decoded_path.contains("..") && !decoded_path.starts_with('/') {
+            let file_path = public_dir.join(&decoded_path);
 
-            if file_path.exists() && file_path.is_file() {
+            // Canonicalize both paths to resolve symlinks and prevent traversal
+            if let (Ok(canonical_file), Ok(canonical_public)) = (
+                std::fs::canonicalize(&file_path),
+                std::fs::canonicalize(public_dir.as_ref()),
+            ) {
+                // Ensure the canonical file path is within public directory
+                let canonical_file_str = canonical_file.to_string_lossy();
+                let canonical_public_str = canonical_public.to_string_lossy();
+                if !canonical_file_str.starts_with(&*canonical_public_str) {
+                    return Ok(Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .body(Full::new(Bytes::from("Forbidden")))
+                        .unwrap());
+                }
+                if !canonical_file.is_file() {
+                    return Ok(Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(Full::new(Bytes::from("Not Found")))
+                        .unwrap());
+                }
+
                 let mime_type = server_constants::get_mime_type(&file_path);
 
                 // In production mode, check for conditional request (If-None-Match)
@@ -3350,12 +3375,20 @@ fn handle_request(
             }
             let error_html =
                 render_production_error_page(404, "The page you're looking for doesn't exist.");
+            let is_https = data
+                .headers
+                .get("x-forwarded-proto")
+                .map(|v| v == "https")
+                .unwrap_or(false);
             return ResponseData {
                 status: 404,
                 headers: if is_new_session {
                     if let Some(ref sid) = session_id {
                         vec![
-                            ("Set-Cookie".to_string(), create_session_cookie(sid)),
+                            (
+                                "Set-Cookie".to_string(),
+                                create_session_cookie(sid, is_https),
+                            ),
                             (
                                 "Content-Type".to_string(),
                                 "text/html; charset=utf-8".to_string(),
@@ -3432,13 +3465,22 @@ fn handle_request(
         parsed_body,
     );
 
+    // Detect HTTPS from X-Forwarded-Proto header
+    let is_https = data
+        .headers
+        .get("x-forwarded-proto")
+        .map(|v| v == "https")
+        .unwrap_or(false);
+
     // Helper to finalize response with session cookie and timing
     let finalize_response = |mut resp: ResponseData| -> ResponseData {
         // Add session cookie if it's a new session
         if is_new_session {
             if let Some(ref sid) = session_id {
-                resp.headers
-                    .push(("Set-Cookie".to_string(), create_session_cookie(sid)));
+                resp.headers.push((
+                    "Set-Cookie".to_string(),
+                    create_session_cookie(sid, is_https),
+                ));
             }
         }
         // Add security headers if enabled
@@ -3761,37 +3803,68 @@ async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes
             .unwrap());
     }
 
-    // Try to read the file - resolve relative to app root
-    let app_root = crate::live::component::get_app_root();
-    let path = if std::path::Path::new(&file).is_absolute() {
-        std::path::Path::new(&file).to_path_buf()
-    } else {
-        let joined = app_root.join(&file);
-        if joined.exists() {
-            joined
-        } else {
-            // File path may already include the app root prefix (e.g. "host/app/controllers/foo.sl"
-            // when app_root is "host/"), so try it directly relative to CWD
-            let direct = std::path::Path::new(&file).to_path_buf();
-            if direct.exists() {
-                direct
-            } else if let Ok(stripped) = std::path::Path::new(&file).strip_prefix(&app_root) {
-                // Also try stripping a duplicated app_root prefix
-                app_root.join(stripped)
-            } else {
-                joined
-            }
-        }
-    };
-    if !path.exists() {
+    // Reject absolute paths - security measure
+    if std::path::Path::new(&file).is_absolute() {
         return Ok(Response::builder()
-            .status(StatusCode::NOT_FOUND)
+            .status(StatusCode::FORBIDDEN)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(r#"{"error": "File not found"}"#)))
+            .body(Full::new(Bytes::from(
+                r#"{"error": "Absolute paths not allowed"}"#,
+            )))
             .unwrap());
     }
 
-    let content = match std::fs::read_to_string(path) {
+    // Try to read the file - resolve relative to app root
+    let app_root = crate::live::component::get_app_root();
+    let joined = app_root.join(&file);
+
+    // Canonicalize and verify the path is within app_root
+    let canonical_path = match std::fs::canonicalize(&joined) {
+        Ok(p) => p,
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(r#"{"error": "File not found"}"#)))
+                .unwrap());
+        }
+    };
+
+    let canonical_root = match std::fs::canonicalize(&app_root) {
+        Ok(r) => r,
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(
+                    r#"{"error": "Could not determine app root"}"#,
+                )))
+                .unwrap());
+        }
+    };
+
+    let canonical_path_str = canonical_path.to_string_lossy();
+    let canonical_root_str = canonical_root.to_string_lossy();
+
+    if !canonical_path_str.starts_with(&*canonical_root_str) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(
+                r#"{"error": "Path outside app directory"}"#,
+            )))
+            .unwrap());
+    }
+
+    if !canonical_path.is_file() {
+        return Ok(Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(r#"{"error": "Not a file"}"#)))
+            .unwrap());
+    }
+
+    let content = match std::fs::read_to_string(&canonical_path) {
         Ok(c) => c,
         Err(_) => {
             return Ok(Response::builder()

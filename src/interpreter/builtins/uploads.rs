@@ -3,11 +3,40 @@ use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use lazy_static::lazy_static;
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::RwLock;
 
 lazy_static! {
     static ref SOLIDB_ADDRESS: RwLock<Option<String>> = RwLock::new(None);
+}
+
+/// Sanitize filename to prevent path traversal and other security issues.
+/// Removes directory components, leading/trailing dots and spaces, and dangerous characters.
+fn sanitize_filename(filename: &str) -> String {
+    // Get just the filename component (remove any path)
+    let filename = Path::new(filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(filename);
+
+    // Remove any remaining path components (in case of .. traversal)
+    let mut result = filename.replace("..", "").replace(['/', '\\'], "");
+
+    // Remove leading/trailing dots and spaces
+    result = result
+        .trim()
+        .trim_start_matches('.')
+        .trim_start_matches(' ')
+        .trim_end_matches(' ')
+        .to_string();
+
+    // If empty after sanitization, use a default
+    if result.is_empty() {
+        result = "unnamed".to_string();
+    }
+
+    result
 }
 
 pub fn get_solidb_address() -> Option<String> {
@@ -339,7 +368,7 @@ fn parse_multipart_data(body: &str, boundary: &str) -> Result<Vec<ParsedFile>, S
                             .find('"')
                             .map(|i| fname_start + 10 + i);
                         if let Some(end) = fname_end {
-                            filename = header[fname_start + 10..end].to_string();
+                            filename = sanitize_filename(&header[fname_start + 10..end]);
                         }
                     }
                 }
