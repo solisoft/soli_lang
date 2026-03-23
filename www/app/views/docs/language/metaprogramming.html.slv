@@ -268,44 +268,42 @@ calc.add(1, 2)         # prints "Computing..." then => 3</code></pre>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
             </span>
-            Contextual Evaluation: class_eval() & instance_eval()
+            Contextual Evaluation: instance_eval()
         </h2>
 
         <p class="text-gray-400 mb-4">
-            Evaluate code in the context of a class or instance, giving direct access to private members and defining methods.
+            Evaluate a block in the context of an instance, with <code class="text-pink-400">this</code> and <code class="text-pink-400">self</code> bound to the instance.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli (Planned)</h3>
-            <pre><code class="language-soli text-sm"># Define instance method on String
-String.class_eval(def {
-    String.define_method("shout", def {
-        this.up + "!"
-    })
-})
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">class Counter
+    count: Int = 0
+end
 
-"hello".shout  # => "HELLO!"
+let c = new Counter()
+c.instance_eval {
+    this.count = 42
+}
+c.count  # => 42
 
-# Define class method
-String.class_eval(def {
-    String.define_method("create_greeting", def {
-        "Hello from String class!"
-    })
-})
-
-String.create_greeting  # => "Hello from String class!"</code></pre>
+# Can also read values
+let val = c.instance_eval { this.count }
+val  # => 42</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                These methods would accept a lambda/function and execute it with modified <code class="text-pink-400">self</code> context:
+                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code> as an instance method:
             </p>
-            <pre><code class="language-rust text-sm">// class_eval: sets self=Class, allows defining methods on the class
-// instance_eval: sets self=Instance, allows direct field access
+            <pre><code class="language-rust text-sm">// instance_eval executes a block with:
+// - 'this' bound to the instance
+// - 'self' bound to the instance (alias for this)
+// - closure environment preserved
 
-// The closure captures the target class/instance as its `self`
-// This integrates with existing self resolution in the interpreter</code></pre>
+// Note: class_eval requires modifying class methods at runtime,
+// which requires architectural changes to Class.methods</code></pre>
         </div>
     </section>
 

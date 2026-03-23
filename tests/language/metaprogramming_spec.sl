@@ -116,3 +116,29 @@ describe("method_missing", fn() {
         assert_eq(result, "Method 'undefined_method' was called");
     });
 });
+
+describe("instance_eval", fn() {
+    test("executes block with this bound to instance", fn() {
+        class Foo { name: String }
+        let foo = new Foo()
+        foo.name = "Test"
+        let result = foo.instance_eval { this.name }
+        assert_eq(result, "Test")
+    });
+
+    test("can modify instance state", fn() {
+        class Counter { count: Int = 0 }
+        let c = new Counter()
+        c.instance_eval {
+            this.count = 42
+        }
+        assert_eq(c.count, 42)
+    });
+
+    test("self is same as this", fn() {
+        class Foo { value: Int = 10 }
+        let foo = new Foo()
+        let result = foo.instance_eval { self.value }
+        assert_eq(result, 10)
+    });
+});

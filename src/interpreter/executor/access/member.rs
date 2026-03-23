@@ -358,6 +358,45 @@ impl Interpreter {
                     },
                 )));
             }
+            // Metaprogramming: instance_eval - execute block with self bound to instance
+            // Usage: obj.instance_eval { this.name }
+            "instance_eval" => {
+                let inst_clone = inst.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "instance_eval",
+                    Some(1),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let block = match args.first() {
+                            Some(Value::Function(f)) => f.clone(),
+                            _ => {
+                                return Err(
+                                    "instance_eval expects a block/function argument".to_string()
+                                )
+                            }
+                        };
+
+                        // Create environment with self bound to instance
+                        let mut eval_env = Environment::with_enclosing(block.closure.clone());
+                        eval_env.define("this".to_string(), Value::Instance(inst_clone.clone()));
+
+                        // Also define 'self' as alias for 'this'
+                        eval_env.define("self".to_string(), Value::Instance(inst_clone.clone()));
+
+                        let eval_env_rc = Rc::new(RefCell::new(eval_env));
+                        let env_clone = eval_env_rc.borrow().clone();
+
+                        let mut interpreter = Interpreter::default();
+                        match interpreter.execute_block(&block.body, env_clone) {
+                            Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
+                            Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
+                            Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
+                                Err(format!("Exception in instance_eval: {}", e))
+                            }
+                            Err(e) => Err(format!("Error in instance_eval: {}", e)),
+                        }
+                    },
+                )));
+            }
             // Metaprogramming: methods (lists all accessible method names)
             "methods" => {
                 let inst_ref = inst.borrow();
