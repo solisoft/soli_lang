@@ -14,9 +14,9 @@
         <p class="text-xl text-gray-300 leading-8 mb-4">
             Advanced runtime code generation and introspection capabilities for building dynamic, expressive applications.
         </p>
-        <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4">
+            <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4">
             <p class="text-emerald-200 text-sm">
-                <strong class="text-emerald-400">Available:</strong> respond_to?, send, method_missing, instance_variables, instance_variable_get, instance_variable_set, methods, instance_eval, class_eval. See <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for examples.
+                <strong class="text-emerald-400">Available:</strong> respond_to?, send, method_missing, instance_variables, instance_variable_get, instance_variable_set, methods, instance_eval, class_eval, define_method. See <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for examples.
             </p>
         </div>
     </div>
@@ -173,40 +173,39 @@ let is_universal = matches!(method_name.as_str(),
         </h2>
 
         <p class="text-gray-400 mb-4">
-            Create or modify methods at runtime. Essential for building DSLs and dynamic proxies.
+            Create or modify methods at runtime. Essential for building DSLs and dynamic proxies. Methods are defined on the instance's class, affecting all instances of that class.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli (Planned)</h3>
-            <pre><code class="language-soli text-sm">class DynamicFactory
-    def initialize
-        this.define_method("create", def(name) {
-            "Creating: " + name
-        })
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">class Foo { }
+let foo = Foo.new()
 
-        DynamicFactory.define_method("default_factory", def {
-            "Default Factory"
-        })
-    end
-end
+# Define a method with no arguments
+foo.define_method("greet", || { "Hello!" })
+foo.greet()  # => "Hello!"
 
-let factory = DynamicFactory()
-factory.create("widget")             # => "Creating: widget"
-DynamicFactory.default_factory       # => "Default Factory"</code></pre>
+# Define a method with arguments
+foo.define_method("add", |a, b| { a + b })
+foo.add(1, 2)  # => 3
+
+# Methods are defined on the class, so all instances see it:
+let foo2 = Foo.new()
+foo2.greet()  # => "Hello!"</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Methods are stored in <code class="text-pink-400">Class.methods: HashMap&lt;String, Rc&lt;Function&gt;&gt;</code> (see <code class="text-pink-400">src/interpreter/value.rs:866</code>):
+                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code>:
             </p>
-            <pre><code class="language-rust text-sm">// define_method would add to Class.methods
-// The Function could come from:
-// - A lambda passed as argument
-// - Parsed from a string (using the existing parser)
-// - Compiled from AST
+            <pre><code class="language-rust text-sm">// define_method adds to Class.methods (now using RefCell for interior mutability)
+// The Function comes from a lambda passed as argument
+// Methods are stored in the class's methods HashMap
 
-// Instance method:
+// Note: Class-level define_method (Foo.define_method) is not yet implemented</code></pre>
+        </div>
+    </section>
 inst.class.methods.insert(method_name, function_rc);
 
 // Class/static method:
@@ -532,12 +531,12 @@ User.find_by_name_and_status("Bob", "active")  # => "Finding by name_and_status"
                         <tr class="bg-emerald-500/5">
                             <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs">High</span></td>
                             <td class="py-2 px-4 text-white">define_method()</td>
-                            <td class="py-2 px-4 text-gray-400">Requires Class.methods to use RefCell (architectural change)</td>
+                            <td class="py-2 px-4 text-gray-400">Implemented - defines methods on instance's class</td>
                         </tr>
                         <tr class="bg-yellow-500/5">
                             <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs">Medium</span></td>
                             <td class="py-2 px-4 text-white">alias_method()</td>
-                            <td class="py-2 px-4 text-gray-400">Same as define_method, depends on it</td>
+                            <td class="py-2 px-4 text-gray-400">Create method aliases (easy to add now)</td>
                         </tr>
                         <tr class="bg-orange-500/5">
                             <td class="py-2 px-4"><span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs">Low</span></td>
