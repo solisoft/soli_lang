@@ -129,6 +129,9 @@ image = "0.25"
 # Pinned transitive dependency to fix RUSTSEC-2026-0009
 time = ">=0.3.47"
 
+# SSH support for deploy
+ssh2 = "0.9"
+
 [dev-dependencies]
 pretty_assertions = "1.4"
 criterion = { version = "0.5", features = ["html_reports"] }

@@ -1,0 +1,160 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Deployment</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Deploy your Soli applications to remote servers with a single command. Blue-green deployments via soli-proxy.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-green-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-green-400 mb-1">Parallel Deployment</h4>
+                <p class="text-green-200/80 text-sm">
+                    Deploy to multiple servers simultaneously with automatic git pull and blue-green switching.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Quick Start</h2>
+    <p class="text-gray-400 mb-6">
+        Create a <code class="text-indigo-400">deploy.toml</code> file in your project root:
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="deploy.toml"><code class="language-toml text-sm">git_url = "https://github.com/your-org/your-project.git"
+git_branch = "main"
+git_folder = "www/"
+
+[[servers]]
+name = "prod-1"
+username = "deploy"
+ip = "192.168.1.100"
+folder = "/var/www/myapp"
+api_key = "your-api-key"
+proxy_url = "https://proxy.example.com"
+
+[[servers]]
+name = "prod-2"
+username = "deploy"
+ip = "192.168.1.101"
+folder = "/var/www/myapp"
+api_key = "your-api-key"
+proxy_url = "https://proxy.example.com"</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        Then run:
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli deploy</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Configuration</h2>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Global Settings</h3>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-8">
+        <ul class="list-disc list-inside text-gray-400 space-y-2">
+            <li><code class="text-indigo-400">git_url</code> &mdash; Git repository URL (required)</li>
+            <li><code class="text-indigo-400">git_branch</code> &mdash; Branch to deploy (default: <code class="text-indigo-400">main</code>)</li>
+            <li><code class="text-indigo-400">git_folder</code> &mdash; Subfolder to deploy, e.g. <code class="text-indigo-400">www/</code> (default: <code class="text-indigo-400">/</code>)</li>
+        </ul>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Server Settings</h3>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-8">
+        <ul class="list-disc list-inside text-gray-400 space-y-2">
+            <li><code class="text-indigo-400">name</code> &mdash; Server identifier for logging</li>
+            <li><code class="text-indigo-400">username</code> &mdash; SSH username</li>
+            <li><code class="text-indigo-400">ip</code> &mdash; Server IP address</li>
+            <li><code class="text-indigo-400">folder</code> &mdash; Deployment path on server</li>
+            <li><code class="text-indigo-400">api_key</code> &mdash; soli-proxy API key</li>
+            <li><code class="text-indigo-400">proxy_url</code> &mdash; soli-proxy base URL</li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Deployment Flow</h2>
+    <p class="text-gray-400 mb-6">
+        For each server (in parallel):
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="text-2xl font-bold text-indigo-400 mb-2">1</div>
+            <p class="text-gray-400 text-sm">SSH connect to <code class="text-indigo-400">username@ip</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="text-2xl font-bold text-indigo-400 mb-2">2</div>
+            <p class="text-gray-400 text-sm">Git clone or pull in deployment folder</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="text-2xl font-bold text-indigo-400 mb-2">3</div>
+            <p class="text-gray-400 text-sm">Trigger blue-green deploy via soli-proxy API</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="text-2xl font-bold text-indigo-400 mb-2">4</div>
+            <p class="text-gray-400 text-sm">Automatic health checks and traffic switch</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Requirements</h2>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
+        <ul class="list-disc list-inside text-gray-400 space-y-2">
+            <li>SSH key-based authentication (keys must be added to ssh-agent)</li>
+            <li>The <code class="text-indigo-400">soli</code> binary must be in your PATH</li>
+            <li>soli-proxy running on each target server</li>
+            <li>Valid API keys configured in soli-proxy</li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Usage</h2>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="Terminal"><code class="language-bash text-sm"># Deploy from current directory
+soli deploy
+
+# Deploy from specific folder
+soli deploy --folder /path/to/project
+
+# Short form
+soli deploy -f /path/to/project</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Output Example</h2>
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="Terminal"><code class="language-text text-sm">Deploying from /path/to/project...
+Deploying to 2 server(s) in parallel...
+
+[prod-1] Connecting to deploy@192.168.1.100...
+[prod-1] Folder exists, pulling latest changes...
+[prod-1] Triggering blue-green deploy for app 'myapp'...
+[prod-1] Deploy started on slot green ✓
+
+[prod-2] Connecting to deploy@192.168.1.101...
+[prod-2] Folder exists, pulling latest changes...
+[prod-2] Triggering blue-green deploy for app 'myapp'...
+[prod-2] Deploy started on slot blue ✓
+
+✓ 2/2 servers deployed successfully</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/core-concepts/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Routing &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn about soli-proxy routing configuration.</p>
+        </a>
+        <a href="/docs/getting-started/introduction" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Introduction &rarr;</h3>
+            <p class="text-sm text-gray-400">Get started with Soli.</p>
+        </a>
+    </div>
+</div>

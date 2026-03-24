@@ -87,3 +87,4 @@ Soli favors convention over configuration. By following standard naming patterns
 - **[Testing](/docs/testing)** - BDD testing framework with coverage reporting
 - **[Models](/docs/models)** - ORM-style data modeling with CRUD operations
 - **[Migrations](/docs/migrations)** - Database schema versioning and management
+- **[Deploy](/docs/deploy)** - Deploy to remote servers with blue-green deployment

@@ -138,6 +138,14 @@ fn development_tools_scaffold(req)
     render_docs("docs/development-tools/scaffold", "Scaffold Generator", "development_tools", "scaffold")
 end
 
+fn development_tools_deploy(req)
+    render_docs("docs/development-tools/deploy", "Deploy", "development_tools", "deploy")
+end
+
+fn development_tools_editor_integration(req)
+    render_docs("docs/development-tools/editor-integration", "Editor Integration", "development_tools", "editor_integration")
+end
+
 # ============================================================================
 # Language Reference
 # ============================================================================

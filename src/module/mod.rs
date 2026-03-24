@@ -7,6 +7,7 @@
 //! - Circular dependency detection
 
 pub mod credentials;
+pub mod deploy;
 pub mod installer;
 pub mod lockfile;
 mod package;

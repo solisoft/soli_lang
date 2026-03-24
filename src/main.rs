@@ -89,6 +89,8 @@ enum Command {
     },
     /// Publish package to registry
     Publish { registry: Option<String> },
+    /// Deploy application to servers
+    Deploy { folder: Option<String> },
 }
 
 /// Database migration action
@@ -124,6 +126,7 @@ fn print_usage() {
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
     eprintln!("       soli lint [path]");
+    eprintln!("       soli deploy [--folder <path>]");
     eprintln!("       soli db:migrate <up|down|status> [folder]");
     eprintln!("       soli db:migrate generate <name> [folder]");
     eprintln!();
@@ -146,6 +149,7 @@ fn print_usage() {
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("  test [path]          Run tests (default: tests/ directory)");
     eprintln!("  lint [path]          Lint .sl files for style issues and code smells");
+    eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
     eprintln!("  db:migrate           Database migration commands");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -611,6 +615,28 @@ fn parse_args() -> Options {
                 options.command = Command::Lint { path };
                 return options;
             }
+            "deploy" => {
+                i += 1;
+                let mut folder: Option<String> = None;
+                while i < args.len() {
+                    if args[i] == "--folder" || args[i] == "-f" {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("--folder requires a path");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        folder = Some(args[i].clone());
+                    } else {
+                        eprintln!("Unknown option for deploy: {}", args[i]);
+                        print_usage();
+                        process::exit(64);
+                    }
+                    i += 1;
+                }
+                options.command = Command::Deploy { folder };
+                return options;
+            }
             "test" => {
                 // Parse test command
                 i += 1;
@@ -736,6 +762,7 @@ fn main() {
             daemonize,
         } => run_serve(folder, *port, *dev_mode, *workers, *daemonize),
         Command::Lint { path } => run_lint(path.as_deref()),
+        Command::Deploy { folder } => run_deploy(folder.as_deref()),
         Command::Init => run_init(),
         Command::Add {
             name,
@@ -1025,6 +1052,45 @@ fn run_lint(path: Option<&str>) {
             total_issues, files_with_issues
         );
         process::exit(1);
+    }
+}
+
+fn run_deploy(folder: Option<&str>) {
+    let path = if let Some(f) = folder {
+        Path::new(f).to_path_buf()
+    } else {
+        std::env::current_dir().expect("Failed to get current directory")
+    };
+
+    println!("Deploying from {}...", path.display());
+
+    let config = match solilang::module::deploy::load_deploy_config(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    if config.servers.is_empty() {
+        eprintln!("Error: No servers configured in deploy.toml");
+        std::process::exit(1);
+    }
+
+    println!(
+        "Deploying to {} server(s) in parallel...",
+        config.servers.len()
+    );
+    println!();
+
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+    let results = rt.block_on(solilang::module::deploy::deploy(config));
+
+    solilang::module::deploy::print_summary(&results);
+
+    let all_success = results.iter().all(|r| r.success);
+    if !all_success {
+        std::process::exit(1);
     }
 }
 
