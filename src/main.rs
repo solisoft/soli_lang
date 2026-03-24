@@ -780,7 +780,9 @@ fn main() {
         Command::Remove { name } => run_remove(name),
         Command::Install => run_install(),
         Command::Update { name } => run_update(name.as_deref()),
-        Command::SelfUpdate => run_self_update(),
+        Command::SelfUpdate => run_self_update()
+            .map_err(|e| e.to_string())
+            .expect("Update failed"),
         Command::Login { registry, token } => run_login(registry.as_deref(), token.as_deref()),
         Command::Publish { registry } => run_publish(registry.as_deref()),
         Command::Test {
@@ -1709,7 +1711,7 @@ fn run_update(name: Option<&str>) {
     println!();
 }
 
-fn run_self_update() {
+fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     let repo = "solisoft/soli_lang";
     let current_version = VERSION;
 
@@ -1781,7 +1783,7 @@ fn run_self_update() {
             current_version
         );
         println!();
-        return;
+        return Ok(());
     }
 
     println!("  Current version: v{}", current_version);
@@ -1841,10 +1843,16 @@ fn run_self_update() {
         .expect("Failed to extract tarball");
 
     let current_exe = std::env::current_exe().expect("Failed to get current executable path");
-    let backup_path = temp_dir.join("soli.backup");
+    let backup_path = current_exe.parent().unwrap().join("soli.backup");
 
-    std::fs::rename(&current_exe, &backup_path).expect("Failed to backup current binary");
-    std::fs::rename(&binary_path, &current_exe).expect("Failed to install new binary");
+    if std::fs::rename(&current_exe, &backup_path).is_err() {
+        std::fs::copy(&current_exe, &backup_path)
+            .map_err(|e| format!("Failed to backup current binary: {}", e))?;
+        std::fs::remove_file(&current_exe)
+            .map_err(|e| format!("Failed to remove old binary: {}", e))?;
+    }
+    std::fs::rename(&binary_path, &current_exe)
+        .map_err(|e| format!("Failed to install new binary: {}", e))?;
 
     #[cfg(unix)]
     {
@@ -1863,6 +1871,7 @@ fn run_self_update() {
     println!();
     println!("  \x1b[32m\x1b[1m✓\x1b[0m Updated to v{}", latest_tag);
     println!();
+    Ok(())
 }
 
 fn run_login(registry: Option<&str>, token: Option<&str>) {
