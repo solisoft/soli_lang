@@ -31,10 +31,7 @@ pub struct DeployResult {
 pub fn load_deploy_config(folder: &Path) -> Result<DeployConfig, String> {
     let deploy_path = folder.join("deploy.toml");
     if !deploy_path.exists() {
-        return Err(format!(
-            "deploy.toml not found in {}",
-            folder.display()
-        ));
+        return Err(format!("deploy.toml not found in {}", folder.display()));
     }
 
     let content = std::fs::read_to_string(&deploy_path)
@@ -69,10 +66,8 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
                     api_key: String::new(),
                     proxy_url: String::new(),
                 });
-            } else if line == "[servers]" {
-                in_servers = true;
             } else {
-                in_servers = false;
+                in_servers = line == "[servers]";
             }
             continue;
         }
@@ -158,7 +153,8 @@ async fn deploy_to_server(
 
     match ssh_connect(server).await {
         Ok(session) => {
-            if let Err(e) = deploy_session(&session, server, git_url, git_branch, git_folder).await {
+            if let Err(e) = deploy_session(&session, server, git_url, git_branch, git_folder).await
+            {
                 DeployResult {
                     server_name: server.name.clone(),
                     success: false,
@@ -204,10 +200,13 @@ async fn ssh_connect(server: &ServerConfig) -> Result<Session, String> {
         .list_identities()
         .map_err(|e| format!("Failed to list SSH identities: {}", e))?;
 
-    let identities = agent.identities()
+    let identities = agent
+        .identities()
         .map_err(|e| format!("Failed to get SSH identities: {}", e))?;
     if identities.is_empty() {
-        return Err("No SSH identities found. Make sure you have SSH keys added to your agent.".to_string());
+        return Err(
+            "No SSH identities found. Make sure you have SSH keys added to your agent.".to_string(),
+        );
     }
 
     let identity = &identities[0];
@@ -232,10 +231,7 @@ async fn deploy_session(
     let folder_exists = check_remote_folder_exists(session, &server.folder)?;
 
     if folder_exists {
-        println!(
-            "[{}] Folder exists, pulling latest changes...",
-            server.name
-        );
+        println!("[{}] Folder exists, pulling latest changes...", server.name);
         git_pull(session, &server.folder, git_folder, git_branch)?;
     } else {
         println!("[{}] Cloning repository...", server.name);
@@ -250,10 +246,7 @@ async fn deploy_session(
 
     let slot = trigger_proxy_deploy(&server.proxy_url, &server.api_key, &app_name)?;
 
-    println!(
-        "[{}] Deploy started on slot {} ✓",
-        server.name, slot
-    );
+    println!("[{}] Deploy started on slot {} ✓", server.name, slot);
 
     Ok(())
 }
@@ -303,7 +296,11 @@ fn git_clone(
     } else {
         format!(
             "mkdir -p {} && cd {} && git clone --branch {} {} {}",
-            target, parent, branch, git_url, git_folder.trim_end_matches('/')
+            target,
+            parent,
+            branch,
+            git_url,
+            git_folder.trim_end_matches('/')
         )
     };
 
@@ -311,7 +308,9 @@ fn git_clone(
         .channel_session()
         .map_err(|e| format!("Failed to open channel: {}", e))?;
 
-    channel.exec(&clone_cmd).map_err(|e| format!("Git clone failed: {}", e))?;
+    channel
+        .exec(&clone_cmd)
+        .map_err(|e| format!("Git clone failed: {}", e))?;
 
     let mut stderr = String::new();
     channel
@@ -333,12 +332,7 @@ fn git_clone(
     Ok(())
 }
 
-fn git_pull(
-    session: &Session,
-    folder: &str,
-    git_folder: &str,
-    branch: &str,
-) -> Result<(), String> {
+fn git_pull(session: &Session, folder: &str, git_folder: &str, branch: &str) -> Result<(), String> {
     let target = if git_folder == "/" || git_folder.is_empty() {
         folder.to_string()
     } else {
@@ -349,13 +343,11 @@ fn git_pull(
         .channel_session()
         .map_err(|e| format!("Failed to open channel: {}", e))?;
 
-    let pull_cmd = format!(
-        "cd {} && git pull origin {}",
-        target,
-        branch
-    );
+    let pull_cmd = format!("cd {} && git pull origin {}", target, branch);
 
-    channel.exec(&pull_cmd).map_err(|e| format!("Git pull failed: {}", e))?;
+    channel
+        .exec(&pull_cmd)
+        .map_err(|e| format!("Git pull failed: {}", e))?;
 
     let mut stderr = String::new();
     channel
@@ -380,14 +372,17 @@ fn git_pull(
 fn extract_app_name(folder: &str) -> String {
     folder
         .split('/')
-        .filter(|s| !s.is_empty())
-        .last()
+        .rfind(|s| !s.is_empty())
         .unwrap_or("app")
         .to_string()
 }
 
 fn trigger_proxy_deploy(proxy_url: &str, api_key: &str, app_name: &str) -> Result<String, String> {
-    let url = format!("{}/api/v1/apps/{}/deploy", proxy_url.trim_end_matches('/'), app_name);
+    let url = format!(
+        "{}/api/v1/apps/{}/deploy",
+        proxy_url.trim_end_matches('/'),
+        app_name
+    );
 
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -407,8 +402,8 @@ fn trigger_proxy_deploy(proxy_url: &str, api_key: &str, app_name: &str) -> Resul
         return Err(format!("Deploy API returned {}: {}", status, body));
     }
 
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {}", e))?;
 
     let slot = json["data"]["slot"]
         .as_str()
@@ -427,7 +422,10 @@ pub fn print_summary(results: &[DeployResult]) {
     if failed == 0 {
         println!("✓ {}/{} servers deployed successfully", succeeded, total);
     } else {
-        println!("✗ {}/{} servers deployed successfully, {} failed", succeeded, total, failed);
+        println!(
+            "✗ {}/{} servers deployed successfully, {} failed",
+            succeeded, total, failed
+        );
         for result in results.iter().filter(|r| !r.success) {
             println!("  [{}] Failed: {}", result.server_name, result.message);
         }
