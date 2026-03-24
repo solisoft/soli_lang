@@ -110,6 +110,13 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
 }
 
 pub async fn deploy(config: DeployConfig) -> Vec<DeployResult> {
+    if config.servers.is_empty() {
+        return vec![];
+    }
+
+    let first_server = config.servers[0].clone();
+
+    println!("Phase 1: Syncing code to all servers...");
     let mut handles = Vec::new();
 
     for server in config.servers.clone() {
@@ -117,15 +124,36 @@ pub async fn deploy(config: DeployConfig) -> Vec<DeployResult> {
         let git_branch = config.git_branch.clone();
         let git_folder = config.git_folder.clone();
 
-        let handle = tokio::spawn(async move {
-            deploy_to_server(&server, &git_url, &git_branch, &git_folder).await
-        });
+        let handle =
+            tokio::spawn(
+                async move { sync_code(&server, &git_url, &git_branch, &git_folder).await },
+            );
 
         handles.push(handle);
     }
 
-    let mut results = Vec::new();
     for handle in handles {
+        if let Err(e) = handle.await {
+            eprintln!("Task join error: {}", e);
+        }
+    }
+
+    if let Err(e) = run_migrations(&first_server, &config.git_folder).await {
+        eprintln!("[{}] Migration warning: {}", first_server.name, e);
+    }
+
+    println!();
+    println!("Phase 2: Triggering blue-green deploy on all servers...");
+
+    let mut deploy_handles = Vec::new();
+
+    for server in config.servers.clone() {
+        let handle = tokio::spawn(async move { trigger_deploy(&server).await });
+        deploy_handles.push(handle);
+    }
+
+    let mut results = Vec::new();
+    for handle in deploy_handles {
         match handle.await {
             Ok(result) => results.push(result),
             Err(e) => results.push(DeployResult {
@@ -140,42 +168,101 @@ pub async fn deploy(config: DeployConfig) -> Vec<DeployResult> {
     results
 }
 
-async fn deploy_to_server(
+async fn sync_code(
     server: &ServerConfig,
     git_url: &str,
     git_branch: &str,
     git_folder: &str,
-) -> DeployResult {
+) -> Result<(), String> {
     println!(
         "[{}] Connecting to {}@{}...",
         server.name, server.username, server.ip
     );
 
-    match ssh_connect(server).await {
-        Ok(session) => {
-            if let Err(e) = deploy_session(&session, server, git_url, git_branch, git_folder).await
-            {
-                DeployResult {
-                    server_name: server.name.clone(),
-                    success: false,
-                    message: e,
-                    slot: None,
-                }
-            } else {
-                DeployResult {
-                    server_name: server.name.clone(),
-                    success: true,
-                    message: "Deployment successful".to_string(),
-                    slot: None,
-                }
+    let session = ssh_connect(server).await?;
+
+    let folder_exists = check_remote_folder_exists(&session, &server.folder)?;
+
+    if folder_exists {
+        println!("[{}] Folder exists, pulling latest changes...", server.name);
+        git_pull(&session, &server.folder, git_folder, git_branch)?;
+    } else {
+        println!("[{}] Cloning repository...", server.name);
+        git_clone(&session, &server.folder, git_url, git_branch, git_folder)?;
+    }
+
+    println!("[{}] Code synced ✓", server.name);
+
+    Ok(())
+}
+
+async fn run_migrations(server: &ServerConfig, git_folder: &str) -> Result<(), String> {
+    println!("[{}] Running database migrations...", server.name);
+
+    let session = ssh_connect(server).await?;
+
+    let target = if git_folder == "/" || git_folder.is_empty() {
+        server.folder.clone()
+    } else {
+        format!("{}/{}", server.folder, git_folder.trim_end_matches('/'))
+    };
+
+    let migration_cmd = format!("cd {} && soli db:migrate up", target);
+
+    let mut channel = session
+        .channel_session()
+        .map_err(|e| format!("Failed to open channel: {}", e))?;
+
+    channel
+        .exec(&migration_cmd)
+        .map_err(|e| format!("Migration command failed: {}", e))?;
+
+    let mut stderr = String::new();
+    channel
+        .stderr()
+        .read_to_string(&mut stderr)
+        .map_err(|e| format!("Failed to read stderr: {}", e))?;
+
+    let mut stdout = String::new();
+    channel
+        .read_to_string(&mut stdout)
+        .map_err(|e| format!("Failed to read stdout: {}", e))?;
+
+    channel.wait_close().ok();
+
+    if channel.exit_status().map(|s| s != 0).unwrap_or(false) {
+        return Err(format!("Migration failed: {} {}", stdout, stderr));
+    }
+
+    println!("[{}] Migrations completed ✓", server.name);
+
+    Ok(())
+}
+
+async fn trigger_deploy(server: &ServerConfig) -> DeployResult {
+    println!("[{}] Triggering blue-green deploy...", server.name);
+
+    let app_name = extract_app_name(&server.folder);
+
+    match trigger_proxy_deploy(&server.proxy_url, &server.api_key, &app_name) {
+        Ok(slot) => {
+            println!("[{}] Deploy started on slot {} ✓", server.name, slot);
+            DeployResult {
+                server_name: server.name.clone(),
+                success: true,
+                message: "Deployment successful".to_string(),
+                slot: Some(slot),
             }
         }
-        Err(e) => DeployResult {
-            server_name: server.name.clone(),
-            success: false,
-            message: e,
-            slot: None,
-        },
+        Err(e) => {
+            println!("[{}] Deploy failed: {}", server.name, e);
+            DeployResult {
+                server_name: server.name.clone(),
+                success: false,
+                message: e,
+                slot: None,
+            }
+        }
     }
 }
 
@@ -219,36 +306,6 @@ async fn ssh_connect(server: &ServerConfig) -> Result<Session, String> {
     }
 
     Ok(session)
-}
-
-async fn deploy_session(
-    session: &Session,
-    server: &ServerConfig,
-    git_url: &str,
-    git_branch: &str,
-    git_folder: &str,
-) -> Result<(), String> {
-    let folder_exists = check_remote_folder_exists(session, &server.folder)?;
-
-    if folder_exists {
-        println!("[{}] Folder exists, pulling latest changes...", server.name);
-        git_pull(session, &server.folder, git_folder, git_branch)?;
-    } else {
-        println!("[{}] Cloning repository...", server.name);
-        git_clone(session, &server.folder, git_url, git_branch, git_folder)?;
-    }
-
-    let app_name = extract_app_name(&server.folder);
-    println!(
-        "[{}] Triggering blue-green deploy for app '{}'...",
-        server.name, app_name
-    );
-
-    let slot = trigger_proxy_deploy(&server.proxy_url, &server.api_key, &app_name)?;
-
-    println!("[{}] Deploy started on slot {} ✓", server.name, slot);
-
-    Ok(())
 }
 
 fn check_remote_folder_exists(session: &Session, folder: &str) -> Result<bool, String> {

@@ -84,26 +84,34 @@ proxy_url = "https://proxy.example.com"</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Deployment Flow</h2>
     <p class="text-gray-400 mb-6">
-        For each server (in parallel):
+        Deployment happens in two phases:
     </p>
 
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <div class="text-2xl font-bold text-indigo-400 mb-2">1</div>
-            <p class="text-gray-400 text-sm">SSH connect to <code class="text-indigo-400">username@ip</code></p>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <div class="text-2xl font-bold text-indigo-400 mb-2">2</div>
-            <p class="text-gray-400 text-sm">Git clone or pull in deployment folder</p>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <div class="text-2xl font-bold text-indigo-400 mb-2">3</div>
-            <p class="text-gray-400 text-sm">Trigger blue-green deploy via soli-proxy API</p>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <div class="text-2xl font-bold text-indigo-400 mb-2">4</div>
-            <p class="text-gray-400 text-sm">Automatic health checks and traffic switch</p>
-        </div>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+        <h4 class="text-base font-semibold text-indigo-400 mb-3">Phase 1: Sync Code (parallel)</h4>
+        <p class="text-gray-400 text-sm">All servers sync code simultaneously via SSH:</p>
+        <ul class="list-disc list-inside text-gray-400 text-sm mt-2 space-y-1">
+            <li>SSH connect to <code class="text-indigo-400">username@ip</code></li>
+            <li>Git clone (first deploy) or git pull (subsequent)</li>
+        </ul>
+    </div>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+        <h4 class="text-base font-semibold text-yellow-400 mb-3">Phase 2: Migrations (first server only)</h4>
+        <p class="text-gray-400 text-sm">Database migrations run only on the first server to avoid conflicts:</p>
+        <ul class="list-disc list-inside text-gray-400 text-sm mt-2 space-y-1">
+            <li>SSH to first server</li>
+            <li>Run <code class="text-indigo-400">soli db:migrate up</code></li>
+        </ul>
+    </div>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-12">
+        <h4 class="text-base font-semibold text-green-400 mb-3">Phase 3: Deploy (parallel)</h4>
+        <p class="text-gray-400 text-sm">All servers trigger blue-green deployment simultaneously:</p>
+        <ul class="list-disc list-inside text-gray-400 text-sm mt-2 space-y-1">
+            <li>POST to soli-proxy deploy API</li>
+            <li>Automatic health checks and traffic switch</li>
+        </ul>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Requirements</h2>
@@ -131,16 +139,26 @@ soli deploy -f /path/to/project</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Output Example</h2>
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <pre data-filename="Terminal"><code class="language-text text-sm">Deploying from /path/to/project...
-Deploying to 2 server(s) in parallel...
+Phase 1: Syncing code to all servers...
 
 [prod-1] Connecting to deploy@192.168.1.100...
 [prod-1] Folder exists, pulling latest changes...
-[prod-1] Triggering blue-green deploy for app 'myapp'...
-[prod-1] Deploy started on slot green ✓
+[prod-1] Code synced ✓
 
 [prod-2] Connecting to deploy@192.168.1.101...
 [prod-2] Folder exists, pulling latest changes...
-[prod-2] Triggering blue-green deploy for app 'myapp'...
+[prod-2] Code synced ✓
+
+[prod-1] Running database migrations...
+[prod-1] soli db:migrate up
+[prod-1] Migrations completed ✓
+
+Phase 2: Triggering blue-green deploy on all servers...
+
+[prod-1] Triggering blue-green deploy...
+[prod-1] Deploy started on slot green ✓
+
+[prod-2] Triggering blue-green deploy...
 [prod-2] Deploy started on slot blue ✓
 
 ✓ 2/2 servers deployed successfully</code></pre>
