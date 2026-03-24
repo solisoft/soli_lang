@@ -1,0 +1,172 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Editor Integration</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Set up Soli language support in your favorite editor. Full LSP features including autocomplete, hover docs, and real-time linting.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-green-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-green-400 mb-1">Zero Configuration Required</h4>
+                <p class="text-green-200/80 text-sm">
+                    Install the extension and it just works. The LSP server starts automatically when you open a .sl file.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Cursor & VS Code</h2>
+    <p class="text-gray-400 mb-6">
+        The Cursor and VS Code extensions provide the full Soli language experience with LSP support.
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-indigo-500/50 transition-all">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg class="w-16 h-16 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">Installation</h3>
+            <p class="text-gray-400 text-sm mb-4">Install from the .vsix package:</p>
+            <div class="rounded-lg bg-gray-950 p-3">
+                <pre><code class="language-bash text-xs">cd editors/vscode
+vsce package
+# Then install .vsix in your editor</code></pre>
+            </div>
+        </div>
+
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-purple-500/50 transition-all">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg class="w-16 h-16 text-purple-500" fill="currentColor" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">Settings</h3>
+            <p class="text-gray-400 text-sm mb-4">Customize in settings.json:</p>
+            <div class="rounded-lg bg-gray-950 p-3">
+                <pre><code class="language-json text-xs">{
+  "soli.lsp.enable": true,
+  "soli.lint.onSave": true
+}</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Available LSP Features</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">hover</code>
+            <p class="text-gray-400 text-xs mt-1">Documentation for functions, classes, and builtins</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">completion</code>
+            <p class="text-gray-400 text-xs mt-1">Keywords, types, and local symbols</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">definition</code>
+            <p class="text-gray-400 text-xs mt-1">Jump to symbol definitions</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">references</code>
+            <p class="text-gray-400 text-xs mt-1">Find all uses of a symbol</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">documentSymbol</code>
+            <p class="text-gray-400 text-xs mt-1">Outline view of your code</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">foldingRange</code>
+            <p class="text-gray-400 text-xs mt-1">Fold classes and functions</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">inlayHint</code>
+            <p class="text-gray-400 text-xs mt-1">Inline type annotations</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">codeAction</code>
+            <p class="text-gray-400 text-xs mt-1">Quick fixes for lint violations</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-400 text-sm">formatting</code>
+            <p class="text-gray-400 text-xs mt-1">Format entire document</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Neovim</h2>
+    <p class="text-gray-400 mb-6">
+        Neovim has built-in LSP support. Configure using <code class="text-indigo-400">lspconfig</code>:
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="lua"><code class="language-lua text-sm">-- ~/.config/nvim/lua/lsp/soli.lua
+local lspconfig = require('lspconfig')
+
+lspconfig.soli.setup({
+  cmd = {"soli", "lsp"},
+  filetypes = {"soli"},
+  root_dir = function(filename)
+    return lspconfig.util.root_pattern("soli.toml", ".git")(filename)
+  end,
+  settings = {
+    soli = {}
+  },
+  capabilities = require('cmp_nvim_lsp').default_capabilities(),
+})</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        Or without lspconfig (Neovim 0.10+):
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="lua"><code class="language-lua text-sm">vim.lsp.config('soli', {
+  cmd = {"soli", "lsp"},
+  filetypes = {"soli"},
+  root_markers = {"soli.toml"},
+})
+
+vim.lsp.enable('soli')</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Other Editors</h2>
+    <p class="text-gray-400 mb-6">
+        Any editor that supports the Language Server Protocol can use Soli's LSP server.
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="Generic LSP Config"><code class="language-json text-sm">{
+  "name": "soli",
+  "command": "soli lsp",
+  "filetypes": ["soli"],
+  "rootPatterns": ["soli.toml"],
+  "languageId": "soli"
+}</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Requirements</h2>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
+        <ul class="list-disc list-inside text-gray-400 space-y-2">
+            <li>The <code class="text-indigo-400">soli</code> binary must be in your PATH</li>
+            <li>Editor files should use the <code class="text-indigo-400">.sl</code> extension</li>
+            <li>For project root detection, include a <code class="text-indigo-400">soli.toml</code> file in your project</li>
+        </ul>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/language/linting" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Linting &rarr;</h3>
+            <p class="text-sm text-gray-400">Learn about built-in lint rules.</p>
+        </a>
+        <a href="/docs/getting-started/introduction" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Introduction &rarr;</h3>
+            <p class="text-sm text-gray-400">Get started with Soli.</p>
+        </a>
+    </div>
+</div>

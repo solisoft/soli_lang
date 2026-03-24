@@ -3226,7 +3226,92 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 
 ### Editor Integration
 
-The VS Code / Cursor extension (`editors/vscode/`) runs `soli lint` automatically on save and displays warnings inline in the editor.
+The VS Code / Cursor extension (`editors/vscode/`) provides full Language Server Protocol (LSP) support for Soli, including:
+
+- **Real-time linting** - warnings and errors displayed inline as you type
+- **Hover information** - documentation for functions, classes, and builtins
+- **Autocomplete** - suggestions for keywords, types, and symbols
+- **Go to definition** - jump to symbol definitions
+- **Find references** - locate all uses of a symbol
+- **Document symbols** - outline view of classes, functions, and methods
+- **Code folding** - fold code blocks and classes
+- **Inlay hints** - type annotations displayed inline
+
+#### Installation
+
+**From VSIX (recommended):**
+
+```bash
+cd editors/vscode
+vsce package
+# Install the generated .vsix file in Cursor/VS Code
+```
+
+**From source:**
+
+Copy the extension folder to your editor's extensions directory:
+
+- **Cursor/VS Code (Linux):** `~/.cursor/extensions/` or `~/.vscode/extensions/`
+- **Cursor/VS Code (macOS):** `~/.cursor/extensions/` or `~/.vscode/extensions/`
+- **Cursor/VS Code (Windows):** `%USERPROFILE%\.cursor\extensions\` or `%USERPROFILE%\.vscode\extensions\`
+
+#### Configuration
+
+The extension works with sensible defaults but supports customization:
+
+```json
+{
+  "soli.lsp.enable": true,
+  "soli.lsp.executablePath": "soli",
+  "soli.lint.enable": true,
+  "soli.lint.onSave": true
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `soli.lsp.enable` | `true` | Enable/disable LSP server |
+| `soli.lsp.executablePath` | `"soli"` | Path to the `soli` binary |
+| `soli.lint.enable` | `true` | Run linter on save |
+| `soli.lint.onSave` | `true` | Lint file when saving |
+
+#### Manual LSP Setup
+
+For editors that support custom LSP servers directly (Neovim, Emacs, etc.), configure:
+
+```lua
+-- Neovim with lspconfig
+require('lspconfig').soli.setup({
+  cmd = {"soli", "lsp"},
+  filetypes = {"soli"},
+  root_dir = lspconfig.util.root_pattern("soli.toml", ".git"),
+})
+```
+
+```json
+// Generic JSON config for LSP-compatible editors
+{
+  "name": "soli",
+  "command": "soli lsp",
+  "filetypes": ["soli"],
+  "rootPatterns": ["soli.toml"],
+  "languageId": "soli"
+}
+```
+
+#### Available LSP Features
+
+| Feature | Description |
+|---------|-------------|
+| `textDocument/completion` | Keywords, types, builtins, and local symbols |
+| `textDocument/hover` | Documentation for symbols and builtins |
+| `textDocument/definition` | Jump to symbol definitions |
+| `textDocument/references` | Find all references to a symbol |
+| `textDocument/documentSymbol` | Hierarchical symbol tree |
+| `textDocument/foldingRange` | Fold classes, functions, and blocks |
+| `textDocument/inlayHint` | Type annotations for variables |
+| `textDocument/codeAction` | Quick fixes for lint violations |
+| `textDocument/formatting` | Format document |
 
 ---
 

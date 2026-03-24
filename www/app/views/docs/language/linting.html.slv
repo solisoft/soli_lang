@@ -163,14 +163,51 @@ end</code></pre>
             </span>
             Editor Integration
         </h2>
-        <p class="text-gray-400 mb-4">The VS Code / Cursor extension runs <code class="text-indigo-400">soli lint</code> automatically on save and displays warnings inline in the Problems panel.</p>
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
-            <h3 class="text-base font-semibold text-white mb-3">Settings</h3>
+        <p class="text-gray-400 mb-6">The VS Code / Cursor extension provides full Language Server Protocol (LSP) support with real-time linting, hover documentation, autocomplete, and more.</p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-base font-semibold text-white mb-3">Features</h3>
             <ul class="list-disc list-inside text-gray-400 space-y-2">
+                <li><strong class="text-white">Real-time linting</strong> &mdash; warnings and errors displayed inline</li>
+                <li><strong class="text-white">Hover information</strong> &mdash; documentation for functions, classes, and builtins</li>
+                <li><strong class="text-white">Autocomplete</strong> &mdash; suggestions for keywords, types, and symbols</li>
+                <li><strong class="text-white">Go to definition</strong> &mdash; jump to symbol definitions</li>
+                <li><strong class="text-white">Find references</strong> &mdash; locate all uses of a symbol</li>
+            </ul>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Installation</h3>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">cd editors/vscode
+vsce package
+# Install the generated .vsix file in Cursor or VS Code</code></pre>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Settings</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <ul class="list-disc list-inside text-gray-400 space-y-2">
+                <li><code class="text-indigo-400">soli.lsp.enable</code> &mdash; Enable/disable LSP server (default: <code>true</code>)</li>
+                <li><code class="text-indigo-400">soli.lsp.executablePath</code> &mdash; Path to the <code>soli</code> binary (default: <code>"soli"</code>)</li>
                 <li><code class="text-indigo-400">soli.lint.enable</code> &mdash; Enable/disable linting (default: <code>true</code>)</li>
                 <li><code class="text-indigo-400">soli.lint.onSave</code> &mdash; Run linter on file save (default: <code>true</code>)</li>
-                <li><code class="text-indigo-400">soli.lint.executablePath</code> &mdash; Path to the <code>soli</code> binary (default: <code>"soli"</code>)</li>
             </ul>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Manual LSP Setup</h3>
+        <p class="text-gray-400 mb-4">For editors that support custom LSP servers directly (Neovim, Emacs, etc.):</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <pre data-filename="Neovim (lspconfig)"><code class="language-lua text-sm">require('lspconfig').soli.setup({
+  cmd = {"soli", "lsp"},
+  filetypes = {"soli"},
+  root_dir = lspconfig.util.root_pattern("soli.toml", ".git"),
+})</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-5">
+            <h4 class="text-base font-semibold text-indigo-400 mb-2">Learn More</h4>
+            <p class="text-indigo-200/80 text-sm">
+                For full editor setup instructions and all available LSP features, see the <a href="/docs/development-tools/editor-integration" class="text-indigo-400 hover:text-indigo-300 underline">Editor Integration</a> guide.
+            </p>
         </div>
     </section>
 
