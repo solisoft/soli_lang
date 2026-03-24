@@ -709,6 +709,10 @@ fn parse_args() -> Options {
                 print_usage();
                 process::exit(0);
             }
+            "--version" | "-v" => {
+                println!("Soli {}", VERSION);
+                process::exit(0);
+            }
             "-e" => {
                 i += 1;
                 if i >= args.len() {
