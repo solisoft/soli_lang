@@ -1542,37 +1542,14 @@ async fn handle_hyper_request(
 
     // Check for static file in public directory
     if method == "GET" && public_dir.exists() {
-        let relative_path = path.trim_start_matches('/');
-        // Decode URL-encoded characters to prevent %2e%2e%2f bypass
-        let decoded_path = match urlencoding::decode(relative_path) {
-            Ok(d) => d.into_owned(),
-            Err(_) => relative_path.to_string(),
-        };
-        // Do not allow directory traversal or absolute paths in URL
-        if !decoded_path.contains("..") && !decoded_path.starts_with('/') {
-            let file_path = public_dir.join(&decoded_path);
-
-            // Canonicalize both paths to resolve symlinks and prevent traversal
-            if let (Ok(canonical_file), Ok(canonical_public)) = (
-                std::fs::canonicalize(&file_path),
-                std::fs::canonicalize(public_dir.as_ref()),
-            ) {
-                // Ensure the canonical file path is within public directory
-                let canonical_file_str = canonical_file.to_string_lossy();
-                let canonical_public_str = canonical_public.to_string_lossy();
-                if !canonical_file_str.starts_with(&*canonical_public_str) {
-                    return Ok(Response::builder()
-                        .status(StatusCode::FORBIDDEN)
-                        .body(Full::new(Bytes::from("Forbidden")))
-                        .unwrap());
-                }
-                if !canonical_file.is_file() {
-                    return Ok(Response::builder()
-                        .status(StatusCode::NOT_FOUND)
-                        .body(Full::new(Bytes::from("Not Found")))
-                        .unwrap());
-                }
-
+        match resolve_static_file(&path, &public_dir) {
+            Err(()) => {
+                return Ok(Response::builder()
+                    .status(StatusCode::FORBIDDEN)
+                    .body(Full::new(Bytes::from("Forbidden")))
+                    .unwrap());
+            }
+            Ok(Some(file_path)) => {
                 let mime_type = server_constants::get_mime_type(&file_path);
 
                 // In production mode, check for conditional request (If-None-Match)
@@ -1638,6 +1615,7 @@ async fn handle_hyper_request(
                     .body(Full::new(Bytes::from(content)))
                     .unwrap());
             }
+            Ok(None) => {} // Not a static file, fall through to route matching
         }
     }
 
@@ -5377,6 +5355,47 @@ fn render_production_error_page(status_code: u16, message: &str) -> String {
     )
 }
 
+/// Resolve a request path to a static file in the public directory.
+/// Returns:
+///   Ok(Some(path)) - file found and safe to serve
+///   Ok(None) - not a static file, fall through to route matching
+///   Err(()) - path traversal attempt, should return 403
+fn resolve_static_file(path: &str, public_dir: &Path) -> Result<Option<PathBuf>, ()> {
+    let relative_path = path.trim_start_matches('/');
+    let decoded_path = match urlencoding::decode(relative_path) {
+        Ok(d) => d.into_owned(),
+        Err(_) => relative_path.to_string(),
+    };
+    // Do not allow directory traversal or absolute paths in URL
+    if decoded_path.contains("..") || decoded_path.starts_with('/') {
+        return Ok(None);
+    }
+    let file_path = public_dir.join(&decoded_path);
+
+    // Canonicalize both paths to resolve symlinks and prevent traversal
+    let (canonical_file, canonical_public) = match (
+        std::fs::canonicalize(&file_path),
+        std::fs::canonicalize(public_dir),
+    ) {
+        (Ok(f), Ok(p)) => (f, p),
+        _ => return Ok(None), // file doesn't exist, fall through
+    };
+
+    // Ensure the canonical file path is within public directory
+    if !canonical_file
+        .to_string_lossy()
+        .starts_with(&*canonical_public.to_string_lossy())
+    {
+        return Err(()); // traversal attempt
+    }
+
+    if !canonical_file.is_file() {
+        return Ok(None); // directory or special file, fall through
+    }
+
+    Ok(Some(file_path))
+}
+
 fn get_status_text(status_code: u16) -> &'static str {
     match status_code {
         400 => "Bad Request",
@@ -5390,5 +5409,76 @@ fn get_status_text(status_code: u16) -> &'static str {
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Error",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_resolve_static_file_serves_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        fs::create_dir(&public).unwrap();
+        fs::write(public.join("style.css"), "body{}").unwrap();
+
+        let result = resolve_static_file("/style.css", &public);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[test]
+    fn test_resolve_static_file_root_path_falls_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        fs::create_dir(&public).unwrap();
+
+        // "/" should NOT return 404 — it should fall through (None) so route matching handles it
+        let result = resolve_static_file("/", &public);
+        assert_eq!(result, Ok(None));
+    }
+
+    #[test]
+    fn test_resolve_static_file_directory_falls_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        let subdir = public.join("css");
+        fs::create_dir_all(&subdir).unwrap();
+
+        // "/css" is a directory, should fall through
+        let result = resolve_static_file("/css", &public);
+        assert_eq!(result, Ok(None));
+    }
+
+    #[test]
+    fn test_resolve_static_file_nonexistent_falls_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        fs::create_dir(&public).unwrap();
+
+        let result = resolve_static_file("/nope.js", &public);
+        assert_eq!(result, Ok(None));
+    }
+
+    #[test]
+    fn test_resolve_static_file_blocks_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        fs::create_dir(&public).unwrap();
+
+        let result = resolve_static_file("/../etc/passwd", &public);
+        assert_eq!(result, Ok(None));
+    }
+
+    #[test]
+    fn test_resolve_static_file_blocks_encoded_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        fs::create_dir(&public).unwrap();
+
+        let result = resolve_static_file("/%2e%2e/etc/passwd", &public);
+        assert_eq!(result, Ok(None));
     }
 }

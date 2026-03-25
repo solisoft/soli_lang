@@ -3630,7 +3630,7 @@ dependencies = [
 
 [[package]]
 name = "solilang"
-version = "0.52.1"
+version = "0.52.2"
 dependencies = [
  "ahash 0.8.12",
  "argon2",
