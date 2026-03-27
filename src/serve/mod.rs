@@ -1576,7 +1576,60 @@ async fn handle_hyper_request(
                                 }
                             }
 
-                            // ETags don't match or no If-None-Match - read and serve file
+                            let file_size = metadata.len();
+
+                            // Check for Range request
+                            if let Some(range_header) = req.headers().get("range") {
+                                if let Ok(range_str) = range_header.to_str() {
+                                    if let Some((start, end)) =
+                                        server_constants::parse_range_header(range_str, file_size)
+                                    {
+                                        let length = end - start + 1;
+                                        // Read only the requested range
+                                        let content = match std::fs::read(&file_path) {
+                                            Ok(c) => c,
+                                            Err(_) => {
+                                                return Ok(Response::builder()
+                                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                                    .body(Full::new(Bytes::from(
+                                                        "Error reading file",
+                                                    )))
+                                                    .unwrap())
+                                            }
+                                        };
+                                        let slice = &content[start as usize
+                                            ..=(end as usize).min(content.len() - 1)];
+                                        return Ok(Response::builder()
+                                            .status(StatusCode::PARTIAL_CONTENT)
+                                            .header("Content-Type", mime_type)
+                                            .header(
+                                                "Content-Range",
+                                                format!("bytes {}-{}/{}", start, end, file_size),
+                                            )
+                                            .header("Content-Length", length.to_string())
+                                            .header("Accept-Ranges", "bytes")
+                                            .header("ETag", &etag)
+                                            .header(
+                                                "Cache-Control",
+                                                server_constants::STATIC_CACHE_MAX_AGE,
+                                            )
+                                            .body(Full::new(Bytes::copy_from_slice(slice)))
+                                            .unwrap());
+                                    } else {
+                                        // Range not satisfiable
+                                        return Ok(Response::builder()
+                                            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                            .header(
+                                                "Content-Range",
+                                                format!("bytes */{}", file_size),
+                                            )
+                                            .body(Full::new(Bytes::new()))
+                                            .unwrap());
+                                    }
+                                }
+                            }
+
+                            // No Range header - serve full file
                             let content = match std::fs::read(&file_path) {
                                 Ok(c) => c,
                                 Err(_) => {
@@ -1590,6 +1643,8 @@ async fn handle_hyper_request(
                             return Ok(Response::builder()
                                 .status(StatusCode::OK)
                                 .header("Content-Type", mime_type)
+                                .header("Content-Length", content.len().to_string())
+                                .header("Accept-Ranges", "bytes")
                                 .header("ETag", etag)
                                 .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE)
                                 .body(Full::new(Bytes::from(content)))
@@ -1598,7 +1653,7 @@ async fn handle_hyper_request(
                     }
                 }
 
-                // Dev mode or metadata unavailable - serve without caching
+                // Dev mode or metadata unavailable
                 let content = match std::fs::read(&file_path) {
                     Ok(c) => c,
                     Err(_) => {
@@ -1609,9 +1664,43 @@ async fn handle_hyper_request(
                     }
                 };
 
+                let file_size = content.len() as u64;
+
+                // Check for Range request in dev mode too
+                if let Some(range_header) = req.headers().get("range") {
+                    if let Ok(range_str) = range_header.to_str() {
+                        if let Some((start, end)) =
+                            server_constants::parse_range_header(range_str, file_size)
+                        {
+                            let length = end - start + 1;
+                            let slice =
+                                &content[start as usize..=(end as usize).min(content.len() - 1)];
+                            return Ok(Response::builder()
+                                .status(StatusCode::PARTIAL_CONTENT)
+                                .header("Content-Type", mime_type)
+                                .header(
+                                    "Content-Range",
+                                    format!("bytes {}-{}/{}", start, end, file_size),
+                                )
+                                .header("Content-Length", length.to_string())
+                                .header("Accept-Ranges", "bytes")
+                                .body(Full::new(Bytes::copy_from_slice(slice)))
+                                .unwrap());
+                        } else {
+                            return Ok(Response::builder()
+                                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                .header("Content-Range", format!("bytes */{}", file_size))
+                                .body(Full::new(Bytes::new()))
+                                .unwrap());
+                        }
+                    }
+                }
+
                 return Ok(Response::builder()
                     .status(StatusCode::OK)
                     .header("Content-Type", mime_type)
+                    .header("Content-Length", content.len().to_string())
+                    .header("Accept-Ranges", "bytes")
                     .body(Full::new(Bytes::from(content)))
                     .unwrap());
             }

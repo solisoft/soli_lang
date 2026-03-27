@@ -39,6 +39,11 @@ pub const MIME_TYPES: &[(&str, &str)] = &[
     ("woff2", "font/woff2"),
     ("ttf", "font/ttf"),
     ("gif", "image/gif"),
+    ("mp4", "video/mp4"),
+    ("webm", "video/webm"),
+    ("ogg", "video/ogg"),
+    ("mp3", "audio/mpeg"),
+    ("wav", "audio/wav"),
 ];
 
 /// Extensions that are considered static files for hot reload
@@ -49,6 +54,7 @@ pub const STATIC_FILE_EXTENSIONS: &[&str] = &[
 /// Valid static file extensions for serving
 pub const VALID_STATIC_EXTENSIONS: &[&str] = &[
     "css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff", "woff2", "ttf", "html", "json",
+    "mp4", "webm", "ogg", "mp3", "wav",
 ];
 
 /// HTTP success status code range start (inclusive)
@@ -102,4 +108,39 @@ pub fn is_static_extension(ext: &str) -> bool {
 /// Check if a file extension is tracked for hot reload.
 pub fn is_tracked_static_extension(ext: &str) -> bool {
     STATIC_FILE_EXTENSIONS.contains(&ext)
+}
+
+/// Parse an HTTP Range header value like "bytes=0-1023" or "bytes=1024-" or "bytes=-500".
+/// Returns (start, end_inclusive) for the byte range, clamped to file_size.
+/// Returns None if the header is malformed or unsatisfiable.
+pub fn parse_range_header(range_header: &str, file_size: u64) -> Option<(u64, u64)> {
+    let range_str = range_header.strip_prefix("bytes=")?;
+    // Only support a single range (no multi-range)
+    if range_str.contains(',') {
+        return None;
+    }
+    let (start_str, end_str) = range_str.split_once('-')?;
+    if start_str.is_empty() {
+        // Suffix range: "bytes=-500" means last 500 bytes
+        let suffix_len: u64 = end_str.parse().ok()?;
+        if suffix_len == 0 || suffix_len > file_size {
+            return None;
+        }
+        Some((file_size - suffix_len, file_size - 1))
+    } else {
+        let start: u64 = start_str.parse().ok()?;
+        if start >= file_size {
+            return None;
+        }
+        let end = if end_str.is_empty() {
+            file_size - 1
+        } else {
+            let e: u64 = end_str.parse().ok()?;
+            e.min(file_size - 1)
+        };
+        if start > end {
+            return None;
+        }
+        Some((start, end))
+    }
 }
