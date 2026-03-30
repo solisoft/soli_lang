@@ -2722,10 +2722,13 @@ fn call_handler(
                             body: error_html,
                         }
                     } else {
-                        let error_html = render_production_error_page(
-                            500,
-                            "An error occurred while processing your request.",
+                        let request_id = Uuid::new_v4().to_string();
+                        let error_msg = e.to_string();
+                        eprintln!(
+                            "[ERROR] request_id={} {} {} - {}",
+                            request_id, request_data.method, request_data.path, error_msg
                         );
+                        let error_html = render_production_error_page(500, &error_msg, &request_id);
                         ResponseData {
                             status: 500,
                             headers: vec![(
@@ -2739,7 +2742,6 @@ fn call_handler(
             }
         }
         Err(e) => {
-            // Capture environment BEFORE popping frame so we can see local variables
             let captured_env = if dev_mode {
                 Some(interpreter.serialize_environment_for_debug())
             } else {
@@ -2765,10 +2767,13 @@ fn call_handler(
                     body: error_html,
                 }
             } else {
-                let error_html = render_production_error_page(
-                    500,
-                    "An error occurred while processing your request.",
+                let request_id = Uuid::new_v4().to_string();
+                let error_msg = e.to_string();
+                eprintln!(
+                    "[ERROR] request_id={} {} {} - {}",
+                    request_id, request_data.method, request_data.path, error_msg
                 );
+                let error_html = render_production_error_page(500, &error_msg, &request_id);
                 ResponseData {
                     status: 500,
                     headers: vec![(
@@ -2896,10 +2901,13 @@ fn call_oop_controller_action(
                     body: error_html,
                 }
             } else {
-                let error_html = render_production_error_page(
-                    500,
-                    "An error occurred while processing your request.",
+                let request_id = Uuid::new_v4().to_string();
+                let error_msg = e.to_string();
+                eprintln!(
+                    "[ERROR] request_id={} {} {} - {}",
+                    request_id, request_data.method, request_data.path, error_msg
                 );
+                let error_html = render_production_error_page(500, &error_msg, &request_id);
                 ResponseData {
                     status: 500,
                     headers: vec![(
@@ -2965,10 +2973,13 @@ fn call_oop_controller_action(
                     body: error_html,
                 }
             } else {
-                let error_html = render_production_error_page(
-                    500,
-                    "An error occurred while processing your request.",
+                let request_id = Uuid::new_v4().to_string();
+                let error_msg = e.to_string();
+                eprintln!(
+                    "[ERROR] request_id={} {} {} - {}",
+                    request_id, request_data.method, request_data.path, error_msg
                 );
+                let error_html = render_production_error_page(500, &error_msg, &request_id);
                 ResponseData {
                     status: 500,
                     headers: vec![(
@@ -3440,8 +3451,13 @@ fn handle_request(
                     elapsed.as_secs_f64() * 1000.0
                 );
             }
-            let error_html =
-                render_production_error_page(404, "The page you're looking for doesn't exist.");
+            let request_id = Uuid::new_v4().to_string();
+            eprintln!("[WARN] request_id={} {} {} - 404", request_id, method, path);
+            let error_html = render_production_error_page(
+                404,
+                "The page you're looking for doesn't exist.",
+                &request_id,
+            );
             let is_https = data
                 .headers
                 .get("x-forwarded-proto")
@@ -3492,7 +3508,10 @@ fn handle_request(
         } else {
             // Clear session context before returning 404
             set_current_session_id(None);
-            let error_html = render_production_error_page(404, "Action not found for this route.");
+            let request_id = Uuid::new_v4().to_string();
+            eprintln!("[WARN] request_id={} {} {} - 404", request_id, method, path);
+            let error_html =
+                render_production_error_page(404, "Action not found for this route.", &request_id);
             return ResponseData {
                 status: 404,
                 headers: vec![(
@@ -3623,10 +3642,13 @@ fn handle_request(
                             body: error_html,
                         });
                     }
-                    let error_html = render_production_error_page(
-                        500,
-                        "An error occurred while processing your request.",
+                    let request_id = Uuid::new_v4().to_string();
+                    let error_msg = err.to_string();
+                    eprintln!(
+                        "[ERROR] request_id={} {} {} - {}",
+                        request_id, method, path, error_msg
                     );
+                    let error_html = render_production_error_page(500, &error_msg, &request_id);
                     return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![(
@@ -3661,10 +3683,13 @@ fn handle_request(
                         body: error_html,
                     });
                 }
-                let error_html = render_production_error_page(
-                    500,
-                    "An error occurred while processing your request.",
+                let request_id = Uuid::new_v4().to_string();
+                let error_msg = e.to_string();
+                eprintln!(
+                    "[ERROR] request_id={} {} {} - {}",
+                    request_id, method, path, error_msg
                 );
+                let error_html = render_production_error_page(500, &error_msg, &request_id);
                 return finalize_response(ResponseData {
                     status: 500,
                     headers: vec![(
@@ -3723,10 +3748,13 @@ fn handle_request(
                             body: error_html,
                         });
                     }
-                    let error_html = render_production_error_page(
-                        500,
-                        "An error occurred while processing your request.",
+                    let request_id = Uuid::new_v4().to_string();
+                    let error_msg = err.to_string();
+                    eprintln!(
+                        "[ERROR] request_id={} {} {} - {}",
+                        request_id, method, path, error_msg
                     );
+                    let error_html = render_production_error_page(500, &error_msg, &request_id);
                     return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![(
@@ -3761,10 +3789,13 @@ fn handle_request(
                         body: error_html,
                     });
                 }
-                let error_html = render_production_error_page(
-                    500,
-                    "An error occurred while processing your request.",
+                let request_id = Uuid::new_v4().to_string();
+                let error_msg = e.to_string();
+                eprintln!(
+                    "[ERROR] request_id={} {} {} - {}",
+                    request_id, method, path, error_msg
                 );
+                let error_html = render_production_error_page(500, &error_msg, &request_id);
                 return finalize_response(ResponseData {
                     status: 500,
                     headers: vec![(
@@ -5250,16 +5281,14 @@ pub fn get_source_file(
     Some([(file_path.to_string(), lines)].iter().cloned().collect())
 }
 
-fn render_production_error_page(status_code: u16, message: &str) -> String {
-    let request_id = format!("{:08x}", rand::random::<u32>());
-
+fn render_production_error_page(status_code: u16, message: &str, request_id: &str) -> String {
     // Try to render a custom error template first
     // Custom templates should be placed in app/views/errors/{status_code}.html.slv (or .slv)
     // Available context variables: status, message, request_id
     if let Some(custom_html) = crate::interpreter::builtins::template::render_error_template(
         status_code,
         message,
-        &request_id,
+        request_id,
     ) {
         return custom_html;
     }
@@ -5355,7 +5384,7 @@ fn render_production_error_page(status_code: u16, message: &str) -> String {
             margin-bottom: 20px;
         }}
         .error-code.error {{ color: #f8d7da; }}
-        .error-code.warning {{ color: #fff3cd; }}
+        .error-code.warning {{ color: #856404; }}
         .error-code.info {{ color: #d1ecf1; }}
         h1 {{
             font-size: 28px;
