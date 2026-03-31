@@ -2780,9 +2780,6 @@ fn call_handler(
 // None means not yet initialized; Some(set) means we've checked the registry.
 thread_local! {
     static CONTROLLERS_WITH_HOOKS: RefCell<Option<std::collections::HashSet<String>>> = const { RefCell::new(None) };
-    // Cache of controller keys known to NOT have OOP class definitions.
-    // Key includes working directory to avoid cross-app collisions.
-    static NON_OOP_CONTROLLERS: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
 }
 
 /// Check if a controller has hooks, using thread-local cache to avoid RwLock reads.
@@ -2820,16 +2817,6 @@ fn call_oop_controller_action(
 ) -> Option<ResponseData> {
     let (controller_key, action_name) = handler_name.split_once('#')?;
 
-    // Fast path: skip environment lookup for controllers known to not be OOP classes
-    let non_oop_key = format!(
-        "{}:{}",
-        std::env::current_dir().unwrap_or_default().display(),
-        controller_key
-    );
-    if NON_OOP_CONTROLLERS.with(|cache| cache.borrow().contains(&non_oop_key)) {
-        return None;
-    }
-
     // Check if this is an OOP controller (has a class definition)
     // Convert controller_key (e.g., "posts") to PascalCase class name (e.g., "PostsController")
     let class_name = to_pascal_case_controller(controller_key);
@@ -2842,8 +2829,6 @@ fn call_oop_controller_action(
     let class_value = match interpreter.environment.borrow().get(&class_name) {
         Some(v) => v,
         None => {
-            // Cache this controller as non-OOP to skip future lookups
-            NON_OOP_CONTROLLERS.with(|cache| cache.borrow_mut().insert(non_oop_key));
             return None;
         }
     };
