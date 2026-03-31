@@ -1040,45 +1040,6 @@ fn worker_loop(
         eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
     }
 
-    // Debug: log controller registry state for index actions
-    {
-        let controllers = crate::interpreter::builtins::router::get_controllers();
-        for (controller_name, actions) in &controllers {
-            if actions.contains_key("index") {
-                let func = &actions["index"];
-                eprintln!(
-                    "Worker {}: CONTROLLERS[\"{}\"][\"index\"] = {:?}",
-                    worker_id,
-                    controller_name,
-                    func.type_name()
-                );
-            }
-        }
-        // Also check what resolve_handler returns
-        match crate::interpreter::builtins::router::resolve_handler("docs#index", None) {
-            Ok(handler) => eprintln!(
-                "Worker {}: resolve_handler(\"docs#index\") = OK({:?})",
-                worker_id,
-                handler.type_name()
-            ),
-            Err(e) => eprintln!(
-                "Worker {}: resolve_handler(\"docs#index\") = Err({})",
-                worker_id, e
-            ),
-        }
-        match crate::interpreter::builtins::router::resolve_handler("blog#index", None) {
-            Ok(handler) => eprintln!(
-                "Worker {}: resolve_handler(\"blog#index\") = OK({:?})",
-                worker_id,
-                handler.type_name()
-            ),
-            Err(e) => eprintln!(
-                "Worker {}: resolve_handler(\"blog#index\") = Err({})",
-                worker_id, e
-            ),
-        }
-    }
-
     let _worker_routes = get_routes();
 
     // Create VM for production mode (bytecode execution for handler calls)
