@@ -1040,6 +1040,45 @@ fn worker_loop(
         eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
     }
 
+    // Debug: log controller registry state for index actions
+    {
+        let controllers = crate::interpreter::builtins::router::get_controllers();
+        for (controller_name, actions) in &controllers {
+            if actions.contains_key("index") {
+                let func = &actions["index"];
+                eprintln!(
+                    "Worker {}: CONTROLLERS[\"{}\"][\"index\"] = {:?}",
+                    worker_id,
+                    controller_name,
+                    func.type_name()
+                );
+            }
+        }
+        // Also check what resolve_handler returns
+        match crate::interpreter::builtins::router::resolve_handler("docs#index", None) {
+            Ok(handler) => eprintln!(
+                "Worker {}: resolve_handler(\"docs#index\") = OK({:?})",
+                worker_id,
+                handler.type_name()
+            ),
+            Err(e) => eprintln!(
+                "Worker {}: resolve_handler(\"docs#index\") = Err({})",
+                worker_id, e
+            ),
+        }
+        match crate::interpreter::builtins::router::resolve_handler("blog#index", None) {
+            Ok(handler) => eprintln!(
+                "Worker {}: resolve_handler(\"blog#index\") = OK({:?})",
+                worker_id,
+                handler.type_name()
+            ),
+            Err(e) => eprintln!(
+                "Worker {}: resolve_handler(\"blog#index\") = Err({})",
+                worker_id, e
+            ),
+        }
+    }
+
     let _worker_routes = get_routes();
 
     // Create VM for production mode (bytecode execution for handler calls)
@@ -2608,14 +2647,22 @@ fn call_handler(
 ) -> ResponseData {
     // Check if this is an OOP controller action (contains #)
     if handler_name.contains('#') {
-        if let Some(response) = call_oop_controller_action(
+        let oop_result = call_oop_controller_action(
             interpreter,
             vm.as_deref_mut(),
             handler_name,
             &request_hash,
             dev_mode,
             request_data,
-        ) {
+        );
+        if let Some(response) = oop_result {
+            // Debug: log when OOP path handles index actions
+            if handler_name.ends_with("#index") {
+                eprintln!(
+                    "[DEBUG] {} handled by OOP path, status={}",
+                    handler_name, response.status
+                );
+            }
             return response;
         }
         // If not an OOP controller or error, fall through to function-based handling
@@ -3437,7 +3484,13 @@ fn handle_request(
 
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
-        Some(found) => found,
+        Some(found) => {
+            // Debug: log route resolution for /docs and /docs/blog
+            if path == "/docs" || path == "/docs/blog" {
+                eprintln!("[DEBUG] {} {} -> handler={}", method, path, found.0);
+            }
+            found
+        }
         None => {
             // Clear session context before returning
             set_current_session_id(None);

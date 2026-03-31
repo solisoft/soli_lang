@@ -42,6 +42,8 @@ pub(crate) fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, R
     }
 
     sort_controllers_by_dependency(&mut controllers);
+    // Ensure deterministic ordering within the same dependency level
+    controllers.sort();
 
     Ok(controllers)
 }
@@ -408,17 +410,31 @@ pub(crate) fn load_controllers_in_worker(
         }
     }
 
-    // Sort controllers so parents are loaded before children
+    // Sort controllers so parents are loaded before children,
+    // then sort alphabetically within the same dependency level for deterministic ordering
     sort_controllers_by_dependency(&mut controller_files);
+    // Ensure deterministic loading order regardless of read_dir order
+    controller_files.sort();
 
     for path in &controller_files {
-        if let Err(e) = execute_file(interpreter, path) {
-            eprintln!(
-                "Worker {}: Error loading {}: {}",
-                worker_id,
-                path.display(),
-                e
-            );
+        let load_ok = match execute_file(interpreter, path) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!(
+                    "Worker {}: Error loading {}: {}",
+                    worker_id,
+                    path.display(),
+                    e
+                );
+                false
+            }
+        };
+
+        // Only register controller actions if the file loaded successfully.
+        // If execute_file failed, the environment may have stale functions
+        // from a previously loaded controller, leading to wrong handler registration.
+        if !load_ok {
+            continue;
         }
 
         // Also register controller actions in this worker (only for function-based controllers)

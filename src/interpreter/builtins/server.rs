@@ -69,7 +69,7 @@ impl RouteIndex {
                 .push(idx);
 
             // Add exact matches (routes without dynamic segments)
-            if !route.path_pattern.contains(':') {
+            if !route.path_pattern.contains(':') && !route.path_pattern.contains('*') {
                 self.exact_matches
                     .entry(route.method.clone())
                     .or_default()
