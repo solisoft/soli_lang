@@ -42,18 +42,21 @@ pub(crate) fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, R
     }
 
     sort_controllers_by_dependency(&mut controllers);
-    // Ensure deterministic ordering within the same dependency level
-    controllers.sort();
 
     Ok(controllers)
 }
 
 /// Sort controller files so parent controllers are loaded before children.
 /// Uses topological sort based on the `extends` declarations in each file.
+/// Within each dependency level, files are sorted alphabetically for deterministic
+/// ordering regardless of filesystem `read_dir` order.
 pub(crate) fn sort_controllers_by_dependency(controllers: &mut Vec<PathBuf>) {
     if controllers.len() <= 1 {
         return;
     }
+
+    // Sort input alphabetically first so each dependency round has deterministic order
+    controllers.sort();
 
     // Parse each file to extract class name and superclass
     let metas: Vec<(PathBuf, Option<String>, Option<String>)> = controllers
@@ -410,11 +413,10 @@ pub(crate) fn load_controllers_in_worker(
         }
     }
 
-    // Sort controllers so parents are loaded before children,
-    // then sort alphabetically within the same dependency level for deterministic ordering
+    // Sort controllers so parents are loaded before children.
+    // sort_controllers_by_dependency sorts alphabetically within each dependency level
+    // to ensure deterministic ordering regardless of read_dir order.
     sort_controllers_by_dependency(&mut controller_files);
-    // Ensure deterministic loading order regardless of read_dir order
-    controller_files.sort();
 
     for path in &controller_files {
         let load_ok = match execute_file(interpreter, path) {
