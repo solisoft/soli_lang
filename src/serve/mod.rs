@@ -2806,7 +2806,7 @@ fn call_handler(
 thread_local! {
     static CONTROLLERS_WITH_HOOKS: RefCell<Option<std::collections::HashSet<String>>> = const { RefCell::new(None) };
     // Cache of controller keys known to NOT have OOP class definitions.
-    // Avoids repeated scope-chain walks for function-based controllers.
+    // Key includes working directory to avoid cross-app collisions.
     static NON_OOP_CONTROLLERS: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
 }
 
@@ -2846,7 +2846,12 @@ fn call_oop_controller_action(
     let (controller_key, action_name) = handler_name.split_once('#')?;
 
     // Fast path: skip environment lookup for controllers known to not be OOP classes
-    if NON_OOP_CONTROLLERS.with(|cache| cache.borrow().contains(controller_key)) {
+    let non_oop_key = format!(
+        "{}:{}",
+        std::env::current_dir().unwrap_or_default().display(),
+        controller_key
+    );
+    if NON_OOP_CONTROLLERS.with(|cache| cache.borrow().contains(&non_oop_key)) {
         return None;
     }
 
@@ -2859,7 +2864,7 @@ fn call_oop_controller_action(
         Some(v) => v,
         None => {
             // Cache this controller as non-OOP to skip future lookups
-            NON_OOP_CONTROLLERS.with(|cache| cache.borrow_mut().insert(controller_key.to_string()));
+            NON_OOP_CONTROLLERS.with(|cache| cache.borrow_mut().insert(non_oop_key));
             return None;
         }
     };
