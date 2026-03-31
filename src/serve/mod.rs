@@ -2649,7 +2649,9 @@ fn call_handler(
             drop(cached);
             let result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
             if let Ok(ref handler) = result {
-                cache.borrow_mut().insert(cache_key.clone(), handler.clone());
+                cache
+                    .borrow_mut()
+                    .insert(cache_key.clone(), handler.clone());
             }
             result
         })
