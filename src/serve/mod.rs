@@ -3037,7 +3037,12 @@ fn call_class_method(
 
         // Try VM execution in production mode
         if let Some(vm) = vm {
-            let handler_key = format!("{}#{}", class.name, method_name);
+            let handler_key = format!(
+                "{}:{}#{}",
+                std::env::current_dir().unwrap_or_default().display(),
+                class.name,
+                method_name
+            );
             if !vm.failed_handlers.contains(&handler_key) {
                 match vm.call_value_direct_one(
                     Value::Function(method.clone()),
