@@ -2633,39 +2633,11 @@ fn call_handler(
         // If not an OOP controller or error, fall through to function-based handling
     }
 
-    // Use CONTROLLERS registry to look up handler by full name (controller#action).
-    // In production mode, cache resolved handlers to skip per-request lookups.
-    // Cache key includes working directory to avoid collisions between apps with same handler names.
-    let cache_key = format!(
-        "{}:{}",
-        std::env::current_dir().unwrap_or_default().display(),
-        handler_name
-    );
-    let handler_result = if !dev_mode {
-        thread_local! {
-            static HANDLER_CACHE: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
-        }
-        HANDLER_CACHE.with(|cache| {
-            let cached = cache.borrow();
-            if let Some(handler) = cached.get(&cache_key) {
-                return Ok(handler.clone());
-            }
-            drop(cached);
-            let result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
-            if let Ok(ref handler) = result {
-                cache
-                    .borrow_mut()
-                    .insert(cache_key.clone(), handler.clone());
-            }
-            result
-        })
-    } else {
-        crate::interpreter::builtins::router::resolve_handler(handler_name, None)
-    };
+    let handler_result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
 
     // Try VM execution in production mode for function-based handlers
     if let Some(ref mut vm) = vm {
-        if !vm.failed_handlers.contains(&cache_key) {
+        if !vm.failed_handlers.contains(handler_name) {
             if let Ok(ref handler_value) = handler_result {
                 match vm.call_value_direct_one(
                     handler_value.clone(),
@@ -2682,8 +2654,7 @@ fn call_handler(
                         };
                     }
                     Err(_) => {
-                        // VM execution failed — remember and skip VM for this handler
-                        vm.failed_handlers.insert(cache_key);
+                        vm.failed_handlers.insert(handler_name.to_string());
                         vm.reset();
                     }
                 }
