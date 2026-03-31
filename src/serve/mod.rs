@@ -2827,8 +2827,19 @@ fn call_oop_controller_action(
 
     // Look up the class in the environment
     let class_value = match interpreter.environment.borrow().get(&class_name) {
-        Some(v) => v,
+        Some(v) => {
+            eprintln!(
+                "[DEBUG] call_oop: class_name={}, class_value type={}",
+                class_name,
+                v.type_name()
+            );
+            v
+        }
         None => {
+            eprintln!(
+                "[DEBUG] call_oop: class_name={} NOT FOUND in environment",
+                class_name
+            );
             return None;
         }
     };
