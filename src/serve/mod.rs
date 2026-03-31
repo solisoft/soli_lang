@@ -2606,10 +2606,6 @@ fn call_handler(
     dev_mode: bool,
     request_data: &RequestData,
 ) -> ResponseData {
-    eprintln!(
-        "[DEBUG] call_handler ENTRY: handler_name={}, dev_mode={}",
-        handler_name, dev_mode
-    );
     // Check if this is an OOP controller action (contains #)
     if handler_name.contains('#') {
         let oop_result = call_oop_controller_action(
@@ -2621,13 +2617,6 @@ fn call_handler(
             request_data,
         );
         if let Some(response) = oop_result {
-            // Debug: log when OOP path handles index actions
-            if handler_name.ends_with("#index") {
-                eprintln!(
-                    "[DEBUG] {} handled by OOP path, status={}",
-                    handler_name, response.status
-                );
-            }
             return response;
         }
         // If not an OOP controller or error, fall through to function-based handling
@@ -2820,26 +2809,11 @@ fn call_oop_controller_action(
     // Check if this is an OOP controller (has a class definition)
     // Convert controller_key (e.g., "posts") to PascalCase class name (e.g., "PostsController")
     let class_name = to_pascal_case_controller(controller_key);
-    eprintln!(
-        "[DEBUG] call_oop: controller_key={}, class_name={}",
-        controller_key, class_name
-    );
 
     // Look up the class in the environment
     let class_value = match interpreter.environment.borrow().get(&class_name) {
-        Some(v) => {
-            eprintln!(
-                "[DEBUG] call_oop: class_name={}, class_value type={}",
-                class_name,
-                v.type_name()
-            );
-            v
-        }
+        Some(v) => v,
         None => {
-            eprintln!(
-                "[DEBUG] call_oop: class_name={} NOT FOUND in environment",
-                class_name
-            );
             return None;
         }
     };
@@ -2879,10 +2853,6 @@ fn call_oop_controller_action(
     }
 
     // Instantiate the controller
-    eprintln!(
-        "[DEBUG] call_oop: creating instance of class={}, action={}",
-        class_name, action_name
-    );
     let controller_instance = match create_controller_instance(&class_name, interpreter) {
         Ok(inst) => inst,
         Err(e) => {
@@ -2929,10 +2899,6 @@ fn call_oop_controller_action(
 
     // Call the action method on the class
     // For OOP controllers, the method is inside the class, not in the global environment
-    eprintln!(
-        "[DEBUG] call_oop: calling call_class_method class={}, action={}",
-        class_name, action_name
-    );
     let action_result = call_class_method(
         interpreter,
         vm,
@@ -3017,10 +2983,6 @@ fn call_class_method(
     method_name: &str,
     request_hash: &Value,
 ) -> Result<Value, RuntimeError> {
-    eprintln!(
-        "[DEBUG] call_class_method ENTRY: class.name={}, method_name={}",
-        class.name, method_name
-    );
     // Look up the method in the class (walks inheritance chain)
     if let Some(method) = class.find_method(method_name) {
         let method_span = method
@@ -3029,15 +2991,7 @@ fn call_class_method(
 
         // Try VM execution in production mode
         if let Some(vm) = vm {
-            let cwd = std::env::current_dir()
-                .unwrap_or_default()
-                .display()
-                .to_string();
-            let handler_key = format!("{}:{}#{}", cwd, class.name, method_name);
-            eprintln!(
-                "[DEBUG] call_class_method: cwd={}, handler_key={}",
-                cwd, handler_key
-            );
+            let handler_key = format!("{}#{}", class.name, method_name);
             if !vm.failed_handlers.contains(&handler_key) {
                 match vm.call_value_direct_one(
                     Value::Function(method.clone()),
@@ -3451,13 +3405,7 @@ fn handle_request(
 
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
-        Some(found) => {
-            // Debug: log route resolution for /docs and /docs/blog
-            if path == "/docs" || path == "/docs/blog" {
-                eprintln!("[DEBUG] {} {} -> handler={}", method, path, found.0);
-            }
-            found
-        }
+        Some(found) => found,
         None => {
             // Clear session context before returning
             set_current_session_id(None);

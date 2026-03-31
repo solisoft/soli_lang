@@ -110,16 +110,6 @@ impl Vm {
         argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        // Check if this function was already JIT-compiled and cached
-        if !func.name.is_empty() {
-            if let Some(Value::VmClosure(cached)) = self.globals.get(&func.name) {
-                let closure = cached.clone();
-                let callee_idx = self.stack.len() - 1 - argc;
-                self.stack[callee_idx] = Value::VmClosure(closure.clone());
-                return self.call_closure(closure, argc, span);
-            }
-        }
-
         // JIT-compile the tree-walking function to bytecode (first call only).
         let func_decl = FunctionDecl {
             name: func.name.clone(),
@@ -159,12 +149,6 @@ impl Vm {
         // Replace the Function value on the stack with the compiled VmClosure
         let callee_idx = self.stack.len() - 1 - argc;
         self.stack[callee_idx] = Value::VmClosure(closure.clone());
-
-        // Cache in globals so subsequent calls skip JIT compilation
-        if !func.name.is_empty() {
-            self.globals
-                .insert(func.name.clone(), Value::VmClosure(closure.clone()));
-        }
 
         // Now call it as a regular closure
         self.call_closure(closure, argc, span)
