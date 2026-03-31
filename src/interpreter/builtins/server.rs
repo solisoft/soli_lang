@@ -186,18 +186,19 @@ pub fn find_route(
             };
 
             // Helper to try finding a route with given method maps
-            let try_method = |
-                routes: &Vec<Route>,
-                exact_map: Option<&std::collections::HashMap<String, usize>>,
-                pattern_indices: Option<&Vec<usize>>,
-                path: &str,
-            | -> Option<(String, Vec<Value>, HashMap<String, String>)> {
+            let try_method = |routes: &Vec<Route>,
+                              exact_map: Option<&std::collections::HashMap<String, usize>>,
+                              pattern_indices: Option<&Vec<usize>>,
+                              path: &str|
+             -> Option<(String, Vec<Value>, HashMap<String, String>)> {
                 if let Some(result) = try_find_route(routes, exact_map, pattern_indices, path) {
                     return Some(result);
                 }
                 // If path had trailing slash, try original path as fallback
                 if path != normalized_path {
-                    if let Some(result) = try_find_route(routes, exact_map, pattern_indices, normalized_path) {
+                    if let Some(result) =
+                        try_find_route(routes, exact_map, pattern_indices, normalized_path)
+                    {
                         return Some(result);
                     }
                 }
@@ -209,7 +210,12 @@ pub fn find_route(
             let method_pattern_indices = index.by_method.get(method);
 
             // Try requested method first
-            if let Some(result) = try_method(&routes, method_exact_map, method_pattern_indices, normalized_path) {
+            if let Some(result) = try_method(
+                &routes,
+                method_exact_map,
+                method_pattern_indices,
+                normalized_path,
+            ) {
                 return Some(result);
             }
 
@@ -217,7 +223,9 @@ pub fn find_route(
             if method == "HEAD" {
                 let get_exact_map = index.exact_matches.get("GET");
                 let get_pattern_indices = index.by_method.get("GET");
-                if let Some(result) = try_method(&routes, get_exact_map, get_pattern_indices, normalized_path) {
+                if let Some(result) =
+                    try_method(&routes, get_exact_map, get_pattern_indices, normalized_path)
+                {
                     return Some(result);
                 }
             }

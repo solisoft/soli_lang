@@ -1,21 +1,79 @@
 <div>
+    <!-- Header -->
     <div class="mb-16">
-        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-4">
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Blog</span>
         </h1>
-        <p class="text-xl text-gray-300 leading-8">
-            Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates about building web applications with SoliLang.
+        <p class="text-lg text-gray-400 max-w-2xl">
+            Tutorials, guides, and ideas on building web applications with SoliLang.
         </p>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Recent Posts</h2>
+    <% if posts.length > 0 %>
 
-    <div class="space-y-6">
-        <% for post in posts %>
-        <a href="/docs/blog/<%= post["slug"] %>" class="block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all">
-            <h3 class="text-xl font-semibold text-white mb-2"><%= post["title"] %></h3>
-            <p class="text-gray-400"><%= post["description"] %></p>
+    <!-- Featured Post (first in the list) -->
+    <a href="/docs/blog/<%= posts[0]["slug"] %>" class="group block mb-12 relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent hover:border-indigo-500/30 transition-all duration-300">
+        <div class="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        <div class="relative p-8 sm:p-10">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/20">
+                    Latest
+                </span>
+                <% if posts[0]["tag"] %>
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-white/5 text-gray-400 border border-white/10">
+                    <%= posts[0]["tag"] %>
+                </span>
+                <% end %>
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-bold text-white mb-3 group-hover:text-indigo-300 transition-colors duration-200">
+                <%= posts[0]["title"] %>
+            </h2>
+            <p class="text-gray-400 text-lg leading-relaxed max-w-3xl mb-6">
+                <%= posts[0]["description"] %>
+            </p>
+            <span class="inline-flex items-center gap-2 text-sm font-medium text-indigo-400 group-hover:text-indigo-300 transition-colors">
+                Read article
+                <svg class="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+            </span>
+        </div>
+    </a>
+
+    <!-- Rest of Posts Grid -->
+    <% if posts.length > 1 %>
+    <div class="grid gap-6 sm:grid-cols-2">
+        <% for i in 1..posts.length - 1 %>
+        <a href="/docs/blog/<%= posts[i]["slug"] %>" class="group relative flex flex-col rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/15 transition-all duration-200">
+            <div class="flex flex-col flex-1 p-6">
+                <div class="mb-4">
+                    <% if posts[i]["tag"] %>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/5 text-gray-400 border border-white/10">
+                        <%= posts[i]["tag"] %>
+                    </span>
+                    <% end %>
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-300 transition-colors duration-200">
+                    <%= posts[i]["title"] %>
+                </h3>
+                <p class="text-sm text-gray-500 leading-relaxed flex-1">
+                    <%= posts[i]["description"] %>
+                </p>
+                <div class="mt-4 pt-4 border-t border-white/5">
+                    <span class="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-400 group-hover:text-indigo-300 transition-colors">
+                        Read more
+                        <svg class="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                        </svg>
+                    </span>
+                </div>
+            </div>
         </a>
         <% end %>
     </div>
+    <% end %>
+
+    <% else %>
+    <p class="text-gray-500">No posts yet.</p>
+    <% end %>
 </div>
