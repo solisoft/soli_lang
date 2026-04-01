@@ -566,9 +566,9 @@ fn run_hyper_server_worker_pool(
                 }
             }
 
-            // Graceful drain: stop accepting, let in-flight requests finish (5s max)
+            // Graceful drain: stop accepting, brief wait for in-flight requests
             drop(listener);
-            let drain_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            let drain_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
             while active_connections.load(Ordering::Relaxed) > 0 {
                 if tokio::time::Instant::now() >= drain_deadline {
                     break;
