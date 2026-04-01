@@ -43,7 +43,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -482,100 +482,61 @@ fn run_hyper_server_worker_pool(
             };
             let _ = bound_port_tx.send(try_port);
 
-            // SIGTERM/SIGINT signal listeners for graceful shutdown
-            let mut sigterm =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("Failed to install SIGTERM handler");
-            let mut sigint =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-                    .expect("Failed to install SIGINT handler");
-
-            // Track active connections for graceful drain
-            let active_connections = Arc::new(AtomicUsize::new(0));
-
             loop {
-                tokio::select! {
-                    result = listener.accept() => {
-                        let (stream, _) = match result {
-                            Ok(conn) => conn,
-                            Err(_) => continue,
-                        };
-                        let io = TokioIo::new(stream);
-                        let request_tx = worker_queues_for_tokio.get_sender();
-                        let reload_tx = reload_tx_for_tokio.clone();
-                        let public_dir = public_dir_arc.clone();
-                        let _ws_registry = ws_registry_for_tokio.clone();
+                let (stream, _) = match listener.accept().await {
+                    Ok(conn) => conn,
+                    Err(_) => continue,
+                };
+                let io = TokioIo::new(stream);
+                let request_tx = worker_queues_for_tokio.get_sender();
+                let reload_tx = reload_tx_for_tokio.clone();
+                let public_dir = public_dir_arc.clone(); // Arc clone is cheap
+                let _ws_registry = ws_registry_for_tokio.clone();
+                let ws_event_tx = ws_event_tx.clone(); // crossbeam Sender is cheap to clone
+                let lv_event_tx = lv_event_tx.clone(); // LiveView event sender
+                let shutdown_flag = shutdown_flag_for_tokio.clone();
+                let dev_mode = dev_mode_for_tokio;
+
+                tokio::spawn(async move {
+                    let service = service_fn(move |req| {
+                        let request_tx = request_tx.clone();
+                        let reload_tx = reload_tx.clone();
+                        let public_dir = public_dir.clone(); // Arc clone is cheap
                         let ws_event_tx = ws_event_tx.clone();
                         let lv_event_tx = lv_event_tx.clone();
-                        let shutdown_flag = shutdown_flag_for_tokio.clone();
-                        let dev_mode = dev_mode_for_tokio;
-                        let active_conns = active_connections.clone();
+                        let shutdown_flag = shutdown_flag.clone();
 
-                        tokio::spawn(async move {
-                            active_conns.fetch_add(1, Ordering::Relaxed);
-
-                            let service = service_fn(move |req| {
-                                let request_tx = request_tx.clone();
-                                let reload_tx = reload_tx.clone();
-                                let public_dir = public_dir.clone();
-                                let ws_event_tx = ws_event_tx.clone();
-                                let lv_event_tx = lv_event_tx.clone();
-                                let shutdown_flag = shutdown_flag.clone();
-
-                                async move {
-                                    // Lock-free shutdown check (AtomicBool)
-                                    if shutdown_flag.load(Ordering::Relaxed) {
-                                        return Ok(Response::builder()
-                                            .status(StatusCode::SERVICE_UNAVAILABLE)
-                                            .body(Full::new(Bytes::from("Server shutting down")))
-                                            .unwrap());
-                                    }
-                                    handle_hyper_request(
-                                        req,
-                                        request_tx,
-                                        reload_tx,
-                                        public_dir,
-                                        ws_event_tx,
-                                        lv_event_tx,
-                                        dev_mode,
-                                    )
-                                    .await
-                                }
-                            });
-
-                            // Use with_upgrades() to support WebSocket upgrades
-                            if let Err(_e) = http1::Builder::new()
-                                .serve_connection(io, service)
-                                .with_upgrades()
-                                .await
-                            {
-                                // Silently ignore connection errors
+                        async move {
+                            // Lock-free shutdown check (AtomicBool)
+                            if shutdown_flag.load(Ordering::Relaxed) {
+                                return Ok(Response::builder()
+                                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                                    .body(Full::new(Bytes::from("Server shutting down")))
+                                    .unwrap());
                             }
+                            handle_hyper_request(
+                                req,
+                                request_tx,
+                                reload_tx,
+                                public_dir,
+                                ws_event_tx,
+                                lv_event_tx,
+                                dev_mode,
+                            )
+                            .await
+                        }
+                    });
 
-                            active_conns.fetch_sub(1, Ordering::Relaxed);
-                        });
+                    // Use with_upgrades() to support WebSocket upgrades
+                    if let Err(_e) = http1::Builder::new()
+                        .serve_connection(io, service)
+                        .with_upgrades()
+                        .await
+                    {
+                        // Silently ignore connection errors
                     }
-                    _ = sigterm.recv() => {
-                        eprintln!("Received SIGTERM, starting graceful shutdown...");
-                        break;
-                    }
-                    _ = sigint.recv() => {
-                        eprintln!("Received SIGINT, starting graceful shutdown...");
-                        break;
-                    }
-                }
+                });
             }
-
-            // Graceful drain: stop accepting, brief wait for in-flight requests
-            drop(listener);
-            let drain_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
-            while active_connections.load(Ordering::Relaxed) > 0 {
-                if tokio::time::Instant::now() >= drain_deadline {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-            std::process::exit(0);
         });
     });
 
