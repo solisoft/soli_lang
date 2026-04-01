@@ -566,22 +566,15 @@ fn run_hyper_server_worker_pool(
                 }
             }
 
-            // Graceful drain phase
-            shutdown_flag_for_tokio.store(true, Ordering::Release);
+            // Graceful drain: stop accepting, let in-flight requests finish (5s max)
             drop(listener);
-
-            let drain_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(25);
+            let drain_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
             while active_connections.load(Ordering::Relaxed) > 0 {
                 if tokio::time::Instant::now() >= drain_deadline {
-                    eprintln!(
-                        "Drain timeout reached, {} connections still active",
-                        active_connections.load(Ordering::Relaxed)
-                    );
                     break;
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
-            eprintln!("Graceful shutdown complete");
             std::process::exit(0);
         });
     });
