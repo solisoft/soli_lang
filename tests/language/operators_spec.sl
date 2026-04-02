@@ -150,3 +150,64 @@ describe("Ternary Operator", fn() {
         assert_eq(result, "positive");
     });
 });
+
+describe("Postfix Increment/Decrement", fn() {
+    test("postfix increment returns old value", fn() {
+        let x = 5;
+        let old = x++;
+        assert_eq(old, 5);
+        assert_eq(x, 6);
+    });
+
+    test("postfix decrement returns old value", fn() {
+        let x = 5;
+        let old = x--;
+        assert_eq(old, 5);
+        assert_eq(x, 4);
+    });
+
+    test("postfix increment on variable", fn() {
+        let counter = 0;
+        counter++;
+        assert_eq(counter, 1);
+        counter++;
+        assert_eq(counter, 2);
+    });
+
+    test("postfix decrement on variable", fn() {
+        let counter = 10;
+        counter--;
+        assert_eq(counter, 9);
+        counter--;
+        assert_eq(counter, 8);
+    });
+
+    test("postfix increment with assignment", fn() {
+        let x = 5;
+        let result = x++ + 10;
+        assert_eq(x, 6);
+        assert_eq(result, 15);
+    });
+
+    test("postfix decrement with assignment", fn() {
+        let x = 5;
+        let result = x-- + 10;
+        assert_eq(x, 4);
+        assert_eq(result, 15);
+    });
+
+    test("postfix increment on float", fn() {
+        let x = 5.0;
+        let old = x++;
+        assert_eq(old, 5.0);
+        assert_eq(x, 6.0);
+    });
+
+    test("multiple postfix operations", fn() {
+        let x = 1;
+        x++;
+        x++;
+        x--;
+        assert_eq(x, 2);
+    });
+});

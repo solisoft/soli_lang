@@ -122,3 +122,64 @@ describe("Lambda Edge Cases", fn() {
         assert_eq(funcs["triple"](5), 15);
     });
 });
+
+describe("Stabby Lambda (->)", fn() {
+    test("stabby lambda with pipe params and block body", fn() {
+        let double = -> |x| { x * 2 };
+        assert_eq(double(5), 10);
+    });
+
+    test("stabby lambda with block body", fn() {
+        let add = -> |a, b| {
+            let sum = a + b;
+            return sum;
+        };
+        assert_eq(add(2, 3), 5);
+    });
+
+    test("stabby lambda with identifier params", fn() {
+        let multiply = -> x, y { x * y };
+        assert_eq(multiply(4, 5), 20);
+    });
+
+    test("stabby lambda with parenthesized params", fn() {
+        let multiply = -> (x, y) { x * y };
+        assert_eq(multiply(4, 5), 20);
+    });
+
+    test("stabby lambda with typed params", fn() {
+        let add = -> (a: Int, b: Int) { a + b };
+        assert_eq(add(10, 20), 30);
+    });
+
+    test("stabby lambda with no params using ||", fn() {
+        let getTime = -> || { clock() };
+        let t = getTime();
+        assert(t > 0);
+    });
+
+    test("stabby lambda as callback", fn() {
+        fn apply(f, x) {
+            return f(x);
+        }
+        let result = apply(-> |x| { x * x }, 4);
+        assert_eq(result, 16);
+    });
+
+    test("stabby lambda with string operations", fn() {
+        let greet = -> |name| { "Hello, " + name };
+        assert_eq(greet("World"), "Hello, World");
+    });
+
+    test("chained stabby lambdas", fn() {
+        let double = -> |x| { x * 2 };
+        let addOne = -> |x| { x + 1 };
+        let result = double(addOne(5));
+        assert_eq(result, 12);
+    });
+
+    test("stabby lambda returns value without return keyword", fn() {
+        let square = -> |x| { x * x };
+        assert_eq(square(7), 49);
+    });
+});

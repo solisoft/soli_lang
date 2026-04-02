@@ -74,3 +74,42 @@ describe("List Comprehensions", fn() {
         assert_eq(sum, 6);
     });
 });
+
+describe("Hash Comprehensions", fn() {
+    test("hash comprehension from array of hashes", fn() {
+        let users = [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}];
+        let ages = {u["name"]: u["age"] for u in users};
+        assert_eq(ages["Alice"], 30);
+        assert_eq(ages["Bob"], 25);
+    });
+
+    test("hash comprehension with computed keys", fn() {
+        let items = [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}];
+        let mapped = {i["id"]: i["value"] for i in items};
+        assert_eq(mapped[1], "a");
+        assert_eq(mapped[2], "b");
+    });
+
+    test("hash comprehension with condition", fn() {
+        let data = [{"name": "Alice", "active": true}, {"name": "Bob", "active": false}, {"name": "Carol", "active": true}];
+        let active = {d["name"]: d["active"] for d in data if d["active"]};
+        assert_eq(len(active), 2);
+        assert(active["Alice"]);
+        assert(active["Carol"]);
+    });
+
+    test("hash comprehension with string concatenation keys", fn() {
+        let items = [{"prefix": "key", "value": 1}, {"prefix": "key", "value": 2}];
+        let mapped = {i["prefix"] + "_" + str(i["value"]): i["value"] for i in items};
+        assert_eq(mapped["key_1"], 1);
+        assert_eq(mapped["key_2"], 2);
+    });
+
+    test("hash comprehension with math expression", fn() {
+        let nums = [{"n": 1}, {"n": 2}, {"n": 3}];
+        let squares = {d["n"]: d["n"] * d["n"] for d in nums};
+        assert_eq(squares[1], 1);
+        assert_eq(squares[2], 4);
+        assert_eq(squares[3], 9);
+    });
+});
