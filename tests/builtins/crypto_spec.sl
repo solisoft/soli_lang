@@ -164,6 +164,20 @@ describe("Crypto Class Static Methods", fn() {
         assert_not(valid);
     });
 
+    test("Crypto.totp_verify() accepts previous window code", fn() {
+        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        let prev_code = Crypto.totp_generate(secret, 29, 30);
+        let valid = Crypto.totp_verify(secret, prev_code, 59, 30);
+        assert(valid);
+    });
+
+    test("Crypto.totp_verify() accepts next window code", fn() {
+        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        let next_code = Crypto.totp_generate(secret, 89, 30);
+        let valid = Crypto.totp_verify(secret, next_code, 59, 30);
+        assert(valid);
+    });
+
     test("Crypto.totp_generate() with current time", fn() {
         // Should not panic - just verify it returns 6 digits
         let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");

@@ -210,8 +210,14 @@ fn do_totp_verify(secret: &str, code: &str, time: u64, period: u64) -> Result<bo
     if code_str.len() != 6 || !code_str.chars().all(|c| c.is_ascii_digit()) {
         return Err("Code must be 6 digits".to_string());
     }
-    let expected = do_totp_generate(secret, time, period)?;
-    Ok(expected == code_str)
+    let windows = [time.saturating_sub(period), time, time + period];
+    for window_time in windows {
+        let expected = do_totp_generate(secret, window_time, period)?;
+        if expected == code_str {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Register cryptographic functions and Crypto class in the given environment.

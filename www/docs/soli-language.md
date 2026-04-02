@@ -1751,83 +1751,82 @@ print(c.before())   # "authenticated" (inherited from BaseController)
 
 ```soli
 # Define an interface
-interface Drawable
+interface Drawable {
     fn draw() -> String;
     fn get_color() -> String;
-end
+}
 
 # Another interface
-interface Resizable
+interface Resizable {
     fn resize(width: Float, height: Float);
     fn get_dimensions() -> {width: Float, height: Float};
-end
+}
 
 # Class implementing multiple interfaces
-class Circle implements Drawable, Resizable
+class Circle implements Drawable, Resizable {
     radius: Float;
     color: String;
 
-    new(radius: Float, color: String)
+    new(radius: Float, color: String) {
         this.radius = radius;
         this.color = color;
-    end
+    }
 
-    fn draw() -> String
+    fn draw() -> String {
         "Circle with radius " + str(this.radius) + " and color " + this.color
-    end
+    }
 
-    fn get_color() -> String
+    fn get_color() -> String {
         this.color
-    end
+    }
 
-    fn resize(width: Float, height: Float)
-        # For a circle, we use the average or just one dimension
+    fn resize(width: Float, height: Float) {
         this.radius = width / 2;
-    end
+    }
 
-    fn get_dimensions() -> {width: Float, height: Float}
+    fn get_dimensions() -> {width: Float, height: Float} {
         {"width": this.radius * 2, "height": this.radius * 2}
-    end
-end
+    }
+}
 
-class Rectangle implements Drawable, Resizable
+class Rectangle implements Drawable, Resizable {
     width: Float;
     height: Float;
     color: String;
 
-    new(width: Float, height: Float, color: String)
+    new(width: Float, height: Float, color: String) {
         this.width = width;
         this.height = height;
         this.color = color;
-    end
+    }
 
-    fn draw() -> String
+    fn draw() -> String {
         "Rectangle " + str(this.width) + "x" + str(this.height) + " in " + this.color
-    end
+    }
 
-    fn get_color() -> String
+    fn get_color() -> String {
         this.color
-    end
+    }
 
-    fn resize(width: Float, height: Float)
+    fn resize(width: Float, height: Float) {
         this.width = width;
         this.height = height;
-    end
+    }
 
-    fn get_dimensions() -> {width: Float, height: Float}
+    fn get_dimensions() -> {width: Float, height: Float} {
         {"width": this.width, "height": this.height}
-    end
-end
+    }
+}
 
 # Using interfaces
-let shapes: Drawable[] = [
+let shapes = [
     new Circle(5.0, "red"),
     new Rectangle(10.0, 6.0, "blue")
 ];
 
-for shape in shapes
-    print(shape.draw());  # Polymorphic call
-end
+for shape in shapes {
+    print(shape.draw());
+}
 ```
 
 ### Visibility Modifiers

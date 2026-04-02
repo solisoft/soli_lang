@@ -21,6 +21,9 @@ pub const ENV_TEMPLATE: &str = include_str!("env.template");
 /// Gitignore template
 pub const GITIGNORE_TEMPLATE: &str = include_str!("gitignore.template");
 
+/// CLAUDE.md template
+pub const CLAUDE_MD_TEMPLATE: &str = include_str!("CLAUDE.md");
+
 /// Application helper template
 pub const APPLICATION_HELPER_TEMPLATE: &str = include_str!("application_helper.sl");
 

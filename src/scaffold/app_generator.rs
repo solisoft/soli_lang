@@ -98,6 +98,11 @@ pub fn create_gitignore(app_path: &Path) -> Result<(), String> {
     write_file(&app_path.join(".gitignore"), app::GITIGNORE_TEMPLATE)
 }
 
+/// Create the CLAUDE.md file
+pub fn create_claude_md(app_path: &Path) -> Result<(), String> {
+    write_file(&app_path.join("CLAUDE.md"), app::CLAUDE_MD_TEMPLATE)
+}
+
 /// Create the application helper
 pub fn create_application_helper(app_path: &Path) -> Result<(), String> {
     write_file(
@@ -453,6 +458,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_routes_file(app_path)?;
     create_env_file(app_path)?;
     create_gitignore(app_path)?;
+    create_claude_md(app_path)?;
     create_tailwind_config(app_path)?;
     create_package_json(app_path, name)?;
     create_soli_toml(app_path, name)?;
@@ -504,6 +510,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     ProgressDisplay::info("\x1b[1mProject structure:\x1b[0m");
     println!("  \x1b[2m│\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[36m{}/\x1b[0m", name);
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m CLAUDE.md        \x1b[2m# AI assistant guidance\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m app/");
     println!(
         "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m controllers/    \x1b[2m# Request handlers\x1b[0m"

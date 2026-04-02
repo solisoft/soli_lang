@@ -180,4 +180,55 @@ describe("Interface Implementation", fn() {
         assert_eq(ab.method_a(), "A");
         assert_eq(ab.method_b(), "B");
     });
+
+    test("interface with return type", fn() {
+        interface Summable {
+            fn sum(a: Int, b: Int) -> Int;
+        }
+
+        class Adder implements Summable {
+            fn sum(a: Int, b: Int) -> Int {
+                return a + b;
+            }
+        }
+
+        let adder = new Adder();
+        assert_eq(adder.sum(3, 4), 7);
+        assert_eq(adder.sum(10, 20), 30);
+    });
+
+    test("interface with typed parameters and return type", fn() {
+        interface Formatter {
+            fn format(name: String, age: Int) -> String;
+        }
+
+        class PersonFormatter implements Formatter {
+            fn format(name: String, age: Int) -> String {
+                return name + " is " + str(age) + " years old";
+            }
+        }
+
+        let pf = new PersonFormatter();
+        assert_eq(pf.format("Alice", 30), "Alice is 30 years old");
+        assert_eq(pf.format("Bob", 25), "Bob is 25 years old");
+    });
+
+    test("interface in array type annotation", fn() {
+        interface Drawable {
+            fn draw() -> String;
+        }
+
+        class Circle implements Drawable {
+            fn draw() -> String { return "Circle"; }
+        }
+
+        class Square implements Drawable {
+            fn draw() -> String { return "Square"; }
+        }
+
+        let shapes = [new Circle(), new Square()];
+        assert_eq(len(shapes), 2);
+        assert_eq(shapes[0].draw(), "Circle");
+        assert_eq(shapes[1].draw(), "Square");
+    });
 });

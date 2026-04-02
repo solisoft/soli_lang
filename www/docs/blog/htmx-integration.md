@@ -89,14 +89,14 @@ fn index(req)
 end
 
 fn create(req)
-    let params = req["params"]
+    let params = req["all"]
     let todo = Todo.create({"title": params["title"], "done": false})
     
     render("todos/_todo", {"todo": todo})
 end
 
 fn toggle(req)
-    let id = req["params"]["id"]
+    let id = req["all"]["id"]
     let todo = Todo.find(id)
     todo["done"] = !todo["done"]
     todo.save
