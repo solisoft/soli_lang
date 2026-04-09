@@ -1169,6 +1169,54 @@ let zeros = [];
 for _ in range(0, 5)
     push(zeros, 0);
 end  # [0, 0, 0, 0, 0]
+
+# Percent literal arrays - quick string/symbol/number arrays (with decimals)
+let words = %w[foo bar baz];    # ["foo", "bar", "baz"]
+let keys = %i[get post put];    # [:get, :post, :put]
+let nums = %n[1 2.5 3.5D];     # [1, 2.5, 3.5]
+let empty_w = %w[];            # []
+let empty_i = %i[];            # []
+let empty_n = %n[];            # []
+```
+
+#### Percent Literal Arrays
+
+Soli provides `%w[]`, `%i[]`, and `%n[]` as sugar syntax for creating arrays of strings, symbols, or numbers without quotes.
+
+```soli
+# %w[] - Array of strings
+let words = %w[demo test production];
+words;  # ["demo", "test", "production"]
+
+# %i[] - Array of symbols
+let methods = %i[get post put delete];
+methods;  # [:get, :post, :put, :delete]
+
+# %n[] - Array of numbers (integers, floats, and decimals with D suffix)
+let numbers = %n[1 2.5 3.5D 4];
+numbers;  # [1, 2.5, 3.5, 4]
+
+# Equivalent to regular arrays
+%w[a b c] == ["a", "b", "c"]
+%i[a b c] == [:a, :b, :c]
+%n[1 2 3] == [1, 2, 3]
+%n[1.5D 2.5D] == [1.5D, 2.5D]
+```
+
+Elements are separated by whitespace (spaces, tabs, or newlines). No commas are needed.
+
+```soli
+# Works with newlines for readability
+const HTTP_METHODS = %i[
+    get
+    post
+    put
+    delete
+];
+
+# Number arrays useful for coordinates, indices, etc.
+const COORDINATES = %n[0 0 10 10];
+let tags = %w[ruby javascript python elixir];
 ```
 
 #### Array Access and Modification

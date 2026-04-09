@@ -140,6 +140,18 @@ impl<'a> Scanner<'a> {
             '%' => {
                 if self.match_char('=') {
                     Ok(self.make_token(TokenKind::PercentEqual))
+                } else if self.peek() == Some('w') && self.peek_at(1) == Some('[') {
+                    self.advance(); // consume 'w'
+                    self.advance(); // consume '['
+                    self.scan_literal_array(true)
+                } else if self.peek() == Some('i') && self.peek_at(1) == Some('[') {
+                    self.advance(); // consume 'i'
+                    self.advance(); // consume '['
+                    self.scan_literal_array(false)
+                } else if self.peek() == Some('n') && self.peek_at(1) == Some('[') {
+                    self.advance(); // consume 'n'
+                    self.advance(); // consume '['
+                    self.scan_number_array()
                 } else {
                     Ok(self.make_token(TokenKind::Percent))
                 }
@@ -662,6 +674,94 @@ impl<'a> Scanner<'a> {
         let span = Span::new(start_position, end_position, start_line, end_column);
 
         Ok(Token::new(TokenKind::StringLiteral(value), span))
+    }
+
+    /// Scan a %w[...] or %i[...] literal array.
+    /// %w[...] produces an array of strings: %w[foo bar] → ["foo", "bar"]
+    /// %i[...] produces an array of symbols: %i[foo bar] → [:foo, :bar]
+    /// Elements are separated by whitespace.
+    fn scan_literal_array(&mut self, is_string: bool) -> Result<Token, LexerError> {
+        let start_position = self.start_pos;
+        let start_line = self.start_line;
+        let mut elements = Vec::new();
+        let mut current_element = String::new();
+
+        loop {
+            match self.peek() {
+                None => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some(']') => {
+                    if !current_element.is_empty() {
+                        elements.push(current_element);
+                    }
+                    self.advance(); // consume ]
+                    break;
+                }
+                Some(c) if c.is_whitespace() => {
+                    if !current_element.is_empty() {
+                        elements.push(current_element);
+                        current_element = String::new();
+                    }
+                    self.advance();
+                }
+                Some(c) => {
+                    current_element.push(c);
+                    self.advance();
+                }
+            }
+        }
+
+        let end_position = self.current_pos;
+        let end_column = self.column;
+        let span = Span::new(start_position, end_position, start_line, end_column);
+
+        if is_string {
+            Ok(Token::new(TokenKind::StringArrayLiteral(elements), span))
+        } else {
+            Ok(Token::new(TokenKind::SymbolArrayLiteral(elements), span))
+        }
+    }
+
+    /// Scan a %n[...] number array literal: %n[1 2.5 3.5D] → [1, 2.5, 3.5D]
+    /// Elements are separated by whitespace and can be integers, floats, or decimals (with D suffix).
+    fn scan_number_array(&mut self) -> Result<Token, LexerError> {
+        let start_position = self.start_pos;
+        let start_line = self.start_line;
+        let mut elements = Vec::new();
+        let mut current_element = String::new();
+
+        loop {
+            match self.peek() {
+                None => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some(']') => {
+                    if !current_element.is_empty() {
+                        elements.push(current_element);
+                    }
+                    self.advance(); // consume ]
+                    break;
+                }
+                Some(c) if c.is_whitespace() => {
+                    if !current_element.is_empty() {
+                        elements.push(current_element);
+                        current_element = String::new();
+                    }
+                    self.advance();
+                }
+                Some(c) => {
+                    current_element.push(c);
+                    self.advance();
+                }
+            }
+        }
+
+        let end_position = self.current_pos;
+        let end_column = self.column;
+        let span = Span::new(start_position, end_position, start_line, end_column);
+
+        Ok(Token::new(TokenKind::NumberArrayLiteral(elements), span))
     }
 
     /// Scan a SDBQL query block: @sdql{ ... #{interpolation} ... }
@@ -1346,5 +1446,98 @@ mod tests {
     fn test_arrow_still_works() {
         // Ensure -> is not broken by -= addition
         assert_eq!(scan("->"), vec![TokenKind::Arrow, TokenKind::Eof]);
+    }
+
+    #[test]
+    fn test_percent_literal_arrays() {
+        // %w[] produces string array
+        assert_eq!(
+            scan("%w[demo test]"),
+            vec![
+                TokenKind::StringArrayLiteral(vec!["demo".to_string(), "test".to_string(),]),
+                TokenKind::Eof,
+            ]
+        );
+
+        // %i[] produces symbol array
+        assert_eq!(
+            scan("%i[demo test]"),
+            vec![
+                TokenKind::SymbolArrayLiteral(vec!["demo".to_string(), "test".to_string(),]),
+                TokenKind::Eof,
+            ]
+        );
+
+        // %n[] produces number array
+        assert_eq!(
+            scan("%n[1 2 3]"),
+            vec![
+                TokenKind::NumberArrayLiteral(vec![
+                    "1".to_string(),
+                    "2".to_string(),
+                    "3".to_string()
+                ]),
+                TokenKind::Eof,
+            ]
+        );
+
+        // %n[] with floats
+        assert_eq!(
+            scan("%n[1.5 2.5 3.5]"),
+            vec![
+                TokenKind::NumberArrayLiteral(vec![
+                    "1.5".to_string(),
+                    "2.5".to_string(),
+                    "3.5".to_string()
+                ]),
+                TokenKind::Eof,
+            ]
+        );
+
+        // %n[] with mixed integers and floats
+        assert_eq!(
+            scan("%n[1 2.5 3]"),
+            vec![
+                TokenKind::NumberArrayLiteral(vec![
+                    "1".to_string(),
+                    "2.5".to_string(),
+                    "3".to_string()
+                ]),
+                TokenKind::Eof,
+            ]
+        );
+
+        // Empty arrays
+        assert_eq!(
+            scan("%w[]"),
+            vec![TokenKind::StringArrayLiteral(vec![]), TokenKind::Eof,]
+        );
+
+        assert_eq!(
+            scan("%i[]"),
+            vec![TokenKind::SymbolArrayLiteral(vec![]), TokenKind::Eof,]
+        );
+
+        assert_eq!(
+            scan("%n[]"),
+            vec![TokenKind::NumberArrayLiteral(vec![]), TokenKind::Eof,]
+        );
+
+        // Single element
+        assert_eq!(
+            scan("%w[foo]"),
+            vec![
+                TokenKind::StringArrayLiteral(vec!["foo".to_string()]),
+                TokenKind::Eof,
+            ]
+        );
+
+        assert_eq!(
+            scan("%n[42]"),
+            vec![
+                TokenKind::NumberArrayLiteral(vec!["42".to_string()]),
+                TokenKind::Eof,
+            ]
+        );
     }
 }

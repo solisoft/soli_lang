@@ -23,6 +23,12 @@ pub enum TokenKind {
     BoolLiteral(bool),
     SymbolLiteral(String), // :name
 
+    // Percent array literals: %w[foo bar] → ["foo", "bar"], %i[foo bar] → [:foo, :bar], %n[1 2.5 3D] → [1, 2.5, 3D]
+    StringArrayLiteral(Vec<String>),
+    SymbolArrayLiteral(Vec<String>),
+    NumberArrayLiteral(Vec<String>), // Raw strings: "1", "2.5", "3.5D"
+    DecimalArrayLiteral(Vec<String>),
+
     // SDBQL query block with #{...} interpolation
     SdqlBlock {
         query: String,
@@ -210,6 +216,10 @@ impl std::fmt::Display for TokenKind {
             }
             TokenKind::BoolLiteral(b) => write!(f, "{}", b),
             TokenKind::SymbolLiteral(s) => write!(f, ":{}", s),
+            TokenKind::StringArrayLiteral(arr) => write!(f, "%w[{}]", arr.join(" ")),
+            TokenKind::SymbolArrayLiteral(arr) => write!(f, "%i[{}]", arr.join(" ")),
+            TokenKind::NumberArrayLiteral(arr) => write!(f, "%n[{}]", arr.join(" ")),
+            TokenKind::DecimalArrayLiteral(arr) => write!(f, "%d[{}]", arr.join(" ")),
             TokenKind::Identifier(s) => write!(f, "{}", s),
             TokenKind::Let => write!(f, "let"),
             TokenKind::Const => write!(f, "const"),

@@ -67,6 +67,49 @@ impl Parser {
             )),
             TokenKind::BoolLiteral(b) => Ok(Expr::new(ExprKind::BoolLiteral(*b), start_span)),
             TokenKind::SymbolLiteral(s) => Ok(Expr::new(ExprKind::Symbol(s.clone()), start_span)),
+            TokenKind::StringArrayLiteral(elements) => {
+                let exprs: Vec<Expr> = elements
+                    .iter()
+                    .map(|s| Expr::new(ExprKind::StringLiteral(s.clone()), start_span))
+                    .collect();
+                Ok(Expr::new(ExprKind::Array(exprs), start_span))
+            }
+            TokenKind::SymbolArrayLiteral(elements) => {
+                let exprs: Vec<Expr> = elements
+                    .iter()
+                    .map(|s| Expr::new(ExprKind::Symbol(s.clone()), start_span))
+                    .collect();
+                Ok(Expr::new(ExprKind::Array(exprs), start_span))
+            }
+            TokenKind::NumberArrayLiteral(elements) => {
+                let exprs: Vec<Expr> = elements
+                    .iter()
+                    .map(|s| {
+                        if s.ends_with('D') || s.ends_with('d') {
+                            let value = if let Some(dot_pos) = s[..s.len() - 1].find('.') {
+                                let before_dot = &s[..dot_pos];
+                                let after_dot = &s[dot_pos + 1..s.len() - 1];
+                                let trimmed = after_dot.trim_end_matches('0');
+                                if trimmed.is_empty() {
+                                    format!("{}.00", before_dot)
+                                } else {
+                                    format!("{}.{}", before_dot, trimmed)
+                                }
+                            } else {
+                                format!("{}.00", &s[..s.len() - 1])
+                            };
+                            Expr::new(ExprKind::DecimalLiteral(value), start_span)
+                        } else if let Ok(n) = s.parse::<i64>() {
+                            Expr::new(ExprKind::IntLiteral(n), start_span)
+                        } else if let Ok(n) = s.parse::<f64>() {
+                            Expr::new(ExprKind::FloatLiteral(n), start_span)
+                        } else {
+                            Expr::new(ExprKind::IntLiteral(0), start_span)
+                        }
+                    })
+                    .collect();
+                Ok(Expr::new(ExprKind::Array(exprs), start_span))
+            }
             TokenKind::Null => Ok(Expr::new(ExprKind::Null, start_span)),
 
             TokenKind::Identifier(name) => {

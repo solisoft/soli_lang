@@ -493,6 +493,7 @@ pub fn public_fn() { }
    - Comprehensions
    - Async/Await
    - Nullish Coalescing Operator (`??`)
+   - Percent Literal Arrays (`%w[]`, `%i[]`, `%n[]`)
 
 5. **Phase 5 (Modules)**
    - Import/Export system
@@ -827,6 +828,83 @@ builder.transition("turn_on", "off", "on"); // Single source
 builder.transition(["off", "broken"], "on", "off"); // Multiple sources
 builder.build();                           // Create StateMachine instance
 ```
+
+---
+
+## 18. Percent Literal Arrays
+
+### Syntax
+```soli
+%w[foo bar baz]   # Array of strings: ["foo", "bar", "baz"]
+%i[foo bar baz]   # Array of symbols: [:foo, :bar, :baz]
+%n[1 2 3]         # Array of numbers: [1, 2, 3]
+%n[1.5 2.5 3.5]   # Floats supported: [1.5, 2.5, 3.5]
+%n[1.5D 2.5D]     # Decimals with D suffix: [1.5D, 2.5D]
+```
+
+### Delimiters
+- Elements are separated by **whitespace only** (spaces, tabs, newlines)
+- No commas needed or allowed between elements
+- Numbers can have D suffix for exact decimal representation
+
+### Examples
+```soli
+// String arrays with %w
+let words = %w[demo test production];
+words;  // ["demo", "test", "production"]
+
+// Symbol arrays with %i
+let keys = %i[get post put delete];
+keys;  // [:get, :post, :put, :delete]
+
+// Number arrays with %n
+let nums = %n[1 2 3];
+nums;  // [1, 2, 3]
+
+let floats = %n[1.5 2.5 3.5];
+floats;  // [1.5, 2.5, 3.5]
+
+let decimals = %n[1.5D 2.5D 3D];
+decimals;  // [1.5D, 2.5D, 3D]
+
+// Mixed types
+let mixed = %n[1 2.5 3.5D];
+mixed;  // [1, 2.5, 3.5D]
+
+// Empty arrays
+%w[]   # []
+%i[]   # []
+%n[]   # []
+
+// Single element
+%w[hello]   # ["hello"]
+%i[hello]   # [:hello]
+%n[42]      # [42]
+%n[3.14D]   # [3.14D]
+
+// With newlines
+let multi = %w[
+    one
+    two
+    three
+];
+// ["one", "two", "three"]
+```
+
+### Comparison with Regular Arrays
+```soli
+// Equivalent to:
+%w[a b c]   == ["a", "b", "c"]
+%i[a b c]   == [:a, :b, :c]
+%n[1 2 3]   == [1, 2, 3]
+```
+
+### Use Cases
+- Defining static lists of strings or symbols without quotes
+- Route definitions: `resources("posts", %i[index show create update destroy])`
+- Configuration arrays: `const ENV = %w[development staging production]`
+- Method names as symbols: `%i[before_save after_create]`
+- Number arrays for coordinates/indices: `const BOX = %n[0 0 100 100]`
 
 ---
 
