@@ -331,6 +331,19 @@ cargo clippy -- -D warnings
 cargo fmt
 ```
 
+## Releasing
+
+Use `scripts/release.sh` to create a new release. It bumps `Cargo.toml`, commits, tags, and pushes — CI handles the rest (binaries, GitHub release, Docker image).
+
+```bash
+./scripts/release.sh patch     # 0.55.1 -> 0.55.2
+./scripts/release.sh minor     # 0.55.1 -> 0.56.0
+./scripts/release.sh major     # 0.55.1 -> 1.0.0
+./scripts/release.sh patch --dry-run   # preview without changes
+```
+
+The CI verifies that the tag version matches `Cargo.toml` before publishing. Never create version tags manually — always use the release script to keep them in sync.
+
 ## Key Files
 
 | File | Purpose |
