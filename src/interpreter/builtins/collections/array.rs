@@ -371,6 +371,7 @@ pub fn register_array_class(env: &mut Environment) {
                         match item {
                             Value::Int(n) => total += *n as f64,
                             Value::Float(n) => total += *n,
+                            Value::Decimal(d) => total += d.to_f64(),
                             _ => return Err("sum expects numeric array".to_string()),
                         }
                     }
@@ -402,6 +403,17 @@ pub fn register_array_class(env: &mut Environment) {
                             (Value::String(a), Value::String(b)) if b < a => min = item,
                             (Value::Int(a), Value::Float(b)) if *b < *a as f64 => min = item,
                             (Value::Float(a), Value::Int(b)) if (*b as f64) < *a => min = item,
+                            (Value::Decimal(a), Value::Decimal(b)) if b.to_f64() < a.to_f64() => {
+                                min = item
+                            }
+                            (Value::Int(a), Value::Decimal(b)) if b.to_f64() < *a as f64 => {
+                                min = item
+                            }
+                            (Value::Decimal(a), Value::Int(b)) if (*b as f64) < a.to_f64() => {
+                                min = item
+                            }
+                            (Value::Float(a), Value::Decimal(b)) if b.to_f64() < *a => min = item,
+                            (Value::Decimal(a), Value::Float(b)) if *b < a.to_f64() => min = item,
                             _ => {}
                         }
                     }
@@ -433,6 +445,17 @@ pub fn register_array_class(env: &mut Environment) {
                             (Value::String(a), Value::String(b)) if b > a => max = item,
                             (Value::Int(a), Value::Float(b)) if *b > *a as f64 => max = item,
                             (Value::Float(a), Value::Int(b)) if (*b as f64) > *a => max = item,
+                            (Value::Decimal(a), Value::Decimal(b)) if b.to_f64() > a.to_f64() => {
+                                max = item
+                            }
+                            (Value::Int(a), Value::Decimal(b)) if b.to_f64() > *a as f64 => {
+                                max = item
+                            }
+                            (Value::Decimal(a), Value::Int(b)) if (*b as f64) > a.to_f64() => {
+                                max = item
+                            }
+                            (Value::Float(a), Value::Decimal(b)) if b.to_f64() > *a => max = item,
+                            (Value::Decimal(a), Value::Float(b)) if *b > a.to_f64() => max = item,
                             _ => {}
                         }
                     }

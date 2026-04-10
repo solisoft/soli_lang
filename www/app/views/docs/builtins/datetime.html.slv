@@ -256,15 +256,16 @@ println(dt.to_iso())  # "2024-01-15T10:30:00"</code></pre>
         <section id="def-format" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-format" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">.format(pattern)</code>
+                    <code class="text-lg font-mono text-indigo-400">.format(pattern, locale?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Format the date/time using strftime pattern specifiers.</p>
+                <p class="text-gray-400 mb-3">Format the date/time using strftime pattern specifiers, with optional locale for internationalized month and day names.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">pattern</code> : <code class="text-purple-400">String</code> - strftime format pattern
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">pattern</code> : <code class="text-purple-400">String</code> - strftime format pattern</div>
+                    <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale code (<code>"en"</code>, <code>"fr"</code>, <code>"es"</code>, <code>"de"</code>, <code>"it"</code>, <code>"pt"</code>). Defaults to <code>"en"</code></div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Common Format Specifiers</h4>
                 <div class="text-sm text-gray-400 grid grid-cols-2 gap-2 mb-4">
@@ -274,13 +275,28 @@ println(dt.to_iso())  # "2024-01-15T10:30:00"</code></pre>
                     <div><code class="text-amber-400">%H</code> - Hour (00-23)</div>
                     <div><code class="text-amber-400">%M</code> - Minute (00-59)</div>
                     <div><code class="text-amber-400">%S</code> - Second (00-59)</div>
-                    <div><code class="text-amber-400">%B</code> - Month name</div>
-                    <div><code class="text-amber-400">%A</code> - Weekday name</div>
+                    <div><code class="text-amber-400">%B</code> - Month name (localized)</div>
+                    <div><code class="text-amber-400">%A</code> - Weekday name (localized)</div>
+                    <div><code class="text-amber-400">%b</code> - Abbreviated month (localized)</div>
+                    <div><code class="text-amber-400">%a</code> - Abbreviated weekday (localized)</div>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15T10:30:00")
 dt.format("%Y-%m-%d %H:%M:%S")  # "2024-01-15 10:30:00"
 dt.format("%B %d, %Y")           # "January 15, 2024"
 dt.format("%A")                  # "Monday"</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Locale Examples</h4>
+                <pre data-filename="I18n Formatting"><code class="language-soli text-sm">let dt = DateTime.parse("2024-03-06T14:30:00Z")
+
+# French
+dt.format("%A %d %B %Y", "fr")   # "mercredi 06 mars 2024"
+dt.format("%d %b %Y", "fr")      # "06 mars 2024"
+
+# Spanish
+dt.format("%A %d %B %Y", "es")   # "miércoles 06 marzo 2024"
+
+# Without locale or with "en" - English (default)
+dt.format("%A %d %B %Y")         # "Wednesday 06 March 2024"
+dt.format("%A %d %B %Y", "en")   # "Wednesday 06 March 2024"</code></pre>
             </div>
         </section>
     </section>
@@ -419,6 +435,10 @@ println("Weekday: " + now.weekday())
 
 # Format output
 println(now.format("%B %d, %Y at %H:%M"))
+
+# Format with locale for I18n
+println(now.format("%A %d %B %Y", "fr"))  # "lundi 15 janvier 2024"
+println(now.format("%A %d %B %Y", "es"))  # "lunes 15 enero 2024"
 
 # Date arithmetic
 let next_week = now.add_weeks(1)

@@ -179,6 +179,29 @@ print(iso_date);  # "2026-01-15"</code></pre>
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">DateTime.format() with Locale</h2>
+    <p class="text-gray-400 mb-6">The <code>DateTime.format()</code> method accepts an optional locale parameter to produce localized month and day names. This is useful when you need full control over the format pattern while still getting translated names.</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">DateTime Locale Formatting</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">let dt = DateTime.parse("2024-03-06T14:30:00Z")
+
+# English (default)
+dt.format("%A %d %B %Y")         # "Wednesday 06 March 2024"
+
+# French
+dt.format("%A %d %B %Y", "fr")   # "mercredi 06 mars 2024"
+dt.format("%d %b %Y", "fr")      # "06 mars 2024"
+
+# Spanish
+dt.format("%A %d %B %Y", "es")   # "miércoles 06 marzo 2024"
+
+# Supported locales: "en", "fr", "es", "de", "it", "pt"
+# Numeric specifiers (%Y, %m, %d, %H, %M, %S) are unaffected by locale</code></pre>
+        </div>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Translation Files</h2>
     <p class="text-gray-400 mb-6">Organize translations in JSON files and load them at startup.</p>
 

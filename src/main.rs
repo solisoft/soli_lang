@@ -1851,8 +1851,11 @@ fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::remove_file(&current_exe)
             .map_err(|e| format!("Failed to remove old binary: {}", e))?;
     }
-    std::fs::rename(&binary_path, &current_exe)
-        .map_err(|e| format!("Failed to install new binary: {}", e))?;
+    if std::fs::rename(&binary_path, &current_exe).is_err() {
+        std::fs::copy(&binary_path, &current_exe)
+            .map_err(|e| format!("Failed to install new binary: {}", e))?;
+        std::fs::remove_file(&binary_path).ok();
+    }
 
     #[cfg(unix)]
     {

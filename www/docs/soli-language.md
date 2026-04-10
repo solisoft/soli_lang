@@ -3113,8 +3113,12 @@ let iso_str = dt.to_iso();            # "2024-01-15T10:30:45"
 let human = dt.to_string();           # "2024-01-15 10:30:45"
 
 # Formatting
-let custom = dt.format("YYYY-MM-DD");  # "2024-01-15"
-let time_only = dt.format("HH:mm:ss"); # "10:30:45"
+let custom = dt.format("%Y-%m-%d");     # "2024-01-15"
+let time_only = dt.format("%H:%M:%S");  # "10:30:45"
+
+# Formatting with locale (I18n)
+let fr = dt.format("%A %d %B %Y", "fr");  # "lundi 15 janvier 2024"
+let es = dt.format("%A %d %B %Y", "es");  # "lunes 15 enero 2024"
 ```
 
 ### DateTime Arithmetic

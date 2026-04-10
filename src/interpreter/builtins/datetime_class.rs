@@ -578,9 +578,16 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
 
     dt_native_methods.insert(
         "format".to_string(),
-        Rc::new(NativeFunction::new("DateTime.format", Some(1), {
+        Rc::new(NativeFunction::new("DateTime.format", None, {
             let _methods = dt_methods_for_format;
             move |args| {
+                // args: [this, format_string] or [this, format_string, locale]
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(format!(
+                        "DateTime.format() expects 1-2 arguments, got {}",
+                        args.len() - 1
+                    ));
+                }
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
                     _ => return Err("DateTime.format() called on non-DateTime".to_string()),
@@ -588,6 +595,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let fmt = match args.get(1) {
                     Some(Value::String(f)) => f.clone(),
                     _ => return Err("DateTime.format() requires format string".to_string()),
+                };
+                let locale = match args.get(2) {
+                    Some(Value::String(l)) => Some(l.clone()),
+                    Some(_) => return Err("DateTime.format() locale must be a string".to_string()),
+                    None => None,
                 };
                 let ts = this.borrow().fields.get("_ts").cloned();
                 match ts {
@@ -598,7 +610,15 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         )
                         .ok_or_else(|| "Invalid timestamp".to_string())?;
                         let local = dt.with_timezone(&Local);
-                        Ok(Value::String(local.format(&fmt).to_string()))
+                        let formatted = local.format(&fmt).to_string();
+                        match locale {
+                            Some(ref loc) if loc != "en" => {
+                                use super::datetime::helpers::{get_locale_data, localize_names};
+                                let (months, days, _, _, _) = get_locale_data(loc);
+                                Ok(Value::String(localize_names(&formatted, months, days, loc)))
+                            }
+                            _ => Ok(Value::String(formatted)),
+                        }
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
                 }

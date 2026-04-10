@@ -273,6 +273,28 @@ I18n.format_date(ts, "fr")  # "15/01/2024"
 I18n.format_date(ts, "de")  # "15.01.2024"</code></pre>
             </div>
         </section>
+
+        <section id="def-datetime-format-locale" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-datetime-format-locale" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">DateTime.format(pattern, locale?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Format a DateTime instance with a custom strftime pattern and optional locale for localized month/day names. See <a href="/docs/builtins/datetime#def-format" class="text-indigo-400 hover:text-indigo-300">DateTime.format()</a> for full details.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">pattern</code> : <code class="text-purple-400">String</code> - strftime format pattern (e.g. <code>"%A %d %B %Y"</code>)</div>
+                    <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale code: <code>"en"</code>, <code>"fr"</code>, <code>"es"</code>, <code>"de"</code>, <code>"it"</code>, <code>"pt"</code></div>
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-03-06T14:30:00Z")
+
+dt.format("%A %d %B %Y", "fr")   # "mercredi 06 mars 2024"
+dt.format("%A %d %B %Y", "es")   # "miércoles 06 marzo 2024"
+dt.format("%d %b %Y", "fr")      # "06 mars 2024"</code></pre>
+            </div>
+        </section>
     </section>
 
     <!-- Example -->

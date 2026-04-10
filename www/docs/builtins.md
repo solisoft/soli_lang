@@ -1746,12 +1746,13 @@ let dt = DateTime.now()
 println(dt.to_iso())  # "2024-01-15T10:30:00"
 ```
 
-#### .format(pattern)
+#### .format(pattern, locale?)
 
-Formats the date/time using strftime pattern specifiers.
+Formats the date/time using strftime pattern specifiers. Pass an optional locale to get localized month and day names.
 
 **Parameters:**
 - `pattern` (String) - strftime format pattern
+- `locale` (String?) - Optional locale code: `"en"` (default), `"fr"`, `"es"`, `"de"`, `"it"`, `"pt"`
 
 Common format specifiers:
 - `%Y` - 4-digit year (2024)
@@ -1760,8 +1761,10 @@ Common format specifiers:
 - `%H` - 24-hour hour (00-23)
 - `%M` - Minute (00-59)
 - `%S` - Second (00-59)
-- `%B` - Full month name (January)
-- `%A` - Full weekday name (Monday)
+- `%B` - Full month name (localized)
+- `%b` - Abbreviated month name (localized)
+- `%A` - Full weekday name (localized)
+- `%a` - Abbreviated weekday name (localized)
 
 **Returns:** String
 
@@ -1771,6 +1774,12 @@ let dt = DateTime.parse("2024-01-15T10:30:00")
 dt.format("%Y-%m-%d %H:%M:%S")  # "2024-01-15 10:30:00"
 dt.format("%B %d, %Y")           # "January 15, 2024"
 dt.format("%A")                  # "Monday"
+
+# With locale for I18n
+let dt2 = DateTime.parse("2024-03-06T14:30:00Z")
+dt2.format("%A %d %B %Y", "fr")  # "mercredi 06 mars 2024"
+dt2.format("%A %d %B %Y", "es")  # "miércoles 06 marzo 2024"
+dt2.format("%d %b %Y", "fr")     # "06 mars 2024"
 ```
 
 ### Instance Methods - Arithmetic
@@ -1842,6 +1851,10 @@ println("Weekday: " + now.weekday())
 
 # Format output
 println(now.format("%B %d, %Y at %H:%M"))
+
+# Format with locale for I18n
+println(now.format("%A %d %B %Y", "fr"))  # "lundi 15 janvier 2024"
+println(now.format("%A %d %B %Y", "es"))  # "lunes 15 enero 2024"
 
 # Date arithmetic
 let next_week = now.add_weeks(1)

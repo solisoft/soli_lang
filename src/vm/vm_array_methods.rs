@@ -131,39 +131,89 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
                 let items = arr.borrow();
-                let mut total = 0i64;
+                let mut has_float = false;
+                let mut has_decimal = false;
+                let mut total_i = 0i64;
+                let mut total_f = 0.0f64;
                 for item in items.iter() {
-                    if let Value::Int(n) = item {
-                        total += n;
+                    match item {
+                        Value::Int(n) => total_i += n,
+                        Value::Float(n) => {
+                            has_float = true;
+                            total_f += n;
+                        }
+                        Value::Decimal(d) => {
+                            has_decimal = true;
+                            total_f += d.to_f64();
+                        }
+                        _ => {
+                            return Err(RuntimeError::type_error("sum expects numeric array", span))
+                        }
                     }
                 }
-                Ok(Value::Int(total))
+                if has_float || has_decimal {
+                    Ok(Value::Float(total_i as f64 + total_f))
+                } else {
+                    Ok(Value::Int(total_i))
+                }
             }
             "min" => {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
                 let items = arr.borrow();
-                let mut min: Option<i64> = None;
-                for item in items.iter() {
-                    if let Value::Int(n) = item {
-                        min = Some(min.map_or(*n, |m: i64| m.min(*n)));
+                if items.is_empty() {
+                    return Ok(Value::Null);
+                }
+                let mut min = &items[0];
+                for item in items.iter().skip(1) {
+                    match (min, item) {
+                        (Value::Int(a), Value::Int(b)) if b < a => min = item,
+                        (Value::Float(a), Value::Float(b)) if b < a => min = item,
+                        (Value::Int(a), Value::Float(b)) if *b < *a as f64 => min = item,
+                        (Value::Float(a), Value::Int(b)) if (*b as f64) < *a => min = item,
+                        (Value::Decimal(a), Value::Decimal(b)) if b.to_f64() < a.to_f64() => {
+                            min = item
+                        }
+                        (Value::Int(a), Value::Decimal(b)) if b.to_f64() < *a as f64 => min = item,
+                        (Value::Decimal(a), Value::Int(b)) if (*b as f64) < a.to_f64() => {
+                            min = item
+                        }
+                        (Value::Float(a), Value::Decimal(b)) if b.to_f64() < *a => min = item,
+                        (Value::Decimal(a), Value::Float(b)) if *b < a.to_f64() => min = item,
+                        _ => {}
                     }
                 }
-                Ok(min.map_or(Value::Null, Value::Int))
+                Ok(min.clone())
             }
             "max" => {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
                 let items = arr.borrow();
-                let mut max: Option<i64> = None;
-                for item in items.iter() {
-                    if let Value::Int(n) = item {
-                        max = Some(max.map_or(*n, |m: i64| m.max(*n)));
+                if items.is_empty() {
+                    return Ok(Value::Null);
+                }
+                let mut max = &items[0];
+                for item in items.iter().skip(1) {
+                    match (max, item) {
+                        (Value::Int(a), Value::Int(b)) if b > a => max = item,
+                        (Value::Float(a), Value::Float(b)) if b > a => max = item,
+                        (Value::Int(a), Value::Float(b)) if *b > *a as f64 => max = item,
+                        (Value::Float(a), Value::Int(b)) if (*b as f64) > *a => max = item,
+                        (Value::Decimal(a), Value::Decimal(b)) if b.to_f64() > a.to_f64() => {
+                            max = item
+                        }
+                        (Value::Int(a), Value::Decimal(b)) if b.to_f64() > *a as f64 => max = item,
+                        (Value::Decimal(a), Value::Int(b)) if (*b as f64) > a.to_f64() => {
+                            max = item
+                        }
+                        (Value::Float(a), Value::Decimal(b)) if b.to_f64() > *a => max = item,
+                        (Value::Decimal(a), Value::Float(b)) if *b > a.to_f64() => max = item,
+                        _ => {}
                     }
                 }
-                Ok(max.map_or(Value::Null, Value::Int))
+                Ok(max.clone())
             }
             "sort" => {
                 if !args.is_empty() {

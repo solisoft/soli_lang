@@ -378,7 +378,7 @@ pub fn localize_date(timestamp: i64, locale: &str, format: &str) -> String {
 }
 
 /// Get locale-specific data (month names, day names, formats)
-fn get_locale_data(
+pub fn get_locale_data(
     locale: &str,
 ) -> (
     &'static [&'static str],
@@ -555,7 +555,7 @@ fn get_locale_data(
 }
 
 /// English month names (full) for replacement
-const EN_MONTHS: [&str; 12] = [
+pub const EN_MONTHS: [&str; 12] = [
     "January",
     "February",
     "March",
@@ -571,12 +571,12 @@ const EN_MONTHS: [&str; 12] = [
 ];
 
 /// English month names (abbreviated) for replacement
-const EN_MONTHS_SHORT: [&str; 12] = [
+pub const EN_MONTHS_SHORT: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
 /// English day names (full) for replacement
-const EN_DAYS: [&str; 7] = [
+pub const EN_DAYS: [&str; 7] = [
     "Monday",
     "Tuesday",
     "Wednesday",
@@ -587,10 +587,10 @@ const EN_DAYS: [&str; 7] = [
 ];
 
 /// English day names (abbreviated) for replacement
-const EN_DAYS_SHORT: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+pub const EN_DAYS_SHORT: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /// Get abbreviated month names for a locale
-fn get_months_short(locale: &str) -> &'static [&'static str] {
+pub fn get_months_short(locale: &str) -> &'static [&'static str] {
     match locale {
         "fr" => &[
             "janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.",
@@ -619,7 +619,7 @@ fn get_months_short(locale: &str) -> &'static [&'static str] {
 }
 
 /// Get abbreviated day names for a locale
-fn get_days_short(locale: &str) -> &'static [&'static str] {
+pub fn get_days_short(locale: &str) -> &'static [&'static str] {
     match locale {
         "fr" => &["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."],
         "de" => &["Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So."],
@@ -648,7 +648,7 @@ fn is_standalone_word(s: &str, start: usize, word_len: usize) -> bool {
 }
 
 /// Replace a word only if it appears as a standalone word
-fn replace_standalone(s: &str, from: &str, to: &str) -> String {
+pub fn replace_standalone(s: &str, from: &str, to: &str) -> String {
     let mut result = String::new();
     let mut remaining = s;
 
@@ -668,7 +668,7 @@ fn replace_standalone(s: &str, from: &str, to: &str) -> String {
 }
 
 /// Replace English month/day names with localized versions
-fn localize_names(formatted: &str, months: &[&str], days: &[&str], locale: &str) -> String {
+pub fn localize_names(formatted: &str, months: &[&str], days: &[&str], locale: &str) -> String {
     let mut result = formatted.to_string();
 
     // Replace full month names first (they are longer, less chance of partial match)
@@ -860,6 +860,403 @@ mod tests {
             fr_day_abbrev.contains("mer."),
             "French abbreviated day should contain 'mer.', got: {}",
             fr_day_abbrev
+        );
+    }
+
+    // =========================================================================
+    // localize_names unit tests
+    // =========================================================================
+
+    #[test]
+    fn test_localize_names_french_full_month() {
+        let (months, days, _, _, _) = get_locale_data("fr");
+        assert_eq!(localize_names("January", months, days, "fr"), "janvier");
+        assert_eq!(localize_names("February", months, days, "fr"), "février");
+        assert_eq!(localize_names("March", months, days, "fr"), "mars");
+        assert_eq!(localize_names("April", months, days, "fr"), "avril");
+        assert_eq!(localize_names("May", months, days, "fr"), "mai");
+        assert_eq!(localize_names("June", months, days, "fr"), "juin");
+        assert_eq!(localize_names("July", months, days, "fr"), "juillet");
+        assert_eq!(localize_names("August", months, days, "fr"), "août");
+        assert_eq!(localize_names("September", months, days, "fr"), "septembre");
+        assert_eq!(localize_names("October", months, days, "fr"), "octobre");
+        assert_eq!(localize_names("November", months, days, "fr"), "novembre");
+        assert_eq!(localize_names("December", months, days, "fr"), "décembre");
+    }
+
+    #[test]
+    fn test_localize_names_spanish_full_month() {
+        let (months, days, _, _, _) = get_locale_data("es");
+        assert_eq!(localize_names("January", months, days, "es"), "enero");
+        assert_eq!(localize_names("February", months, days, "es"), "febrero");
+        assert_eq!(localize_names("March", months, days, "es"), "marzo");
+        assert_eq!(localize_names("April", months, days, "es"), "abril");
+        assert_eq!(localize_names("May", months, days, "es"), "mayo");
+        assert_eq!(localize_names("June", months, days, "es"), "junio");
+        assert_eq!(localize_names("July", months, days, "es"), "julio");
+        assert_eq!(localize_names("August", months, days, "es"), "agosto");
+        assert_eq!(
+            localize_names("September", months, days, "es"),
+            "septiembre"
+        );
+        assert_eq!(localize_names("October", months, days, "es"), "octubre");
+        assert_eq!(localize_names("November", months, days, "es"), "noviembre");
+        assert_eq!(localize_names("December", months, days, "es"), "diciembre");
+    }
+
+    #[test]
+    fn test_localize_names_french_full_days() {
+        let (months, days, _, _, _) = get_locale_data("fr");
+        assert_eq!(localize_names("Monday", months, days, "fr"), "lundi");
+        assert_eq!(localize_names("Tuesday", months, days, "fr"), "mardi");
+        assert_eq!(localize_names("Wednesday", months, days, "fr"), "mercredi");
+        assert_eq!(localize_names("Thursday", months, days, "fr"), "jeudi");
+        assert_eq!(localize_names("Friday", months, days, "fr"), "vendredi");
+        assert_eq!(localize_names("Saturday", months, days, "fr"), "samedi");
+        assert_eq!(localize_names("Sunday", months, days, "fr"), "dimanche");
+    }
+
+    #[test]
+    fn test_localize_names_spanish_full_days() {
+        let (months, days, _, _, _) = get_locale_data("es");
+        assert_eq!(localize_names("Monday", months, days, "es"), "lunes");
+        assert_eq!(localize_names("Tuesday", months, days, "es"), "martes");
+        assert_eq!(localize_names("Wednesday", months, days, "es"), "miércoles");
+        assert_eq!(localize_names("Thursday", months, days, "es"), "jueves");
+        assert_eq!(localize_names("Friday", months, days, "es"), "viernes");
+        assert_eq!(localize_names("Saturday", months, days, "es"), "sábado");
+        assert_eq!(localize_names("Sunday", months, days, "es"), "domingo");
+    }
+
+    #[test]
+    fn test_localize_names_abbreviated_months() {
+        let (months, days, _, _, _) = get_locale_data("fr");
+        assert_eq!(localize_names("Feb", months, days, "fr"), "févr.");
+        assert_eq!(localize_names("Sep", months, days, "fr"), "sept.");
+
+        let (months, days, _, _, _) = get_locale_data("es");
+        assert_eq!(localize_names("Feb", months, days, "es"), "feb.");
+        assert_eq!(localize_names("Sep", months, days, "es"), "sept.");
+    }
+
+    #[test]
+    fn test_localize_names_abbreviated_days() {
+        let (months, days, _, _, _) = get_locale_data("fr");
+        assert_eq!(localize_names("Mon", months, days, "fr"), "lun.");
+        assert_eq!(localize_names("Wed", months, days, "fr"), "mer.");
+
+        let (months, days, _, _, _) = get_locale_data("es");
+        assert_eq!(localize_names("Mon", months, days, "es"), "lun.");
+        assert_eq!(localize_names("Wed", months, days, "es"), "mié.");
+    }
+
+    #[test]
+    fn test_localize_names_composite_string() {
+        let (months, days, _, _, _) = get_locale_data("fr");
+        assert_eq!(
+            localize_names("Wednesday 06 March 2024", months, days, "fr"),
+            "mercredi 06 mars 2024"
+        );
+        assert_eq!(
+            localize_names("Monday, January 01, 2024", months, days, "fr"),
+            "lundi, janvier 01, 2024"
+        );
+    }
+
+    #[test]
+    fn test_localize_names_no_english_names_unchanged() {
+        let (months, days, _, _, _) = get_locale_data("fr");
+        // Numeric-only strings should pass through unchanged
+        assert_eq!(
+            localize_names("2024-01-15 10:30:00", months, days, "fr"),
+            "2024-01-15 10:30:00"
+        );
+        assert_eq!(
+            localize_names("15/01/2024", months, days, "fr"),
+            "15/01/2024"
+        );
+    }
+
+    #[test]
+    fn test_localize_names_english_passthrough() {
+        // English locale returns English names (no-op through get_locale_data default)
+        let (months, days, _, _, _) = get_locale_data("en");
+        assert_eq!(localize_names("Monday", months, days, "en"), "Monday");
+        assert_eq!(localize_names("January", months, days, "en"), "January");
+    }
+
+    // =========================================================================
+    // get_locale_data unit tests
+    // =========================================================================
+
+    #[test]
+    fn test_get_locale_data_returns_12_months() {
+        for locale in &["en", "fr", "es", "de", "it", "pt"] {
+            let (months, _, _, _, _) = get_locale_data(locale);
+            assert_eq!(
+                months.len(),
+                12,
+                "locale '{}' should have 12 months",
+                locale
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_locale_data_returns_7_days() {
+        for locale in &["en", "fr", "es", "de", "it", "pt"] {
+            let (_, days, _, _, _) = get_locale_data(locale);
+            assert_eq!(days.len(), 7, "locale '{}' should have 7 days", locale);
+        }
+    }
+
+    #[test]
+    fn test_get_locale_data_unknown_locale_falls_back_to_english() {
+        let (months, days, date_fmt, _, _) = get_locale_data("xx");
+        assert_eq!(months[0], "January");
+        assert_eq!(days[0], "Monday");
+        assert_eq!(date_fmt, "%m/%d/%Y");
+    }
+
+    #[test]
+    fn test_get_locale_data_french_formats() {
+        let (_, _, date_fmt, time_fmt, datetime_fmt) = get_locale_data("fr");
+        assert_eq!(date_fmt, "%d/%m/%Y");
+        assert_eq!(time_fmt, "%H:%M");
+        assert_eq!(datetime_fmt, "%d/%m/%Y %H:%M");
+    }
+
+    #[test]
+    fn test_get_locale_data_spanish_formats() {
+        let (_, _, date_fmt, time_fmt, datetime_fmt) = get_locale_data("es");
+        assert_eq!(date_fmt, "%d/%m/%Y");
+        assert_eq!(time_fmt, "%H:%M");
+        assert_eq!(datetime_fmt, "%d/%m/%Y %H:%M");
+    }
+
+    // =========================================================================
+    // get_months_short / get_days_short unit tests
+    // =========================================================================
+
+    #[test]
+    fn test_get_months_short_returns_12_entries() {
+        for locale in &["en", "fr", "es", "de", "it", "pt"] {
+            let short = get_months_short(locale);
+            assert_eq!(
+                short.len(),
+                12,
+                "locale '{}' should have 12 abbreviated months",
+                locale
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_days_short_returns_7_entries() {
+        for locale in &["en", "fr", "es", "de", "it", "pt"] {
+            let short = get_days_short(locale);
+            assert_eq!(
+                short.len(),
+                7,
+                "locale '{}' should have 7 abbreviated days",
+                locale
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_months_short_french() {
+        let short = get_months_short("fr");
+        assert_eq!(short[0], "janv.");
+        assert_eq!(short[1], "févr.");
+        assert_eq!(short[11], "déc.");
+    }
+
+    #[test]
+    fn test_get_months_short_spanish() {
+        let short = get_months_short("es");
+        assert_eq!(short[0], "ene.");
+        assert_eq!(short[1], "feb.");
+        assert_eq!(short[11], "dic.");
+    }
+
+    #[test]
+    fn test_get_days_short_french() {
+        let short = get_days_short("fr");
+        assert_eq!(short[0], "lun.");
+        assert_eq!(short[2], "mer.");
+        assert_eq!(short[6], "dim.");
+    }
+
+    #[test]
+    fn test_get_days_short_spanish() {
+        let short = get_days_short("es");
+        assert_eq!(short[0], "lun.");
+        assert_eq!(short[2], "mié.");
+        assert_eq!(short[6], "dom.");
+    }
+
+    #[test]
+    fn test_get_months_short_unknown_locale_english() {
+        let short = get_months_short("xx");
+        assert_eq!(short[0], "Jan");
+        assert_eq!(short[11], "Dec");
+    }
+
+    #[test]
+    fn test_get_days_short_unknown_locale_english() {
+        let short = get_days_short("xx");
+        assert_eq!(short[0], "Mon");
+        assert_eq!(short[6], "Sun");
+    }
+
+    // =========================================================================
+    // replace_standalone unit tests
+    // =========================================================================
+
+    #[test]
+    fn test_replace_standalone_basic() {
+        assert_eq!(replace_standalone("Mon 15", "Mon", "lun."), "lun. 15");
+    }
+
+    #[test]
+    fn test_replace_standalone_does_not_replace_substring() {
+        // "Mon" inside "Monday" should NOT be replaced
+        assert_eq!(replace_standalone("Monday", "Mon", "lun."), "Monday");
+    }
+
+    #[test]
+    fn test_replace_standalone_at_end() {
+        assert_eq!(replace_standalone("15 Mon", "Mon", "lun."), "15 lun.");
+    }
+
+    #[test]
+    fn test_replace_standalone_no_match() {
+        assert_eq!(replace_standalone("Tuesday", "Mon", "lun."), "Tuesday");
+    }
+
+    #[test]
+    fn test_replace_standalone_multiple_occurrences() {
+        assert_eq!(
+            replace_standalone("Mon and Mon", "Mon", "lun."),
+            "lun. and lun."
+        );
+    }
+
+    // =========================================================================
+    // time_ago_localized unit tests
+    // =========================================================================
+
+    #[test]
+    fn test_time_ago_localized_french() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "fr");
+        assert!(
+            result.contains("il y a") && result.contains("minutes"),
+            "French time_ago should say 'il y a ... minutes', got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_time_ago_localized_spanish() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "es");
+        assert!(
+            result.contains("hace") && result.contains("minutos"),
+            "Spanish time_ago should say 'hace ... minutos', got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_time_ago_localized_english_default() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "en");
+        assert!(
+            result.contains("minutes ago"),
+            "English time_ago should say 'minutes ago', got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_time_ago_localized_unknown_locale_falls_back_to_english() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "xx");
+        assert!(
+            result.contains("minutes ago"),
+            "Unknown locale should fall back to English, got: {}",
+            result
+        );
+    }
+
+    // =========================================================================
+    // localize_date with format variants
+    // =========================================================================
+
+    #[test]
+    fn test_localize_date_short_format_per_locale() {
+        // 2024-01-15 00:00:00 UTC
+        let ts = 1705276800;
+
+        let en = localize_date(ts, "en", "short");
+        assert!(en.contains("/"), "English short: {}", en);
+
+        let fr = localize_date(ts, "fr", "short");
+        assert!(fr.contains("/"), "French short: {}", fr);
+        // French is dd/mm/yyyy
+        assert!(
+            fr.starts_with("15"),
+            "French short should start with day, got: {}",
+            fr
+        );
+
+        let es = localize_date(ts, "es", "short");
+        assert!(es.contains("/"), "Spanish short: {}", es);
+        assert!(
+            es.starts_with("15"),
+            "Spanish short should start with day, got: {}",
+            es
+        );
+    }
+
+    #[test]
+    fn test_localize_date_long_format_per_locale() {
+        // 2024-01-15 00:00:00 UTC
+        let ts = 1705276800;
+
+        let en = localize_date(ts, "en", "long");
+        assert!(
+            en.contains("January"),
+            "English long should have 'January', got: {}",
+            en
+        );
+
+        let fr = localize_date(ts, "fr", "long");
+        assert!(
+            fr.contains("janvier"),
+            "French long should have 'janvier', got: {}",
+            fr
+        );
+
+        let es = localize_date(ts, "es", "long");
+        assert!(
+            es.contains("enero"),
+            "Spanish long should have 'enero', got: {}",
+            es
+        );
+    }
+
+    #[test]
+    fn test_localize_date_custom_strftime() {
+        // 2024-01-15 00:00:00 UTC (Monday)
+        let ts = 1705276800;
+        let result = localize_date(ts, "fr", "%A %d %B %Y");
+        assert!(
+            result.contains("lundi") && result.contains("janvier"),
+            "Custom strftime with French locale, got: {}",
+            result
         );
     }
 }
