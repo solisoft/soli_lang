@@ -578,8 +578,9 @@ pub(crate) fn reload_routes_in_worker(
     let saved_routes = crate::interpreter::builtins::server::take_routes();
     let saved_ws_routes = crate::serve::websocket::take_websocket_routes();
 
-    // 2. Reset router context
+    // 2. Reset router context and engine context
     crate::interpreter::builtins::router::reset_router_context();
+    crate::serve::engine_loader::reset_engine_context();
 
     // 3. Reload controllers to ensure OOP controller classes are available
     reload_controllers_in_worker(worker_id, interpreter, controllers_dir, file_tracker);
@@ -606,10 +607,15 @@ pub(crate) fn reload_routes_in_worker(
         Ok(())
     };
 
-    // 5. Rebuild route index
+    // 5. Load engine routes (if engines are configured)
+    if let Err(e) = crate::serve::engine_loader::load_engine_routes(interpreter) {
+        eprintln!("Worker {}: Error loading engine routes: {}", worker_id, e);
+    }
+
+    // 6. Rebuild route index
     crate::interpreter::builtins::server::rebuild_route_index();
 
-    // 6. If reload failed, restore previous routes
+    // 7. If reload failed, restore previous routes
     if let Err(e) = reload_result {
         eprintln!(
             "Worker {}: Error reloading routes: {} - restoring previous routes",

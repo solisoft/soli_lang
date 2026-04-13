@@ -1,0 +1,147 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Engines</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Engines are mini-applications that can be mounted at specific URL paths. Each engine has its own controllers, models, views, routes, and migrations—completely isolated from the main application.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-blue-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-blue-400 mb-1">Why Engines?</h4>
+                <p class="text-blue-200/80 text-sm">
+                    Build modular architectures, plugin systems, or simply organize code into self-contained units that can be reused across projects.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Engine Structure</h2>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">engines/shop/</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">engines/shop/
+├── engine.sl              # Engine manifest
+├── app/
+│   ├── controllers/
+│   ├── models/
+│   ├── views/
+│   └── helpers/
+├── config/
+│   └── routes.sl         # Engine-specific routes
+└── db/
+    └── migrations/       # Engine-specific migrations</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Engine Manifest</h2>
+    <p class="text-gray-400 mb-6">Each engine has a manifest file <code>engine.sl</code>:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">engines/shop/engine.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">engine "shop" {
+    version: "1.0.0",
+    dependencies: []
+}</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Routes</h2>
+    <p class="text-gray-400 mb-6">Engine routes are relative to their mount point. If mounted at <code>/shop</code>, a route <code>get("/products", "shop#products")</code> responds to <code>GET /shop/products</code>.</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">engines/shop/config/routes.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">get("/", "shop#index")
+get("/products", "shop#products")
+get("/products/:id", "shop#product_detail")</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Mounting Engines</h2>
+    <p class="text-gray-400 mb-6">Define engines in <code>config/engines.sl</code>:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/engines.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">mount "shop", at: "/shop"
+mount "blog", at: "/blog"</code></pre>
+        </div>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-purple-500/10 border border-purple-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-purple-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-purple-400 mb-1">Template Engine Integration</h4>
+                <p class="text-purple-200/80 text-sm">
+                    When you call <code>render("shop/index", data)</code>, the template engine first checks <code>app/views/shop/index.html.slv</code>, then <code>engines/shop/app/views/shop/index.html.slv</code>. This lets engines extend views while maintaining their own view directory.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Creating Engines</h2>
+    <p class="text-gray-400 mb-6">Use the scaffold generator to create a new engine:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Terminal</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli engine create shop</code></pre>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">File Resolution</h2>
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-12">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-4 font-semibold text-white">File Type</th>
+                    <th class="px-6 py-4 font-semibold text-white">Main App</th>
+                    <th class="px-6 py-4 font-semibold text-white">Engine</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="px-6 py-4 text-gray-400">Controllers</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">app/controllers/</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">engines/&lt;name&gt;/app/controllers/</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 text-gray-400">Models</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">app/models/</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">engines/&lt;name&gt;/app/models/</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 text-gray-400">Views</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">app/views/</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">engines/&lt;name&gt;/app/views/</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 text-gray-400">Routes</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">config/routes.sl</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">engines/&lt;name&gt;/config/routes.sl</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-4 text-gray-400">Migrations</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">db/migrations/</td>
+                    <td class="px-6 py-4 font-mono text-indigo-300">engines/&lt;name&gt;/db/migrations/</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

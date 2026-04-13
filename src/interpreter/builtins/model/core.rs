@@ -16,6 +16,37 @@ use super::relations::{
 };
 use super::validation::{register_validation, ValidationRule};
 
+thread_local! {
+    static ENGINE_CONTEXT: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+pub fn set_model_engine_context(engine: Option<&str>) {
+    ENGINE_CONTEXT.with(|ctx| {
+        *ctx.borrow_mut() = engine.map(String::from);
+    });
+}
+
+pub fn get_model_engine_context() -> Option<String> {
+    ENGINE_CONTEXT.with(|ctx| ctx.borrow().clone())
+}
+
+/// RAII guard that sets the engine context on creation and clears it on drop.
+/// Ensures the context is always cleaned up, even if a panic occurs.
+pub struct EngineContextGuard;
+
+impl EngineContextGuard {
+    pub fn enter(name: &str) -> Self {
+        set_model_engine_context(Some(name));
+        Self
+    }
+}
+
+impl Drop for EngineContextGuard {
+    fn drop(&mut self) {
+        set_model_engine_context(None);
+    }
+}
+
 /// Metadata for a model class (validations, callbacks).
 #[derive(Debug, Clone, Default)]
 pub struct ModelMetadata {
@@ -379,8 +410,22 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
 /// - "BlogPost" → "blog_posts"
 /// - "UserProfile" → "user_profiles"
 /// - "CustomerModel" → "customers" (strips _model suffix before pluralizing)
+///
+/// If engine context is set, collection name is prefixed: "User" + engine "shop" → "shop_users"
 pub fn class_name_to_collection(name: &str) -> String {
-    // Strip _model suffix if present for cleaner collection names
+    class_name_to_collection_with_engine(name, get_model_engine_context().as_deref())
+}
+
+pub fn class_name_to_collection_with_engine(name: &str, engine: Option<&str>) -> String {
+    let base = compute_base_collection_name(name);
+
+    match engine {
+        Some(e) => format!("{}_{}", e, base),
+        None => base,
+    }
+}
+
+fn compute_base_collection_name(name: &str) -> String {
     let name = name.strip_suffix("Model").unwrap_or(name);
 
     let mut result = String::new();
@@ -390,8 +435,46 @@ pub fn class_name_to_collection(name: &str) -> String {
         }
         result.push(c.to_lowercase().next().unwrap());
     }
-    result.push('s'); // simple pluralization
+    result.push('s');
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_base_collection_name() {
+        assert_eq!(compute_base_collection_name("User"), "users");
+        assert_eq!(compute_base_collection_name("BlogPost"), "blog_posts");
+        assert_eq!(compute_base_collection_name("UserProfile"), "user_profiles");
+        assert_eq!(compute_base_collection_name("CustomerModel"), "customers");
+    }
+
+    #[test]
+    fn test_collection_with_engine_none() {
+        assert_eq!(class_name_to_collection_with_engine("User", None), "users");
+        assert_eq!(
+            class_name_to_collection_with_engine("BlogPost", None),
+            "blog_posts"
+        );
+    }
+
+    #[test]
+    fn test_collection_with_engine_prefix() {
+        assert_eq!(
+            class_name_to_collection_with_engine("User", Some("shop")),
+            "shop_users"
+        );
+        assert_eq!(
+            class_name_to_collection_with_engine("BlogPost", Some("admin")),
+            "admin_blog_posts"
+        );
+        assert_eq!(
+            class_name_to_collection_with_engine("CustomerModel", Some("billing")),
+            "billing_customers"
+        );
+    }
 }
 
 /// Extract collection name from the first argument (the Class).

@@ -70,6 +70,10 @@ fn core_concepts_error_pages(req)
     render_docs("docs/core-concepts/error-pages", "Error Pages", "core_concepts", "error_pages")
 end
 
+fn core_concepts_engines(req)
+    render_docs("docs/core-concepts/engines", "Engines", "core_concepts", "engines")
+end
+
 # ============================================================================
 # Database
 # ============================================================================

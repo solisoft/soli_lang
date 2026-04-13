@@ -156,9 +156,9 @@ end
 # Get with default value
 let limit = req["all"]["limit"] or "20";
 
-# Iterate over all params
-for key, value in req["all"]
-    print(key + ": " + value);
+# Iterate over all params (hashes iterate via entries/keys/values)
+for pair in entries(req["all"])
+    print(pair[0] + ": " + str(pair[1]));
 end
 ```
 

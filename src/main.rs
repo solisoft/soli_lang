@@ -91,6 +91,14 @@ enum Command {
     Publish { registry: Option<String> },
     /// Deploy application to servers
     Deploy { folder: Option<String> },
+    /// Engine commands
+    Engine { action: EngineAction },
+}
+
+enum EngineAction {
+    Create { name: String },
+    DbMigrate { engine_name: Option<String> },
+    DbRollback { engine_name: Option<String> },
 }
 
 /// Database migration action
@@ -151,6 +159,7 @@ fn print_usage() {
     eprintln!("  lint [path]          Lint .sl files for style issues and code smells");
     eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
     eprintln!("  db:migrate           Database migration commands");
+    eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
     eprintln!("Options:");
@@ -192,6 +201,10 @@ fn print_usage() {
     eprintln!("  soli db:migrate down          Rollback last migration");
     eprintln!("  soli db:migrate status        Show migration status");
     eprintln!("  soli db:migrate generate create_users  Generate new migration");
+    eprintln!("  soli engine create shop       Create a new engine named 'shop'");
+    eprintln!("  soli engine db:migrate        Run all engine migrations");
+    eprintln!("  soli engine db:migrate shop   Run migrations for 'shop' engine only");
+    eprintln!("  soli engine db:rollback shop  Rollback last migration of 'shop'");
     eprintln!("  soli -e 'print(1 + 1)'        Evaluate code directly");
 }
 
@@ -637,6 +650,59 @@ fn parse_args() -> Options {
                 options.command = Command::Deploy { folder };
                 return options;
             }
+            "engine" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!(
+                        "engine command requires an action (create, db:migrate, db:rollback)"
+                    );
+                    print_usage();
+                    process::exit(64);
+                }
+
+                let action = match args[i].as_str() {
+                    "create" => {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("engine create requires an engine name");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        EngineAction::Create {
+                            name: args[i].clone(),
+                        }
+                    }
+                    "db:migrate" => {
+                        i += 1;
+                        let engine_name = if i < args.len() && !args[i].starts_with('-') {
+                            Some(args[i].clone())
+                        } else {
+                            None
+                        };
+                        EngineAction::DbMigrate { engine_name }
+                    }
+                    "db:rollback" => {
+                        i += 1;
+                        let engine_name = if i < args.len() && !args[i].starts_with('-') {
+                            Some(args[i].clone())
+                        } else {
+                            None
+                        };
+                        EngineAction::DbRollback { engine_name }
+                    }
+                    _ => {
+                        eprintln!(
+                            "Unknown engine action: {} (valid: create, db:migrate, db:rollback)",
+                            args[i]
+                        );
+                        print_usage();
+                        process::exit(64);
+                    }
+                };
+
+                options.command = Command::Engine { action };
+                return options;
+            }
             "test" => {
                 // Parse test command
                 i += 1;
@@ -798,6 +864,7 @@ fn main() {
             *coverage_min,
             *no_coverage,
         ),
+        Command::Engine { action } => run_engine(action),
     }
 }
 
@@ -889,6 +956,42 @@ fn run_generate(scaffold_name: &str, fields: &[String], folder: &str) {
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);
+        }
+    }
+}
+
+fn run_engine(action: &EngineAction) {
+    match action {
+        EngineAction::Create { name } => match solilang::scaffold::create_engine(name) {
+            Ok(()) => {}
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        },
+        EngineAction::DbMigrate { engine_name } => {
+            use std::path::Path;
+            let app_path = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+
+            if let Err(e) = solilang::serve::engine_loader::run_engine_migrations(
+                &app_path,
+                engine_name.as_deref(),
+            ) {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
+        EngineAction::DbRollback { engine_name } => {
+            use std::path::Path;
+            let app_path = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+
+            if let Err(e) = solilang::serve::engine_loader::run_engine_rollback(
+                &app_path,
+                engine_name.as_deref(),
+            ) {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
         }
     }
 }

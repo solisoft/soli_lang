@@ -244,46 +244,36 @@ impl TemplateCache {
 
     /// Actually resolve the template path (file system lookup).
     fn do_resolve_template_path(&self, name: &str) -> Result<PathBuf, String> {
-        // Try with .html.slv extension (new)
-        let path = self.views_dir.join(format!("{}.html.slv", name));
-        if path.exists() {
+        // Try main views directory first
+        if let Ok(path) = self.try_resolve_in_dir(&self.views_dir, name) {
             return Ok(path);
         }
 
-        // Try with .slv extension (new)
-        let path = self.views_dir.join(format!("{}.slv", name));
-        if path.exists() {
-            return Ok(path);
-        }
-
-        // Try with .html.md extension (markdown views)
-        let path = self.views_dir.join(format!("{}.html.md", name));
-        if path.exists() {
-            return Ok(path);
-        }
-
-        // Try with .md extension (markdown views)
-        let path = self.views_dir.join(format!("{}.md", name));
-        if path.exists() {
-            return Ok(path);
-        }
-
-        // Try with .html.erb extension (backward compat)
-        let path = self.views_dir.join(format!("{}.html.erb", name));
-        if path.exists() {
-            return Ok(path);
-        }
-
-        // Try with .erb extension (backward compat)
-        let path = self.views_dir.join(format!("{}.erb", name));
-        if path.exists() {
-            return Ok(path);
-        }
-
-        // Try as-is (already has extension)
-        let path = self.views_dir.join(name);
-        if path.exists() {
-            return Ok(path);
+        // If template name starts with an engine name, resolve from the engine's views dir.
+        // e.g. render("shop/index") → engines/shop/app/views/shop/index.html.slv
+        if let Some(slash_pos) = name.find('/') {
+            let candidate = &name[..slash_pos];
+            if crate::serve::engine_loader::is_engine_name(candidate) {
+                if let Some(engine_views_dir) = self
+                    .views_dir
+                    .parent() // app/views -> app
+                    .and_then(|p| p.parent()) // app -> project root
+                    .map(|root| {
+                        root.join("engines")
+                            .join(candidate)
+                            .join("app")
+                            .join("views")
+                    })
+                {
+                    let view_path = &name[slash_pos + 1..];
+                    if let Ok(path) = self.try_resolve_in_dir(&engine_views_dir, view_path) {
+                        return Ok(path);
+                    }
+                    if let Ok(path) = self.try_resolve_in_dir(&engine_views_dir, name) {
+                        return Ok(path);
+                    }
+                }
+            }
         }
 
         Err(format!(
@@ -291,6 +281,32 @@ impl TemplateCache {
             name,
             self.views_dir.display()
         ))
+    }
+
+    /// Try to resolve a template path in a specific directory with various extensions.
+    fn try_resolve_in_dir(&self, dir: &Path, name: &str) -> Result<PathBuf, String> {
+        let extensions = [
+            ".html.slv",
+            ".slv",
+            ".html.md",
+            ".md",
+            ".html.erb",
+            ".erb",
+            "",
+        ];
+
+        for ext in extensions {
+            let path = if ext.is_empty() {
+                dir.join(name)
+            } else {
+                dir.join(format!("{}{}", name, ext))
+            };
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+
+        Err(format!("Template not found in {}", dir.display()))
     }
 
     /// Get a template from cache or load and parse it.
@@ -538,6 +554,84 @@ mod tests {
         let cache = TemplateCache::new(&views);
         let result = cache.render("greeting", &data, Some(None)).unwrap();
         assert!(result.contains("<h1>Hello World</h1>"));
+    }
+
+    /// Helper to register a fake mounted engine for template resolution tests.
+    fn register_test_engine(name: &str, path: &Path, mounted_at: &str) {
+        use crate::serve::engine_loader::{mount_engines, EngineConfig, EngineMount};
+
+        // Create engine manifest so discover_engines finds it
+        let engine_dir = path.join("engines").join(name);
+        fs::create_dir_all(&engine_dir).unwrap();
+        fs::write(
+            engine_dir.join("engine.sl"),
+            format!(
+                "engine \"{}\" {{\n    version: \"1.0.0\",\n    dependencies: []\n}}",
+                name
+            ),
+        )
+        .unwrap();
+
+        let config = EngineConfig {
+            engines: vec![EngineMount {
+                name: name.to_string(),
+                mounted_at: mounted_at.to_string(),
+            }],
+        };
+        mount_engines(path, &config).unwrap();
+    }
+
+    #[test]
+    fn test_resolve_engine_view() {
+        // Simulate: project/app/views is the views_dir
+        // Engine view at: project/engines/shop/app/views/shop/index.html.slv
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let views = root.join("app/views");
+        fs::create_dir_all(&views).unwrap();
+
+        let engine_views = root.join("engines/shop/app/views/shop");
+        fs::create_dir_all(&engine_views).unwrap();
+        fs::write(engine_views.join("index.html.slv"), "<h1>Shop</h1>").unwrap();
+
+        register_test_engine("shop", root, "/shop");
+
+        let cache = TemplateCache::new(&views);
+        // render("shop/index") should find the engine view
+        let result = cache.resolve_template_path("shop/index");
+        assert!(result.is_ok());
+        assert!(result
+            .unwrap()
+            .to_string_lossy()
+            .contains("engines/shop/app/views"));
+
+        crate::serve::engine_loader::reset_engine_context();
+    }
+
+    #[test]
+    fn test_resolve_main_view_preferred_over_engine() {
+        // If a view exists in both main views and engine views, main wins
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let views = root.join("app/views/shop");
+        fs::create_dir_all(&views).unwrap();
+        fs::write(views.join("index.html.slv"), "<h1>Main Shop</h1>").unwrap();
+
+        let engine_views = root.join("engines/shop/app/views/shop");
+        fs::create_dir_all(&engine_views).unwrap();
+        fs::write(engine_views.join("index.html.slv"), "<h1>Engine Shop</h1>").unwrap();
+
+        register_test_engine("shop", root, "/shop");
+
+        let cache = TemplateCache::new(&root.join("app/views"));
+        let result = cache.resolve_template_path("shop/index").unwrap();
+        // Main views dir should win
+        assert!(result.to_string_lossy().contains("app/views/shop"));
+        assert!(!result.to_string_lossy().contains("engines"));
+
+        crate::serve::engine_loader::reset_engine_context();
     }
 
     #[test]

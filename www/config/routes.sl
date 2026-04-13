@@ -33,6 +33,7 @@ get("/docs/core-concepts/liveview", "docs#core_concepts_liveview");
 get("/docs/core-concepts/i18n", "docs#core_concepts_i18n");
 get("/docs/core-concepts/request-params", "docs#core_concepts_request_params");
 get("/docs/core-concepts/error-pages", "docs#core_concepts_error_pages");
+get("/docs/core-concepts/engines", "docs#core_concepts_engines");
 
 # Database
 get("/docs/database/configuration", "docs#database_configuration");

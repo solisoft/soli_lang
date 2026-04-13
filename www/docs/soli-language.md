@@ -518,8 +518,8 @@ for fruit in fruits
 end
 # Output: apple, banana, cherry
 
-# Iterate with index
-for i, fruit in fruits
+# Iterate with index — element first, then index variable
+for fruit, i in fruits
     print(str(i) + ": " + fruit);
 end
 # Output:
@@ -2075,7 +2075,7 @@ class Inventory
     end
 
     fn remove_product(product_id: String) -> Product?
-        for i, product in this.products
+        for product, i in this.products
             if product.id == product_id
                 return splice(this.products, i, 1)[0];
             end

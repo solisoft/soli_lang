@@ -16,6 +16,7 @@ pub mod websocket;
 
 // Modularized subcomponents
 pub(crate) mod app_loader;
+pub mod engine_loader;
 pub mod env_loader;
 mod file_tracker;
 mod file_upload;
@@ -255,6 +256,30 @@ pub fn serve_folder_with_options_and_workers(
         load_controller(&mut interpreter, controller_path, &mut file_tracker)?;
     }
 
+    // Load engines (if config/engines.sl exists)
+    match engine_loader::load_engines_config(folder) {
+        Ok(config) => {
+            if !config.engines.is_empty() {
+                println!("Loading engines...");
+                if let Err(e) = engine_loader::mount_engines(folder, &config) {
+                    eprintln!("Warning: Failed to mount engines: {}", e);
+                }
+                // Load engine controllers and models
+                if let Err(e) =
+                    engine_loader::load_engine_controllers(&mut interpreter, &mut file_tracker)
+                {
+                    eprintln!("Warning: Failed to load engine controllers: {}", e);
+                }
+                if let Err(e) = engine_loader::load_engine_models(&mut interpreter) {
+                    eprintln!("Warning: Failed to load engine models: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to load engine config: {}", e);
+        }
+    }
+
     // Track model files too
     if models_dir.exists() {
         for entry in std::fs::read_dir(&models_dir)
@@ -354,6 +379,14 @@ pub fn serve_folder_with_options_and_workers(
 
         // Execute routes file
         execute_file(&mut interpreter, &routes_file)?;
+
+        // Load engine routes
+        if let Err(e) = engine_loader::load_engine_routes(&mut interpreter) {
+            eprintln!("Warning: Failed to load engine routes: {}", e);
+        }
+
+        // Rebuild route index to include engine routes
+        crate::interpreter::builtins::server::rebuild_route_index();
     }
 
     // Public directory for static files
@@ -5203,9 +5236,9 @@ pub fn render_dev_error_page(
         error_message = error_message,
         error_location = error_location,
         stack_frames = stack_frames.join("\n"),
-        request_data_json = request_data_json,
-        breakpoint_env_js = breakpoint_env_json.unwrap_or("null"),
-        preloaded_sources_js = preloaded_sources_js,
+        request_data_json = escape_for_script_tag(request_data_json),
+        breakpoint_env_js = escape_for_script_tag(breakpoint_env_json.unwrap_or("null")),
+        preloaded_sources_js = escape_for_script_tag(&preloaded_sources_js),
         request_method = escape_html(&request_method),
         request_path = escape_html(&request_path),
         request_time = request_time,
@@ -5228,6 +5261,15 @@ fn escape_html(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+/// Escape a JSON (or other JS) literal for safe embedding inside an inline `<script>` tag.
+/// Without this, any literal `</script>` (or `<!--`, `]]>`) inside the embedded data terminates
+/// the script context early — collapsing the page and dumping the rest as visible HTML.
+fn escape_for_script_tag(s: &str) -> String {
+    s.replace("</", "<\\/")
+        .replace("<!--", "<\\!--")
+        .replace("]]>", "]]\\>")
 }
 
 pub fn get_source_file(
