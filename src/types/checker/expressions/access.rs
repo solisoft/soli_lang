@@ -255,12 +255,17 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::Any),
             }),
-            "scan" | "chars" | "lines" | "bytes" | "split" | "partition" | "rpartition" => {
+            "scan" | "chars" | "lines" | "bytes" | "partition" | "rpartition" => {
                 Ok(Type::Function {
                     params: vec![],
                     return_type: Box::new(Type::Array(Box::new(Type::String))),
                 })
             }
+            // split accepts an optional String delimiter (defaults to " ")
+            "split" => Ok(Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Array(Box::new(Type::String))),
+            }),
             "center" | "ljust" | "rjust" | "truncate" | "lpad" | "rpad" => Ok(Type::Function {
                 params: vec![Type::Int],
                 return_type: Box::new(Type::String),

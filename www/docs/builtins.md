@@ -301,20 +301,24 @@ println(h)  # {}
 
 ### String Functions
 
-#### split(string, separator)
+#### string.split([separator])
 
-Splits a string into an array by a separator.
+Splits a string into an array. Called as a method on the string.
 
 **Parameters:**
-- `string` (String) - The string to split
-- `separator` (String) - The delimiter
+- `separator` (String, optional) - The delimiter. Defaults to `" "` (a single space) when omitted.
 
 **Returns:** Array - Array of substrings
 
 **Example:**
 ```soli
-split("a,b,c", ",")       # ["a", "b", "c"]
-split("hello world", " ") # ["hello", "world"]
+"a,b,c".split(",")        # ["a", "b", "c"]
+"hello world".split(" ")  # ["hello", "world"]
+
+# Separator is optional — defaults to " "
+"hello world".split       # ["hello", "world"]   (no parens, auto-invoked)
+"hello world".split()     # ["hello", "world"]
+"one  two".split          # ["one", "", "two"]   (consecutive spaces yield empty elements)
 ```
 
 #### join(array, separator)

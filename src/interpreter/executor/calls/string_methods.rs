@@ -815,16 +815,20 @@ impl Interpreter {
     }
 
     fn string_split(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
-        if arguments.len() != 1 {
+        if arguments.len() > 1 {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
-        let delim = match &arguments[0] {
-            Value::String(d) => d,
-            _ => {
-                return Err(RuntimeError::type_error(
-                    "split expects a string delimiter",
-                    span,
-                ))
+        let delim: &str = if arguments.is_empty() {
+            " "
+        } else {
+            match &arguments[0] {
+                Value::String(d) => d.as_str(),
+                _ => {
+                    return Err(RuntimeError::type_error(
+                        "split expects a string delimiter",
+                        span,
+                    ))
+                }
             }
         };
         let parts: Vec<Value> = s

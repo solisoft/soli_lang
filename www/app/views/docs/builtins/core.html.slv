@@ -356,14 +356,16 @@ let h1 = {"a": 1}; let h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-split" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-split" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.split(sep)</code>
+                        <code class="text-lg font-mono text-indigo-400">str.split([sep])</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Split a string by a separator. Returns an array of string parts.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">"a,b,c".split(",")      # ["a", "b", "c"]
-"hello world".split(" ")  # ["hello", "world"]</code></pre>
+                    <p class="text-gray-400 mb-3">Split a string by a separator. Returns an array of string parts. <code class="text-indigo-300">sep</code> is optional and defaults to <code class="text-indigo-300">" "</code> (a single space).</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">"a,b,c".split(",")        # ["a", "b", "c"]
+"hello world".split(" ")  # ["hello", "world"]
+"hello world".split       # ["hello", "world"]  (sep defaults to " ")
+"hello world".split()     # ["hello", "world"]</code></pre>
                 </div>
             </section>
 

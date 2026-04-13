@@ -797,7 +797,7 @@ pub const STRING_METHODS: &[MethodDef] = &[
     },
     MethodDef {
         name: "split",
-        zero_arg: false,
+        zero_arg: true,
         ret: "array",
     },
     MethodDef {

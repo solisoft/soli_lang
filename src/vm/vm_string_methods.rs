@@ -198,8 +198,14 @@ impl Vm {
                 Ok(Value::Bool(s.contains(sub)))
             }
             "split" => {
-                check_arity(1, args.len(), span)?;
-                let delim = expect_string(&args[0], "split", span)?;
+                if args.len() > 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let delim: &str = if args.is_empty() {
+                    " "
+                } else {
+                    expect_string(&args[0], "split", span)?
+                };
                 let parts: Vec<Value> = s
                     .split(delim)
                     .map(|p| Value::String(p.to_string()))

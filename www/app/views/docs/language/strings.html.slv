@@ -577,14 +577,16 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-split" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-split" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.split(separator)</code> / <code class="text-lg font-mono text-indigo-400">.join(separator)</code>
+                        <code class="text-lg font-mono text-indigo-400">.split([separator])</code> / <code class="text-lg font-mono text-indigo-400">.join(separator)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">split</code> splits a string into an array. <code class="text-indigo-300">join</code> joins characters back with a separator.</p>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">split</code> splits a string into an array. The <code class="text-indigo-300">separator</code> is optional and defaults to <code class="text-indigo-300">" "</code> (a single space). <code class="text-indigo-300">join</code> joins characters back with a separator.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"a,b,c".split(",")        # ["a", "b", "c"]
 "hello world".split(" ")  # ["hello", "world"]
+"hello world".split       # ["hello", "world"]  (no parens — sep defaults to " ")
+"hello world".split()     # ["hello", "world"]
 "hello".split("")         # ["h", "e", "l", "l", "o"]</code></pre>
                 </div>
             </section>
