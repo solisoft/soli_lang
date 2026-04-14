@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::{HashKey, HashPairs, Value};
+use crate::interpreter::value::{hash_contains_value, hash_get_value, HashKey, HashPairs, Value};
 use crate::span::Span;
 
 use super::vm::Vm;
@@ -61,18 +61,7 @@ impl Vm {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
-                let keys: Vec<Value> = hash
-                    .borrow()
-                    .keys()
-                    .map(|k| match k {
-                        HashKey::String(s) => Value::String(s.clone()),
-                        HashKey::Symbol(s) => Value::Symbol(s.clone()),
-                        HashKey::Int(n) => Value::Int(*n),
-                        HashKey::Bool(b) => Value::Bool(*b),
-                        HashKey::Null => Value::Null,
-                        HashKey::Decimal(d) => Value::String(d.to_string()),
-                    })
-                    .collect();
+                let keys: Vec<Value> = hash.borrow().keys().map(HashKey::to_value).collect();
                 Ok(Value::Array(Rc::new(RefCell::new(keys))))
             }
             "values" => {
@@ -90,15 +79,7 @@ impl Vm {
                     .borrow()
                     .iter()
                     .map(|(k, v)| {
-                        let key = match k {
-                            HashKey::String(s) => Value::String(s.clone()),
-                            HashKey::Symbol(s) => Value::Symbol(s.clone()),
-                            HashKey::Int(n) => Value::Int(*n),
-                            HashKey::Bool(b) => Value::Bool(*b),
-                            HashKey::Null => Value::Null,
-                            HashKey::Decimal(d) => Value::String(d.to_string()),
-                        };
-                        Value::Array(Rc::new(RefCell::new(vec![key, v.clone()])))
+                        Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])))
                     })
                     .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(entries))))
@@ -107,17 +88,17 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
-                let key = value_to_hash_key(&args[0], span)?;
-                Ok(Value::Bool(hash.borrow().contains_key(&key)))
+                Ok(Value::Bool(hash_contains_value(&hash.borrow(), &args[0])))
             }
             "get" | "fetch" => {
                 if args.is_empty() || args.len() > 2 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
-                let key = value_to_hash_key(&args[0], span)?;
-                let default = args.get(1).cloned().unwrap_or(Value::Null);
-                let result = hash.borrow().get(&key).cloned().unwrap_or(default);
-                Ok(result)
+                let found = hash_get_value(&hash.borrow(), &args[0]).cloned();
+                Ok(match found {
+                    Some(v) => v,
+                    None => args.get(1).cloned().unwrap_or(Value::Null),
+                })
             }
             "merge" => {
                 if args.len() != 1 {
@@ -144,7 +125,7 @@ impl Vm {
                 let h = hash.borrow();
                 let mut new_hash = indexmap::IndexMap::with_capacity_and_hasher(
                     h.len(),
-                    ahash::RandomState::new(),
+                    ahash::RandomState::default(),
                 );
                 for (k, v) in h.iter() {
                     if !matches!(v, Value::Null) {
@@ -160,19 +141,11 @@ impl Vm {
                 let h = hash.borrow();
                 let mut new_hash = indexmap::IndexMap::with_capacity_and_hasher(
                     h.len(),
-                    ahash::RandomState::new(),
+                    ahash::RandomState::default(),
                 );
                 for (k, v) in h.iter() {
                     let new_key = value_to_hash_key(v, span)?;
-                    let new_value = match k {
-                        HashKey::String(s) => Value::String(s.clone()),
-                        HashKey::Symbol(s) => Value::Symbol(s.clone()),
-                        HashKey::Int(n) => Value::Int(*n),
-                        HashKey::Bool(b) => Value::Bool(*b),
-                        HashKey::Null => Value::Null,
-                        HashKey::Decimal(d) => Value::String(d.to_string()),
-                    };
-                    new_hash.insert(new_key, new_value);
+                    new_hash.insert(new_key, k.to_value());
                 }
                 Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
             }
@@ -181,25 +154,14 @@ impl Vm {
                 if h.is_empty() {
                     return Ok(Value::String("{}".to_string()));
                 }
-                let mut total_len = 2;
-                for (i, (k, _)) in h.iter().enumerate() {
-                    total_len += k.display_len();
-                    total_len += 2;
-                    if i > 0 {
-                        total_len += 2;
-                    }
-                }
-                for (_, v) in h.iter() {
-                    total_len += v.display_len();
-                }
-                let mut result = String::with_capacity(total_len);
+                let mut result = String::with_capacity(2 + h.len() * 12);
                 result.push('{');
                 for (i, (k, v)) in h.iter().enumerate() {
                     if i > 0 {
                         result.push_str(", ");
                     }
                     k.write_key_to_string(&mut result);
-                    result.push_str(": ");
+                    result.push_str(" => ");
                     v.write_to_string(&mut result);
                 }
                 result.push('}');
@@ -215,18 +177,7 @@ impl Vm {
                 if h.is_empty() {
                     return Ok(Value::String("{}".to_string()));
                 }
-                let mut total_len = 2;
-                for (i, (k, _)) in h.iter().enumerate() {
-                    total_len += k.display_len();
-                    total_len += 2;
-                    if i > 0 {
-                        total_len += 2;
-                    }
-                }
-                for (_, v) in h.iter() {
-                    total_len += v.display_len();
-                }
-                let mut result = String::with_capacity(total_len);
+                let mut result = String::with_capacity(2 + h.len() * 12);
                 result.push('{');
                 for (i, (k, v)) in h.iter().enumerate() {
                     if i > 0 {

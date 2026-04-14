@@ -7,6 +7,8 @@ pub mod hidden_class;
 pub mod inline_cache;
 pub mod symbol;
 pub mod value;
+pub mod value_json;
+pub mod value_stringify;
 
 pub use environment::Environment;
 pub use executor::Interpreter;

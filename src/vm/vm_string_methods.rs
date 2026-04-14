@@ -115,7 +115,10 @@ impl Vm {
             }
             "chars" => {
                 check_arity(0, args.len(), span)?;
-                let chars: Vec<Value> = s.chars().map(|c| Value::String(c.to_string())).collect();
+                let mut chars = Vec::with_capacity(s.len());
+                for c in s.chars() {
+                    chars.push(Value::String(c.to_string()));
+                }
                 Ok(Value::Array(Rc::new(RefCell::new(chars))))
             }
             "bytes" => {
@@ -125,7 +128,10 @@ impl Vm {
             }
             "lines" => {
                 check_arity(0, args.len(), span)?;
-                let lines: Vec<Value> = s.lines().map(|l| Value::String(l.to_string())).collect();
+                let mut lines = Vec::with_capacity(s.bytes().filter(|b| *b == b'\n').count() + 1);
+                for line in s.lines() {
+                    lines.push(Value::String(line.to_string()));
+                }
                 Ok(Value::Array(Rc::new(RefCell::new(lines))))
             }
             "bytesize" => {
@@ -206,10 +212,15 @@ impl Vm {
                 } else {
                     expect_string(&args[0], "split", span)?
                 };
-                let parts: Vec<Value> = s
-                    .split(delim)
-                    .map(|p| Value::String(p.to_string()))
-                    .collect();
+                let capacity = if delim.is_empty() {
+                    s.len() + 1
+                } else {
+                    s.matches(delim).count() + 1
+                };
+                let mut parts = Vec::with_capacity(capacity);
+                for part in s.split(delim) {
+                    parts.push(Value::String(part.to_string()));
+                }
                 Ok(Value::Array(Rc::new(RefCell::new(parts))))
             }
             "index_of" => {

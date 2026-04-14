@@ -173,9 +173,7 @@ impl HashKey {
             HashKey::Int(n) => s.push_str(&n.to_string()),
             HashKey::Decimal(d) => s.push_str(&d.to_string()),
             HashKey::String(st) => {
-                s.push('"');
                 s.push_str(st);
-                s.push('"');
             }
             HashKey::Bool(b) => s.push_str(if *b { "true" } else { "false" }),
             HashKey::Null => s.push_str("null"),
@@ -220,6 +218,24 @@ pub fn empty_hash() -> Value {
 
 /// Type alias for hash map storage — uses ahash for 3-5x faster hashing than SipHash.
 pub type HashPairs = IndexMap<HashKey, Value, AHasher>;
+
+#[inline]
+pub fn hash_get_value<'a>(hash: &'a HashPairs, key: &Value) -> Option<&'a Value> {
+    match key {
+        Value::String(s) => hash.get(&StrKey(s)),
+        Value::Int(n) => hash.get(&HashKey::Int(*n)),
+        Value::Decimal(d) => hash.get(&HashKey::Decimal(d.clone())),
+        Value::Bool(b) => hash.get(&HashKey::Bool(*b)),
+        Value::Null => hash.get(&HashKey::Null),
+        Value::Symbol(s) => hash.get(&HashKey::Symbol(s.clone())),
+        _ => None,
+    }
+}
+
+#[inline]
+pub fn hash_contains_value(hash: &HashPairs, key: &Value) -> bool {
+    hash_get_value(hash, key).is_some()
+}
 
 /// A runtime value in Solilang.
 #[derive(Debug, Clone)]
@@ -1144,130 +1160,17 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
 
 /// Convert a serde_json::Value to a Soli Value (consuming — moves strings instead of cloning).
 pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
-    match json {
-        serde_json::Value::Null => Ok(Value::Null),
-        serde_json::Value::Bool(b) => Ok(Value::Bool(b)),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(Value::Int(i))
-            } else if let Some(f) = n.as_f64() {
-                Ok(Value::Float(f))
-            } else {
-                Err("Invalid JSON number".to_string())
-            }
-        }
-        serde_json::Value::String(s) => {
-            // Try to parse as decimal first
-            if let Ok(d) = s.parse::<Decimal>() {
-                let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-                Ok(Value::Decimal(DecimalValue(d, precision)))
-            } else {
-                Ok(Value::String(s))
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            let len = arr.len();
-            let mut items = Vec::with_capacity(len);
-            for v in arr {
-                items.push(json_to_value(v)?);
-            }
-            Ok(Value::Array(Rc::new(RefCell::new(items))))
-        }
-        serde_json::Value::Object(obj) => {
-            let len = obj.len();
-            let mut map = HashPairs::with_capacity_and_hasher(len, AHasher::default());
-            for (k, v) in obj {
-                map.insert(HashKey::String(k), json_to_value(v)?);
-            }
-            Ok(Value::Hash(Rc::new(RefCell::new(map))))
-        }
-    }
+    crate::interpreter::value_json::json_to_value(json)
 }
 
 /// Convert a serde_json::Value reference to a Soli Value (clones strings).
 pub fn json_to_value_ref(json: &serde_json::Value) -> Result<Value, String> {
-    match json {
-        serde_json::Value::Null => Ok(Value::Null),
-        serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(Value::Int(i))
-            } else if let Some(f) = n.as_f64() {
-                Ok(Value::Float(f))
-            } else {
-                Err("Invalid JSON number".to_string())
-            }
-        }
-        serde_json::Value::String(s) => {
-            // Try to parse as decimal first
-            if let Ok(d) = s.parse::<Decimal>() {
-                let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-                Ok(Value::Decimal(DecimalValue(d, precision)))
-            } else {
-                Ok(Value::String(s.clone()))
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            let len = arr.len();
-            let mut items = Vec::with_capacity(len);
-            for v in arr {
-                items.push(json_to_value_ref(v)?);
-            }
-            Ok(Value::Array(Rc::new(RefCell::new(items))))
-        }
-        serde_json::Value::Object(obj) => {
-            let len = obj.len();
-            let mut map = HashPairs::with_capacity_and_hasher(len, AHasher::default());
-            for (k, v) in obj {
-                map.insert(HashKey::String(k.clone()), json_to_value_ref(v)?);
-            }
-            Ok(Value::Hash(Rc::new(RefCell::new(map))))
-        }
-    }
+    crate::interpreter::value_json::json_to_value_ref(json)
 }
 
 /// Convert a Soli Value to serde_json::Value.
 pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
-    match value {
-        Value::Int(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
-        Value::Float(f) => Ok(serde_json::Value::Number(
-            serde_json::Number::from_f64(*f).ok_or_else(|| "Invalid float".to_string())?,
-        )),
-        Value::Decimal(d) => Ok(serde_json::Value::String(d.to_string())),
-        Value::String(s) => Ok(serde_json::Value::String(s.clone())),
-        Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
-        Value::Null => Ok(serde_json::Value::Null),
-        Value::Array(arr) => {
-            let borrow = arr.borrow();
-            let len = borrow.len();
-            let mut vec = Vec::with_capacity(len);
-            for v in borrow.iter() {
-                vec.push(value_to_json(v)?);
-            }
-            Ok(serde_json::Value::Array(vec))
-        }
-        Value::Hash(hash) => {
-            let borrow = hash.borrow();
-            let len = borrow.len();
-            let mut map = serde_json::Map::with_capacity(len);
-            for (k, v) in borrow.iter() {
-                if let HashKey::String(key) = k {
-                    map.insert(key.clone(), value_to_json(v)?);
-                }
-            }
-            Ok(serde_json::Value::Object(map))
-        }
-        Value::Instance(inst) => {
-            let borrow = inst.borrow();
-            let len = borrow.fields.len();
-            let mut map = serde_json::Map::with_capacity(len);
-            for (k, v) in borrow.fields.iter() {
-                map.insert(k.clone(), value_to_json(v)?);
-            }
-            Ok(serde_json::Value::Object(map))
-        }
-        _ => Err(format!("Cannot convert {} to JSON", value.type_name())),
-    }
+    crate::interpreter::value_json::value_to_json(value)
 }
 
 /// Implement serde::Serialize for Value to leverage serde_json's optimized writer.
@@ -1321,39 +1224,19 @@ impl serde::Serialize for Value {
 /// Serialize a Value to a JSON string using sonic-rs SIMD-accelerated writer.
 #[inline]
 pub fn stringify_to_string(value: &Value) -> Result<String, String> {
-    let bytes = sonic_rs::to_vec(value).map_err(|e| e.to_string())?;
-    // SAFETY: JSON serializers always produce valid UTF-8
-    Ok(unsafe { String::from_utf8_unchecked(bytes) })
+    crate::interpreter::value_stringify::stringify_to_string(value)
 }
 
 /// Serialize an array slice to JSON without cloning into a Value.
 #[inline]
 pub fn stringify_array_to_string(items: &[Value]) -> Result<String, String> {
-    let bytes = sonic_rs::to_vec(items).map_err(|e| e.to_string())?;
-    Ok(unsafe { String::from_utf8_unchecked(bytes) })
-}
-
-/// Wrapper for serializing hash entries (slice of key-value pairs) directly.
-pub struct HashEntrySlice<'a>(pub &'a [(HashKey, Value)]);
-
-impl serde::Serialize for HashEntrySlice<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(self.0.len()))?;
-        for (k, v) in self.0 {
-            if let HashKey::String(key) = k {
-                map.serialize_entry(key, v)?;
-            }
-        }
-        map.end()
-    }
+    crate::interpreter::value_stringify::stringify_array_to_string(items)
 }
 
 /// Serialize hash entries to JSON without cloning into a Value.
 #[inline]
 pub fn stringify_hash_entries_to_string(entries: &[(HashKey, Value)]) -> Result<String, String> {
-    let bytes = sonic_rs::to_vec(&HashEntrySlice(entries)).map_err(|e| e.to_string())?;
-    Ok(unsafe { String::from_utf8_unchecked(bytes) })
+    crate::interpreter::value_stringify::stringify_hash_entries_to_string(entries)
 }
 
 /// Fast i64 parsing — avoids the overhead of str::parse for the common case.

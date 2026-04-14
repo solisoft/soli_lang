@@ -213,6 +213,58 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
                 idx, name, argc, mid
             ));
         }
+        Op::HashGetConst(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("HASH_GET_C   {:>5} ({})", idx, name));
+        }
+        Op::HashHasKeyConst(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("HASH_HAS_C   {:>5} ({})", idx, name));
+        }
+        Op::HashDeleteConst(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("HASH_DEL_C   {:>5} ({})", idx, name));
+        }
+        Op::HashSetConst(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("HASH_SET_C   {:>5} ({})", idx, name));
+        }
+        Op::HashGetLocalConst(slot, idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("HGET_L_C     slot={} key={}", slot, name));
+        }
+        Op::HashHasKeyLocalConst(slot, idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("HHAS_L_C     slot={} key={}", slot, name));
+        }
+        Op::HashDeleteLocalConst(slot, idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("HDEL_L_C     slot={} key={}", slot, name));
+        }
+        Op::HashSetLocalConst(slot, idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("HSET_L_C     slot={} key={}", slot, name));
+        }
+        Op::HashGetGlobalConst(gidx, kidx) => {
+            let g = constant_string(chunk, *gidx);
+            let k = constant_string(chunk, *kidx);
+            out.push_str(&format!("HGET_G_C     {:>5} ({}) key={}", gidx, g, k));
+        }
+        Op::HashHasKeyGlobalConst(gidx, kidx) => {
+            let g = constant_string(chunk, *gidx);
+            let k = constant_string(chunk, *kidx);
+            out.push_str(&format!("HHAS_G_C     {:>5} ({}) key={}", gidx, g, k));
+        }
+        Op::HashDeleteGlobalConst(gidx, kidx) => {
+            let g = constant_string(chunk, *gidx);
+            let k = constant_string(chunk, *kidx);
+            out.push_str(&format!("HDEL_G_C     {:>5} ({}) key={}", gidx, g, k));
+        }
+        Op::HashSetGlobalConst(gidx, kidx) => {
+            let g = constant_string(chunk, *gidx);
+            let k = constant_string(chunk, *kidx);
+            out.push_str(&format!("HSET_G_C     {:>5} ({}) key={}", gidx, g, k));
+        }
         Op::SubLocalLocal(a, b) => out.push_str(&format!("SUB_LL       {:>3},{:>3}", a, b)),
         Op::MulLocalLocal(a, b) => out.push_str(&format!("MUL_LL       {:>3},{:>3}", a, b)),
         Op::DivLocalLocal(a, b) => out.push_str(&format!("DIV_LL       {:>3},{:>3}", a, b)),

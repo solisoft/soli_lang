@@ -144,6 +144,10 @@ harness = false
 name = "vm"
 harness = false
 
+[[bench]]
+name = "collections_perf"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"

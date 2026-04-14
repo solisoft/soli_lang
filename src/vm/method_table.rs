@@ -107,7 +107,9 @@ pub fn resolve_method_id(name: &str) -> MethodId {
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::interpreter::value::{HashKey, HashPairs, Value};
+use crate::error::RuntimeError;
+use crate::interpreter::value::{hash_get_value, HashKey, HashPairs, StrKey, Value};
+use crate::span::Span;
 
 /// Dispatch a zero-arg string method by integer ID. Returns None if not handled.
 #[inline(always)]
@@ -194,6 +196,92 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
         }
         57 => s.chars().next().map(|c| Value::Int(c as i64)), // ord
         37 => Some(Value::String(s.to_string())),             // join (string.join = itself)
+        _ => None,
+    }
+}
+
+/// Dispatch a one-arg string method by integer ID. Returns None if not handled.
+#[inline(always)]
+pub fn string_method_one_arg(
+    s: &str,
+    mid: MethodId,
+    arg: &Value,
+    span: Span,
+) -> Option<Result<Value, RuntimeError>> {
+    match mid {
+        20 | 23 => {
+            let Value::String(sub) = arg else {
+                return Some(Err(RuntimeError::type_error(
+                    "expected string argument",
+                    span,
+                )));
+            };
+            Some(Ok(Value::Bool(s.contains(sub))))
+        }
+        21 | 62 => {
+            let Value::String(prefix) = arg else {
+                return Some(Err(RuntimeError::type_error(
+                    "expected string argument",
+                    span,
+                )));
+            };
+            Some(Ok(Value::Bool(s.starts_with(prefix))))
+        }
+        22 | 63 => {
+            let Value::String(suffix) = arg else {
+                return Some(Err(RuntimeError::type_error(
+                    "expected string argument",
+                    span,
+                )));
+            };
+            Some(Ok(Value::Bool(s.ends_with(suffix))))
+        }
+        24 => {
+            let Value::String(delim) = arg else {
+                return Some(Err(RuntimeError::type_error(
+                    "split expects a string delimiter",
+                    span,
+                )));
+            };
+            let mut parts = Vec::with_capacity(if delim.is_empty() {
+                s.len() + 1
+            } else {
+                s.matches(delim.as_str()).count() + 1
+            });
+            for part in s.split(delim.as_str()) {
+                parts.push(Value::String(part.to_string()));
+            }
+            Some(Ok(Value::Array(Rc::new(RefCell::new(parts)))))
+        }
+        _ => None,
+    }
+}
+
+/// Dispatch a two-arg string method by integer ID. Returns None if not handled.
+#[inline(always)]
+pub fn string_method_two_arg(
+    s: &str,
+    mid: MethodId,
+    arg0: &Value,
+    arg1: &Value,
+    span: Span,
+) -> Option<Result<Value, RuntimeError>> {
+    match mid {
+        28 => {
+            let Value::String(from) = arg0 else {
+                return Some(Err(RuntimeError::type_error(
+                    "replace expects a string pattern",
+                    span,
+                )));
+            };
+            let Value::String(to) = arg1 else {
+                return Some(Err(RuntimeError::type_error(
+                    "replace expects a string replacement",
+                    span,
+                )));
+            };
+            Some(Ok(Value::String(s.replace(from, to))))
+        }
         _ => None,
     }
 }
@@ -292,6 +380,95 @@ pub fn hash_method_zero_arg(hash: &Rc<RefCell<HashPairs>>, mid: MethodId) -> Opt
             // values
             let values: Vec<Value> = hash.borrow().values().cloned().collect();
             Some(Value::Array(Rc::new(RefCell::new(values))))
+        }
+        _ => None,
+    }
+}
+
+/// Dispatch a one-arg hash method by integer ID. Returns None if not handled.
+#[inline(always)]
+pub fn hash_method_one_arg(
+    hash: &Rc<RefCell<HashPairs>>,
+    mid: MethodId,
+    arg: &Value,
+    span: Span,
+) -> Option<Result<Value, RuntimeError>> {
+    match mid {
+        76 | 80 => {
+            let value = hash_get_value(&hash.borrow(), arg)
+                .cloned()
+                .unwrap_or(Value::Null);
+            Some(Ok(value))
+        }
+        83 => {
+            let found = match arg {
+                Value::String(s) => hash.borrow().contains_key(&StrKey(s)),
+                _ => hash_get_value(&hash.borrow(), arg).is_some(),
+            };
+            Some(Ok(Value::Bool(found)))
+        }
+        27 => {
+            let removed = match arg {
+                Value::String(s) => hash.borrow_mut().swap_remove(&StrKey(s)),
+                Value::Int(n) => hash.borrow_mut().swap_remove(&HashKey::Int(*n)),
+                Value::Bool(b) => hash.borrow_mut().swap_remove(&HashKey::Bool(*b)),
+                Value::Null => hash.borrow_mut().swap_remove(&HashKey::Null),
+                _ => {
+                    return Some(Err(RuntimeError::type_error(
+                        format!("Cannot use {} as hash key", arg.type_name()),
+                        span,
+                    )))
+                }
+            };
+            Some(Ok(removed.unwrap_or(Value::Null)))
+        }
+        _ => None,
+    }
+}
+
+/// Dispatch a two-arg hash method by integer ID. Returns None if not handled.
+#[inline(always)]
+pub fn hash_method_two_arg(
+    hash: &Rc<RefCell<HashPairs>>,
+    mid: MethodId,
+    arg0: &Value,
+    arg1: &Value,
+    span: Span,
+) -> Option<Result<Value, RuntimeError>> {
+    match mid {
+        76 | 80 => {
+            let value = hash_get_value(&hash.borrow(), arg0)
+                .cloned()
+                .unwrap_or_else(|| arg1.clone());
+            Some(Ok(value))
+        }
+        79 => {
+            match arg0 {
+                Value::String(s) => {
+                    let mut hash_ref = hash.borrow_mut();
+                    if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(s)) {
+                        *existing = arg1.clone();
+                    } else {
+                        hash_ref.insert(HashKey::String(s.clone()), arg1.clone());
+                    }
+                }
+                Value::Int(n) => {
+                    hash.borrow_mut().insert(HashKey::Int(*n), arg1.clone());
+                }
+                Value::Bool(b) => {
+                    hash.borrow_mut().insert(HashKey::Bool(*b), arg1.clone());
+                }
+                Value::Null => {
+                    hash.borrow_mut().insert(HashKey::Null, arg1.clone());
+                }
+                _ => {
+                    return Some(Err(RuntimeError::type_error(
+                        format!("Cannot use {} as hash key", arg0.type_name()),
+                        span,
+                    )))
+                }
+            }
+            Some(Ok(Value::Null))
         }
         _ => None,
     }

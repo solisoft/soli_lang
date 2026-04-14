@@ -11,7 +11,7 @@ use crate::interpreter::value::Value;
 impl Interpreter {
     /// Evaluate array literal expression: [elements]
     pub(crate) fn evaluate_array(&mut self, elements: &Vec<Expr>) -> RuntimeResult<Value> {
-        let mut values = Vec::new();
+        let mut values = Vec::with_capacity(elements.len());
         for elem in elements {
             match &elem.kind {
                 ExprKind::Spread(inner) => {

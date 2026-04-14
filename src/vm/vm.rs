@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::{Class, HashKey, HashPairs, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, StrKey, Value};
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
@@ -682,6 +682,54 @@ impl Vm {
                             continue;
                         }
                     }
+                    if argc == 1 {
+                        let result = match &self.stack[receiver_idx] {
+                            Value::String(s) => super::method_table::string_method_one_arg(
+                                s.as_str(),
+                                method_id,
+                                &self.stack[receiver_idx + 1],
+                                self.current_span(),
+                            ),
+                            Value::Hash(h) => super::method_table::hash_method_one_arg(
+                                h,
+                                method_id,
+                                &self.stack[receiver_idx + 1],
+                                self.current_span(),
+                            ),
+                            _ => None,
+                        };
+                        if let Some(result) = result {
+                            let result = result?;
+                            self.stack.truncate(receiver_idx);
+                            self.stack.push(result);
+                            continue;
+                        }
+                    }
+                    if argc == 2 {
+                        let result = match &self.stack[receiver_idx] {
+                            Value::String(s) => super::method_table::string_method_two_arg(
+                                s.as_str(),
+                                method_id,
+                                &self.stack[receiver_idx + 1],
+                                &self.stack[receiver_idx + 2],
+                                self.current_span(),
+                            ),
+                            Value::Hash(h) => super::method_table::hash_method_two_arg(
+                                h,
+                                method_id,
+                                &self.stack[receiver_idx + 1],
+                                &self.stack[receiver_idx + 2],
+                                self.current_span(),
+                            ),
+                            _ => None,
+                        };
+                        if let Some(result) = result {
+                            let result = result?;
+                            self.stack.truncate(receiver_idx);
+                            self.stack.push(result);
+                            continue;
+                        }
+                    }
 
                     // Medium path: known method ID with args — use string dispatch
                     // (still avoids the name clone since we borrow from constants)
@@ -739,6 +787,378 @@ impl Vm {
                             self.call_value(argc, span)?;
                         }
                     }
+                }
+                Op::HashGetConst(key_idx) => {
+                    let receiver = self.pop();
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: &str = unsafe { &*key };
+                    match receiver {
+                        Value::Hash(hash) => {
+                            let value = hash
+                                .borrow()
+                                .get(&StrKey(key))
+                                .cloned()
+                                .unwrap_or(Value::Null);
+                            self.push(value);
+                        }
+                        other => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "get".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                    }
+                }
+                Op::HashHasKeyConst(key_idx) => {
+                    let receiver = self.pop();
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: &str = unsafe { &*key };
+                    match receiver {
+                        Value::Hash(hash) => {
+                            self.push(Value::Bool(hash.borrow().contains_key(&StrKey(key))));
+                        }
+                        other => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "has_key".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                    }
+                }
+                Op::HashDeleteConst(key_idx) => {
+                    let receiver = self.pop();
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: &str = unsafe { &*key };
+                    match receiver {
+                        Value::Hash(hash) => {
+                            let value = hash
+                                .borrow_mut()
+                                .swap_remove(&StrKey(key))
+                                .unwrap_or(Value::Null);
+                            self.push(value);
+                        }
+                        other => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "delete".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                    }
+                }
+                Op::HashSetConst(key_idx) => {
+                    let value = self.pop();
+                    let receiver = self.pop();
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: &str = unsafe { &*key };
+                    match receiver {
+                        Value::Hash(hash) => {
+                            let mut hash_ref = hash.borrow_mut();
+                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
+                                *existing = value.clone();
+                            } else {
+                                hash_ref.insert(HashKey::String(key.to_string()), value.clone());
+                            }
+                            self.push(Value::Null);
+                        }
+                        other => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "set".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                    }
+                }
+                Op::HashGetLocalConst(slot, key_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: &str = unsafe { &*key };
+                    let result = match &self.stack[base + slot as usize] {
+                        Value::Hash(hash) => hash
+                            .borrow()
+                            .get(&StrKey(key))
+                            .cloned()
+                            .unwrap_or(Value::Null),
+                        other => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "get".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                    };
+                    self.push(result);
+                }
+                Op::HashHasKeyLocalConst(slot, key_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: &str = unsafe { &*key };
+                    let result = match &self.stack[base + slot as usize] {
+                        Value::Hash(hash) => Value::Bool(hash.borrow().contains_key(&StrKey(key))),
+                        other => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "has_key".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                    };
+                    self.push(result);
+                }
+                Op::HashDeleteLocalConst(slot, key_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: &str = unsafe { &*key };
+                    let result = match &self.stack[base + slot as usize] {
+                        Value::Hash(hash) => hash
+                            .borrow_mut()
+                            .swap_remove(&StrKey(key))
+                            .unwrap_or(Value::Null),
+                        other => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "delete".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                    };
+                    self.push(result);
+                }
+                Op::HashSetLocalConst(slot, key_idx) => {
+                    let value = self.pop();
+                    let base = self.frames.last().unwrap().stack_base;
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: &str = unsafe { &*key };
+                    match &self.stack[base + slot as usize] {
+                        Value::Hash(hash) => {
+                            let mut hash_ref = hash.borrow_mut();
+                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
+                                *existing = value;
+                            } else {
+                                hash_ref.insert(HashKey::String(key.to_string()), value);
+                            }
+                        }
+                        other => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "set".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                    }
+                    self.push(Value::Null);
+                }
+                Op::HashGetGlobalConst(global_idx, key_idx) => {
+                    let global_name: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[global_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let global_name: &str = unsafe { &*global_name };
+                    let key: &str = unsafe { &*key };
+                    match self.globals.get(global_name) {
+                        Some(Value::Hash(hash)) => {
+                            let value = hash
+                                .borrow()
+                                .get(&StrKey(key))
+                                .cloned()
+                                .unwrap_or(Value::Null);
+                            self.push(value);
+                        }
+                        Some(other) => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "get".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                        None => {
+                            return Err(RuntimeError::undefined_variable(
+                                global_name.to_string(),
+                                self.current_span(),
+                            ));
+                        }
+                    }
+                }
+                Op::HashHasKeyGlobalConst(global_idx, key_idx) => {
+                    let global_name: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[global_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let global_name: &str = unsafe { &*global_name };
+                    let key: &str = unsafe { &*key };
+                    let result = match self.globals.get(global_name) {
+                        Some(Value::Hash(hash)) => {
+                            Value::Bool(hash.borrow().contains_key(&StrKey(key)))
+                        }
+                        Some(other) => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "has_key".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                        None => {
+                            return Err(RuntimeError::undefined_variable(
+                                global_name.to_string(),
+                                self.current_span(),
+                            ));
+                        }
+                    };
+                    self.push(result);
+                }
+                Op::HashDeleteGlobalConst(global_idx, key_idx) => {
+                    let global_name: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[global_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let global_name: &str = unsafe { &*global_name };
+                    let key: &str = unsafe { &*key };
+                    match self.globals.get(global_name) {
+                        Some(Value::Hash(hash)) => {
+                            let value = hash
+                                .borrow_mut()
+                                .swap_remove(&StrKey(key))
+                                .unwrap_or(Value::Null);
+                            self.push(value);
+                        }
+                        Some(other) => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "delete".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                        None => {
+                            return Err(RuntimeError::undefined_variable(
+                                global_name.to_string(),
+                                self.current_span(),
+                            ));
+                        }
+                    }
+                }
+                Op::HashSetGlobalConst(global_idx, key_idx) => {
+                    let value = self.pop();
+                    let global_name: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[global_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let key: *const str = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
+                            Constant::String(s) => s.as_str() as *const str,
+                            _ => "" as *const str,
+                        }
+                    };
+                    let global_name: &str = unsafe { &*global_name };
+                    let key: &str = unsafe { &*key };
+                    match self.globals.get(global_name) {
+                        Some(Value::Hash(hash)) => {
+                            let mut hash_ref = hash.borrow_mut();
+                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
+                                *existing = value;
+                            } else {
+                                hash_ref.insert(HashKey::String(key.to_string()), value);
+                            }
+                        }
+                        Some(other) => {
+                            return Err(RuntimeError::NoSuchProperty {
+                                value_type: other.type_name(),
+                                property: "set".to_string(),
+                                span: self.current_span(),
+                            });
+                        }
+                        None => {
+                            return Err(RuntimeError::undefined_variable(
+                                global_name.to_string(),
+                                self.current_span(),
+                            ));
+                        }
+                    }
+                    self.push(Value::Null);
                 }
                 Op::Closure(idx) => {
                     let frame = self.frames.last().unwrap();
@@ -809,19 +1229,16 @@ impl Vm {
                     }
                 }
                 Op::Hash(n) => {
+                    let n = n as usize;
+                    let base = self.stack.len() - n * 2;
                     let mut map = HashPairs::default();
-                    let mut pairs = Vec::with_capacity(n as usize);
-                    for _ in 0..n {
-                        let value = self.stack.pop().unwrap();
-                        let key = self.stack.pop().unwrap();
-                        pairs.push((key, value));
-                    }
-                    pairs.reverse();
-                    for (key, value) in pairs {
-                        if let Some(hash_key) = HashKey::from_value(&key) {
+                    for i in 0..n {
+                        if let Some(hash_key) = HashKey::from_value(&self.stack[base + i * 2]) {
+                            let value = self.stack[base + i * 2 + 1].clone();
                             map.insert(hash_key, value);
                         }
                     }
+                    self.stack.truncate(base);
                     self.stack.push(Value::Hash(Rc::new(RefCell::new(map))));
                 }
                 Op::Range => {

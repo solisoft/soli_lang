@@ -625,7 +625,7 @@ mod tests {
 
         register_test_engine("shop", root, "/shop");
 
-        let cache = TemplateCache::new(&root.join("app/views"));
+        let cache = TemplateCache::new(root.join("app/views"));
         let result = cache.resolve_template_path("shop/index").unwrap();
         // Main views dir should win
         assert!(result.to_string_lossy().contains("app/views/shop"));

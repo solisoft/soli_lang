@@ -249,16 +249,19 @@
 pub mod callbacks;
 pub mod core;
 pub mod crud;
+mod db_config;
+mod engine_context;
 pub mod query;
+mod registry;
 pub mod relations;
 pub mod validation;
 
 pub use callbacks::{register_callback, ModelCallbacks};
 pub use core::{
     class_name_to_collection, get_model_engine_context, get_or_create_metadata,
-    get_translated_fields, init_db_config, is_translated_field, register_model_builtins,
-    register_translation, set_model_engine_context, update_metadata, EngineContextGuard, Model,
-    ModelMetadata, DB_CONFIG, MODEL_REGISTRY,
+    get_translated_fields, init_db_config, init_jwt_token, is_translated_field,
+    register_model_builtins, register_translation, set_model_engine_context, update_metadata,
+    EngineContextGuard, Model, ModelMetadata, DB_CONFIG, MODEL_REGISTRY,
 };
 pub use crud::{
     exec_async_query, exec_async_query_raw, exec_async_query_with_binds, exec_auto_collection,

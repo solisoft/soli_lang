@@ -203,6 +203,33 @@ pub enum Op {
     /// Like CallMethod but with a resolved method ID for direct dispatch (no string matching).
     /// Fields: (name_constant_idx, argc, method_id). Falls back to string dispatch for classes.
     CallMethodById(u16, u8, u16),
+    /// Specialized hash get with a compile-time constant string key.
+    HashGetConst(u16),
+    /// Specialized hash has_key? with a compile-time constant string key.
+    HashHasKeyConst(u16),
+    /// Specialized hash delete with a compile-time constant string key.
+    HashDeleteConst(u16),
+    /// Specialized hash set with a compile-time constant string key.
+    /// Stack: [..., hash, value]
+    HashSetConst(u16),
+    /// Specialized local-hash get with a compile-time constant string key.
+    HashGetLocalConst(u16, u16),
+    /// Specialized local-hash has_key? with a compile-time constant string key.
+    HashHasKeyLocalConst(u16, u16),
+    /// Specialized local-hash delete with a compile-time constant string key.
+    HashDeleteLocalConst(u16, u16),
+    /// Specialized local-hash set with a compile-time constant string key.
+    /// Stack: [..., value]
+    HashSetLocalConst(u16, u16),
+    /// Specialized global-hash get with a compile-time constant string key.
+    HashGetGlobalConst(u16, u16),
+    /// Specialized global-hash has_key? with a compile-time constant string key.
+    HashHasKeyGlobalConst(u16, u16),
+    /// Specialized global-hash delete with a compile-time constant string key.
+    HashDeleteGlobalConst(u16, u16),
+    /// Specialized global-hash set with a compile-time constant string key.
+    /// Stack: [..., value]
+    HashSetGlobalConst(u16, u16),
 
     // --- Additional super-instructions for local arithmetic ---
     /// Subtract two locals: push(local[a] - local[b])

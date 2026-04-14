@@ -3,255 +3,25 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{OnceLock, RwLock};
-
-use lazy_static::lazy_static;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, Function, NativeFunction, Value};
 
-use super::callbacks::{register_callback, ModelCallbacks};
-use super::relations::{
-    build_relation, get_relation, register_relation, RelationDef, RelationType,
+pub use super::db_config::{
+    get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token, init_db_config,
+    init_jwt_token, DbConfig, DB_CONFIG,
 };
+pub use super::engine_context::{
+    get_model_engine_context, set_model_engine_context, EngineContextGuard,
+};
+pub use super::registry::{
+    get_or_create_metadata, get_translated_fields, is_soft_delete, is_translated_field,
+    register_translation, update_metadata, ModelMetadata, MODEL_REGISTRY,
+};
+
+use super::callbacks::register_callback;
+use super::relations::{build_relation, get_relation, register_relation, RelationType};
 use super::validation::{register_validation, ValidationRule};
-
-thread_local! {
-    static ENGINE_CONTEXT: RefCell<Option<String>> = const { RefCell::new(None) };
-}
-
-pub fn set_model_engine_context(engine: Option<&str>) {
-    ENGINE_CONTEXT.with(|ctx| {
-        *ctx.borrow_mut() = engine.map(String::from);
-    });
-}
-
-pub fn get_model_engine_context() -> Option<String> {
-    ENGINE_CONTEXT.with(|ctx| ctx.borrow().clone())
-}
-
-/// RAII guard that sets the engine context on creation and clears it on drop.
-/// Ensures the context is always cleaned up, even if a panic occurs.
-pub struct EngineContextGuard;
-
-impl EngineContextGuard {
-    pub fn enter(name: &str) -> Self {
-        set_model_engine_context(Some(name));
-        Self
-    }
-}
-
-impl Drop for EngineContextGuard {
-    fn drop(&mut self) {
-        set_model_engine_context(None);
-    }
-}
-
-/// Metadata for a model class (validations, callbacks).
-#[derive(Debug, Clone, Default)]
-pub struct ModelMetadata {
-    pub validations: Vec<ValidationRule>,
-    pub callbacks: ModelCallbacks,
-    pub relations: Vec<RelationDef>,
-    pub soft_delete: bool,
-    pub translated_fields: Vec<String>,
-}
-
-/// Register a field as translatable for a model class.
-pub fn register_translation(class_name: &str, field_name: &str) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    if !metadata.translated_fields.contains(&field_name.to_string()) {
-        metadata.translated_fields.push(field_name.to_string());
-    }
-}
-
-/// Get all translated field names for a model class.
-pub fn get_translated_fields(class_name: &str) -> Vec<String> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.translated_fields.clone())
-        .unwrap_or_default()
-}
-
-/// Check if a field is registered as translatable for a model class.
-pub fn is_translated_field(class_name: &str, field_name: &str) -> bool {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.translated_fields.contains(&field_name.to_string()))
-        .unwrap_or(false)
-}
-
-/// Cached database configuration to avoid repeated env::var() lookups.
-/// Note: api_key and database are read at request time so .env can be loaded later.
-pub struct DbConfig {
-    pub host: String,
-}
-
-impl DbConfig {
-    fn from_env() -> Self {
-        let host =
-            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-        let host = host
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .to_string();
-        Self { host }
-    }
-}
-
-/// Cached JWT token obtained by logging in with Basic auth credentials.
-/// This avoids Argon2 password verification on every DB request.
-static CACHED_JWT: OnceLock<Option<String>> = OnceLock::new();
-
-/// Initialize JWT token by logging in to SoliDB. Call this at startup (outside tokio).
-pub fn init_jwt_token() {
-    let _ = get_jwt_token();
-}
-
-/// Get cached JWT token, logging in with Basic auth credentials (via ureq, no tokio).
-/// JWT is faster than both API key and Basic auth for subsequent requests.
-pub fn get_jwt_token() -> Option<&'static str> {
-    CACHED_JWT
-        .get_or_init(|| {
-            let (username, password) = match (
-                std::env::var("SOLIDB_USERNAME").ok(),
-                std::env::var("SOLIDB_PASSWORD").ok(),
-            ) {
-                (Some(u), Some(p)) => (u, p),
-                _ => return None,
-            };
-            let host = std::env::var("SOLIDB_HOST")
-                .unwrap_or_else(|_| "http://localhost:6745".to_string());
-            let login_url = format!("{}/auth/login", host);
-            let payload = serde_json::json!({
-                "username": username,
-                "password": password,
-            });
-            // Use ureq (synchronous) to avoid tokio runtime conflicts
-            match ureq::post(&login_url)
-                .set("Content-Type", "application/json")
-                .send_string(&payload.to_string())
-            {
-                Ok(resp) => match resp.into_string() {
-                    Ok(body) => match serde_json::from_str::<serde_json::Value>(&body) {
-                        Ok(json) => json
-                            .get("token")
-                            .and_then(|t| t.as_str())
-                            .map(|t| t.to_string()),
-                        Err(_) => None,
-                    },
-                    Err(_) => None,
-                },
-                Err(e) => {
-                    eprintln!("Warning: JWT login failed ({}), falling back", e);
-                    None
-                }
-            }
-        })
-        .as_deref()
-}
-
-lazy_static! {
-    /// Global registry mapping class names to their metadata.
-    pub static ref MODEL_REGISTRY: RwLock<HashMap<String, ModelMetadata>> =
-        RwLock::new(HashMap::new());
-
-    /// Cached DB configuration (for username/password which are less likely to change).
-    pub static ref DB_CONFIG: DbConfig = DbConfig::from_env();
-}
-
-/// Cached DB config - initialized on first use.
-static CACHED_DB_CONFIG: OnceLock<CachedDbConfig> = OnceLock::new();
-
-struct CachedDbConfig {
-    cursor_url: String,
-    database: String,
-    api_key: Option<String>,
-    basic_auth: Option<String>,
-}
-
-/// Initialize DB config from environment - call this after .env is loaded.
-pub fn init_db_config() {
-    let _ = get_db_config();
-}
-
-/// Get cached DB config - initialized on first call.
-fn get_db_config() -> &'static CachedDbConfig {
-    CACHED_DB_CONFIG.get_or_init(|| {
-        let host =
-            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-        let host = host
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .to_string();
-        let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
-        let cursor_url = format!("http://{}/_api/database/{}/cursor", host, database);
-        let api_key = std::env::var("SOLIDB_API_KEY").ok();
-        let basic_auth = match (
-            std::env::var("SOLIDB_USERNAME").ok(),
-            std::env::var("SOLIDB_PASSWORD").ok(),
-        ) {
-            (Some(u), Some(p)) => {
-                use base64::Engine;
-                Some(format!(
-                    "Basic {}",
-                    base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", u, p))
-                ))
-            }
-            _ => None,
-        };
-        CachedDbConfig {
-            cursor_url,
-            database,
-            api_key,
-            basic_auth,
-        }
-    })
-}
-
-/// Get database name.
-pub fn get_database_name() -> &'static str {
-    &get_db_config().database
-}
-
-/// Get cursor URL.
-pub fn get_cursor_url() -> &'static str {
-    &get_db_config().cursor_url
-}
-
-/// Get API key.
-pub fn get_api_key() -> Option<&'static str> {
-    get_db_config().api_key.as_deref()
-}
-
-/// Get Basic auth header value.
-pub fn get_basic_auth() -> Option<&'static str> {
-    get_db_config().basic_auth.as_deref()
-}
-
-/// Get or create metadata for a model class.
-pub fn get_or_create_metadata(class_name: &str) -> ModelMetadata {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry.get(class_name).cloned().unwrap_or_default()
-}
-
-/// Update metadata for a model class.
-pub fn update_metadata(class_name: &str, metadata: ModelMetadata) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    registry.insert(class_name.to_string(), metadata);
-}
-
-/// Check if a model class has soft delete enabled.
-pub fn is_soft_delete(class_name: &str) -> bool {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.soft_delete)
-        .unwrap_or(false)
-}
 
 /// Get a Transaction class for a specific model.
 /// Creates a new class each time (not cached due to Class not being Sync).
@@ -440,6 +210,7 @@ fn compute_base_collection_name(name: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
 

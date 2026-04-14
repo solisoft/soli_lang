@@ -6,10 +6,97 @@ use std::rc::Rc;
 use crate::error::RuntimeError;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{ControlFlow, Interpreter, RuntimeResult};
-use crate::interpreter::value::{HashKey, Value, ValueMethod};
+use crate::interpreter::value::{
+    hash_contains_value, hash_get_value, HashKey, HashPairs, Value, ValueMethod,
+};
 use crate::span::Span;
 
 impl Interpreter {
+    pub(crate) fn call_hash_method_on_rc(
+        &mut self,
+        hash: &Rc<RefCell<HashPairs>>,
+        method_name: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        match method_name {
+            "set" | "delete" | "clear" => match method_name {
+                "set" => {
+                    if arguments.len() != 2 {
+                        return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+                    }
+                    let key = &arguments[0];
+                    let value = arguments[1].clone();
+                    match key {
+                        Value::String(s) => {
+                            let mut hash_ref = hash.borrow_mut();
+                            if let Some((_, _, existing)) =
+                                hash_ref.get_full_mut(&crate::interpreter::value::StrKey(s))
+                            {
+                                *existing = value.clone();
+                            } else {
+                                hash_ref.insert(HashKey::String(s.clone()), value.clone());
+                            }
+                        }
+                        _ => {
+                            let hash_key = key.to_hash_key().ok_or_else(|| {
+                                RuntimeError::type_error(
+                                    format!("{} cannot be used as a hash key", key.type_name()),
+                                    span,
+                                )
+                            })?;
+                            hash.borrow_mut().insert(hash_key, value.clone());
+                        }
+                    }
+                    Ok(value)
+                }
+                "delete" => {
+                    if arguments.len() != 1 {
+                        return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                    }
+                    let key = &arguments[0];
+                    let deleted_value = match key {
+                        Value::String(s) => hash
+                            .borrow_mut()
+                            .shift_remove(&crate::interpreter::value::StrKey(s)),
+                        _ => {
+                            let hash_key = match key.to_hash_key() {
+                                Some(k) => k,
+                                None => return Ok(Value::Null),
+                            };
+                            hash.borrow_mut().shift_remove(&hash_key)
+                        }
+                    };
+                    Ok(deleted_value.unwrap_or(Value::Null))
+                }
+                "clear" => {
+                    if !arguments.is_empty() {
+                        return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                    }
+                    hash.borrow_mut().clear();
+                    Ok(Value::Null)
+                }
+                _ => unreachable!(),
+            },
+            _ => {
+                {
+                    let entries = hash.borrow();
+                    if let Some(result) =
+                        self.call_hash_method_borrowed(&entries, method_name, &arguments, span)
+                    {
+                        return result;
+                    }
+                }
+                let entries: Vec<(HashKey, Value)> = hash
+                    .borrow()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                self.call_hash_method(&entries, method_name, arguments, span)
+            }
+        }
+    }
+
     /// Call a method on a Value.
     pub(crate) fn call_method(
         &mut self,
@@ -61,79 +148,37 @@ impl Interpreter {
                         }
                     }
                     _ => {
+                        {
+                            let items = arr.borrow();
+                            if let Some(result) = self.call_array_method_borrowed(
+                                &items,
+                                &method.method_name,
+                                &arguments,
+                                span,
+                            ) {
+                                return result;
+                            }
+                        }
                         let items = arr.borrow().clone();
                         self.call_array_method(&items, &method.method_name, arguments, span)
                     }
                 }
             }
             Value::Hash(ref hash) => {
-                match method.method_name.as_str() {
-                    "set" | "delete" | "clear" => {
-                        // Mutating methods
-                        match method.method_name.as_str() {
-                            "set" => {
-                                if arguments.len() != 2 {
-                                    return Err(RuntimeError::wrong_arity(
-                                        2,
-                                        arguments.len(),
-                                        span,
-                                    ));
-                                }
-                                let key = &arguments[0];
-                                let value = arguments[1].clone();
-                                let hash_key = key.to_hash_key().ok_or_else(|| {
-                                    RuntimeError::type_error(
-                                        format!("{} cannot be used as a hash key", key.type_name()),
-                                        span,
-                                    )
-                                })?;
-                                hash.borrow_mut().insert(hash_key, value.clone());
-                                Ok(value)
-                            }
-                            "delete" => {
-                                if arguments.len() != 1 {
-                                    return Err(RuntimeError::wrong_arity(
-                                        1,
-                                        arguments.len(),
-                                        span,
-                                    ));
-                                }
-                                let key = &arguments[0];
-                                let hash_key = match key.to_hash_key() {
-                                    Some(k) => k,
-                                    None => return Ok(Value::Null),
-                                };
-                                let deleted_value = hash.borrow_mut().shift_remove(&hash_key);
-                                Ok(deleted_value.unwrap_or(Value::Null))
-                            }
-                            "clear" => {
-                                if !arguments.is_empty() {
-                                    return Err(RuntimeError::wrong_arity(
-                                        0,
-                                        arguments.len(),
-                                        span,
-                                    ));
-                                }
-                                hash.borrow_mut().clear();
-                                Ok(Value::Null)
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                    _ => {
-                        let entries: Vec<(HashKey, Value)> = hash
-                            .borrow()
-                            .iter()
-                            .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect();
-                        self.call_hash_method(&entries, &method.method_name, arguments, span)
-                    }
-                }
+                self.call_hash_method_on_rc(hash, &method.method_name, arguments, span)
             }
             Value::QueryBuilder(qb) => {
                 self.call_query_builder_method(qb, &method.method_name, arguments, span)
             }
-            Value::String(s) => self.call_string_method(&s, &method.method_name, arguments, span),
+            Value::String(s) => {
+                if let Some(result) =
+                    self.call_string_method_borrowed(&s, &method.method_name, &arguments, span)
+                {
+                    result
+                } else {
+                    self.call_string_method(&s, &method.method_name, arguments, span)
+                }
+            }
             Value::Int(n) => self.call_int_method(n, &method.method_name, arguments, span),
             Value::Float(n) => self.call_float_method(n, &method.method_name, arguments, span),
             Value::Bool(b) => self.call_bool_method(b, &method.method_name, arguments, span),
@@ -150,6 +195,317 @@ impl Interpreter {
                 format!("{} does not support methods", method.receiver.type_name()),
                 span,
             )),
+        }
+    }
+
+    fn call_array_method_borrowed(
+        &self,
+        items: &[Value],
+        method_name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Option<RuntimeResult<Value>> {
+        match method_name {
+            "reverse" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let mut result = items.to_vec();
+                result.reverse();
+                Some(Ok(Value::Array(Rc::new(RefCell::new(result)))))
+            }
+            "uniq" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let mut result = Vec::with_capacity(items.len());
+                for item in items {
+                    if !result.contains(item) {
+                        result.push(item.clone());
+                    }
+                }
+                Some(Ok(Value::Array(Rc::new(RefCell::new(result)))))
+            }
+            "compact" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let result: Vec<Value> = items
+                    .iter()
+                    .filter(|v| !matches!(v, Value::Null))
+                    .cloned()
+                    .collect();
+                Some(Ok(Value::Array(Rc::new(RefCell::new(result)))))
+            }
+            "first" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(items.first().cloned().unwrap_or(Value::Null)))
+            }
+            "last" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(items.last().cloned().unwrap_or(Value::Null)))
+            }
+            "empty?" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::Bool(items.is_empty())))
+            }
+            "includes?" | "contains" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                Some(Ok(Value::Bool(items.contains(&arguments[0]))))
+            }
+            "get" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let idx = match &arguments[0] {
+                    Value::Int(n) => *n,
+                    _ => {
+                        return Some(Err(RuntimeError::type_error(
+                            "get expects an integer index",
+                            span,
+                        )))
+                    }
+                };
+                let idx_usize = if idx < 0 {
+                    (items.len() as i64 + idx) as usize
+                } else {
+                    idx as usize
+                };
+                Some(
+                    items
+                        .get(idx_usize)
+                        .cloned()
+                        .ok_or(RuntimeError::IndexOutOfBounds {
+                            index: idx,
+                            length: items.len(),
+                            span,
+                        }),
+                )
+            }
+            "length" | "len" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::Int(items.len() as i64)))
+            }
+            "to_string" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let mut total_len = 2;
+                for (i, value) in items.iter().enumerate() {
+                    total_len += value.display_len();
+                    if i > 0 {
+                        total_len += 2;
+                    }
+                }
+                let mut result = String::with_capacity(total_len);
+                result.push('[');
+                for (i, value) in items.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(", ");
+                    }
+                    value.write_to_string(&mut result);
+                }
+                result.push(']');
+                Some(Ok(Value::String(result)))
+            }
+            "join" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let delim = match &arguments[0] {
+                    Value::String(d) => d.as_str(),
+                    _ => {
+                        return Some(Err(RuntimeError::type_error(
+                            "join expects a string delimiter",
+                            span,
+                        )))
+                    }
+                };
+                let mut total_len = delim.len().saturating_mul(items.len().saturating_sub(1));
+                for value in items {
+                    total_len += value.display_len();
+                }
+                let mut result = String::with_capacity(total_len);
+                for (i, value) in items.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(delim);
+                    }
+                    value.write_to_string(&mut result);
+                }
+                Some(Ok(Value::String(result)))
+            }
+            _ => None,
+        }
+    }
+
+    fn call_hash_method_borrowed(
+        &self,
+        entries: &HashPairs,
+        method_name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Option<RuntimeResult<Value>> {
+        match method_name {
+            "get" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let found = hash_get_value(entries, &arguments[0]).cloned();
+                Some(Ok(match found {
+                    Some(v) => v,
+                    None => arguments.get(1).cloned().unwrap_or(Value::Null),
+                }))
+            }
+            "fetch" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                if let Some(value) = hash_get_value(entries, &arguments[0]) {
+                    Some(Ok(value.clone()))
+                } else if let Some(default) = arguments.get(1) {
+                    Some(Ok(default.clone()))
+                } else {
+                    Some(Err(RuntimeError::type_error(
+                        format!("key not found: {:?}", arguments[0]),
+                        span,
+                    )))
+                }
+            }
+            "length" | "len" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::Int(entries.len() as i64)))
+            }
+            "keys" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let keys: Vec<Value> = entries.keys().map(HashKey::to_value).collect();
+                Some(Ok(Value::Array(Rc::new(RefCell::new(keys)))))
+            }
+            "values" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let values: Vec<Value> = entries.values().cloned().collect();
+                Some(Ok(Value::Array(Rc::new(RefCell::new(values)))))
+            }
+            "entries" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let pairs: Vec<Value> = entries
+                    .iter()
+                    .map(|(k, v)| {
+                        Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])))
+                    })
+                    .collect();
+                Some(Ok(Value::Array(Rc::new(RefCell::new(pairs)))))
+            }
+            "merge" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                match &arguments[0] {
+                    Value::Hash(other) => {
+                        let mut merged = entries.clone();
+                        for (k, v) in other.borrow().iter() {
+                            merged.insert(k.clone(), v.clone());
+                        }
+                        Some(Ok(Value::Hash(Rc::new(RefCell::new(merged)))))
+                    }
+                    _ => Some(Err(RuntimeError::type_error(
+                        "merge expects a hash argument",
+                        span,
+                    ))),
+                }
+            }
+            "compact" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let mut compacted = HashPairs::with_capacity_and_hasher(
+                    entries.len(),
+                    ahash::RandomState::default(),
+                );
+                for (k, v) in entries.iter() {
+                    if !matches!(v, Value::Null) {
+                        compacted.insert(k.clone(), v.clone());
+                    }
+                }
+                Some(Ok(Value::Hash(Rc::new(RefCell::new(compacted)))))
+            }
+            "invert" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let mut inverted = HashPairs::with_capacity_and_hasher(
+                    entries.len(),
+                    ahash::RandomState::default(),
+                );
+                for (k, v) in entries.iter() {
+                    let new_key = match v.to_hash_key() {
+                        Some(key) => key,
+                        None => {
+                            return Some(Err(RuntimeError::type_error(
+                                format!("{} cannot be used as a hash key", v.type_name()),
+                                span,
+                            )))
+                        }
+                    };
+                    inverted.insert(new_key, k.to_value());
+                }
+                Some(Ok(Value::Hash(Rc::new(RefCell::new(inverted)))))
+            }
+            "has_key" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                Some(Ok(Value::Bool(hash_contains_value(entries, &arguments[0]))))
+            }
+            "empty?" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::Bool(entries.is_empty())))
+            }
+            "to_string" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let mut total_len = 2;
+                for (i, (k, v)) in entries.iter().enumerate() {
+                    total_len += k.display_len();
+                    total_len += 4 + v.display_len();
+                    if i > 0 {
+                        total_len += 2;
+                    }
+                }
+                let mut result = String::with_capacity(total_len);
+                result.push('{');
+                for (i, (k, v)) in entries.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(", ");
+                    }
+                    k.write_key_to_string(&mut result);
+                    result.push_str(" => ");
+                    v.write_to_string(&mut result);
+                }
+                result.push('}');
+                Some(Ok(Value::String(result)))
+            }
+            _ => None,
         }
     }
 

@@ -9,6 +9,159 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 impl Interpreter {
+    pub(crate) fn call_string_method_borrowed(
+        &self,
+        s: &str,
+        method_name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Option<RuntimeResult<Value>> {
+        match method_name {
+            "length" | "len" | "size" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::Int(s.len() as i64)))
+            }
+            "to_s" | "to_string" | "join" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::String(s.to_string())))
+            }
+            "upcase" | "uppercase" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::String(s.to_uppercase())))
+            }
+            "downcase" | "lowercase" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::String(s.to_lowercase())))
+            }
+            "trim" | "strip" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::String(s.trim().to_string())))
+            }
+            "lstrip" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::String(s.trim_start().to_string())))
+            }
+            "rstrip" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::String(s.trim_end().to_string())))
+            }
+            "reverse" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::String(s.chars().rev().collect())))
+            }
+            "empty?" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::Bool(s.is_empty())))
+            }
+            "contains" | "includes?" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                match &arguments[0] {
+                    Value::String(sub) => Some(Ok(Value::Bool(s.contains(sub)))),
+                    _ => Some(Err(RuntimeError::type_error(
+                        format!("{} expects a string argument", method_name),
+                        span,
+                    ))),
+                }
+            }
+            "starts_with" | "starts_with?" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                match &arguments[0] {
+                    Value::String(prefix) => Some(Ok(Value::Bool(s.starts_with(prefix)))),
+                    _ => Some(Err(RuntimeError::type_error(
+                        "starts_with? expects a string argument",
+                        span,
+                    ))),
+                }
+            }
+            "ends_with" | "ends_with?" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                match &arguments[0] {
+                    Value::String(suffix) => Some(Ok(Value::Bool(s.ends_with(suffix)))),
+                    _ => Some(Err(RuntimeError::type_error(
+                        "ends_with? expects a string argument",
+                        span,
+                    ))),
+                }
+            }
+            "split" => {
+                if arguments.len() > 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let delim = if arguments.is_empty() {
+                    " "
+                } else {
+                    match &arguments[0] {
+                        Value::String(delim) => delim.as_str(),
+                        _ => {
+                            return Some(Err(RuntimeError::type_error(
+                                "split expects a string delimiter",
+                                span,
+                            )))
+                        }
+                    }
+                };
+                let mut parts = Vec::with_capacity(if delim.is_empty() {
+                    s.len() + 1
+                } else {
+                    s.matches(delim).count() + 1
+                });
+                for part in s.split(delim) {
+                    parts.push(Value::String(part.to_string()));
+                }
+                Some(Ok(Value::Array(Rc::new(RefCell::new(parts)))))
+            }
+            "replace" => {
+                if arguments.len() != 2 {
+                    return Some(Err(RuntimeError::wrong_arity(2, arguments.len(), span)));
+                }
+                let from = match &arguments[0] {
+                    Value::String(from) => from,
+                    _ => {
+                        return Some(Err(RuntimeError::type_error(
+                            "replace expects a string pattern",
+                            span,
+                        )))
+                    }
+                };
+                let to = match &arguments[1] {
+                    Value::String(to) => to,
+                    _ => {
+                        return Some(Err(RuntimeError::type_error(
+                            "replace expects a string replacement",
+                            span,
+                        )))
+                    }
+                };
+                Some(Ok(Value::String(s.replace(from, to))))
+            }
+            _ => None,
+        }
+    }
+
     /// Handle string methods.
     pub(crate) fn call_string_method(
         &mut self,
@@ -17,6 +170,10 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
+        if let Some(result) = self.call_string_method_borrowed(s, method_name, &arguments, span) {
+            return result;
+        }
+
         match method_name {
             "starts_with?" => self.string_starts_with(s, arguments, span),
             "ends_with?" => self.string_ends_with(s, arguments, span),
@@ -508,7 +665,10 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let chars: Vec<Value> = s.chars().map(|c| Value::String(c.to_string())).collect();
+        let mut chars = Vec::with_capacity(s.len());
+        for c in s.chars() {
+            chars.push(Value::String(c.to_string()));
+        }
         Ok(Value::Array(Rc::new(RefCell::new(chars))))
     }
 
@@ -516,7 +676,10 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let lines: Vec<Value> = s.lines().map(|l| Value::String(l.to_string())).collect();
+        let mut lines = Vec::with_capacity(s.bytes().filter(|b| *b == b'\n').count() + 1);
+        for line in s.lines() {
+            lines.push(Value::String(line.to_string()));
+        }
         Ok(Value::Array(Rc::new(RefCell::new(lines))))
     }
 
@@ -550,16 +713,18 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        let result: String = s
-            .chars()
-            .map(|c| {
-                if c.is_uppercase() {
-                    c.to_lowercase().to_string()
-                } else {
-                    c.to_uppercase().to_string()
+        let mut result = String::with_capacity(s.len());
+        for c in s.chars() {
+            if c.is_uppercase() {
+                for lower in c.to_lowercase() {
+                    result.push(lower);
                 }
-            })
-            .collect();
+            } else {
+                for upper in c.to_uppercase() {
+                    result.push(upper);
+                }
+            }
+        }
         Ok(Value::String(result))
     }
 
@@ -591,7 +756,7 @@ impl Interpreter {
             return Err(RuntimeError::type_error("insert index out of bounds", span));
         }
 
-        let mut result = String::new();
+        let mut result = String::with_capacity(s.len() + insert_str.len());
         for (i, c) in s.chars().enumerate() {
             if i == index {
                 result.push_str(insert_str);
@@ -831,10 +996,15 @@ impl Interpreter {
                 }
             }
         };
-        let parts: Vec<Value> = s
-            .split(delim)
-            .map(|p| Value::String(p.to_string()))
-            .collect();
+        let capacity = if delim.is_empty() {
+            s.len() + 1
+        } else {
+            s.matches(delim).count() + 1
+        };
+        let mut parts = Vec::with_capacity(capacity);
+        for part in s.split(delim) {
+            parts.push(Value::String(part.to_string()));
+        }
         Ok(Value::Array(Rc::new(RefCell::new(parts))))
     }
 

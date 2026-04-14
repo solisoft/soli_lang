@@ -338,6 +338,11 @@ impl Compiler {
                 .iter()
                 .all(|a| matches!(a, Argument::Positional(_)));
             if all_positional && arguments.len() <= 255 {
+                if let Some(op) =
+                    self.try_compile_hash_const_string_call(object, name, arguments, line)?
+                {
+                    return Ok(op);
+                }
                 // Special optimization: arr.push(x) -> ArrayPush opcode
                 // This avoids method dispatch overhead for the common push operation
                 if name == "push" && arguments.len() == 1 {
@@ -754,6 +759,102 @@ impl Compiler {
         self.emit(Op::Call(1), line);
 
         Ok(())
+    }
+
+    fn try_compile_hash_const_string_call(
+        &mut self,
+        object: &Expr,
+        name: &str,
+        arguments: &[Argument],
+        line: usize,
+    ) -> CompileResult<Option<()>> {
+        if let ExprKind::Variable(var_name) = &object.kind {
+            if let Some(slot) = self.resolve_local(var_name) {
+                match (name, arguments) {
+                    ("get", [Argument::Positional(arg)])
+                    | ("has_key", [Argument::Positional(arg)]) => {
+                        let ExprKind::StringLiteral(key) = &arg.kind else {
+                            return Ok(None);
+                        };
+                        let key_idx = self.add_string_constant(key);
+                        match name {
+                            "get" => self.emit(Op::HashGetLocalConst(slot, key_idx), line),
+                            "has_key" => self.emit(Op::HashHasKeyLocalConst(slot, key_idx), line),
+                            _ => unreachable!(),
+                        };
+                        return Ok(Some(()));
+                    }
+                    ("set", [Argument::Positional(key), Argument::Positional(value)]) => {
+                        let ExprKind::StringLiteral(key) = &key.kind else {
+                            return Ok(None);
+                        };
+                        let key_idx = self.add_string_constant(key);
+                        self.compile_expr(value)?;
+                        self.emit(Op::HashSetLocalConst(slot, key_idx), line);
+                        return Ok(Some(()));
+                    }
+                    _ => {}
+                }
+            }
+            if self.scope_depth == 0 && self.resolve_local(var_name).is_none() {
+                match (name, arguments) {
+                    ("get", [Argument::Positional(arg)])
+                    | ("has_key", [Argument::Positional(arg)]) => {
+                        let ExprKind::StringLiteral(key) = &arg.kind else {
+                            return Ok(None);
+                        };
+                        let global_idx = self.add_string_constant(var_name);
+                        let key_idx = self.add_string_constant(key);
+                        match name {
+                            "get" => self.emit(Op::HashGetGlobalConst(global_idx, key_idx), line),
+                            "has_key" => {
+                                self.emit(Op::HashHasKeyGlobalConst(global_idx, key_idx), line)
+                            }
+                            _ => unreachable!(),
+                        };
+                        return Ok(Some(()));
+                    }
+                    ("set", [Argument::Positional(key), Argument::Positional(value)]) => {
+                        let ExprKind::StringLiteral(key) = &key.kind else {
+                            return Ok(None);
+                        };
+                        let global_idx = self.add_string_constant(var_name);
+                        let key_idx = self.add_string_constant(key);
+                        self.compile_expr(value)?;
+                        self.emit(Op::HashSetGlobalConst(global_idx, key_idx), line);
+                        return Ok(Some(()));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        match (name, arguments) {
+            ("get", [Argument::Positional(arg)]) | ("has_key", [Argument::Positional(arg)]) => {
+                let ExprKind::StringLiteral(key) = &arg.kind else {
+                    return Ok(None);
+                };
+                let key_idx = self.add_string_constant(key);
+                self.compile_expr(object)?;
+                match name {
+                    "get" => self.emit(Op::HashGetConst(key_idx), line),
+                    "has_key" => self.emit(Op::HashHasKeyConst(key_idx), line),
+                    _ => unreachable!(),
+                };
+                Ok(Some(()))
+            }
+            ("set", [Argument::Positional(key), Argument::Positional(value)]) => {
+                let ExprKind::StringLiteral(key) = &key.kind else {
+                    return Ok(None);
+                };
+                let key_idx = self.add_string_constant(key);
+                self.compile_expr(object)?;
+                self.compile_expr(value)?;
+                self.emit(Op::HashSetConst(key_idx), line);
+                Ok(Some(()))
+            }
+            _ => Ok(None),
+        }
     }
 
     fn compile_list_comprehension(
