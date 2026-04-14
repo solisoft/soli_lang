@@ -6,7 +6,7 @@ use crate::error::RuntimeError;
 use crate::interpreter::builtins::server::is_server_listen_marker;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
-use crate::interpreter::value::{Instance, Value};
+use crate::interpreter::value::{HashKey, Instance, StrKey, Value};
 use crate::span::Span;
 
 use std::cell::RefCell;
@@ -21,6 +21,18 @@ impl Interpreter {
         arguments: &[Argument],
         span: Span,
     ) -> RuntimeResult<Value> {
+        if let Some(result) = self.try_evaluate_hash_string_key_call(callee, arguments, span)? {
+            return Ok(result);
+        }
+        if let Some(result) = self.try_evaluate_direct_hash_method_call(callee, arguments, span)? {
+            return Ok(result);
+        }
+        if let Some(result) =
+            self.try_evaluate_direct_string_method_call(callee, arguments, span)?
+        {
+            return Ok(result);
+        }
+
         // Bypass auto-invoke for callees so that func() gets the raw
         // function reference, not the auto-invoked result.
         let callee_val = self.evaluate_callee(callee)?;
@@ -55,6 +67,357 @@ impl Interpreter {
         }
 
         self.call_value_with_named(callee_val, arg_values, named_args, block_arg, span)
+    }
+
+    fn try_evaluate_hash_string_key_call(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        let (object, method_name, safe_navigation) = match &callee.kind {
+            ExprKind::Member { object, name } => (object.as_ref(), name.as_str(), false),
+            ExprKind::SafeMember { object, name } => (object.as_ref(), name.as_str(), true),
+            _ => return Ok(None),
+        };
+
+        if !matches!(method_name, "get" | "fetch" | "has_key" | "delete" | "set") {
+            return Ok(None);
+        }
+
+        if arguments
+            .iter()
+            .any(|arg| !matches!(arg, Argument::Positional(_)))
+        {
+            return Ok(None);
+        }
+
+        let hash_value = self.evaluate(object)?;
+        if safe_navigation && matches!(hash_value, Value::Null) {
+            return Ok(Some(Value::Null));
+        }
+
+        let hash = match hash_value {
+            Value::Hash(hash) => hash,
+            _ => return Ok(None),
+        };
+
+        match (method_name, arguments) {
+            ("get", [Argument::Positional(key)]) => {
+                let ExprKind::StringLiteral(key) = &key.kind else {
+                    return Ok(None);
+                };
+                let value = hash
+                    .borrow()
+                    .get(&StrKey(key))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                Ok(Some(value))
+            }
+            ("get", [Argument::Positional(key), Argument::Positional(default_expr)]) => {
+                let ExprKind::StringLiteral(key) = &key.kind else {
+                    return Ok(None);
+                };
+                let default_value = self.evaluate(default_expr)?;
+                let value = hash
+                    .borrow()
+                    .get(&StrKey(key))
+                    .cloned()
+                    .unwrap_or(default_value);
+                Ok(Some(value))
+            }
+            ("fetch", [Argument::Positional(key)]) => {
+                let ExprKind::StringLiteral(key) = &key.kind else {
+                    return Ok(None);
+                };
+                let value = hash.borrow().get(&StrKey(key)).cloned();
+                Ok(Some(match value {
+                    Some(value) => value,
+                    None => {
+                        return Err(RuntimeError::type_error(
+                            format!("key not found: {:?}", Value::String(key.clone())),
+                            span,
+                        ))
+                    }
+                }))
+            }
+            ("fetch", [Argument::Positional(key), Argument::Positional(default_expr)]) => {
+                let ExprKind::StringLiteral(key) = &key.kind else {
+                    return Ok(None);
+                };
+                let default_value = self.evaluate(default_expr)?;
+                let value = hash
+                    .borrow()
+                    .get(&StrKey(key))
+                    .cloned()
+                    .unwrap_or(default_value);
+                Ok(Some(value))
+            }
+            ("has_key", [Argument::Positional(key)]) => {
+                let ExprKind::StringLiteral(key) = &key.kind else {
+                    return Ok(None);
+                };
+                Ok(Some(Value::Bool(hash.borrow().contains_key(&StrKey(key)))))
+            }
+            ("delete", [Argument::Positional(key)]) => {
+                let ExprKind::StringLiteral(key) = &key.kind else {
+                    return Ok(None);
+                };
+                Ok(Some(
+                    hash.borrow_mut()
+                        .shift_remove(&StrKey(key))
+                        .unwrap_or(Value::Null),
+                ))
+            }
+            ("set", [Argument::Positional(key), Argument::Positional(value_expr)]) => {
+                let ExprKind::StringLiteral(key) = &key.kind else {
+                    return Ok(None);
+                };
+                let value = self.evaluate(value_expr)?;
+                let mut hash_ref = hash.borrow_mut();
+                if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
+                    *existing = value.clone();
+                } else {
+                    hash_ref.insert(HashKey::String(key.clone()), value.clone());
+                }
+                Ok(Some(value))
+            }
+            ("get", _) | ("fetch", _) => Err(RuntimeError::wrong_arity(1, arguments.len(), span)),
+            ("has_key", _) | ("delete", _) => {
+                Err(RuntimeError::wrong_arity(1, arguments.len(), span))
+            }
+            ("set", _) => Err(RuntimeError::wrong_arity(2, arguments.len(), span)),
+            _ => Ok(None),
+        }
+    }
+
+    fn try_evaluate_direct_hash_method_call(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        let (object, method_name, safe_navigation) = match &callee.kind {
+            ExprKind::Member { object, name } => (object.as_ref(), name.as_str(), false),
+            ExprKind::SafeMember { object, name } => (object.as_ref(), name.as_str(), true),
+            _ => return Ok(None),
+        };
+
+        if !matches!(
+            method_name,
+            "length"
+                | "len"
+                | "size"
+                | "map"
+                | "filter"
+                | "each"
+                | "get"
+                | "fetch"
+                | "invert"
+                | "transform_values"
+                | "transform_keys"
+                | "select"
+                | "reject"
+                | "slice"
+                | "except"
+                | "compact"
+                | "dig"
+                | "to_string"
+                | "to_json"
+                | "keys"
+                | "values"
+                | "has_key"
+                | "delete"
+                | "merge"
+                | "entries"
+                | "clear"
+                | "set"
+                | "empty?"
+                | "is_a?"
+        ) {
+            return Ok(None);
+        }
+
+        if arguments
+            .iter()
+            .any(|arg| !matches!(arg, Argument::Positional(_)))
+        {
+            return Ok(None);
+        }
+
+        let hash_value = self.evaluate(object)?;
+        if safe_navigation && matches!(hash_value, Value::Null) {
+            return Ok(Some(Value::Null));
+        }
+
+        let hash = match hash_value {
+            Value::Hash(hash) => hash,
+            _ => return Ok(None),
+        };
+
+        let mut arg_values = Vec::with_capacity(arguments.len());
+        for arg in arguments {
+            let Argument::Positional(expr) = arg else {
+                unreachable!();
+            };
+            arg_values.push(self.evaluate(expr)?);
+        }
+
+        Ok(Some(self.call_hash_method_on_rc(
+            &hash,
+            method_name,
+            arg_values,
+            span,
+        )?))
+    }
+
+    fn try_evaluate_direct_string_method_call(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        let (object, method_name, safe_navigation) = match &callee.kind {
+            ExprKind::Member { object, name } => (object.as_ref(), name.as_str(), false),
+            ExprKind::SafeMember { object, name } => (object.as_ref(), name.as_str(), true),
+            _ => return Ok(None),
+        };
+
+        if !matches!(
+            method_name,
+            "length"
+                | "len"
+                | "size"
+                | "to_s"
+                | "to_string"
+                | "upcase"
+                | "uppercase"
+                | "downcase"
+                | "lowercase"
+                | "trim"
+                | "strip"
+                | "lstrip"
+                | "rstrip"
+                | "reverse"
+                | "empty?"
+                | "contains"
+                | "includes?"
+                | "starts_with"
+                | "starts_with?"
+                | "ends_with"
+                | "ends_with?"
+                | "split"
+                | "replace"
+                | "join"
+        ) {
+            return Ok(None);
+        }
+
+        if arguments
+            .iter()
+            .any(|arg| !matches!(arg, Argument::Positional(_)))
+        {
+            return Ok(None);
+        }
+
+        let string_value = self.evaluate(object)?;
+        if safe_navigation && matches!(string_value, Value::Null) {
+            return Ok(Some(Value::Null));
+        }
+
+        let s = match string_value {
+            Value::String(s) => s,
+            _ => return Ok(None),
+        };
+
+        match (method_name, arguments) {
+            (
+                "length" | "len" | "size" | "to_s" | "to_string" | "upcase" | "uppercase"
+                | "downcase" | "lowercase" | "trim" | "strip" | "lstrip" | "rstrip" | "reverse"
+                | "empty?" | "join",
+                [],
+            ) => {
+                if let Some(result) = self.call_string_method_borrowed(&s, method_name, &[], span) {
+                    return Ok(Some(result?));
+                }
+            }
+            (
+                "contains" | "includes?" | "starts_with" | "starts_with?" | "ends_with"
+                | "ends_with?" | "split",
+                [Argument::Positional(arg)],
+            ) => {
+                let ExprKind::StringLiteral(arg) = &arg.kind else {
+                    let arg_values = vec![self.evaluate(arg)?];
+                    if let Some(result) =
+                        self.call_string_method_borrowed(&s, method_name, &arg_values, span)
+                    {
+                        return Ok(Some(result?));
+                    }
+                    return Ok(Some(self.call_string_method(
+                        &s,
+                        method_name,
+                        arg_values,
+                        span,
+                    )?));
+                };
+                let args = [Value::String(arg.clone())];
+                if let Some(result) = self.call_string_method_borrowed(&s, method_name, &args, span)
+                {
+                    return Ok(Some(result?));
+                }
+            }
+            ("replace", [Argument::Positional(from), Argument::Positional(to)]) => {
+                let (ExprKind::StringLiteral(from), ExprKind::StringLiteral(to)) =
+                    (&from.kind, &to.kind)
+                else {
+                    let mut arg_values = Vec::with_capacity(2);
+                    let Argument::Positional(from) = &arguments[0] else {
+                        unreachable!()
+                    };
+                    let Argument::Positional(to) = &arguments[1] else {
+                        unreachable!()
+                    };
+                    arg_values.push(self.evaluate(from)?);
+                    arg_values.push(self.evaluate(to)?);
+                    if let Some(result) =
+                        self.call_string_method_borrowed(&s, method_name, &arg_values, span)
+                    {
+                        return Ok(Some(result?));
+                    }
+                    return Ok(Some(self.call_string_method(
+                        &s,
+                        method_name,
+                        arg_values,
+                        span,
+                    )?));
+                };
+                let args = [Value::String(from.clone()), Value::String(to.clone())];
+                if let Some(result) = self.call_string_method_borrowed(&s, method_name, &args, span)
+                {
+                    return Ok(Some(result?));
+                }
+            }
+            _ => {}
+        }
+
+        let mut arg_values = Vec::with_capacity(arguments.len());
+        for arg in arguments {
+            let Argument::Positional(expr) = arg else {
+                unreachable!();
+            };
+            arg_values.push(self.evaluate(expr)?);
+        }
+
+        if let Some(result) = self.call_string_method_borrowed(&s, method_name, &arg_values, span) {
+            return Ok(Some(result?));
+        }
+
+        Ok(Some(self.call_string_method(
+            &s,
+            method_name,
+            arg_values,
+            span,
+        )?))
     }
 
     /// Call a value with both positional and named arguments.
