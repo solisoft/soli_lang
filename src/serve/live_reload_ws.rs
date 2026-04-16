@@ -365,6 +365,15 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             // Dispatch event for custom re-initialization
             document.dispatchEvent(new CustomEvent('livereload:update'));
 
+            // Re-trigger web font loading after CSS updates
+            if (document.fonts && document.fonts.size > 0) {
+                document.fonts.ready.then(function() {
+                    document.fonts.forEach(function(face) {
+                        face.load().catch(function() {});
+                    });
+                });
+            }
+
             console.log('[livereload] Content updated');
             window.__livereload.reloading = false;
         })
