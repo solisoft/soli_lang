@@ -87,6 +87,25 @@ impl Interpreter {
             }
 
             StmtKind::While { condition, body } => {
+                // Fast path: body is a Block — pre-allocate the block env once
+                // and reuse it across iterations via execute_block_in. Avoids
+                // 2 HashMap allocations per iteration for the common case of
+                // `while cond { ... }`. Safe because StmtKind::Let now uses
+                // define_or_update (same-slot write on re-entry).
+                if let StmtKind::Block(body_stmts) = &body.kind {
+                    let loop_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
+                        self.environment.clone(),
+                    )));
+                    while self.evaluate(condition)?.is_truthy() {
+                        match self.execute_block_in(body_stmts, loop_env_rc.clone())? {
+                            ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
+                            ControlFlow::Normal(_) => {}
+                            ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
+                        }
+                    }
+                    return Ok(ControlFlow::Normal(Value::Null));
+                }
+
                 while self.evaluate(condition)?.is_truthy() {
                     match self.execute(body)? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),

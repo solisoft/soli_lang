@@ -571,10 +571,17 @@ impl Interpreter {
         // Pop stack frame
         self.pop_frame();
 
-        // Return the env to the per-Function cache for the next call. A nested
+        // Return the env to the per-Function cache for the next call, but
+        // only if no one else holds a reference to it. A closure created
+        // inside this call captures the env via Rc::clone — reusing it
+        // would corrupt the captured state (`makeAdder(5)` then
+        // `makeAdder(10)` must produce two independent `n` bindings).
+        //
+        // strong_count == 1 means `env_for_capture` is the sole remaining Rc
+        // (self.environment was restored, dropping that reference). A nested
         // (recursive) call may have already populated the slot — in that case
         // we simply drop env_for_capture and keep the slot's current value.
-        if func.cached_env.borrow().is_none() {
+        if func.cached_env.borrow().is_none() && Rc::strong_count(&env_for_capture) == 1 {
             *func.cached_env.borrow_mut() = Some(env_for_capture);
         }
 

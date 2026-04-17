@@ -53,14 +53,15 @@ impl Interpreter {
             return Ok(Value::Null);
         }
 
-        // Common fast path: all-positional arguments (no named, no block).
-        // Evaluate straight into a Vec and bypass call_value_with_named,
-        // which allocates an empty HashMap and walks the parameter list
-        // several times even when none of that work is needed.
-        if arguments
+        // Common fast path: all-positional arguments (no named, no block),
+        // and the callee is a value `call_value` can dispatch (Function,
+        // NativeFunction, Class, Method). Value::Super is specifically
+        // handled only in `call_value_with_named`, so exclude it here.
+        let all_positional = arguments
             .iter()
-            .all(|a| matches!(a, Argument::Positional(_)))
-        {
+            .all(|a| matches!(a, Argument::Positional(_)));
+        let fast_path_callable = !matches!(callee_val, Value::Super(_));
+        if all_positional && fast_path_callable {
             let mut arg_values = Vec::with_capacity(arguments.len());
             for arg in arguments {
                 if let Argument::Positional(expr) = arg {
