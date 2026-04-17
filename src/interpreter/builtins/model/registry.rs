@@ -26,7 +26,7 @@ lazy_static! {
 pub fn register_translation(class_name: &str, field_name: &str) {
     let mut registry = MODEL_REGISTRY.write().unwrap();
     let metadata = registry.entry(class_name.to_string()).or_default();
-    if !metadata.translated_fields.contains(&field_name.to_string()) {
+    if !metadata.translated_fields.iter().any(|s| s == field_name) {
         metadata.translated_fields.push(field_name.to_string());
     }
 }
@@ -43,7 +43,7 @@ pub fn is_translated_field(class_name: &str, field_name: &str) -> bool {
     let registry = MODEL_REGISTRY.read().unwrap();
     registry
         .get(class_name)
-        .map(|m| m.translated_fields.contains(&field_name.to_string()))
+        .map(|m| m.translated_fields.iter().any(|s| s == field_name))
         .unwrap_or(false)
 }
 

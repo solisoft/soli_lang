@@ -4,13 +4,19 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use ahash::AHashMap;
+
 use crate::interpreter::value::{HashPairs, StrKey, Value};
 
 /// A runtime environment containing variable bindings.
+///
+/// Internal storage uses `ahash::AHashMap` rather than `std::HashMap` (SipHash)
+/// — variable lookups are on the hot path of every expression evaluation, and
+/// ahash is ~3× faster for short string keys like identifiers.
 #[derive(Debug, Clone)]
 pub struct Environment {
-    values: HashMap<String, Value>,
-    consts: HashMap<String, Value>,
+    values: AHashMap<String, Value>,
+    consts: AHashMap<String, Value>,
     enclosing: Option<Rc<RefCell<Environment>>>,
     /// Optional data hash for template rendering.
     /// Checked during get() before walking the enclosing chain.
@@ -21,8 +27,8 @@ pub struct Environment {
 impl Environment {
     pub fn new() -> Self {
         Self {
-            values: HashMap::new(),
-            consts: HashMap::new(),
+            values: AHashMap::new(),
+            consts: AHashMap::new(),
             enclosing: None,
             data_hash: None,
         }
@@ -32,8 +38,8 @@ impl Environment {
     /// Avoids repeated rehashing during `register_builtins()`.
     pub fn with_builtins_capacity() -> Self {
         Self {
-            values: HashMap::with_capacity(300),
-            consts: HashMap::new(),
+            values: AHashMap::with_capacity(300),
+            consts: AHashMap::new(),
             enclosing: None,
             data_hash: None,
         }
@@ -41,8 +47,8 @@ impl Environment {
 
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Self {
-            values: HashMap::new(),
-            consts: HashMap::new(),
+            values: AHashMap::new(),
+            consts: AHashMap::new(),
             enclosing: Some(enclosing),
             data_hash: None,
         }
@@ -56,8 +62,8 @@ impl Environment {
         data_hash: Rc<RefCell<HashPairs>>,
     ) -> Self {
         Self {
-            values: HashMap::new(),
-            consts: HashMap::new(),
+            values: AHashMap::new(),
+            consts: AHashMap::new(),
             enclosing: Some(enclosing),
             data_hash: Some(data_hash),
         }
@@ -69,6 +75,16 @@ impl Environment {
     pub fn reset_for_reuse(&mut self, data_hash: Option<Rc<RefCell<HashPairs>>>) {
         self.values.clear();
         self.data_hash = data_hash;
+    }
+
+    /// Reset this environment for reuse as a function call frame.
+    /// Clears locals and constants (keeping HashMap capacity) while preserving
+    /// the enclosing-chain pointer, so the cached env can serve another call
+    /// of the same function.
+    #[inline]
+    pub fn reset_for_call(&mut self) {
+        self.values.clear();
+        self.consts.clear();
     }
 
     /// Define a new variable in the current scope.
@@ -108,9 +124,13 @@ impl Environment {
     /// Consts are checked first so they shadow let variables with the same name.
     /// Data hash (if set) is checked before walking the enclosing chain.
     pub fn get(&self, name: &str) -> Option<Value> {
-        // Check consts first (const shadows let)
-        if let Some(value) = self.consts.get(name) {
-            return Some(value.clone());
+        // Fast path: most function-call envs have no consts declared locally,
+        // so skip the hash lookup entirely when the map is empty. Saves one
+        // string hash on every variable access in a hot loop.
+        if !self.consts.is_empty() {
+            if let Some(value) = self.consts.get(name) {
+                return Some(value.clone());
+            }
         }
         if let Some(value) = self.values.get(name) {
             return Some(value.clone());

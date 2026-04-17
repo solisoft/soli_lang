@@ -608,6 +608,7 @@ fn rebind_closure(
                 source_path: func.source_path.clone(),
                 defining_superclass: func.defining_superclass.clone(),
                 return_type: func.return_type.clone(),
+                cached_env: std::cell::RefCell::new(None),
             };
             new_func.closure = env.clone();
             Value::Function(std::rc::Rc::new(new_func))

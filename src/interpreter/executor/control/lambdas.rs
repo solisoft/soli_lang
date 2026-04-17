@@ -31,6 +31,7 @@ impl Interpreter {
                 .map(|p| p.to_string_lossy().to_string()),
             defining_superclass: None,
             return_type: return_type.clone(),
+            cached_env: std::cell::RefCell::new(None),
         };
         Ok(Value::Function(Rc::new(func)))
     }

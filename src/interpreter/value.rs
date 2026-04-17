@@ -122,6 +122,26 @@ impl indexmap::Equivalent<HashKey> for StrKey<'_> {
     }
 }
 
+/// Zero-allocation key for looking up symbol keys in IndexMap<HashKey, Value>.
+/// Hashes identically to HashKey::Symbol, avoiding String clone for lookups.
+#[repr(transparent)]
+pub struct SymKey<'a>(pub &'a str);
+
+impl Hash for SymKey<'_> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        5u8.hash(state); // Must match HashKey::Symbol tag
+        self.0.hash(state);
+    }
+}
+
+impl indexmap::Equivalent<HashKey> for SymKey<'_> {
+    #[inline]
+    fn equivalent(&self, key: &HashKey) -> bool {
+        matches!(key, HashKey::Symbol(s) if s.as_str() == self.0)
+    }
+}
+
 impl HashKey {
     /// Convert a Value to a HashKey if possible.
     pub fn from_value(value: &Value) -> Option<HashKey> {
@@ -152,7 +172,7 @@ impl HashKey {
     #[inline]
     pub fn display_len(&self) -> usize {
         match self {
-            HashKey::Int(n) => n.to_string().len(),
+            HashKey::Int(n) => itoa::Buffer::new().format(*n).len(),
             HashKey::Decimal(d) => d.to_string().len(),
             HashKey::String(s) => s.len() + 2,
             HashKey::Bool(b) => {
@@ -170,7 +190,7 @@ impl HashKey {
     #[inline]
     pub fn write_key_to_string(&self, s: &mut String) {
         match self {
-            HashKey::Int(n) => s.push_str(&n.to_string()),
+            HashKey::Int(n) => s.push_str(itoa::Buffer::new().format(*n)),
             HashKey::Decimal(d) => s.push_str(&d.to_string()),
             HashKey::String(st) => {
                 s.push_str(st);
@@ -227,7 +247,7 @@ pub fn hash_get_value<'a>(hash: &'a HashPairs, key: &Value) -> Option<&'a Value>
         Value::Decimal(d) => hash.get(&HashKey::Decimal(d.clone())),
         Value::Bool(b) => hash.get(&HashKey::Bool(*b)),
         Value::Null => hash.get(&HashKey::Null),
-        Value::Symbol(s) => hash.get(&HashKey::Symbol(s.clone())),
+        Value::Symbol(s) => hash.get(&SymKey(s)),
         _ => None,
     }
 }
@@ -736,6 +756,13 @@ pub struct Function {
     /// The declared return type annotation, if any.
     /// Used for runtime return type enforcement.
     pub return_type: Option<TypeAnnotation>,
+    /// Single-slot cache of the lambda's call environment.
+    ///
+    /// Taken on entry to `call_function`, cleared, re-populated with the new
+    /// arguments, and put back on exit. Saves 2 HashMap + 1 Rc alloc per call.
+    /// Recursive calls observe `None` and transparently allocate a fresh env;
+    /// the outer call's restore wins, which is fine (re-caching is a hint).
+    pub cached_env: RefCell<Option<Rc<RefCell<Environment>>>>,
 }
 
 impl Default for Function {
@@ -750,6 +777,7 @@ impl Default for Function {
             source_path: None,
             defining_superclass: None,
             return_type: None,
+            cached_env: RefCell::new(None),
         }
     }
 }
@@ -770,6 +798,7 @@ impl Function {
             source_path,
             defining_superclass: None,
             return_type: decl.return_type.clone(),
+            cached_env: RefCell::new(None),
         }
     }
 
@@ -788,6 +817,7 @@ impl Function {
             source_path,
             defining_superclass: None,
             return_type: decl.return_type.clone(),
+            cached_env: RefCell::new(None),
         }
     }
 

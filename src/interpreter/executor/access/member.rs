@@ -713,6 +713,7 @@ impl Interpreter {
                 source_path: method.source_path.clone(),
                 defining_superclass: None,
                 return_type: method.return_type.clone(),
+                cached_env: RefCell::new(None),
             };
             return Ok(Value::Function(Rc::new(bound_method)));
         }
@@ -1032,6 +1033,7 @@ impl Interpreter {
                 source_path: method.source_path.clone(),
                 defining_superclass: None,
                 return_type: method.return_type.clone(),
+                cached_env: RefCell::new(None),
             };
             return Ok(Value::Function(Rc::new(bound_method)));
         }

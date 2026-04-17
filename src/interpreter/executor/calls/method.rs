@@ -602,12 +602,19 @@ impl Interpreter {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
 
-        let mut result = Vec::new();
-        for item in items {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-            call_env.define(param_name.clone(), item.clone());
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
 
-            match self.execute_block(&func.body, call_env)? {
+        let mut result = Vec::with_capacity(items.len());
+        for item in items {
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
+
+            match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => result.push(v),
                 ControlFlow::Normal(v) => result.push(v),
                 ControlFlow::Throw(_) => {
@@ -644,12 +651,19 @@ impl Interpreter {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
 
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
+
         let mut result = Vec::new();
         for item in items {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-            call_env.define(param_name.clone(), item.clone());
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
 
-            let result_value = match self.execute_block(&func.body, call_env)? {
+            let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
@@ -690,11 +704,18 @@ impl Interpreter {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
 
-        for item in items {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-            call_env.define(param_name.clone(), item.clone());
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
 
-            match self.execute_block(&func.body, call_env)? {
+        for item in items {
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
+
+            match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(_) | ControlFlow::Normal(_) => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array each", span));
@@ -737,18 +758,32 @@ impl Interpreter {
 
         let start_idx = if arguments.len() == 2 { 0 } else { 1 };
 
-        for item in items.iter().skip(start_idx) {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        let param0_name = func.params.first().map(|p| p.name.clone());
+        let param1_name = func.params.get(1).map(|p| p.name.clone());
+        if let Some(ref n) = param0_name {
+            call_env_rc.borrow_mut().define(n.clone(), Value::Null);
+        }
+        if let Some(ref n) = param1_name {
+            call_env_rc.borrow_mut().define(n.clone(), Value::Null);
+        }
 
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), acc.clone());
-                call_env.define(func.params[1].name.clone(), item.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![acc.clone(), item.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
+        for item in items.iter().skip(start_idx) {
+            match (&param0_name, &param1_name) {
+                (Some(n0), Some(n1)) => {
+                    let mut env = call_env_rc.borrow_mut();
+                    env.define_or_update(n0, acc.clone());
+                    env.define_or_update(n1, item.clone());
+                }
+                (Some(n0), None) => {
+                    let pair = Value::Array(Rc::new(RefCell::new(vec![acc.clone(), item.clone()])));
+                    call_env_rc.borrow_mut().define_or_update(n0, pair);
+                }
+                _ => {}
             }
 
-            acc = match self.execute_block(&func.body, call_env)? {
+            acc = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
@@ -779,16 +814,24 @@ impl Interpreter {
             }
         };
 
-        for item in items {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-            let param_name = func
-                .params
-                .first()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| "it".to_string());
-            call_env.define(param_name, item.clone());
+        let param_name = func
+            .params
+            .first()
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "it".to_string());
+        let call_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
 
-            let result_value = match self.execute_block(&func.body, call_env)? {
+        for item in items {
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
+
+            let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
@@ -823,16 +866,24 @@ impl Interpreter {
             }
         };
 
-        for item in items {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-            let param_name = func
-                .params
-                .first()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| "it".to_string());
-            call_env.define(param_name, item.clone());
+        let param_name = func
+            .params
+            .first()
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "it".to_string());
+        let call_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
 
-            let result_value = match self.execute_block(&func.body, call_env)? {
+        for item in items {
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
+
+            let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
@@ -867,16 +918,24 @@ impl Interpreter {
             }
         };
 
-        for item in items {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-            let param_name = func
-                .params
-                .first()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| "it".to_string());
-            call_env.define(param_name, item.clone());
+        let param_name = func
+            .params
+            .first()
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "it".to_string());
+        let call_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
 
-            let result_value = match self.execute_block(&func.body, call_env)? {
+        for item in items {
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
+
+            let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(_) => {
@@ -987,13 +1046,23 @@ impl Interpreter {
                     .map(|p| p.name.clone())
                     .unwrap_or_else(|| "it".to_string());
 
-                // Extract key values for each item using the function
+                // Extract key values for each item using the function.
+                // Reuse a single lambda env across iterations to avoid re-allocating
+                // HashMaps and the parameter's String per item.
+                let call_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
+                    func.closure.clone(),
+                )));
+                call_env_rc
+                    .borrow_mut()
+                    .define(param_name.clone(), Value::Null);
+
                 let mut keyed: Vec<(Value, Value)> = Vec::with_capacity(result.len());
                 for item in &result {
-                    let mut call_env = Environment::with_enclosing(func.closure.clone());
-                    call_env.define(param_name.clone(), item.clone());
+                    call_env_rc
+                        .borrow_mut()
+                        .define_or_update(&param_name, item.clone());
 
-                    let key_val = match self.execute_block(&func.body, call_env) {
+                    let key_val = match self.execute_block_in(&func.body, call_env_rc.clone()) {
                         Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => v,
                         _ => Value::Null,
                     };

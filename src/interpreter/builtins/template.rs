@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 use std::path::Path;
@@ -22,10 +22,9 @@ use crate::interpreter::value::{
 };
 use crate::template::{html_response, TemplateCache};
 
-// Thread-local template cache
-thread_local! {
-    static TEMPLATE_CACHE: RefCell<Option<Rc<TemplateCache>>> = const { RefCell::new(None) };
-}
+// Process-global template cache, shared across all worker threads so a template
+// parsed by one worker is visible to the others.
+static TEMPLATE_CACHE: OnceLock<Arc<TemplateCache>> = OnceLock::new();
 
 // Thread-local view context for debugging (stores the data passed to render())
 thread_local! {
@@ -174,10 +173,12 @@ pub fn init_templates(views_dir: PathBuf) {
         *dir = Some(views_dir.clone());
     }
 
-    // Create thread-local cache
-    TEMPLATE_CACHE.with(|cache| {
-        *cache.borrow_mut() = Some(Rc::new(TemplateCache::new(views_dir)));
-    });
+    // Install the shared cache (first call wins; subsequent inits are no-ops
+    // unless the views dir changed — in that case we fall back to clear()).
+    let _ = TEMPLATE_CACHE.set(Arc::new(TemplateCache::new(views_dir)));
+    if let Some(tc) = TEMPLATE_CACHE.get() {
+        tc.clear();
+    }
 }
 
 /// Initialize the public directory for public_path() helper.
@@ -189,46 +190,38 @@ pub fn init_public_dir(public_dir: PathBuf) {
 
 /// Clear the template cache (for hot reload).
 pub fn clear_template_cache() {
-    TEMPLATE_CACHE.with(|cache| {
-        if let Some(tc) = cache.borrow().as_ref() {
-            tc.clear();
-        }
-    });
+    if let Some(tc) = TEMPLATE_CACHE.get() {
+        tc.clear();
+    }
 }
 
 /// Check if templates have changes (for hot reload).
 pub fn templates_have_changes() -> bool {
-    TEMPLATE_CACHE.with(|cache| {
-        cache
-            .borrow()
-            .as_ref()
-            .map(|tc| tc.has_changes())
-            .unwrap_or(false)
-    })
+    TEMPLATE_CACHE
+        .get()
+        .map(|tc| tc.has_changes())
+        .unwrap_or(false)
 }
 
 /// Get the template cache, initializing if necessary.
-pub fn get_template_cache() -> Result<Rc<TemplateCache>, String> {
-    TEMPLATE_CACHE.with(|cache| {
-        let cache_ref = cache.borrow();
-        if let Some(tc) = cache_ref.as_ref() {
-            return Ok(tc.clone());
-        }
-        drop(cache_ref);
+pub fn get_template_cache() -> Result<Arc<TemplateCache>, String> {
+    if let Some(tc) = TEMPLATE_CACHE.get() {
+        return Ok(Arc::clone(tc));
+    }
 
-        // Try to initialize from global views dir
-        if let Ok(dir_guard) = VIEWS_DIR.lock() {
-            if let Some(views_dir) = dir_guard.as_ref() {
-                let views_dir_clone = views_dir.clone();
-                drop(dir_guard);
-                let tc = Rc::new(TemplateCache::new(views_dir_clone));
-                *cache.borrow_mut() = Some(tc.clone());
-                return Ok(tc);
+    // Try to initialize from global views dir
+    if let Ok(dir_guard) = VIEWS_DIR.lock() {
+        if let Some(views_dir) = dir_guard.as_ref() {
+            let views_dir_clone = views_dir.clone();
+            drop(dir_guard);
+            let _ = TEMPLATE_CACHE.set(Arc::new(TemplateCache::new(views_dir_clone)));
+            if let Some(tc) = TEMPLATE_CACHE.get() {
+                return Ok(Arc::clone(tc));
             }
         }
+    }
 
-        Err("Template system not initialized. Call init_templates() first.".to_string())
-    })
+    Err("Template system not initialized. Call init_templates() first.".to_string())
 }
 
 /// Render an error template with the given status code and context.

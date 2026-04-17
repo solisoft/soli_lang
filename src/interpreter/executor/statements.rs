@@ -48,7 +48,11 @@ impl Interpreter {
                 } else {
                     Value::Null
                 };
-                self.environment.borrow_mut().define(name.clone(), value);
+                // define_or_update avoids a String allocation per execution when
+                // the slot already exists — matters when `let` runs in a lambda
+                // body that's invoked repeatedly through a reused environment
+                // (array_map/filter/each iteration).
+                self.environment.borrow_mut().define_or_update(name, value);
                 Ok(ControlFlow::Normal(Value::Null))
             }
 
@@ -281,23 +285,51 @@ impl Interpreter {
             Value::Array(arr) => {
                 // Clone items once outside the loop to avoid holding borrow across loop body
                 let items: Vec<Value> = arr.borrow().iter().cloned().collect();
+
+                // Allocate a single loop environment reused across iterations.
+                // The body's let-statements use define_or_update, so re-entry
+                // is safe — same-slot updates instead of fresh HashMap allocs.
+                let loop_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
+                    self.environment.clone(),
+                )));
+                loop_env_rc
+                    .borrow_mut()
+                    .define(variable.to_string(), Value::Null);
+                if let Some(idx_var) = index_variable {
+                    loop_env_rc
+                        .borrow_mut()
+                        .define(idx_var.to_string(), Value::Int(0));
+                }
+
+                let prev_env = std::mem::replace(&mut self.environment, loop_env_rc.clone());
+
                 for (i, item) in items.into_iter().enumerate() {
-                    // Create loop environment with variable already defined (avoids extra borrow_mut)
-                    let mut loop_env = Environment::with_enclosing(self.environment.clone());
-                    loop_env.define(variable.to_string(), item);
-                    if let Some(idx_var) = index_variable {
-                        loop_env.define(idx_var.to_string(), Value::Int(i as i64));
+                    {
+                        let mut env = loop_env_rc.borrow_mut();
+                        env.define_or_update(variable, item);
+                        if let Some(idx_var) = index_variable {
+                            env.define_or_update(idx_var, Value::Int(i as i64));
+                        }
                     }
-                    let prev_env =
-                        std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
                     let result = self.execute(body);
-                    self.environment = prev_env;
-                    match result? {
-                        ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
-                        ControlFlow::Normal(_) => {}
-                        ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
+                    match result {
+                        Err(e) => {
+                            self.environment = prev_env;
+                            return Err(e);
+                        }
+                        Ok(ControlFlow::Return(v)) => {
+                            self.environment = prev_env;
+                            return Ok(ControlFlow::Return(v));
+                        }
+                        Ok(ControlFlow::Throw(e)) => {
+                            self.environment = prev_env;
+                            return Ok(ControlFlow::Throw(e));
+                        }
+                        Ok(ControlFlow::Normal(_)) => {}
                     }
                 }
+
+                self.environment = prev_env;
                 Ok(ControlFlow::Normal(Value::Null))
             }
             _ => Err(RuntimeError::type_error(
@@ -371,6 +403,7 @@ impl Interpreter {
                     .map(|p| p.to_string_lossy().to_string()),
                 defining_superclass: None,
                 return_type: None,
+                cached_env: RefCell::new(None),
             })
         });
 

@@ -383,6 +383,33 @@ impl Interpreter {
         Ok(())
     }
 
+    /// Execute `statements` in an environment already wrapped in Rc<RefCell<>>.
+    ///
+    /// Reuses the caller's `Rc<RefCell<Environment>>` — no per-call allocation
+    /// of the Rc or the inner HashMaps. Intended for hot iterator callbacks
+    /// (array_map/filter/each/reduce) where the same lambda env is used across
+    /// many iterations; callers are expected to update the loop-variable slot
+    /// in-place via `define_or_update` between calls.
+    pub(crate) fn execute_block_in(
+        &mut self,
+        statements: &[Stmt],
+        env: Rc<RefCell<Environment>>,
+    ) -> RuntimeResult<ControlFlow> {
+        let previous = std::mem::replace(&mut self.environment, env);
+        let mut result = Ok(ControlFlow::Normal(Value::Null));
+        for stmt in statements {
+            result = self.execute(stmt);
+            match &result {
+                Err(_) => break,
+                Ok(ControlFlow::Return(_)) => break,
+                Ok(ControlFlow::Throw(_)) => break,
+                Ok(ControlFlow::Normal(_)) => {}
+            }
+        }
+        self.environment = previous;
+        result
+    }
+
     pub(crate) fn execute_block(
         &mut self,
         statements: &[Stmt],
@@ -455,30 +482,40 @@ impl Interpreter {
         let span = func.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
         self.push_frame(&func.name, span, func.source_path.clone());
 
-        let call_env = Environment::with_enclosing(func.closure.clone());
-        let call_env_rc = Rc::new(RefCell::new(call_env));
-        let mut call_env_inner = call_env_rc.borrow_mut();
+        // Try to take the cached call env; on a recursive call the slot is
+        // None and we fall back to allocating a fresh one.
+        let call_env_rc = match func.cached_env.borrow_mut().take() {
+            Some(cached) => {
+                cached.borrow_mut().reset_for_call();
+                cached
+            }
+            None => Rc::new(RefCell::new(Environment::with_enclosing(
+                func.closure.clone(),
+            ))),
+        };
 
-        for (param, value) in func.params.iter().zip(arguments) {
-            call_env_inner.define(param.name.clone(), value);
+        {
+            let mut call_env_inner = call_env_rc.borrow_mut();
+            for (param, value) in func.params.iter().zip(arguments) {
+                call_env_inner.define(param.name.clone(), value);
+            }
+
+            // Store defining_superclass for super calls
+            if let Some(ref sc) = func.defining_superclass {
+                call_env_inner.define(
+                    "__defining_superclass__".to_string(),
+                    Value::Class(sc.clone()),
+                );
+            }
         }
 
-        // Store defining_superclass for super calls
-        if let Some(ref sc) = func.defining_superclass {
-            call_env_inner.define(
-                "__defining_superclass__".to_string(),
-                Value::Class(sc.clone()),
-            );
-        }
-
-        // Store reference to capture environment on error
+        // Store reference to capture environment on error and to re-cache after.
         let env_for_capture = call_env_rc.clone();
 
-        // Drop mutable borrow before executing block
-        drop(call_env_inner);
-
-        // Execute the function body
-        let result = match self.execute_block(&func.body, call_env_rc.borrow().clone()) {
+        // Execute the function body — reuse call_env_rc directly rather than
+        // cloning the inner Environment (which would allocate 2 fresh HashMaps
+        // per call only to throw them away).
+        let result = match self.execute_block_in(&func.body, call_env_rc) {
             Ok(ControlFlow::Normal(v)) => Ok(v),
             Ok(ControlFlow::Return(return_value)) => Ok(return_value),
             Ok(ControlFlow::Throw(e)) => Err(RuntimeError::General {
@@ -533,6 +570,13 @@ impl Interpreter {
 
         // Pop stack frame
         self.pop_frame();
+
+        // Return the env to the per-Function cache for the next call. A nested
+        // (recursive) call may have already populated the slot — in that case
+        // we simply drop env_for_capture and keep the slot's current value.
+        if func.cached_env.borrow().is_none() {
+            *func.cached_env.borrow_mut() = Some(env_for_capture);
+        }
 
         result
     }

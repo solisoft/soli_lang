@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
 use crate::interpreter::value::Value;
@@ -27,7 +28,7 @@ use std::rc::Rc;
 /// A cached template with its parsed AST and modification time.
 #[derive(Debug, Clone)]
 struct CachedTemplate {
-    nodes: Rc<Vec<parser::TemplateNode>>,
+    nodes: Arc<Vec<parser::TemplateNode>>,
     modified: SystemTime,
 }
 
@@ -38,15 +39,17 @@ const PATH_CACHE_MAX_SIZE: usize = 1000;
 const TEMPLATE_CACHE_MAX_SIZE: usize = 500;
 
 /// Template cache that stores parsed templates and tracks file changes.
+///
+/// Shared across worker threads via `Arc<TemplateCache>`; a template parsed by
+/// any worker is visible to the others, avoiding per-worker reparsing.
 pub struct TemplateCache {
     /// Base directory for views (e.g., app/views)
     views_dir: PathBuf,
-    /// Cached parsed templates (PathBuf -> nodes). Uses PathBuf keys to avoid
-    /// String conversion on every cache lookup (hot path).
-    cache: RefCell<HashMap<PathBuf, CachedTemplate>>,
+    /// Cached parsed templates (PathBuf -> nodes).
+    cache: RwLock<HashMap<PathBuf, CachedTemplate>>,
     /// Cached path resolutions (template_name -> resolved_path).
-    /// Uses Rc<PathBuf> so cache hits are Rc clone (pointer increment) instead of PathBuf clone (heap alloc).
-    path_cache: RefCell<HashMap<String, Rc<PathBuf>>>,
+    /// Arc so cache hits are pointer increments, not heap clones.
+    path_cache: RwLock<HashMap<String, Arc<PathBuf>>>,
 }
 
 impl TemplateCache {
@@ -54,8 +57,8 @@ impl TemplateCache {
     pub fn new(views_dir: impl Into<PathBuf>) -> Self {
         Self {
             views_dir: views_dir.into(),
-            cache: RefCell::new(HashMap::new()),
-            path_cache: RefCell::new(HashMap::new()),
+            cache: RwLock::new(HashMap::new()),
+            path_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -217,26 +220,27 @@ impl TemplateCache {
     }
 
     /// Resolve a template name to a file path (cached).
-    /// Returns Rc<PathBuf> so cache hits are pointer increments, not heap clones.
-    fn resolve_template_path(&self, name: &str) -> Result<Rc<PathBuf>, String> {
+    /// Returns Arc<PathBuf> so cache hits are pointer increments, not heap clones.
+    fn resolve_template_path(&self, name: &str) -> Result<Arc<PathBuf>, String> {
         // Check path cache first
+        if let Some(path) = self
+            .path_cache
+            .read()
+            .ok()
+            .and_then(|c| c.get(name).cloned())
         {
-            let path_cache = self.path_cache.borrow();
-            if let Some(path) = path_cache.get(name) {
-                return Ok(Rc::clone(path));
-            }
+            return Ok(path);
         }
 
         // Cache miss - do file system lookup
-        let resolved = Rc::new(self.do_resolve_template_path(name)?);
+        let resolved = Arc::new(self.do_resolve_template_path(name)?);
 
         // Cache the result (with eviction if cache is too large)
-        {
-            let mut path_cache = self.path_cache.borrow_mut();
+        if let Ok(mut path_cache) = self.path_cache.write() {
             if path_cache.len() >= PATH_CACHE_MAX_SIZE {
                 path_cache.clear();
             }
-            path_cache.insert(name.to_string(), Rc::clone(&resolved));
+            path_cache.insert(name.to_string(), Arc::clone(&resolved));
         }
 
         Ok(resolved)
@@ -310,13 +314,15 @@ impl TemplateCache {
     }
 
     /// Get a template from cache or load and parse it.
-    fn get_or_load_template(&self, path: &Path) -> Result<Rc<Vec<parser::TemplateNode>>, String> {
-        // Check cache first (fast path - no allocation, no file I/O)
+    fn get_or_load_template(&self, path: &Path) -> Result<Arc<Vec<parser::TemplateNode>>, String> {
+        // Check cache first (fast path - shared read lock)
+        if let Some(nodes) = self
+            .cache
+            .read()
+            .ok()
+            .and_then(|c| c.get(path).map(|entry| entry.nodes.clone()))
         {
-            let cache = self.cache.borrow();
-            if let Some(cached) = cache.get(path) {
-                return Ok(cached.nodes.clone()); // Rc clone is O(1)
-            }
+            return Ok(nodes);
         }
 
         // Cache miss - load and parse template
@@ -327,11 +333,10 @@ impl TemplateCache {
             .and_then(|m| m.modified())
             .unwrap_or(SystemTime::UNIX_EPOCH);
 
-        let nodes = Rc::new(parse_template(&source)?);
+        let nodes = Arc::new(parse_template(&source)?);
 
         // Update cache (with eviction if cache is too large)
-        {
-            let mut cache = self.cache.borrow_mut();
+        if let Ok(mut cache) = self.cache.write() {
             if cache.len() >= TEMPLATE_CACHE_MAX_SIZE {
                 cache.clear();
             }
@@ -349,13 +354,19 @@ impl TemplateCache {
 
     /// Clear the template cache (useful for hot reload).
     pub fn clear(&self) {
-        self.cache.borrow_mut().clear();
-        self.path_cache.borrow_mut().clear();
+        if let Ok(mut c) = self.cache.write() {
+            c.clear();
+        }
+        if let Ok(mut c) = self.path_cache.write() {
+            c.clear();
+        }
     }
 
     /// Check if any tracked templates have changed.
     pub fn has_changes(&self) -> bool {
-        let cache = self.cache.borrow();
+        let Ok(cache) = self.cache.read() else {
+            return false;
+        };
         for (path, cached) in cache.iter() {
             if let Ok(metadata) = fs::metadata(path) {
                 if let Ok(modified) = metadata.modified() {
