@@ -1270,7 +1270,6 @@ impl Vm {
                     self.stack.push(object);
                 }
                 Op::BuildString(n) => {
-                    use std::fmt::Write;
                     let len = self.stack.len();
                     let start = len - n as usize;
                     let mut capacity = 0;
@@ -1283,15 +1282,7 @@ impl Vm {
                     }
                     let mut result = String::with_capacity(capacity);
                     for i in start..len {
-                        match &self.stack[i] {
-                            Value::String(s) => result.push_str(s),
-                            Value::Int(i) => {
-                                let _ = write!(result, "{}", i);
-                            }
-                            other => {
-                                let _ = write!(result, "{}", other);
-                            }
-                        }
+                        self.stack[i].append_to_string(&mut result);
                     }
                     self.stack.truncate(start);
                     self.stack.push(Value::String(result));

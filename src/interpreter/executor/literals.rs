@@ -81,15 +81,7 @@ impl Interpreter {
                 }
                 crate::ast::expr::InterpolatedPart::Expression(expr) => {
                     let value = self.evaluate(expr)?;
-                    // Avoid allocation for common types
-                    match &value {
-                        Value::String(s) => result.push_str(s),
-                        Value::Int(n) => {
-                            use std::fmt::Write;
-                            let _ = write!(result, "{}", n);
-                        }
-                        other => result.push_str(&other.to_string()),
-                    }
+                    value.append_to_string(&mut result);
                 }
             }
         }

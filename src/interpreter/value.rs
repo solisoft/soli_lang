@@ -375,6 +375,28 @@ impl Value {
         }
     }
 
+    /// Append this value's string representation directly into `out`.
+    /// Avoids the intermediate `to_string()` allocation and the `fmt::Display`
+    /// machinery for primitive types — used on the string-interpolation hot path.
+    #[inline]
+    pub fn append_to_string(&self, out: &mut String) {
+        use std::fmt::Write;
+        match self {
+            Value::String(s) => out.push_str(s),
+            Value::Int(n) => out.push_str(itoa::Buffer::new().format(*n)),
+            Value::Bool(true) => out.push_str("true"),
+            Value::Bool(false) => out.push_str("false"),
+            Value::Null => out.push_str("null"),
+            Value::Symbol(s) => {
+                out.push(':');
+                out.push_str(s);
+            }
+            other => {
+                let _ = write!(out, "{}", other);
+            }
+        }
+    }
+
     /// Resolve a Future value, blocking until the result is ready.
     /// For non-Future values, returns the value unchanged.
     pub fn resolve(self) -> Result<Value, String> {
