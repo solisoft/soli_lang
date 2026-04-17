@@ -879,11 +879,9 @@ impl TuiRepl {
             KeyCode::Char(c) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
                     match c {
-                        'd' => {
-                            if self.input.line.is_empty() {
-                                self.save_history();
-                                return true;
-                            }
+                        'd' if self.input.line.is_empty() => {
+                            self.save_history();
+                            return true;
                         }
                         'c' => {
                             self.input.line = LineBuffer::new();
@@ -916,15 +914,11 @@ impl TuiRepl {
             KeyCode::Right => {
                 self.input.line.move_right();
             }
-            KeyCode::Up => {
-                if !self.input.is_multiline {
-                    self.input.history_up();
-                }
+            KeyCode::Up if !self.input.is_multiline => {
+                self.input.history_up();
             }
-            KeyCode::Down => {
-                if !self.input.is_multiline {
-                    self.input.history_down();
-                }
+            KeyCode::Down if !self.input.is_multiline => {
+                self.input.history_down();
             }
             KeyCode::Home => {
                 self.input.line.move_to_start();

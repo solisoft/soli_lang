@@ -914,22 +914,20 @@ fn find_additive_op(expr: &str) -> Option<(usize, BinaryOp)> {
             }
             '[' | '(' => depth += 1,
             ']' | ')' => depth -= 1,
-            '+' if depth == 0 && i > 0 => {
-                // Make sure it's not part of a number like 1e+10
-                if prev_char != 'e' && prev_char != 'E' {
-                    last_found = Some((i, BinaryOp::Add));
-                }
+            // `+` but not part of a number like `1e+10`
+            '+' if depth == 0 && i > 0 && prev_char != 'e' && prev_char != 'E' => {
+                last_found = Some((i, BinaryOp::Add));
             }
-            '-' if depth == 0 && i > 0 => {
-                // Make sure it's not a unary minus or part of a number
-                if prev_char != 'e'
-                    && prev_char != 'E'
-                    && prev_char != '('
-                    && prev_char != '['
-                    && prev_char != ','
-                {
-                    last_found = Some((i, BinaryOp::Subtract));
-                }
+            // `-` but not unary minus and not part of a number
+            '-' if depth == 0
+                && i > 0
+                && prev_char != 'e'
+                && prev_char != 'E'
+                && prev_char != '('
+                && prev_char != '['
+                && prev_char != ',' =>
+            {
+                last_found = Some((i, BinaryOp::Subtract));
             }
             _ => {}
         }
