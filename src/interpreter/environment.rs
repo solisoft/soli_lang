@@ -8,6 +8,18 @@ use ahash::AHashMap;
 
 use crate::interpreter::value::{HashPairs, StrKey, Value};
 
+/// Result of an `Environment::assign` call.
+///
+/// Distinguishes "hit a const" from "not defined anywhere" so the caller can
+/// either surface a reassignment error or fall through to `define` — without
+/// paying for a separate chain walk via `is_const` beforehand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignResult {
+    Assigned,
+    IsConst,
+    NotFound,
+}
+
 /// A runtime environment containing variable bindings.
 ///
 /// Internal storage uses `ahash::AHashMap` rather than `std::HashMap` (SipHash)
@@ -160,18 +172,18 @@ impl Environment {
 
     /// Assign to an existing variable, searching up the scope chain.
     /// Returns false if the variable is const.
-    pub fn assign(&mut self, name: &str, value: Value) -> bool {
-        if self.consts.contains_key(name) {
-            return false;
+    pub fn assign(&mut self, name: &str, value: Value) -> AssignResult {
+        if !self.consts.is_empty() && self.consts.contains_key(name) {
+            return AssignResult::IsConst;
         }
-        if self.values.contains_key(name) {
-            self.values.insert(name.to_string(), value);
-            return true;
+        if let Some(slot) = self.values.get_mut(name) {
+            *slot = value;
+            return AssignResult::Assigned;
         }
         if let Some(ref enclosing) = self.enclosing {
             return enclosing.borrow_mut().assign(name, value);
         }
-        false
+        AssignResult::NotFound
     }
 
     /// Check if a variable exists in the current scope only (values or consts).

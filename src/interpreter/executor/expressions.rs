@@ -235,21 +235,27 @@ impl Interpreter {
 
         match &target.kind {
             ExprKind::Variable(name) => {
-                // Check if the variable is a const
-                if self.environment.borrow().is_const(name) {
-                    return Err(RuntimeError::type_error(
-                        format!("cannot reassign constant '{}'", name),
-                        target.span,
-                    ));
-                }
-                if !self
+                use crate::interpreter::environment::AssignResult;
+                // Single chain walk: distinguish reassignment-of-const (error)
+                // from not-yet-defined (fall through to define). Avoids a
+                // separate is_const pre-check that walked the chain twice.
+                let result = self
                     .environment
                     .borrow_mut()
-                    .assign(name, new_value.clone())
-                {
-                    self.environment
-                        .borrow_mut()
-                        .define(name.clone(), new_value.clone());
+                    .assign(name, new_value.clone());
+                match result {
+                    AssignResult::Assigned => {}
+                    AssignResult::IsConst => {
+                        return Err(RuntimeError::type_error(
+                            format!("cannot reassign constant '{}'", name),
+                            target.span,
+                        ));
+                    }
+                    AssignResult::NotFound => {
+                        self.environment
+                            .borrow_mut()
+                            .define(name.clone(), new_value.clone());
+                    }
                 }
                 Ok(new_value)
             }
@@ -409,16 +415,21 @@ impl Interpreter {
     fn assign_to_target(&mut self, target: &Expr, value: Value, span: Span) -> RuntimeResult<()> {
         match &target.kind {
             ExprKind::Variable(name) => {
-                if self.environment.borrow().is_const(name) {
-                    return Err(RuntimeError::type_error(
+                use crate::interpreter::environment::AssignResult;
+                let value_for_define = value.clone();
+                match self.environment.borrow_mut().assign(name, value) {
+                    AssignResult::Assigned => Ok(()),
+                    AssignResult::IsConst => Err(RuntimeError::type_error(
                         format!("cannot reassign constant '{}'", name),
                         target.span,
-                    ));
+                    )),
+                    AssignResult::NotFound => {
+                        self.environment
+                            .borrow_mut()
+                            .define(name.clone(), value_for_define);
+                        Ok(())
+                    }
                 }
-                if !self.environment.borrow_mut().assign(name, value.clone()) {
-                    self.environment.borrow_mut().define(name.clone(), value);
-                }
-                Ok(())
             }
             ExprKind::Member { object, name } => {
                 let obj_val = self.evaluate(object)?;

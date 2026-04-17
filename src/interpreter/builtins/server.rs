@@ -1305,29 +1305,26 @@ pub fn register_server_builtins(env: &mut Environment) {
 }
 
 /// Check if a value is a server listen marker.
+///
+/// Called after every native-function return, so the non-Hash fast path and
+/// the O(1) key lookup matter — the previous O(n²) iteration was quadratic
+/// for large response hashes.
 pub fn is_server_listen_marker(value: &Value) -> Option<u16> {
-    if let Value::Hash(hash) = value {
-        let hash = hash.borrow();
-        for (k, v) in hash.iter() {
-            if let HashKey::String(key) = k {
-                if key == "__server_listen__" {
-                    if let Value::Bool(true) = v {
-                        // Find the port
-                        for (k2, v2) in hash.iter() {
-                            if let HashKey::String(key2) = k2 {
-                                if key2 == "port" {
-                                    if let Value::Int(port) = v2 {
-                                        return Some(*port as u16);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    use crate::interpreter::value::StrKey;
+    let Value::Hash(hash) = value else {
+        return None;
+    };
+    let hash = hash.borrow();
+    if !matches!(
+        hash.get(&StrKey("__server_listen__")),
+        Some(Value::Bool(true))
+    ) {
+        return None;
     }
-    None
+    match hash.get(&StrKey("port")) {
+        Some(Value::Int(port)) => Some(*port as u16),
+        _ => None,
+    }
 }
 
 // Get a reference to the global WebSocket registry from the websocket module.
