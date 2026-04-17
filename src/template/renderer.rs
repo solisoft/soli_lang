@@ -315,18 +315,20 @@ pub fn html_escape(s: &str) -> Cow<'_, str> {
     {
         return Cow::Borrowed(s);
     }
-    let mut result = String::with_capacity(s.len() + 8);
-    for b in s.bytes() {
+    let mut result: Vec<u8> = Vec::with_capacity(s.len() + 8);
+    for &b in s.as_bytes() {
         match b {
-            b'&' => result.push_str("&amp;"),
-            b'<' => result.push_str("&lt;"),
-            b'>' => result.push_str("&gt;"),
-            b'"' => result.push_str("&quot;"),
-            b'\'' => result.push_str("&#x27;"),
-            _ => result.push(b as char),
+            b'&' => result.extend_from_slice(b"&amp;"),
+            b'<' => result.extend_from_slice(b"&lt;"),
+            b'>' => result.extend_from_slice(b"&gt;"),
+            b'"' => result.extend_from_slice(b"&quot;"),
+            b'\'' => result.extend_from_slice(b"&#x27;"),
+            _ => result.push(b),
         }
     }
-    Cow::Owned(result)
+    // SAFETY: Input was valid UTF-8 and we only replaced ASCII bytes
+    // with ASCII sequences, so the result is still valid UTF-8.
+    Cow::Owned(unsafe { String::from_utf8_unchecked(result) })
 }
 
 /// Auto-call callable values (Function, NativeFunction, Method) with no arguments.
