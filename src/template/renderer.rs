@@ -450,6 +450,23 @@ mod tests {
     }
 
     #[test]
+    fn test_html_escape_preserves_utf8() {
+        assert_eq!(html_escape("café"), "café");
+        assert_eq!(html_escape("日本語"), "日本語");
+        assert_eq!(html_escape("🚀 rocket"), "🚀 rocket");
+        assert_eq!(html_escape("<é> & \"ñ\""), "&lt;é&gt; &amp; &quot;ñ&quot;");
+    }
+
+    #[test]
+    fn test_html_escape_borrows_when_clean() {
+        let plain = "no special chars 日本語";
+        match html_escape(plain) {
+            Cow::Borrowed(s) => assert_eq!(s, plain),
+            Cow::Owned(_) => panic!("expected borrowed Cow for clean input"),
+        }
+    }
+
+    #[test]
     fn test_code_block_assignment() {
         let nodes =
             parse_template("<% let colors = [\"#D3CCFF\", \"#FF8C8C\"] %><%= colors %>").unwrap();
