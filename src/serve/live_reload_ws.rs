@@ -278,6 +278,10 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             oldStyles.forEach(function(oldStyle) {
                 var href = oldStyle.getAttribute('href');
                 if (!href) return;
+
+                // Skip external stylesheets (Google Fonts, CDNs, etc.) - they don't need cache busting
+                if (href.startsWith('http://') || href.startsWith('https://')) return;
+
                 var baseHref = href.split('?')[0];
 
                 if (newStyleHrefs.has(baseHref)) {
@@ -364,15 +368,6 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
 
             // Dispatch event for custom re-initialization
             document.dispatchEvent(new CustomEvent('livereload:update'));
-
-            // Re-trigger web font loading after CSS updates
-            if (document.fonts && document.fonts.size > 0) {
-                document.fonts.ready.then(function() {
-                    document.fonts.forEach(function(face) {
-                        face.load().catch(function() {});
-                    });
-                });
-            }
 
             console.log('[livereload] Content updated');
             window.__livereload.reloading = false;
