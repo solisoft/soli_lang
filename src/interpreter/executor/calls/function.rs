@@ -21,16 +21,27 @@ impl Interpreter {
         arguments: &[Argument],
         span: Span,
     ) -> RuntimeResult<Value> {
-        if let Some(result) = self.try_evaluate_hash_string_key_call(callee, arguments, span)? {
-            return Ok(result);
-        }
-        if let Some(result) = self.try_evaluate_direct_hash_method_call(callee, arguments, span)? {
-            return Ok(result);
-        }
-        if let Some(result) =
-            self.try_evaluate_direct_string_method_call(callee, arguments, span)?
-        {
-            return Ok(result);
+        // All three fast paths below require the callee to be a Member/SafeMember
+        // expression. For ordinary function calls like `print(x)` or `block()`
+        // (callee is a Variable) there's no point calling them at all — skip
+        // the three pattern-matches up front.
+        if matches!(
+            callee.kind,
+            ExprKind::Member { .. } | ExprKind::SafeMember { .. }
+        ) {
+            if let Some(result) = self.try_evaluate_hash_string_key_call(callee, arguments, span)? {
+                return Ok(result);
+            }
+            if let Some(result) =
+                self.try_evaluate_direct_hash_method_call(callee, arguments, span)?
+            {
+                return Ok(result);
+            }
+            if let Some(result) =
+                self.try_evaluate_direct_string_method_call(callee, arguments, span)?
+            {
+                return Ok(result);
+            }
         }
 
         // Bypass auto-invoke for callees so that func() gets the raw
@@ -40,6 +51,23 @@ impl Interpreter {
         // Safe navigation: if &.method() and object was null, propagate null
         if matches!(callee.kind, ExprKind::SafeMember { .. }) && matches!(callee_val, Value::Null) {
             return Ok(Value::Null);
+        }
+
+        // Common fast path: all-positional arguments (no named, no block).
+        // Evaluate straight into a Vec and bypass call_value_with_named,
+        // which allocates an empty HashMap and walks the parameter list
+        // several times even when none of that work is needed.
+        if arguments
+            .iter()
+            .all(|a| matches!(a, Argument::Positional(_)))
+        {
+            let mut arg_values = Vec::with_capacity(arguments.len());
+            for arg in arguments {
+                if let Argument::Positional(expr) = arg {
+                    arg_values.push(self.evaluate(expr)?);
+                }
+            }
+            return self.call_value(callee_val, arg_values, span);
         }
 
         let mut arg_values = Vec::new();
