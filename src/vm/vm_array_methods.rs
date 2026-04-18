@@ -12,13 +12,65 @@ use super::vm::Vm;
 impl Vm {
     /// Dispatch an array method call.
     pub fn vm_call_array_method(
-        &self,
+        &mut self,
         arr: &Rc<RefCell<Vec<Value>>>,
         name: &str,
         args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
         match name {
+            // --- Closure-taking methods ---
+            "map" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let items: Vec<Value> = arr.borrow().clone();
+                let mut result = Vec::with_capacity(items.len());
+                for item in items {
+                    let v = self.invoke_callable(cb.clone(), vec![item], span)?;
+                    result.push(v);
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "filter" | "select" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let items: Vec<Value> = arr.borrow().clone();
+                let mut result = Vec::new();
+                for item in items {
+                    let keep = self.invoke_callable(cb.clone(), vec![item.clone()], span)?;
+                    if keep.is_truthy() {
+                        result.push(item);
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "reduce" | "fold" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::wrong_arity(2, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let mut acc = args[1].clone();
+                let items: Vec<Value> = arr.borrow().clone();
+                for item in items {
+                    acc = self.invoke_callable(cb.clone(), vec![acc, item], span)?;
+                }
+                Ok(acc)
+            }
+            "each" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let items: Vec<Value> = arr.borrow().clone();
+                for item in items.iter() {
+                    self.invoke_callable(cb.clone(), vec![item.clone()], span)?;
+                }
+                Ok(Value::Array(arr.clone()))
+            }
             // --- Mutating methods ---
             "push" => {
                 if args.len() != 1 {

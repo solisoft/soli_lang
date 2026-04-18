@@ -9,8 +9,16 @@ use super::vm::Vm;
 impl Vm {
     /// Throw an exception value, unwinding the stack to the nearest catch handler.
     pub fn throw_exception(&mut self, value: Value, span: Span) -> Result<(), RuntimeError> {
-        // Look for an exception handler
-        while let Some(handler) = self.exception_handlers.pop() {
+        // Look for an exception handler, but do not unwind past the current
+        // `return_depth` — handlers at a shallower frame depth belong to an
+        // outer native invocation (e.g. array.map) that needs the exception
+        // to surface as a Rust `Err` so it can clean up its own state.
+        while let Some(handler) = self.exception_handlers.last() {
+            if handler.frame_depth <= self.return_depth {
+                break;
+            }
+            let handler = self.exception_handlers.pop().unwrap();
+
             // Unwind call frames
             while self.frames.len() > handler.frame_depth {
                 let frame = self.frames.pop().unwrap();

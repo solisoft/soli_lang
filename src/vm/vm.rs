@@ -76,6 +76,10 @@ pub struct Vm {
     pub output: Vec<String>,
     /// Handlers that failed VM execution — skip VM for these and use interpreter directly.
     pub failed_handlers: ahash::AHashSet<String>,
+    /// Frame depth at which `run()` should stop. Bumped by native methods that
+    /// need to synchronously invoke a user closure (e.g. array.map); `Op::Return`
+    /// treats frames shrinking back to this depth as the exit condition.
+    pub return_depth: usize,
 }
 
 impl Vm {
@@ -89,6 +93,7 @@ impl Vm {
             iter_stack: Vec::new(),
             output: Vec::new(),
             failed_handlers: ahash::AHashSet::new(),
+            return_depth: 0,
         }
     }
 
@@ -607,10 +612,11 @@ impl Vm {
                                     Value::Array(a) => a.clone(),
                                     _ => unreachable!(),
                                 };
-                                let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                                let args: Vec<Value> =
+                                    self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                                 let span = self.current_span();
-                                let result = self.vm_call_array_method(&arr, name, args, span)?;
                                 self.stack.truncate(receiver_idx);
+                                let result = self.vm_call_array_method(&arr, name, &args, span)?;
                                 self.stack.push(result);
                             }
                         }
@@ -761,10 +767,11 @@ impl Vm {
                                 Value::Array(a) => a.clone(),
                                 _ => unreachable!(),
                             };
-                            let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                            let args: Vec<Value> =
+                                self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                             let span = self.current_span();
-                            let result = self.vm_call_array_method(&arr, name, args, span)?;
                             self.stack.truncate(receiver_idx);
+                            let result = self.vm_call_array_method(&arr, name, &args, span)?;
                             self.stack.push(result);
                         }
                         Value::Hash(_) => {
@@ -1197,7 +1204,7 @@ impl Vm {
                     // Restore the stack
                     self.stack.truncate(frame.stack_base);
 
-                    if self.frames.is_empty() {
+                    if self.frames.len() <= self.return_depth {
                         return Ok(result);
                     }
 
@@ -2741,5 +2748,102 @@ mod tests {
             "result",
         );
         assert_eq!(result, Value::Int(50005000));
+    }
+
+    // ============================================================
+    // Array-method dispatch on the VM.
+    // soli serve (production mode) executes handlers through the VM.
+    // If any of these fail, a controller using that array method
+    // will silently fall back to the tree walker on each request.
+    // ============================================================
+
+    fn run_array_method(source: &str) -> Result<Value, crate::error::RuntimeError> {
+        compile_and_run(source)
+    }
+
+    #[test]
+    fn test_vm_array_length() {
+        let r = run_array_method("let a = [1, 2, 3]; let x = a.length();");
+        assert!(r.is_ok(), "array.length() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_map() {
+        let r = run_array_method("let a = [1, 2, 3]; let x = a.map(fn(v) v * 2);");
+        assert!(r.is_ok(), "array.map() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_filter() {
+        let r = run_array_method("let a = [1, 2, 3]; let x = a.filter(fn(v) v > 1);");
+        assert!(r.is_ok(), "array.filter() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_reduce() {
+        let r = run_array_method("let a = [1, 2, 3]; let x = a.reduce(fn(acc, v) acc + v, 0);");
+        assert!(r.is_ok(), "array.reduce() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_each() {
+        let r = run_array_method("let a = [1, 2, 3]; a.each(fn(v) v);");
+        assert!(r.is_ok(), "array.each() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_push() {
+        let r = run_array_method("let a = [1, 2]; a.push(3);");
+        assert!(r.is_ok(), "array.push() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_pop() {
+        let r = run_array_method("let a = [1, 2, 3]; let x = a.pop();");
+        assert!(r.is_ok(), "array.pop() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_reverse() {
+        let r = run_array_method("let a = [1, 2, 3]; let x = a.reverse();");
+        assert!(r.is_ok(), "array.reverse() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_sort() {
+        let r = run_array_method("let a = [3, 1, 2]; let x = a.sort();");
+        assert!(r.is_ok(), "array.sort() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_uniq() {
+        let r = run_array_method("let a = [1, 1, 2]; let x = a.uniq();");
+        assert!(r.is_ok(), "array.uniq() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_join() {
+        let r = run_array_method(r#"let a = ["x", "y"]; let x = a.join(",");"#);
+        assert!(r.is_ok(), "array.join() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_first_last() {
+        let first = run_array_method("let a = [1, 2, 3]; let x = a.first();");
+        let last = run_array_method("let a = [1, 2, 3]; let x = a.last();");
+        assert!(first.is_ok(), "array.first() failed on VM: {:?}", first.err());
+        assert!(last.is_ok(), "array.last() failed on VM: {:?}", last.err());
+    }
+
+    #[test]
+    fn test_vm_array_contains() {
+        let r = run_array_method("let a = [1, 2, 3]; let x = a.contains(2);");
+        assert!(r.is_ok(), "array.contains() failed on VM: {:?}", r.err());
+    }
+
+    #[test]
+    fn test_vm_array_flatten() {
+        let r = run_array_method("let a = [[1, 2], [3, 4]]; let x = a.flatten();");
+        assert!(r.is_ok(), "array.flatten() failed on VM: {:?}", r.err());
     }
 }

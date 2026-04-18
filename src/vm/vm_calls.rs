@@ -345,5 +345,33 @@ impl Vm {
         self.open_upvalues.clear();
         self.exception_handlers.clear();
         self.iter_stack.clear();
+        self.return_depth = 0;
+    }
+
+    /// Invoke a callable synchronously from within a native method.
+    /// Bumps `return_depth` so nested `run()` exits when this specific call returns,
+    /// letting the native caller resume with the result on its own path.
+    pub fn invoke_callable(
+        &mut self,
+        callee: Value,
+        args: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let saved_depth = self.return_depth;
+        let frames_before = self.frames.len();
+        self.push(callee);
+        let argc = args.len();
+        for arg in args {
+            self.push(arg);
+        }
+        self.call_value(argc, span)?;
+        // If call_value didn't push a frame (native / class ctor), result already on stack.
+        if self.frames.len() == frames_before {
+            return Ok(self.pop());
+        }
+        self.return_depth = frames_before;
+        let result = self.run();
+        self.return_depth = saved_depth;
+        result
     }
 }
