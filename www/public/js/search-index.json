@@ -3410,6 +3410,42 @@
       "signature": "19.99D, 0.0675D",
       "description": "Fixed-precision decimal arithmetic for financial calculations",
       "keywords": ["decimal", "precision", "financial", "money", "currency", "type"]
+    },
+    {
+      "title": "db.query",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/advanced#raw-queries",
+      "signature": "db.query(sdbql, bind_vars?)",
+      "description": "Execute a raw SDBQL query with @param bind variables and return the result rows",
+      "keywords": ["sdbql", "sdql", "raw query", "database", "query", "bind", "parameters", "solidb", "sql"]
+    },
+    {
+      "title": "@sdql{}",
+      "type": "syntax",
+      "category": "Database",
+      "path": "/docs/database/advanced#raw-queries",
+      "signature": "@sdql{ FOR u IN users FILTER u.age >= #{age} RETURN u }",
+      "description": "SDBQL query block with inline #{expr} interpolation for multi-line raw queries (FOR, FILTER, SORT, LIMIT, RETURN, INSERT, UPDATE, REMOVE)",
+      "keywords": ["sdql", "sdbql", "raw query", "database", "query block", "interpolation", "solidb", "sql", "sdbql block"]
+    },
+    {
+      "title": "solidb_query",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/advanced#raw-queries",
+      "signature": "solidb_query(host, database, sdbql, bind_vars?)",
+      "description": "Run a raw SDBQL query against an external SoliDB server without the ORM's bound db handle",
+      "keywords": ["sdbql", "sdql", "raw query", "external", "solidb", "remote", "query"]
+    },
+    {
+      "title": "Model.transaction",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/advanced#transactions",
+      "signature": "Model.transaction(sdbql | fn(tx))",
+      "description": "Run multiple statements atomically — pass an SDBQL string for auto-commit, or a function for manual control",
+      "keywords": ["transaction", "atomic", "sdbql", "sdql", "rollback", "commit", "database"]
     }
   ]
 }

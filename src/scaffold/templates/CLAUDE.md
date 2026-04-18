@@ -71,19 +71,86 @@ end
 ```soli
 class Post do
     static def all() do
-        return db.query("SELECT * FROM posts");
+        return Post.where({}).all;
     end
-    
+
     static def create(params: Hash) do
         let validation = validate(params);
         if !validation["valid"] do
             return {"valid": false, "errors": validation["errors"]};
         end
-        let id = db.query("INSERT INTO posts ...", params);
-        return {"valid": true, "id": id};
+        let post = Post.create(params);
+        return {"valid": true, "id": post.id};
     end
 end
 ```
+
+## Raw Database Queries (SDBQL)
+
+Use the ORM (`Model.where`, `Model.find`, `Model.create`, ...) first. When you need something the ORM doesn't cover, drop down to raw SDBQL. **Always parameterize** — never concatenate user input into the query string.
+
+### `db.query(sdbql, bind_vars?)`
+
+Pass the SDBQL string with `@name` placeholders and a hash of bind values:
+
+```soli
+# Read
+let adults = db.query(
+    "FOR u IN users FILTER u.age >= @min RETURN u",
+    { "min": 18 }
+);
+
+# Insert
+db.query(
+    "INSERT { name: @name, email: @email } INTO users",
+    { "name": "Bob", "email": "bob@example.com" }
+);
+
+# Update
+db.query("UPDATE @key WITH { name: @name } IN users", {
+    "key": user_id,
+    "name": "Alice Smith"
+});
+
+# Delete
+db.query("REMOVE @key IN users", { "key": user_id });
+```
+
+`@name` is a bind placeholder — the value comes from the hash and is bound safely at query time.
+
+### `@sdql{}` block
+
+Preferred for multi-line queries. Inline expressions with `#{expr}` — they are evaluated and bound as parameters, never inlined as text:
+
+```soli
+let min_age = 18;
+let city = params.city;
+
+let users = @sdql{
+    FOR u IN users
+    FILTER u.age >= #{min_age} AND u.city == #{city}
+    SORT u.name ASC
+    LIMIT 50
+    RETURN u
+};
+
+@sdql{
+    UPDATE #{user_id} IN users
+    SET { last_login: NOW() }
+};
+
+@sdql{ REMOVE #{user_id} IN users };
+```
+
+Supports all SDBQL operations: `FOR`, `FILTER`, `SORT`, `LIMIT`, `RETURN`, `INSERT`, `UPDATE`, `REMOVE`.
+
+### When to use which
+
+| Approach | Use it for |
+|----------|------------|
+| `Model.where(...)` / ORM | Standard CRUD — your first choice |
+| `db.query(sdbql, {...})` | Parameterized query where bind values are already a hash |
+| `@sdql{ ... }` | Multi-line query, inline `#{expr}` interpolation, readability |
 
 ## Views (ERB Templates)
 

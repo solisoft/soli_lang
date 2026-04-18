@@ -250,20 +250,31 @@ let found = User.find(user["id"])</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
-    <p class="text-gray-400 mb-6">For raw database queries, use the <code>db</code> object or the <code>@sdql{}</code> query block syntax.</p>
+    <p class="text-gray-400 mb-6">For raw database queries, use the <code>db</code> object or the <code>@sdql{}</code> query block syntax. Both are parameterized &mdash; values are bound, not string-concatenated, so queries stay safe against injection.</p>
 
     <h3 class="text-lg font-semibold text-white mb-4">Using db.query()</h3>
+    <p class="text-gray-400 mb-4">Pass the SDBQL string with <code>@param</code> placeholders and a hash of bind values:</p>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># SDBQL query with bind parameters
+<pre><code class="language-soli text-sm"># Read with named parameters
 let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
     "age": 18
 })
+
 # Insert
 db.query("INSERT { name: @name, email: @email } INTO users", {
     "name": "Bob",
     "email": "bob@example.com"
-});</code></pre>
+})
+
+# Update
+db.query("UPDATE @key WITH { name: @name } IN users", {
+    "key": user_id,
+    "name": "Alice Smith"
+})
+
+# Delete
+db.query("REMOVE @key IN users", { "key": user_id })</code></pre>
         </div>
     </div>
 
