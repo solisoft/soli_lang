@@ -111,9 +111,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Array(n) => out.push_str(&format!("ARRAY        {:>5}", n)),
         Op::ArrayPush => out.push_str("ARRAY_PUSH"),
         Op::Hash(n) => out.push_str(&format!("HASH         {:>5}", n)),
-        Op::HashWithKeys(idx, n) => {
-            out.push_str(&format!("HASH_W_KEYS  k={:>3} n={:>3}", idx, n))
-        }
+        Op::HashWithKeys(idx, n) => out.push_str(&format!("HASH_W_KEYS  k={:>3} n={:>3}", idx, n)),
         Op::Range => out.push_str("RANGE"),
         Op::GetIndex => out.push_str("GET_INDEX"),
         Op::SetIndex => out.push_str("SET_INDEX"),

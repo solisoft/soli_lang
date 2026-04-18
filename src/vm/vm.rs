@@ -2472,7 +2472,10 @@ impl Vm {
                 let hash = hash.borrow();
                 match key {
                     Value::String(s) => Ok(hash.get(&StrKey(s)).cloned().unwrap_or(Value::Null)),
-                    Value::Int(_) | Value::Bool(_) | Value::Null | Value::Symbol(_)
+                    Value::Int(_)
+                    | Value::Bool(_)
+                    | Value::Null
+                    | Value::Symbol(_)
                     | Value::Decimal(_) => {
                         Ok(hash_get_value(&hash, key).cloned().unwrap_or(Value::Null))
                     }
@@ -2864,7 +2867,11 @@ mod tests {
     fn test_vm_array_first_last() {
         let first = run_array_method("let a = [1, 2, 3]; let x = a.first();");
         let last = run_array_method("let a = [1, 2, 3]; let x = a.last();");
-        assert!(first.is_ok(), "array.first() failed on VM: {:?}", first.err());
+        assert!(
+            first.is_ok(),
+            "array.first() failed on VM: {:?}",
+            first.err()
+        );
         assert!(last.is_ok(), "array.last() failed on VM: {:?}", last.err());
     }
 

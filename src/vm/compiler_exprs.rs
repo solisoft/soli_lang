@@ -615,10 +615,7 @@ impl Compiler {
             for (_, value) in pairs {
                 self.compile_expr(value)?;
             }
-            self.emit(
-                Op::HashWithKeys(keys_idx, pairs.len() as u16),
-                line,
-            );
+            self.emit(Op::HashWithKeys(keys_idx, pairs.len() as u16), line);
             return Ok(());
         }
         for (key, value) in pairs {
