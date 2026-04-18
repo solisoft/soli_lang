@@ -3034,7 +3034,7 @@ fn call_class_method(
     interpreter: &mut Interpreter,
     vm: Option<&mut crate::vm::Vm>,
     class: &Rc<crate::interpreter::value::Class>,
-    _instance: &Value,
+    instance: &Value,
     method_name: &str,
     request_hash: &Value,
 ) -> Result<Value, RuntimeError> {
@@ -3048,8 +3048,9 @@ fn call_class_method(
         if let Some(vm) = vm {
             let handler_key = format!("{}#{}", class.name, method_name);
             if !vm.failed_handlers.contains(&handler_key) {
-                match vm.call_value_direct_one(
-                    Value::Function(method.clone()),
+                match vm.call_method_bound(
+                    &method,
+                    instance.clone(),
                     request_hash.clone(),
                     Span::default(),
                 ) {
@@ -3077,8 +3078,29 @@ fn call_class_method(
             interpreter.set_source_path(std::path::PathBuf::from(source_path));
         }
 
+        // Bind `this` to the instance by wrapping the method's closure.
+        // Mirrors the dispatch pattern in interpreter/executor/access/member.rs.
+        let bound_method = {
+            let mut bound_env = crate::interpreter::environment::Environment::with_enclosing(
+                method.closure.clone(),
+            );
+            bound_env.define("this".to_string(), instance.clone());
+            Rc::new(crate::interpreter::value::Function {
+                name: method.name.clone(),
+                params: method.params.clone(),
+                body: method.body.clone(),
+                closure: Rc::new(RefCell::new(bound_env)),
+                is_method: true,
+                span: method.span,
+                source_path: method.source_path.clone(),
+                defining_superclass: method.defining_superclass.clone(),
+                return_type: method.return_type.clone(),
+                cached_env: RefCell::new(None),
+            })
+        };
+
         let result = interpreter.call_value(
-            Value::Function(method.clone()),
+            Value::Function(bound_method),
             vec![request_hash.clone()],
             method_span,
         );
@@ -4317,5 +4339,99 @@ mod tests {
 
         let result = resolve_static_file("/%2e%2e/etc/passwd", &public);
         assert_eq!(result, Ok(None));
+    }
+
+    /// Regression test: controller actions dispatched via `call_class_method`
+    /// must have `this` bound to the instance. Previously the dispatcher
+    /// called the method as a plain function, so any `this.xxx()` inside an
+    /// action threw "'this' outside of class" at runtime.
+    #[test]
+    fn test_call_class_method_binds_this_interpreter_path() {
+        use crate::interpreter::value::Instance;
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+
+        let source = r#"
+            class Foo {
+                fn action(req) {
+                    return this.helper()
+                }
+                fn helper() {
+                    return 42
+                }
+            }
+        "#;
+
+        let tokens = Scanner::new(source).scan_tokens().unwrap();
+        let program = Parser::new(tokens).parse().unwrap();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).unwrap();
+
+        let class_val = interpreter.environment.borrow().get("Foo").unwrap();
+        let class_rc = match class_val {
+            Value::Class(c) => c,
+            _ => panic!("Foo did not resolve to a class"),
+        };
+
+        let instance = Value::Instance(Rc::new(RefCell::new(Instance::new(class_rc.clone()))));
+        let request_hash = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+
+        let result =
+            call_class_method(&mut interpreter, None, &class_rc, &instance, "action", &request_hash)
+                .expect("call_class_method should succeed when this is bound");
+
+        assert_eq!(result, Value::Int(42));
+    }
+
+    /// Same regression coverage for the VM (production) dispatch path.
+    #[test]
+    fn test_call_class_method_binds_this_vm_path() {
+        use crate::interpreter::value::Instance;
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+
+        let source = r#"
+            class Bar {
+                fn action(req) {
+                    return this.helper()
+                }
+                fn helper() {
+                    return 99
+                }
+            }
+        "#;
+
+        let tokens = Scanner::new(source).scan_tokens().unwrap();
+        let program = Parser::new(tokens).parse().unwrap();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).unwrap();
+
+        let class_val = interpreter.environment.borrow().get("Bar").unwrap();
+        let class_rc = match class_val {
+            Value::Class(c) => c,
+            _ => panic!("Bar did not resolve to a class"),
+        };
+
+        // Set up a VM seeded with the interpreter's globals (same as production).
+        let mut vm = crate::vm::Vm::new();
+        let all_globals = interpreter.environment.borrow().get_all_bindings();
+        for (name, value) in all_globals {
+            vm.globals.insert(name, value);
+        }
+
+        let instance = Value::Instance(Rc::new(RefCell::new(Instance::new(class_rc.clone()))));
+        let request_hash = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+
+        let result = call_class_method(
+            &mut interpreter,
+            Some(&mut vm),
+            &class_rc,
+            &instance,
+            "action",
+            &request_hash,
+        )
+        .expect("call_class_method should succeed when this is bound (VM)");
+
+        assert_eq!(result, Value::Int(99));
     }
 }

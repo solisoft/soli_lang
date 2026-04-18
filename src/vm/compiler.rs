@@ -119,6 +119,51 @@ impl Compiler {
         })
     }
 
+    /// Compile a tree-walking method (e.g., a user-defined controller action)
+    /// into a standalone `FunctionProto` with slot 0 reserved for `this`.
+    /// Used by the VM's bound-method dispatch for class-based controllers.
+    pub fn compile_method_standalone(
+        func: &crate::interpreter::value::Function,
+    ) -> CompileResult<FunctionProto> {
+        let mut compiler = Compiler::new(FunctionType::Method, func.name.clone());
+        compiler.class_context = Some(ClassContext {
+            has_superclass: func.defining_superclass.is_some(),
+        });
+
+        for param in &func.params {
+            compiler.add_local(param.name.clone(), false);
+        }
+        compiler.proto.arity = func
+            .params
+            .iter()
+            .filter(|p| p.default_value.is_none())
+            .count() as u8;
+        compiler.proto.defaults = func
+            .params
+            .iter()
+            .filter(|p| p.default_value.is_some())
+            .count() as u8;
+        compiler.proto.param_names = func.params.iter().map(|p| p.name.clone()).collect();
+
+        let line = func.span.map(|s| s.line).unwrap_or(0);
+        compiler.begin_scope();
+        for stmt in &func.body {
+            compiler.compile_stmt(stmt)?;
+        }
+        compiler.end_scope(line);
+
+        compiler.emit(Op::Null, line);
+        compiler.emit(Op::Return, line);
+
+        let mut proto = compiler.proto;
+        proto.upvalue_descriptors = compiler.upvalues;
+        proto.is_method = true;
+
+        peephole_optimize_proto(&mut proto);
+
+        Ok(proto)
+    }
+
     // --- Chunk helpers ---
 
     pub fn chunk(&mut self) -> &mut Chunk {

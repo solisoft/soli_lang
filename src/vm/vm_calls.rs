@@ -338,6 +338,32 @@ impl Vm {
         self.run()
     }
 
+    /// Invoke a class method with `this` bound to the given instance.
+    ///
+    /// Used by the server's class-based controller dispatch: JIT-compiles the
+    /// method as `FunctionType::Method` so slot 0 is reserved for `this`, then
+    /// seeds the call frame with `instance` at slot 0 and `arg` at slot 1.
+    pub fn call_method_bound(
+        &mut self,
+        method: &Function,
+        instance: Value,
+        arg: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let proto = Compiler::compile_method_standalone(method)
+            .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
+        let closure = Rc::new(VmClosure::new(Rc::new(proto), Vec::new()));
+
+        // Stack layout after these pushes: [..., instance, arg]. call_closure
+        // derives stack_base = len - total_params - 1, placing `instance` at
+        // slot 0 (i.e., `this`) and `arg` at slot 1 — matching the layout the
+        // method bytecode expects.
+        self.push(instance);
+        self.push(arg);
+        self.call_closure(closure, 1, span)?;
+        self.run()
+    }
+
     /// Reset VM state between requests (preserves globals).
     pub fn reset(&mut self) {
         self.stack.clear();
