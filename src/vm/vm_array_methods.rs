@@ -35,10 +35,12 @@ impl Vm {
                 let batch = self.enter_callable_batch();
                 let outcome: Result<(), RuntimeError> = (|| {
                     for i in 0..len {
-                        let item = match arr.borrow().get(i) {
-                            Some(v) => v.clone(),
-                            None => break,
-                        };
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
                         let v = self.invoke_in_batch_one(&batch, &cb, item, span)?;
                         result.push(v);
                     }
@@ -58,10 +60,12 @@ impl Vm {
                 let batch = self.enter_callable_batch();
                 let outcome: Result<(), RuntimeError> = (|| {
                     for i in 0..len {
-                        let item = match arr.borrow().get(i) {
-                            Some(v) => v.clone(),
-                            None => break,
-                        };
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
                         let keep = self.invoke_in_batch_one(&batch, &cb, item.clone(), span)?;
                         if keep.is_truthy() {
                             result.push(item);
@@ -83,10 +87,12 @@ impl Vm {
                 let batch = self.enter_callable_batch();
                 let outcome: Result<(), RuntimeError> = (|| {
                     for i in 0..len {
-                        let item = match arr.borrow().get(i) {
-                            Some(v) => v.clone(),
-                            None => break,
-                        };
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
                         acc = self.invoke_in_batch_two(&batch, &cb, acc.clone(), item, span)?;
                     }
                     Ok(())
@@ -104,10 +110,12 @@ impl Vm {
                 let batch = self.enter_callable_batch();
                 let outcome: Result<(), RuntimeError> = (|| {
                     for i in 0..len {
-                        let item = match arr.borrow().get(i) {
-                            Some(v) => v.clone(),
-                            None => break,
-                        };
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
                         self.invoke_in_batch_one(&batch, &cb, item, span)?;
                     }
                     Ok(())

@@ -705,10 +705,18 @@ impl Compiler {
                 self.emit(Op::SetProperty(idx), line);
             }
             ExprKind::Index { object, index } => {
-                self.compile_expr(object)?;
-                self.compile_expr(index)?;
-                self.compile_expr(value)?;
-                self.emit(Op::SetIndex, line);
+                // Peephole: hash[const_str] = value -> HashSetConst.
+                if let ExprKind::StringLiteral(key) = &index.kind {
+                    let key_idx = self.add_string_constant(key);
+                    self.compile_expr(object)?;
+                    self.compile_expr(value)?;
+                    self.emit(Op::HashSetConst(key_idx), line);
+                } else {
+                    self.compile_expr(object)?;
+                    self.compile_expr(index)?;
+                    self.compile_expr(value)?;
+                    self.emit(Op::SetIndex, line);
+                }
             }
             _ => {
                 return Err(CompileError::new("Invalid assignment target", target.span));
