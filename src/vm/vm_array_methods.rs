@@ -20,14 +20,23 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         match name {
             // --- Closure-taking methods ---
+            // Snapshot the length once and re-borrow per iteration. Avoids the
+            // upfront Vec<Value> clone (large for big arrays) at the cost of a
+            // RefCell borrow check per element. Iteration uses the live array,
+            // matching Ruby's semantics; if the closure shrinks it past `i`,
+            // we stop early.
             "map" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let cb = &args[0];
-                let items: Vec<Value> = arr.borrow().clone();
-                let mut result = Vec::with_capacity(items.len());
-                for item in items {
+                let len = arr.borrow().len();
+                let mut result = Vec::with_capacity(len);
+                for i in 0..len {
+                    let item = match arr.borrow().get(i) {
+                        Some(v) => v.clone(),
+                        None => break,
+                    };
                     let v = self.invoke_callable_one(cb, item, span)?;
                     result.push(v);
                 }
@@ -38,9 +47,13 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let cb = &args[0];
-                let items: Vec<Value> = arr.borrow().clone();
+                let len = arr.borrow().len();
                 let mut result = Vec::new();
-                for item in items {
+                for i in 0..len {
+                    let item = match arr.borrow().get(i) {
+                        Some(v) => v.clone(),
+                        None => break,
+                    };
                     let keep = self.invoke_callable_one(cb, item.clone(), span)?;
                     if keep.is_truthy() {
                         result.push(item);
@@ -54,8 +67,12 @@ impl Vm {
                 }
                 let cb = &args[0];
                 let mut acc = args[1].clone();
-                let items: Vec<Value> = arr.borrow().clone();
-                for item in items {
+                let len = arr.borrow().len();
+                for i in 0..len {
+                    let item = match arr.borrow().get(i) {
+                        Some(v) => v.clone(),
+                        None => break,
+                    };
                     acc = self.invoke_callable_two(cb, acc, item, span)?;
                 }
                 Ok(acc)
@@ -65,8 +82,12 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let cb = &args[0];
-                let items: Vec<Value> = arr.borrow().clone();
-                for item in items {
+                let len = arr.borrow().len();
+                for i in 0..len {
+                    let item = match arr.borrow().get(i) {
+                        Some(v) => v.clone(),
+                        None => break,
+                    };
                     self.invoke_callable_one(cb, item, span)?;
                 }
                 Ok(Value::Array(arr.clone()))
