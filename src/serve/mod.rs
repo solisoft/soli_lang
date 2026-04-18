@@ -4376,9 +4376,15 @@ mod tests {
         let instance = Value::Instance(Rc::new(RefCell::new(Instance::new(class_rc.clone()))));
         let request_hash = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
 
-        let result =
-            call_class_method(&mut interpreter, None, &class_rc, &instance, "action", &request_hash)
-                .expect("call_class_method should succeed when this is bound");
+        let result = call_class_method(
+            &mut interpreter,
+            None,
+            &class_rc,
+            &instance,
+            "action",
+            &request_hash,
+        )
+        .expect("call_class_method should succeed when this is bound");
 
         assert_eq!(result, Value::Int(42));
     }
