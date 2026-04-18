@@ -28,6 +28,10 @@ impl TypeEnvironment {
 
         // Register built-in functions
         env.register_builtins();
+
+        // Built-in globals injected at request time by the server (see call_handler).
+        env.define("params".to_string(), Type::Any);
+
         env
     }
 

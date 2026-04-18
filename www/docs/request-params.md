@@ -1,6 +1,6 @@
 # Unified Request Parameters
 
-SoliLang provides a unified `req["all"]` field that merges parameters from all sources into a single, convenient hash.
+SoliLang provides a unified `req["all"]` field that merges parameters from all sources into a single, convenient hash. The same value is also exposed automatically as the global `params` variable, so handlers and views can reach it without touching `req`.
 
 ## Parameter Sources
 
@@ -32,6 +32,25 @@ fn update_profile(req)
     {"status": 200, "body": "Profile updated"}
 end
 ```
+
+## The `params` Global
+
+For convenience, the server sets a global `params` variable to the same value as `req["all"]` before every request is dispatched. This lets controllers, plain handlers, and views access unified parameters without accepting or threading `req` through their code:
+
+```soli
+# Request: POST /users/123/profile?name=alice
+# Body: {"bio": "Developer"}
+
+fn update_profile(req)
+    print("User ID:", params.id);       # "123" (from route)
+    print("Name:", params.name);        # "alice" (from query)
+    print("Bio:", params.bio);          # "Developer" (from JSON body)
+
+    {"status": 200, "body": "Profile updated"}
+end
+```
+
+`params` is refreshed before each request, so it is always in sync with the current handler's `req["all"]`. Dot access (`params.name`) and bracket access (`params["name"]`) both work.
 
 ## Priority Order
 
@@ -148,16 +167,19 @@ end
 # Get single param from unified source
 let id = req["all"]["id"];
 
+# Same thing via the global shorthand
+let id = params.id;
+
 # Check if param exists
-if req["all"]["page"] != null
-    let page = req["all"]["page"];
+if params.page != null
+    let page = params.page;
 end
 
 # Get with default value
-let limit = req["all"]["limit"] or "20";
+let limit = params.limit or "20";
 
 # Iterate over all params (hashes iterate via entries/keys/values)
-for pair in entries(req["all"])
+for pair in entries(params)
     print(pair[0] + ": " + str(pair[1]));
 end
 ```
@@ -165,6 +187,6 @@ end
 ## Benefits
 
 1. **Flexibility**: Clients can send parameters via URL, query string, or body
-2. **Simplicity**: Single access point for all parameters
+2. **Simplicity**: Single access point for all parameters — use `req["all"]` or the global `params`
 3. **Backward Compatible**: Individual sources (`req["params"]`, `req["query"]`, etc.) still work
 4. **Intuitive Priority**: Body params naturally override URL params

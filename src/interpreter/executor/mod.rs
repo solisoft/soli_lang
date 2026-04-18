@@ -701,6 +701,19 @@ impl Interpreter {
             let request_hash =
                 build_request_hash(&method, path, matched_params, query, headers, &body);
 
+            // Expose req["all"] as the global `params` variable.
+            let params_value = match &request_hash {
+                Value::Hash(fields) => fields
+                    .borrow()
+                    .get(&HashKey::String("all".to_string()))
+                    .cloned()
+                    .unwrap_or(Value::Null),
+                _ => Value::Null,
+            };
+            self.environment
+                .borrow_mut()
+                .define_or_update("params", params_value);
+
             let handler = self.environment.borrow().get(&route.handler_name);
 
             match handler {
