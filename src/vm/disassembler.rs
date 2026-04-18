@@ -111,6 +111,9 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Array(n) => out.push_str(&format!("ARRAY        {:>5}", n)),
         Op::ArrayPush => out.push_str("ARRAY_PUSH"),
         Op::Hash(n) => out.push_str(&format!("HASH         {:>5}", n)),
+        Op::HashWithKeys(idx, n) => {
+            out.push_str(&format!("HASH_W_KEYS  k={:>3} n={:>3}", idx, n))
+        }
         Op::Range => out.push_str("RANGE"),
         Op::GetIndex => out.push_str("GET_INDEX"),
         Op::SetIndex => out.push_str("SET_INDEX"),
@@ -352,6 +355,7 @@ fn format_constant(val: Option<&Constant>) -> String {
         Some(Constant::Bool(b)) => format!("{}", b),
         Some(Constant::Null) => "null".to_string(),
         Some(Constant::Function(f)) => format!("<fn {}>", f.name),
+        Some(Constant::HashKeys(ks)) => format!("HashKeys[{}]", ks.len()),
         None => "???".to_string(),
     }
 }

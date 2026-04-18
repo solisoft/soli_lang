@@ -1251,6 +1251,28 @@ impl Vm {
                     drop(drained);
                     self.stack.push(Value::Hash(Rc::new(RefCell::new(map))));
                 }
+                Op::HashWithKeys(keys_idx, n) => {
+                    let n = n as usize;
+                    // Borrow the precomputed keys from the constant pool.
+                    let keys: *const Vec<HashKey> = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[keys_idx as usize] {
+                            Constant::HashKeys(ks) => &**ks as *const _,
+                            _ => unreachable!("HashWithKeys must reference HashKeys constant"),
+                        }
+                    };
+                    // SAFETY: constants live for the whole frame execution.
+                    let keys: &Vec<HashKey> = unsafe { &*keys };
+                    let base = self.stack.len() - n;
+                    let mut map = HashPairs::with_capacity_and_hasher(n, AHasher::default());
+                    let mut drained = self.stack.drain(base..);
+                    for k in keys {
+                        let v = drained.next().unwrap();
+                        map.insert(k.clone(), v);
+                    }
+                    drop(drained);
+                    self.stack.push(Value::Hash(Rc::new(RefCell::new(map))));
+                }
                 Op::Range => {
                     let (start, end) = self.pop2();
                     match (&start, &end) {
@@ -2565,6 +2587,10 @@ fn constant_to_value(constant: &Constant) -> Value {
         Constant::Function(proto) => {
             // A bare function proto becomes a closure with no upvalues
             Value::VmClosure(Rc::new(VmClosure::new(proto.clone(), Vec::new())))
+        }
+        Constant::HashKeys(_) => {
+            // Never loaded as a Value — only consumed by Op::HashWithKeys.
+            unreachable!("HashKeys constant should not be loaded as a Value")
         }
     }
 }

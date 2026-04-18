@@ -17,6 +17,10 @@ pub enum Constant {
     Decimal(String),
     /// A compiled function prototype.
     Function(Rc<FunctionProto>),
+    /// Pre-computed HashKey list — used for hash literals with all-literal keys
+    /// so we don't push each key onto the value stack just to convert it back to
+    /// a HashKey at insertion time.
+    HashKeys(Rc<Vec<crate::interpreter::value::HashKey>>),
 }
 
 /// A compiled function (or top-level script).

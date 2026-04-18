@@ -92,6 +92,10 @@ pub enum Op {
     ArrayPush,
     /// Build a hash from N key-value pairs on the stack (2*N values).
     Hash(u16),
+    /// Build a hash from a precomputed HashKey list (constant pool index `keys_idx`)
+    /// and N values on the stack. Used for hash literals with all-literal keys —
+    /// avoids pushing/converting keys at runtime.
+    HashWithKeys(u16, u16),
     /// Build a range from two values on the stack.
     Range,
     /// Get element at index: stack has [obj, index].

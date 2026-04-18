@@ -607,12 +607,53 @@ impl Compiler {
     }
 
     fn compile_hash(&mut self, pairs: &[(Expr, Expr)], line: usize) -> CompileResult<()> {
+        // Fast path: if every key is a literal, precompute the HashKey list
+        // and store it as a constant. The runtime then only needs values on
+        // the stack — no key push/convert per element.
+        if let Some(keys) = self.literal_hash_keys(pairs) {
+            let keys_idx = self.add_constant(Constant::HashKeys(std::rc::Rc::new(keys)));
+            for (_, value) in pairs {
+                self.compile_expr(value)?;
+            }
+            self.emit(
+                Op::HashWithKeys(keys_idx, pairs.len() as u16),
+                line,
+            );
+            return Ok(());
+        }
         for (key, value) in pairs {
             self.compile_expr(key)?;
             self.compile_expr(value)?;
         }
         self.emit(Op::Hash(pairs.len() as u16), line);
         Ok(())
+    }
+
+    /// Returns Some(keys) if every key in `pairs` is a literal that can be
+    /// converted to a HashKey at compile time.
+    fn literal_hash_keys(
+        &self,
+        pairs: &[(Expr, Expr)],
+    ) -> Option<Vec<crate::interpreter::value::HashKey>> {
+        use crate::interpreter::value::{DecimalValue, HashKey};
+        let mut keys = Vec::with_capacity(pairs.len());
+        for (key, _) in pairs {
+            let hk = match &key.kind {
+                ExprKind::StringLiteral(s) => HashKey::String(s.clone()),
+                ExprKind::IntLiteral(n) => HashKey::Int(*n),
+                ExprKind::BoolLiteral(b) => HashKey::Bool(*b),
+                ExprKind::Null => HashKey::Null,
+                ExprKind::Symbol(s) => HashKey::Symbol(s.clone()),
+                ExprKind::DecimalLiteral(s) => {
+                    let d: rust_decimal::Decimal = s.parse().ok()?;
+                    let prec = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
+                    HashKey::Decimal(DecimalValue(d, prec))
+                }
+                _ => return None,
+            };
+            keys.push(hk);
+        }
+        Some(keys)
     }
 
     fn compile_block_expr(&mut self, stmts: &[Stmt], line: usize) -> CompileResult<()> {
