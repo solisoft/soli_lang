@@ -365,7 +365,53 @@ impl Vm {
             self.push(arg);
         }
         self.call_value(argc, span)?;
-        // If call_value didn't push a frame (native / class ctor), result already on stack.
+        if self.frames.len() == frames_before {
+            return Ok(self.pop());
+        }
+        self.return_depth = frames_before;
+        let result = self.run();
+        self.return_depth = saved_depth;
+        result
+    }
+
+    /// Optimized single-arg variant — borrows the callee (clones once for the stack
+    /// push) and avoids the Vec allocation. Hot path for array.map/filter/each.
+    #[inline]
+    pub fn invoke_callable_one(
+        &mut self,
+        callee: &Value,
+        arg: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let saved_depth = self.return_depth;
+        let frames_before = self.frames.len();
+        self.push(callee.clone());
+        self.push(arg);
+        self.call_value(1, span)?;
+        if self.frames.len() == frames_before {
+            return Ok(self.pop());
+        }
+        self.return_depth = frames_before;
+        let result = self.run();
+        self.return_depth = saved_depth;
+        result
+    }
+
+    /// Optimized two-arg variant — hot path for array.reduce.
+    #[inline]
+    pub fn invoke_callable_two(
+        &mut self,
+        callee: &Value,
+        a: Value,
+        b: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let saved_depth = self.return_depth;
+        let frames_before = self.frames.len();
+        self.push(callee.clone());
+        self.push(a);
+        self.push(b);
+        self.call_value(2, span)?;
         if self.frames.len() == frames_before {
             return Ok(self.pop());
         }

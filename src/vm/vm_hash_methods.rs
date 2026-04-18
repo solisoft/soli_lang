@@ -122,16 +122,11 @@ impl Vm {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
-                let h = hash.borrow();
-                let mut new_hash = indexmap::IndexMap::with_capacity_and_hasher(
-                    h.len(),
-                    ahash::RandomState::default(),
-                );
-                for (k, v) in h.iter() {
-                    if !matches!(v, Value::Null) {
-                        new_hash.insert(k.clone(), v.clone());
-                    }
-                }
+                // Clone the whole map (preserves the hash table — no rehashing)
+                // then drop null entries via retain. Faster than re-inserting each
+                // non-null entry individually.
+                let mut new_hash = hash.borrow().clone();
+                new_hash.retain(|_, v| !matches!(v, Value::Null));
                 Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
             }
             "invert" => {

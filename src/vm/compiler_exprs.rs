@@ -80,9 +80,17 @@ impl Compiler {
                 self.emit(Op::GetProperty(idx), line);
             }
             ExprKind::Index { object, index } => {
-                self.compile_expr(object)?;
-                self.compile_expr(index)?;
-                self.emit(Op::GetIndex, line);
+                // Peephole: hash[const_str] → HashGetConst (avoids the generic
+                // GetIndex path and its key-allocation).
+                if let ExprKind::StringLiteral(key) = &index.kind {
+                    let key_idx = self.add_string_constant(key);
+                    self.compile_expr(object)?;
+                    self.emit(Op::HashGetConst(key_idx), line);
+                } else {
+                    self.compile_expr(object)?;
+                    self.compile_expr(index)?;
+                    self.emit(Op::GetIndex, line);
+                }
             }
             ExprKind::This => {
                 self.compile_this(line)?;

@@ -157,6 +157,20 @@ impl HashKey {
         }
     }
 
+    /// Like `from_value`, but consumes the Value to avoid cloning the String/Decimal.
+    /// Used when the source value is going to be discarded immediately.
+    pub fn from_value_owned(value: Value) -> Option<HashKey> {
+        match value {
+            Value::Int(n) => Some(HashKey::Int(n)),
+            Value::Decimal(d) => Some(HashKey::Decimal(d)),
+            Value::String(s) => Some(HashKey::String(s)),
+            Value::Bool(b) => Some(HashKey::Bool(b)),
+            Value::Null => Some(HashKey::Null),
+            Value::Symbol(s) => Some(HashKey::Symbol(s)),
+            _ => None,
+        }
+    }
+
     /// Convert back to a Value.
     pub fn to_value(&self) -> Value {
         match self {

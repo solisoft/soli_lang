@@ -1,6 +1,7 @@
 //! The bytecode virtual machine — stack-based execution engine.
 
 use ahash::AHashMap as HashMap;
+use ahash::RandomState as AHasher;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -1238,14 +1239,16 @@ impl Vm {
                 Op::Hash(n) => {
                     let n = n as usize;
                     let base = self.stack.len() - n * 2;
-                    let mut map = HashPairs::default();
-                    for i in 0..n {
-                        if let Some(hash_key) = HashKey::from_value(&self.stack[base + i * 2]) {
-                            let value = self.stack[base + i * 2 + 1].clone();
+                    let mut map = HashPairs::with_capacity_and_hasher(n, AHasher::default());
+                    let mut drained = self.stack.drain(base..);
+                    for _ in 0..n {
+                        let key = drained.next().unwrap();
+                        let value = drained.next().unwrap();
+                        if let Some(hash_key) = HashKey::from_value_owned(key) {
                             map.insert(hash_key, value);
                         }
                     }
-                    self.stack.truncate(base);
+                    drop(drained);
                     self.stack.push(Value::Hash(Rc::new(RefCell::new(map))));
                 }
                 Op::Range => {
@@ -2443,14 +2446,18 @@ impl Vm {
                     })
             }
             (Value::Hash(hash), key) => {
-                if let Some(hash_key) = HashKey::from_value(key) {
-                    let hash = hash.borrow();
-                    Ok(hash.get(&hash_key).cloned().unwrap_or(Value::Null))
-                } else {
-                    Err(RuntimeError::type_error(
+                use crate::interpreter::value::{hash_get_value, StrKey};
+                let hash = hash.borrow();
+                match key {
+                    Value::String(s) => Ok(hash.get(&StrKey(s)).cloned().unwrap_or(Value::Null)),
+                    Value::Int(_) | Value::Bool(_) | Value::Null | Value::Symbol(_)
+                    | Value::Decimal(_) => {
+                        Ok(hash_get_value(&hash, key).cloned().unwrap_or(Value::Null))
+                    }
+                    _ => Err(RuntimeError::type_error(
                         format!("Cannot use {} as hash key", key.type_name()),
                         span,
-                    ))
+                    )),
                 }
             }
             (Value::String(s), Value::Int(i)) => {
