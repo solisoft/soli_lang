@@ -1052,3 +1052,92 @@ fn decode_token(token) {
     };
 }
 ```
+
+---
+
+## N. Session Storage
+
+Soli provides session management with pluggable storage backends.
+
+### Default Session Functions
+
+```soli
+session_set("user_id", 123);     // Store value in session
+session_get("user_id");          // Retrieve value (returns null if not found)
+session_has("user_id");           // Check if key exists (returns Bool)
+session_delete("user_id");        // Remove a key from session
+session_destroy();                // Destroy entire session
+session_regenerate();             // Create new session ID (for security after login)
+session_id();                     // Get current session ID
+```
+
+### Session Configuration
+
+```soli
+// Get current session configuration
+session_config();  // Returns Hash with driver, ttl, etc.
+
+// Change session driver at runtime
+session_configure({"driver": "disk", "path": "./sessions"});
+session_configure({"driver": "solidb", "solidb_host": "localhost:8080", "solidb_database": "myapp"});
+session_configure({"driver": "solikv", "solikv_host": "localhost", "solikv_port": 6380});
+
+// Get current driver name
+session_driver();  // Returns "in_memory", "disk", "solidb", or "solikv"
+```
+
+### Storage Backends
+
+| Driver | Description | Configuration Options |
+|--------|-------------|----------------------|
+| `in_memory` | Default. Fast but lost on server restart | None |
+| `disk` | File-based JSON storage | `path`: directory for session files (default: `./sessions`) |
+| `solidb` | SolidB database backend | `solidb_host`: server address, `solidb_database`: database name, `solidb_collection`: collection name |
+| `solikv` | SoliKV/Redis backend | `solikv_host`: server address, `solikv_port`: port (default 6380), `solikv_token`: auth token |
+
+### Environment Variables
+
+Session configuration can also be set via environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SOLI_SESSION_DRIVER` | Storage backend | `in_memory` |
+| `SOLI_SESSION_PATH` | Path for disk storage | `./sessions` |
+| `SOLI_SOLIDB_HOST` | SolidB server address | `localhost:8080` |
+| `SOLI_SOLIDB_DATABASE` | SolidB database name | `solidb` |
+| `SOLI_SOLIKV_HOST` | SoliKV server address | `localhost` |
+| `SOLI_SOLIKV_PORT` | SoliKV port | `6380` |
+| `SOLI_SOLIKV_TOKEN` | SoliKV auth token | None |
+| `SOLI_SESSION_TTL` | Session timeout in seconds | `86400` (24 hours) |
+
+### Example Usage
+
+```soli
+// In a controller
+fn login(req) {
+    let params = req["json"];
+    let user = authenticate(params["email"], params["password"]);
+
+    if user {
+        session_regenerate();  // Security: new session ID after login
+        session_set("user_id", user["id"]);
+        session_set("role", user["role"]);
+        return redirect("/dashboard");
+    }
+
+    return {"status": 401, "body": "Invalid credentials"};
+}
+
+fn current_user(req) {
+    let user_id = session_get("user_id");
+    if user_id {
+        return User.find(user_id);
+    }
+    return null;
+}
+
+fn logout(req) {
+    session_destroy();
+    return redirect("/");
+}
+```

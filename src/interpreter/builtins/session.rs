@@ -1,12 +1,17 @@
 //! Session management for Solilang.
 //!
-//! Provides in-memory session storage with cookie-based session IDs.
+//! Provides session storage with pluggable backends (in-memory, disk, SolidB, SoliKV).
+//!
+//! Default backend is in-memory. Use session.configure() to switch.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+
+use crate::interpreter::value::HashPairs;
 
 use lazy_static::lazy_static;
 use serde_json::Value as JsonValue;
@@ -14,6 +19,225 @@ use uuid::Uuid;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SessionDriver {
+    #[default]
+    InMemory,
+    Disk,
+    Solidb,
+    Solikv,
+}
+
+impl std::fmt::Display for SessionDriver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionDriver::InMemory => write!(f, "in_memory"),
+            SessionDriver::Disk => write!(f, "disk"),
+            SessionDriver::Solidb => write!(f, "solidb"),
+            SessionDriver::Solikv => write!(f, "solikv"),
+        }
+    }
+}
+
+impl std::str::FromStr for SessionDriver {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "in_memory" | "inmemory" | "memory" => Ok(SessionDriver::InMemory),
+            "disk" | "file" => Ok(SessionDriver::Disk),
+            "solidb" | "soliddb" | "db" => Ok(SessionDriver::Solidb),
+            "solikv" | "kv" | "redis" => Ok(SessionDriver::Solikv),
+            _ => Err(format!("Unknown session driver: {}", s)),
+        }
+    }
+}
+
+pub trait SessionStore: Send + Sync {
+    fn get_or_create(&self, session_id: &str) -> String;
+    fn create_session(&self) -> String;
+    fn get(&self, session_id: &str, key: &str) -> Option<JsonValue>;
+    fn set(&self, session_id: &str, key: &str, value: JsonValue);
+    fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue>;
+    fn destroy(&self, session_id: &str);
+    fn regenerate(&self, old_id: &str) -> String;
+    fn cleanup(&self);
+    fn driver_name(&self) -> &'static str;
+}
+
+pub struct SessionStoreManager {
+    store: Arc<dyn SessionStore>,
+    max_age: Duration,
+}
+
+impl SessionStoreManager {
+    pub fn new(store: Arc<dyn SessionStore>) -> Self {
+        Self {
+            store,
+            max_age: Duration::from_secs(24 * 60 * 60),
+        }
+    }
+
+    pub fn with_max_age(mut self, max_age: Duration) -> Self {
+        self.max_age = max_age;
+        self
+    }
+
+    pub fn get_or_create(&self, session_id: &str) -> String {
+        self.store.get_or_create(session_id)
+    }
+
+    pub fn create_session(&self) -> String {
+        self.store.create_session()
+    }
+
+    pub fn get(&self, session_id: &str, key: &str) -> Option<JsonValue> {
+        self.store.get(session_id, key)
+    }
+
+    pub fn set(&self, session_id: &str, key: &str, value: JsonValue) {
+        self.store.set(session_id, key, value)
+    }
+
+    pub fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
+        self.store.delete(session_id, key)
+    }
+
+    pub fn destroy(&self, session_id: &str) {
+        self.store.destroy(session_id)
+    }
+
+    pub fn regenerate(&self, old_id: &str) -> String {
+        self.store.regenerate(old_id)
+    }
+
+    pub fn cleanup(&self) {
+        self.store.cleanup()
+    }
+
+    pub fn driver_name(&self) -> &'static str {
+        self.store.driver_name()
+    }
+}
+
+#[derive(Clone)]
+pub struct SessionConfig {
+    pub driver: SessionDriver,
+    pub path: Option<String>,
+    pub solidb_host: Option<String>,
+    pub solidb_database: Option<String>,
+    pub solidb_collection: Option<String>,
+    pub solikv_host: Option<String>,
+    pub solikv_port: Option<u16>,
+    pub solikv_token: Option<String>,
+    pub ttl: u64,
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        let driver = std::env::var("SOLI_SESSION_DRIVER")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(SessionDriver::InMemory);
+
+        let path = std::env::var("SOLI_SESSION_PATH").ok();
+        let solidb_host = std::env::var("SOLI_SOLIDB_HOST").ok();
+        let solidb_database = std::env::var("SOLI_SOLIDB_DATABASE").ok();
+        let solidb_collection = std::env::var("SOLI_SOLIDB_COLLECTION").ok();
+        let solikv_host = std::env::var("SOLI_SOLIKV_HOST").ok();
+        let solikv_port = std::env::var("SOLI_SOLIKV_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok());
+        let solikv_token = std::env::var("SOLI_SOLIKV_TOKEN")
+            .ok()
+            .filter(|t| !t.is_empty());
+        let ttl = std::env::var("SOLI_SESSION_TTL")
+            .ok()
+            .and_then(|t| t.parse().ok())
+            .unwrap_or(86400);
+
+        Self {
+            driver,
+            path,
+            solidb_host,
+            solidb_database,
+            solidb_collection,
+            solikv_host,
+            solikv_port,
+            solikv_token,
+            ttl,
+        }
+    }
+}
+
+impl SessionConfig {
+    pub fn create_store(&self) -> Result<Arc<dyn SessionStore>, String> {
+        match self.driver {
+            SessionDriver::InMemory => Ok(Arc::new(InMemorySessionStore::new())),
+            SessionDriver::Disk => {
+                let path = self
+                    .path
+                    .clone()
+                    .unwrap_or_else(|| "./sessions".to_string());
+                let store = crate::interpreter::builtins::session_disk::DiskSessionStore::new(
+                    std::path::PathBuf::from(path),
+                )
+                .map_err(|e| format!("Failed to create disk session store: {}", e))?;
+                Ok(Arc::new(store))
+            }
+            SessionDriver::Solidb => {
+                let host = self
+                    .solidb_host
+                    .clone()
+                    .unwrap_or_else(|| "localhost:8080".to_string());
+                let database = self
+                    .solidb_database
+                    .clone()
+                    .unwrap_or_else(|| "solidb".to_string());
+                let store = crate::interpreter::builtins::session_solidb::SolidbSessionStore::new(
+                    host, database,
+                );
+                Ok(Arc::new(store))
+            }
+            SessionDriver::Solikv => {
+                let host = self
+                    .solikv_host
+                    .clone()
+                    .unwrap_or_else(|| "localhost".to_string());
+                let port = self.solikv_port.unwrap_or(6380);
+                let store = crate::interpreter::builtins::session_solikv::SolikvSessionStore::new(
+                    host,
+                    port,
+                    self.solikv_token.clone(),
+                );
+                Ok(Arc::new(store))
+            }
+        }
+    }
+}
+
+lazy_static! {
+    static ref SESSION_CONFIG: RwLock<SessionConfig> = RwLock::new(SessionConfig::default());
+    static ref CURRENT_STORE: RwLock<Arc<dyn SessionStore>> =
+        RwLock::new(Arc::new(InMemorySessionStore::new()));
+}
+
+pub fn get_session_config() -> SessionConfig {
+    SESSION_CONFIG.read().unwrap().clone()
+}
+
+pub fn configure_session(config: SessionConfig) -> Result<(), String> {
+    let store = config.create_store()?;
+    let mut current = CURRENT_STORE.write().map_err(|e| e.to_string())?;
+    *current = store;
+    let mut cfg = SESSION_CONFIG.write().map_err(|e| e.to_string())?;
+    *cfg = config;
+    Ok(())
+}
+
+pub fn get_current_store() -> Arc<dyn SessionStore> {
+    CURRENT_STORE.read().unwrap().clone()
+}
 
 /// Session data with expiration.
 /// Stores data as JSON values for thread safety.
@@ -47,9 +271,7 @@ impl Session {
 /// Thread-safe in-memory session store.
 pub struct InMemorySessionStore {
     sessions: RwLock<HashMap<String, Session>>,
-    /// Session timeout duration (default: 24 hours)
     max_age: Duration,
-    /// Request counter for probabilistic cleanup
     request_counter: AtomicU64,
 }
 
@@ -57,21 +279,19 @@ impl InMemorySessionStore {
     fn new() -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
-            max_age: Duration::from_secs(24 * 60 * 60), // 24 hours
+            max_age: Duration::from_secs(24 * 60 * 60),
             request_counter: AtomicU64::new(0),
         }
     }
+}
 
-    /// Get or create a session by ID.
+impl SessionStore for InMemorySessionStore {
     fn get_or_create(&self, session_id: &str) -> String {
-        // Probabilistic cleanup: only run on 1 in 1000 requests to reduce lock contention
         let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
         if count.is_multiple_of(1000) {
             self.cleanup();
         }
 
-        // Fast path: read lock to check if session exists (skip expiration check —
-        // 24h max_age is long enough that probabilistic cleanup handles expired sessions)
         {
             let sessions = self.sessions.read().unwrap();
             if sessions.contains_key(session_id) {
@@ -79,21 +299,17 @@ impl InMemorySessionStore {
             }
         }
 
-        // Slow path: write lock to create session
         let mut sessions = self.sessions.write().unwrap();
 
-        // Double-check after acquiring write lock
         if sessions.contains_key(session_id) {
             return session_id.to_string();
         }
 
-        // Create new session
         let new_id = Uuid::new_v4().to_string();
         sessions.insert(new_id.clone(), Session::new());
         new_id
     }
 
-    /// Create a new session and return its ID.
     fn create_session(&self) -> String {
         let mut sessions = self.sessions.write().unwrap();
         let session_id = Uuid::new_v4().to_string();
@@ -101,7 +317,6 @@ impl InMemorySessionStore {
         session_id
     }
 
-    /// Get a value from a session.
     fn get(&self, session_id: &str, key: &str) -> Option<JsonValue> {
         let sessions = self.sessions.read().unwrap();
         sessions
@@ -109,7 +324,6 @@ impl InMemorySessionStore {
             .and_then(|s| s.data.get(key).cloned())
     }
 
-    /// Set a value in a session.
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(session) = sessions.get_mut(session_id) {
@@ -118,7 +332,6 @@ impl InMemorySessionStore {
         }
     }
 
-    /// Delete a key from a session.
     fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(session) = sessions.get_mut(session_id) {
@@ -128,13 +341,11 @@ impl InMemorySessionStore {
         None
     }
 
-    /// Destroy a session.
     fn destroy(&self, session_id: &str) {
         let mut sessions = self.sessions.write().unwrap();
         sessions.remove(session_id);
     }
 
-    /// Regenerate session ID (for security after login).
     fn regenerate(&self, old_id: &str) -> String {
         let mut sessions = self.sessions.write().unwrap();
         let new_id = Uuid::new_v4().to_string();
@@ -148,17 +359,19 @@ impl InMemorySessionStore {
         new_id
     }
 
-    /// Clean up expired sessions.
-    /// Called lazily on each get_or_create() to avoid background threads.
     fn cleanup(&self) {
         let mut sessions = self.sessions.write().unwrap();
         sessions.retain(|_, session| !session.is_expired(self.max_age));
     }
+
+    fn driver_name(&self) -> &'static str {
+        "in_memory"
+    }
 }
 
 lazy_static! {
-    /// Global session store.
-    static ref SESSION_STORE: InMemorySessionStore = InMemorySessionStore::new();
+    pub static ref SESSION_STORE: SessionStoreManager =
+        SessionStoreManager::new(get_current_store());
 }
 
 // Thread-local current session ID (set per-request from cookie).
@@ -381,6 +594,154 @@ pub fn register_session_builtins(env: &mut Environment) {
             Ok(Value::Bool(false))
         })),
     );
+
+    // session_driver() -> String
+    env.define(
+        "session_driver".to_string(),
+        Value::NativeFunction(NativeFunction::new("session_driver", Some(0), |_args| {
+            Ok(Value::String(SESSION_STORE.driver_name().to_string()))
+        })),
+    );
+
+    // session_configure(options) -> Bool
+    env.define(
+        "session_configure".to_string(),
+        Value::NativeFunction(NativeFunction::new("session_configure", Some(1), |args| {
+            let options = match &args[0] {
+                Value::Hash(h) => h.borrow().clone(),
+                other => {
+                    return Err(format!(
+                        "session_configure() expects hash options, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let mut config = get_session_config();
+
+            for (k, v) in options.iter() {
+                let key = match k {
+                    crate::interpreter::value::HashKey::String(s) => s.clone(),
+                    _ => continue,
+                };
+
+                match key.as_str() {
+                    "driver" => {
+                        if let Value::String(s) = v {
+                            config.driver = s.parse().map_err(|e: String| e)?;
+                        }
+                    }
+                    "path" => {
+                        if let Value::String(s) = v {
+                            config.path = Some(s.clone());
+                        }
+                    }
+                    "solidb_host" | "solidb_addr" => {
+                        if let Value::String(s) = v {
+                            config.solidb_host = Some(s.clone());
+                        }
+                    }
+                    "solidb_database" | "database" => {
+                        if let Value::String(s) = v {
+                            config.solidb_database = Some(s.clone());
+                        }
+                    }
+                    "solidb_collection" | "collection" => {
+                        if let Value::String(s) = v {
+                            config.solidb_collection = Some(s.clone());
+                        }
+                    }
+                    "solikv_host" => {
+                        if let Value::String(s) = v {
+                            config.solikv_host = Some(s.clone());
+                        }
+                    }
+                    "solikv_port" | "port" => {
+                        if let Value::Int(i) = v {
+                            config.solikv_port = Some(*i as u16);
+                        }
+                    }
+                    "solikv_token" | "token" => {
+                        if let Value::String(s) = v {
+                            config.solikv_token = Some(s.clone());
+                        }
+                    }
+                    "ttl" => {
+                        if let Value::Int(i) = v {
+                            config.ttl = *i as u64;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            configure_session(config)?;
+            Ok(Value::Bool(true))
+        })),
+    );
+
+    // session_config() -> Hash
+    env.define(
+        "session_config".to_string(),
+        Value::NativeFunction(NativeFunction::new("session_config", Some(0), |_args| {
+            let config = get_session_config();
+            let mut hash: HashPairs = HashPairs::default();
+
+            hash.insert(
+                crate::interpreter::value::HashKey::String("driver".to_string()),
+                Value::String(config.driver.to_string()),
+            );
+
+            if let Some(ref path) = config.path {
+                hash.insert(
+                    crate::interpreter::value::HashKey::String("path".to_string()),
+                    Value::String(path.clone()),
+                );
+            }
+            if let Some(ref host) = config.solidb_host {
+                hash.insert(
+                    crate::interpreter::value::HashKey::String("solidb_host".to_string()),
+                    Value::String(host.clone()),
+                );
+            }
+            if let Some(ref db) = config.solidb_database {
+                hash.insert(
+                    crate::interpreter::value::HashKey::String("solidb_database".to_string()),
+                    Value::String(db.clone()),
+                );
+            }
+            if let Some(ref col) = config.solidb_collection {
+                hash.insert(
+                    crate::interpreter::value::HashKey::String("solidb_collection".to_string()),
+                    Value::String(col.clone()),
+                );
+            }
+            if let Some(ref host) = config.solikv_host {
+                hash.insert(
+                    crate::interpreter::value::HashKey::String("solikv_host".to_string()),
+                    Value::String(host.clone()),
+                );
+            }
+            if let Some(port) = config.solikv_port {
+                hash.insert(
+                    crate::interpreter::value::HashKey::String("solikv_port".to_string()),
+                    Value::Int(port as i64),
+                );
+            }
+            if let Some(ref token) = config.solikv_token {
+                hash.insert(
+                    crate::interpreter::value::HashKey::String("solikv_token".to_string()),
+                    Value::String(token.clone()),
+                );
+            }
+            hash.insert(
+                crate::interpreter::value::HashKey::String("ttl".to_string()),
+                Value::Int(config.ttl as i64),
+            );
+
+            Ok(Value::Hash(Rc::new(RefCell::new(hash))))
+        })),
+    );
 }
 
 #[cfg(test)]
@@ -594,5 +955,91 @@ mod tests {
             Some("abc".to_string())
         );
         assert_eq!(extract_session_id_from_cookie(Some("foo=1; bar=2")), None);
+    }
+
+    #[test]
+    fn session_driver_returns_current_driver() {
+        let env = fresh_env();
+        let result = call_fn(&env, "session_driver", vec![]).unwrap();
+        match result {
+            Value::String(s) => assert_eq!(s, "in_memory"),
+            other => panic!("expected String driver name, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn session_config_returns_hash() {
+        let env = fresh_env();
+        let result = call_fn(&env, "session_config", vec![]).unwrap();
+        match result {
+            Value::Hash(_) => {}
+            other => panic!("expected Hash config, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn session_has_returns_true_for_existing_key() {
+        let env = fresh_env();
+        set_current_session_id(None);
+
+        call_fn(
+            &env,
+            "session_set",
+            vec![Value::String("key".into()), Value::Int(1)],
+        )
+        .unwrap();
+
+        let result = call_fn(&env, "session_has", vec![Value::String("key".into())]).unwrap();
+        match result {
+            Value::Bool(b) => assert!(b),
+            other => panic!("expected Bool, got {:?}", other),
+        }
+
+        let result = call_fn(
+            &env,
+            "session_has",
+            vec![Value::String("nonexistent".into())],
+        )
+        .unwrap();
+        match result {
+            Value::Bool(b) => assert!(!b),
+            other => panic!("expected Bool, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn session_delete_returns_previous_value() {
+        let env = fresh_env();
+        set_current_session_id(None);
+
+        call_fn(
+            &env,
+            "session_set",
+            vec![Value::String("to_delete".into()), Value::Int(42)],
+        )
+        .unwrap();
+
+        let result = call_fn(
+            &env,
+            "session_delete",
+            vec![Value::String("to_delete".into())],
+        )
+        .unwrap();
+
+        match result {
+            Value::Int(n) => assert_eq!(n, 42),
+            other => panic!("expected deleted Int value, got {:?}", other),
+        }
+
+        let result = call_fn(
+            &env,
+            "session_delete",
+            vec![Value::String("to_delete".into())],
+        )
+        .unwrap();
+        match result {
+            Value::Null => {}
+            other => panic!("expected Null for deleted key, got {:?}", other),
+        }
     }
 }

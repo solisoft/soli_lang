@@ -285,13 +285,65 @@ describe("Feature Name", fn() {
     before_each(fn() {
         // Setup
     });
-    
+
     test("does something", fn() {
         assert_eq(actual, expected);
         assert(condition);
         assert_null(value);
     });
 });
+```
+
+## Session Storage
+
+Soli provides session management with pluggable storage backends.
+
+### Session Functions
+```soli
+session_set("user_id", 123);     // Store value in session
+session_get("user_id");           // Retrieve value (returns null if not found)
+session_has("user_id");           // Check if key exists
+session_delete("user_id");        // Remove a key from session
+session_destroy();                // Destroy entire session
+session_regenerate();            // Create new session ID (security after login)
+session_id();                    // Get current session ID
+session_driver();                // Returns current driver: "in_memory", "disk", "solidb", "solikv"
+session_config();                // Returns configuration hash
+session_configure({"driver": "solidb", "solidb_host": "localhost:8080"});
+```
+
+### Storage Backends
+
+| Driver | Description | Configuration |
+|--------|-------------|---------------|
+| `in_memory` | Default. Fast but lost on restart | None |
+| `disk` | File-based JSON storage | `path`: directory (default: `./sessions`) |
+| `solidb` | SolidB HTTP database | `solidb_host`, `solidb_database`, `solidb_collection` |
+| `solikv` | SoliKV/Redis with TTL | `solikv_host`, `solikv_port`, `solikv_token` |
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SOLI_SESSION_DRIVER` | Storage backend | `in_memory` |
+| `SOLI_SESSION_PATH` | Path for disk storage | `./sessions` |
+| `SOLI_SOLIDB_HOST` | SolidB server | `localhost:8080` |
+| `SOLI_SOLIDB_DATABASE` | SolidB database | `solidb` |
+| `SOLI_SOLIKV_HOST` | SoliKV server | `localhost` |
+| `SOLI_SOLIKV_PORT` | SoliKV port | `6380` |
+| `SOLI_SESSION_TTL` | Session timeout (seconds) | `86400` |
+
+### Example
+```soli
+fn login(req) {
+    let user = authenticate(req["json"]["email"], req["json"]["password"]);
+    if user {
+        session_regenerate();  // New session ID after login
+        session_set("user_id", user["id"]);
+        return redirect("/dashboard");
+    }
+    return {"status": 401, "body": "Invalid credentials"};
+}
 ```
 
 ## Imports

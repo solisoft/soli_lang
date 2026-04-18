@@ -2,7 +2,7 @@
     <!-- Hero Section -->
     <div class="mb-12">
         <nav class="flex items-center gap-2 text-sm mb-4">
-            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-in Functions</a>
             <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
@@ -12,144 +12,173 @@
             <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">Session Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Server-side session management for user state.
+            Server-side session management with pluggable storage backends.
         </p>
     </div>
 
-    <!-- Basic Operations -->
-    <section id="section-basic-ops" class="scroll-mt-20 mb-12">
+    <!-- Storage Backends -->
+    <section id="section-storage" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
             <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
                 <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                 </svg>
             </span>
-            Basic Operations
+            Storage Backends
         </h2>
 
-        <section id="def-session-get" class="scroll-mt-20 mb-6">
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <p class="text-gray-400 mb-4">Soli supports multiple session storage backends. Configure via code, environment variables, or config files.</p>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Driver</th>
+                            <th class="pb-3 pr-4">Description</th>
+                            <th class="pb-3">Configuration</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">in_memory</code></td>
+                            <td class="py-3 pr-4">Default. Fast but lost on restart</td>
+                            <td class="py-3">None</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">disk</code></td>
+                            <td class="py-3 pr-4">File-based JSON storage</td>
+                            <td class="py-3"><code class="text-purple-400">path</code>: directory (default: <code class="text-purple-400">./sessions</code>)</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">solidb</code></td>
+                            <td class="py-3 pr-4">SolidB HTTP database</td>
+                            <td class="py-3"><code class="text-purple-400">solidb_host</code>, <code class="text-purple-400">solidb_database</code>, <code class="text-purple-400">solidb_collection</code></td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">solikv</code></td>
+                            <td class="py-3 pr-4">SoliKV/Redis with TTL</td>
+                            <td class="py-3"><code class="text-purple-400">solikv_host</code>, <code class="text-purple-400">solikv_port</code>, <code class="text-purple-400">solikv_token</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+</div>
+    </section>
+
+    <!-- Configuration -->
+    <section id="section-configuration" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Configuration</h2>
+
+        <section id="def-session-configure" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-session-get" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_get(key)</code>
+                <a href="#def-session-configure" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_configure(options)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get a value from the session.</p>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The session key
-                </div>
+                <p class="text-gray-400 mb-3">Configure session storage at runtime. Supports <code class="text-purple-400">driver</code>, <code class="text-purple-400">path</code>, <code class="text-purple-400">solidb_*</code>, and <code class="text-purple-400">solikv_*</code> options.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Examples</h4>
+                <pre data-filename="Disk Storage"><code class="language-soli text-sm">session_configure({"driver": "disk", "path": "./sessions"})</code></pre>
+                <pre data-filename="SolidB Storage"><code class="language-soli text-sm">session_configure({"driver": "solidb", "solidb_host": "localhost:8080", "solidb_database": "myapp"})</code></pre>
+                <pre data-filename="SoliKV Storage"><code class="language-soli text-sm">session_configure({"driver": "solikv", "solikv_host": "localhost", "solikv_port": 6380})</code></pre>
+            </div>
+        </section>
+
+        <section id="def-session-driver" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-session-driver" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_driver()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the current session storage driver name.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Any?</code> - The stored value or null if not found
+                    <code class="text-purple-400">String</code> - One of: <code class="text-amber-400">"in_memory"</code>, <code class="text-amber-400">"disk"</code>, <code class="text-amber-400">"solidb"</code>, <code class="text-amber-400">"solikv"</code>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let user_id = session_get("user_id")
-let cart = session_get("shopping_cart") ?? []</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">let current = session_driver()
+print("Using: " + current)</code></pre>
             </div>
         </section>
 
-        <section id="def-session-set" class="scroll-mt-20 mb-6">
+        <section id="def-session-config" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-session-set" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_set(key, value)</code>
+                <a href="#def-session-config" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">session_config()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Store a value in the session.</p>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
-                <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The session key</div>
-                    <div><code class="text-amber-400">value</code> : <code class="text-purple-400">Any</code> - The value to store (must be JSON-serializable)</div>
-                </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">session_set("user_id", 123)
-session_set("preferences", { "theme": "dark", "lang": "en" })</code></pre>
-            </div>
-        </section>
-
-        <section id="def-session-delete" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-session-delete" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_delete(key)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Remove a value from the session.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">session_delete("user_id")
-session_delete("temporary_data")</code></pre>
-            </div>
-        </section>
-
-        <section id="def-session-has" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-session-has" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_has(key)</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Check if a key exists in the session.</p>
+                <p class="text-gray-400 mb-3">Get the current session configuration as a Hash.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Bool</code> - true if the key exists
+                    <code class="text-purple-400">Hash</code> - Configuration with driver, path, host, port, ttl, etc.
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">if session_has("user_id") {
-    # User is logged in
-}</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">let config = session_config()
+print(config["driver"])
+print(config["ttl"])</code></pre>
             </div>
         </section>
     </section>
 
-    <!-- Session Management -->
-    <section id="section-management" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Session Management</h2>
+    <!-- Environment Variables -->
+    <section id="section-env-vars" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Environment Variables</h2>
 
-        <section id="def-session-destroy" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-session-destroy" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_destroy()</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Destroy the entire session. Removes all data and invalidates the session ID.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm"># Logout
-session_destroy()</code></pre>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4">Session configuration can also be set via environment variables:</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Variable</th>
+                            <th class="pb-3 pr-4">Description</th>
+                            <th class="pb-3">Default</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_DRIVER</code></td>
+                            <td class="py-3 pr-4">Storage backend</td>
+                            <td class="py-3"><code class="text-purple-400">in_memory</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_PATH</code></td>
+                            <td class="py-3 pr-4">Path for disk storage</td>
+                            <td class="py-3"><code class="text-purple-400">./sessions</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SOLIDB_HOST</code></td>
+                            <td class="py-3 pr-4">SolidB server address</td>
+                            <td class="py-3"><code class="text-purple-400">localhost:8080</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SOLIDB_DATABASE</code></td>
+                            <td class="py-3 pr-4">SolidB database name</td>
+                            <td class="py-3"><code class="text-purple-400">solidb</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SOLIKV_HOST</code></td>
+                            <td class="py-3 pr-4">SoliKV server address</td>
+                            <td class="py-3"><code class="text-purple-400">localhost</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SOLIKV_PORT</code></td>
+                            <td class="py-3 pr-4">SoliKV port</td>
+                            <td class="py-3"><code class="text-purple-400">6380</code></td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_TTL</code></td>
+                            <td class="py-3 pr-4">Session timeout (seconds)</td>
+                            <td class="py-3"><code class="text-purple-400">86400</code></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-        </section>
-
-        <section id="def-session-regenerate" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-session-regenerate" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_regenerate()</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Generate a new session ID while preserving data. <span class="text-yellow-400">Important:</span> Call this after login to prevent session fixation attacks.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm"># After successful login
-session_set("user_id", user["id"])
-session_regenerate  # Security: generate new session ID</code></pre>
-            </div>
-        </section>
-
-        <section id="def-session-id" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-session-id" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_id()</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Get the current session ID.</p>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - The session identifier
-                </div>
-            </div>
-        </section>
+        </div>
     </section>
 
     <!-- Common Patterns -->
