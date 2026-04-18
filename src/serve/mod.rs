@@ -94,7 +94,8 @@ fn set_tokio_handle(handle: tokio::runtime::Handle) {
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
-    create_session_cookie, ensure_session, extract_session_id_from_cookie, set_current_session_id,
+    create_session_cookie, ensure_session, extract_session_id_from_cookie, get_current_session_id,
+    session_cookie_if_changed, set_current_session_id,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::value::{HashKey, HashPairs};
@@ -2641,6 +2642,16 @@ fn call_handler(
     dev_mode: bool,
     request_data: &RequestData,
 ) -> ResponseData {
+    // Expose req["all"] as global `params` so handlers/views can reference it directly.
+    let params_value = get_hash_field(&request_hash, "all").unwrap_or(Value::Null);
+    interpreter
+        .global_env()
+        .borrow_mut()
+        .define_or_update("params", params_value.clone());
+    if let Some(vm_ref) = vm.as_deref_mut() {
+        vm_ref.globals.insert("params".to_string(), params_value);
+    }
+
     // Check if this is an OOP controller action (contains #)
     if handler_name.contains('#') {
         let oop_result = call_oop_controller_action(
@@ -3434,18 +3445,21 @@ fn handle_request(
         None
     };
 
-    // Set up session only if request has cookies (skip entirely for API/benchmark requests)
+    // Resolve the session ID from the Cookie header (if any). When no cookie is
+    // sent, we leave the thread-local unset — session_set / session_regenerate
+    // will create one lazily on first use, and finalize_response emits
+    // Set-Cookie whenever the post-handler session ID differs from the cookie's.
     let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
-    let (session_id, is_new_session) = if cookie_header.is_some() {
-        let existing_session_id = extract_session_id_from_cookie(cookie_header);
-        let session_id = ensure_session(existing_session_id.as_deref());
-        let is_new = existing_session_id.as_deref() != Some(&session_id);
-        set_current_session_id(Some(session_id.clone()));
-        (Some(session_id), is_new)
+    let cookie_session_id = extract_session_id_from_cookie(cookie_header);
+    let session_id = if let Some(ref id) = cookie_session_id {
+        let resolved = ensure_session(Some(id.as_str()));
+        set_current_session_id(Some(resolved.clone()));
+        Some(resolved)
     } else {
         set_current_session_id(None);
-        (None, false)
+        None
     };
+    let is_new_session = session_id.as_ref() != cookie_session_id.as_ref();
 
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
@@ -3575,14 +3589,12 @@ fn handle_request(
 
     // Helper to finalize response with session cookie and timing
     let finalize_response = |mut resp: ResponseData| -> ResponseData {
-        // Add session cookie if it's a new session
-        if is_new_session {
-            if let Some(ref sid) = session_id {
-                resp.headers.push((
-                    "Set-Cookie".to_string(),
-                    create_session_cookie(sid, is_https),
-                ));
-            }
+        if let Some(cookie_value) = session_cookie_if_changed(
+            get_current_session_id().as_deref(),
+            cookie_session_id.as_deref(),
+            is_https,
+        ) {
+            resp.headers.push(("Set-Cookie".to_string(), cookie_value));
         }
         // Add security headers if enabled
         {

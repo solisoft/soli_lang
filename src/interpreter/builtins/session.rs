@@ -211,6 +211,22 @@ pub fn create_session_cookie(session_id: &str, secure: bool) -> String {
     )
 }
 
+/// Return a Set-Cookie header value iff the active session ID differs from
+/// the one the client sent — i.e. we created a session lazily, the cookie
+/// was expired/invalid and `ensure_session` minted a replacement, or the
+/// controller called `session_regenerate`. Returns None when no cookie
+/// refresh is needed.
+pub fn session_cookie_if_changed(
+    current: Option<&str>,
+    cookie: Option<&str>,
+    secure: bool,
+) -> Option<String> {
+    match current {
+        Some(sid) if Some(sid) != cookie => Some(create_session_cookie(sid, secure)),
+        _ => None,
+    }
+}
+
 /// Convert a Soli Value to JSON for storage.
 fn value_to_json(value: &Value) -> Result<JsonValue, String> {
     crate::interpreter::value::value_to_json(value)
@@ -265,9 +281,17 @@ pub fn register_session_builtins(env: &mut Environment) {
             let value = &args[1];
             let json_value = value_to_json(value)?;
 
-            if let Some(id) = get_current_session_id() {
-                SESSION_STORE.set(&id, &key, json_value);
-            }
+            // Lazily create a session on first write so first-time visitors
+            // (no Cookie header) still get a persisted session + Set-Cookie.
+            let id = match get_current_session_id() {
+                Some(id) => id,
+                None => {
+                    let id = SESSION_STORE.create_session();
+                    set_current_session_id(Some(id.clone()));
+                    id
+                }
+            };
+            SESSION_STORE.set(&id, &key, json_value);
 
             Ok(Value::Null)
         })),
@@ -326,12 +350,12 @@ pub fn register_session_builtins(env: &mut Environment) {
             "session_regenerate",
             Some(0),
             |_args| {
-                if let Some(old_id) = get_current_session_id() {
-                    let new_id = SESSION_STORE.regenerate(&old_id);
-                    set_current_session_id(Some(new_id.clone()));
-                    return Ok(Value::String(new_id));
-                }
-                Ok(Value::Null)
+                let new_id = match get_current_session_id() {
+                    Some(old_id) => SESSION_STORE.regenerate(&old_id),
+                    None => SESSION_STORE.create_session(),
+                };
+                set_current_session_id(Some(new_id.clone()));
+                Ok(Value::String(new_id))
             },
         )),
     );
@@ -357,4 +381,218 @@ pub fn register_session_builtins(env: &mut Environment) {
             Ok(Value::Bool(false))
         })),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    //! End-to-end integration tests for the session layer.
+    //!
+    //! These exercise the actual native-function closures that the interpreter
+    //! invokes, driving the same SESSION_STORE + CURRENT_SESSION_ID thread-local
+    //! that a real HTTP request uses. They simulate the request lifecycle
+    //! (resolve cookie → run handler → diff IDs for Set-Cookie) without
+    //! standing up a full interpreter + router.
+    //!
+    //! Regression coverage:
+    //! - session_set on a request with no Cookie header must persist and
+    //!   cause a Set-Cookie to be emitted (previously a silent no-op).
+    //! - session_regenerate must emit a Set-Cookie carrying the new ID,
+    //!   otherwise the client's cookie points at a deleted session after
+    //!   login (previously the new ID was dropped on the floor).
+    use super::*;
+    use serde_json::json;
+
+    /// Look up a registered native function by name and invoke it.
+    fn call_fn(env: &Environment, name: &str, args: Vec<Value>) -> Result<Value, String> {
+        match env.get(name) {
+            Some(Value::NativeFunction(f)) => (f.func)(args),
+            other => panic!("expected NativeFunction for {name}, got {other:?}"),
+        }
+    }
+
+    fn fresh_env() -> Environment {
+        // Reset the thread-local so tests sharing a thread don't leak state.
+        set_current_session_id(None);
+        let mut env = Environment::new();
+        register_session_builtins(&mut env);
+        env
+    }
+
+    /// First-time visitor: no Cookie header, handler writes to the session.
+    /// session_set must create a session on demand, persist the value, and
+    /// leave the thread-local pointing at the new ID so finalize_response
+    /// can emit Set-Cookie.
+    #[test]
+    fn session_set_lazily_creates_session_when_no_cookie() {
+        let env = fresh_env();
+        let cookie_session_id: Option<String> = None;
+        set_current_session_id(cookie_session_id.clone());
+
+        call_fn(
+            &env,
+            "session_set",
+            vec![Value::String("user_id".into()), Value::Int(42)],
+        )
+        .unwrap();
+
+        let current = get_current_session_id().expect("session should be created lazily");
+        assert_eq!(
+            SESSION_STORE.get(&current, "user_id"),
+            Some(json!(42)),
+            "value must persist under the newly created session"
+        );
+
+        // Simulate finalize_response: Set-Cookie must carry the new ID.
+        let cookie = session_cookie_if_changed(Some(&current), cookie_session_id.as_deref(), false)
+            .expect("expected Set-Cookie for lazily created session");
+        assert!(cookie.contains(&format!("session_id={current}")));
+    }
+
+    /// session_regenerate on login rotates the ID, migrates data, and
+    /// destroys the old ID. The response must carry a Set-Cookie for
+    /// the new ID, or the browser keeps using the deleted cookie.
+    #[test]
+    fn session_regenerate_migrates_data_and_emits_new_cookie() {
+        let env = fresh_env();
+
+        // Prime a session as if an earlier request had created one.
+        let old_id = SESSION_STORE.create_session();
+        SESSION_STORE.set(&old_id, "flash", json!("hello"));
+        set_current_session_id(Some(old_id.clone()));
+        let cookie_session_id = Some(old_id.clone());
+
+        // Login-style flow: regenerate, then write user_id.
+        let new_id = match call_fn(&env, "session_regenerate", vec![]).unwrap() {
+            Value::String(s) => s,
+            other => panic!("expected String session id, got {other:?}"),
+        };
+        assert_ne!(new_id, old_id, "regenerate must mint a new ID");
+
+        call_fn(
+            &env,
+            "session_set",
+            vec![Value::String("user_id".into()), Value::Int(42)],
+        )
+        .unwrap();
+
+        assert!(
+            SESSION_STORE.get(&old_id, "flash").is_none(),
+            "old session ID must be destroyed after regenerate"
+        );
+        assert_eq!(
+            SESSION_STORE.get(&new_id, "flash"),
+            Some(json!("hello")),
+            "data must move from old ID to new ID"
+        );
+        assert_eq!(SESSION_STORE.get(&new_id, "user_id"), Some(json!(42)));
+        assert_eq!(get_current_session_id().as_deref(), Some(new_id.as_str()));
+
+        let cookie = session_cookie_if_changed(
+            get_current_session_id().as_deref(),
+            cookie_session_id.as_deref(),
+            true,
+        )
+        .expect("expected Set-Cookie carrying the rotated ID");
+        assert!(cookie.contains(&format!("session_id={new_id}")));
+        assert!(cookie.contains("Secure"), "secure flag must propagate");
+    }
+
+    /// session_regenerate with no prior session (e.g. first-request login)
+    /// should still produce a usable, cookie-emitted session.
+    #[test]
+    fn session_regenerate_creates_session_when_none_active() {
+        let env = fresh_env();
+        set_current_session_id(None);
+
+        let new_id = match call_fn(&env, "session_regenerate", vec![]).unwrap() {
+            Value::String(s) => s,
+            other => panic!("expected String, got {other:?}"),
+        };
+        assert_eq!(get_current_session_id().as_deref(), Some(new_id.as_str()));
+        assert!(session_cookie_if_changed(Some(&new_id), None, false).is_some());
+    }
+
+    /// Across two simulated requests, a session written on request #1 must
+    /// be readable on request #2 when the client echoes the cookie.
+    #[test]
+    fn session_persists_across_requests_via_cookie() {
+        let env = fresh_env();
+
+        // --- Request 1: no cookie, handler writes user_id.
+        set_current_session_id(None);
+        call_fn(
+            &env,
+            "session_set",
+            vec![Value::String("user_id".into()), Value::Int(42)],
+        )
+        .unwrap();
+        let issued_id = get_current_session_id().expect("request 1 must create a session");
+        set_current_session_id(None); // end of request 1
+
+        // --- Request 2: client sends the cookie back.
+        let cookie_session_id = Some(issued_id.clone());
+        let resolved = ensure_session(cookie_session_id.as_deref());
+        assert_eq!(
+            resolved, issued_id,
+            "ensure_session must reuse an existing cookie ID"
+        );
+        set_current_session_id(Some(resolved.clone()));
+
+        let got = call_fn(&env, "session_get", vec![Value::String("user_id".into())]).unwrap();
+        match got {
+            Value::Int(n) => assert_eq!(n, 42),
+            other => panic!("expected stored user_id, got {other:?}"),
+        }
+
+        // No Set-Cookie on request 2 since the ID didn't change.
+        assert!(session_cookie_if_changed(
+            get_current_session_id().as_deref(),
+            cookie_session_id.as_deref(),
+            false,
+        )
+        .is_none());
+    }
+
+    /// ensure_session mints a replacement when the cookie's ID is unknown
+    /// (e.g. after a server restart). finalize_response must notice and
+    /// refresh the client's cookie.
+    #[test]
+    fn unknown_cookie_id_triggers_replacement_and_set_cookie() {
+        let _env = fresh_env();
+        let stale = "00000000-0000-0000-0000-000000000000".to_string();
+        let cookie_session_id = Some(stale.clone());
+
+        let resolved = ensure_session(cookie_session_id.as_deref());
+        assert_ne!(resolved, stale, "unknown cookie ID must be replaced");
+        set_current_session_id(Some(resolved.clone()));
+
+        let cookie =
+            session_cookie_if_changed(Some(&resolved), cookie_session_id.as_deref(), false)
+                .expect("Set-Cookie must be emitted when the cookie ID was replaced");
+        assert!(cookie.contains(&format!("session_id={resolved}")));
+    }
+
+    #[test]
+    fn session_cookie_if_changed_respects_matches_and_absence() {
+        assert!(session_cookie_if_changed(None, None, false).is_none());
+        assert!(session_cookie_if_changed(None, Some("a"), false).is_none());
+        assert!(session_cookie_if_changed(Some("a"), Some("a"), false).is_none());
+        assert!(session_cookie_if_changed(Some("a"), Some("b"), false).is_some());
+        assert!(session_cookie_if_changed(Some("a"), None, false).is_some());
+    }
+
+    #[test]
+    fn extract_session_id_from_cookie_parses_common_shapes() {
+        assert_eq!(extract_session_id_from_cookie(None), None);
+        assert_eq!(extract_session_id_from_cookie(Some("")), None);
+        assert_eq!(
+            extract_session_id_from_cookie(Some("session_id=abc")),
+            Some("abc".to_string())
+        );
+        assert_eq!(
+            extract_session_id_from_cookie(Some("foo=1; session_id=abc; bar=2")),
+            Some("abc".to_string())
+        );
+        assert_eq!(extract_session_id_from_cookie(Some("foo=1; bar=2")), None);
+    }
 }
