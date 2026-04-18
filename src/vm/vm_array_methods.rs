@@ -29,67 +29,91 @@ impl Vm {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
-                let cb = &args[0];
+                let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let mut result = Vec::with_capacity(len);
-                for i in 0..len {
-                    let item = match arr.borrow().get(i) {
-                        Some(v) => v.clone(),
-                        None => break,
-                    };
-                    let v = self.invoke_callable_one(cb, item, span)?;
-                    result.push(v);
-                }
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let item = match arr.borrow().get(i) {
+                            Some(v) => v.clone(),
+                            None => break,
+                        };
+                        let v = self.invoke_in_batch_one(&batch, &cb, item, span)?;
+                        result.push(v);
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "filter" | "select" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
-                let cb = &args[0];
+                let cb = args[0].clone();
                 let len = arr.borrow().len();
                 let mut result = Vec::new();
-                for i in 0..len {
-                    let item = match arr.borrow().get(i) {
-                        Some(v) => v.clone(),
-                        None => break,
-                    };
-                    let keep = self.invoke_callable_one(cb, item.clone(), span)?;
-                    if keep.is_truthy() {
-                        result.push(item);
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let item = match arr.borrow().get(i) {
+                            Some(v) => v.clone(),
+                            None => break,
+                        };
+                        let keep = self.invoke_in_batch_one(&batch, &cb, item.clone(), span)?;
+                        if keep.is_truthy() {
+                            result.push(item);
+                        }
                     }
-                }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
             "reduce" | "fold" => {
                 if args.len() != 2 {
                     return Err(RuntimeError::wrong_arity(2, args.len(), span));
                 }
-                let cb = &args[0];
+                let cb = args[0].clone();
                 let mut acc = args[1].clone();
                 let len = arr.borrow().len();
-                for i in 0..len {
-                    let item = match arr.borrow().get(i) {
-                        Some(v) => v.clone(),
-                        None => break,
-                    };
-                    acc = self.invoke_callable_two(cb, acc, item, span)?;
-                }
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let item = match arr.borrow().get(i) {
+                            Some(v) => v.clone(),
+                            None => break,
+                        };
+                        acc = self.invoke_in_batch_two(&batch, &cb, acc.clone(), item, span)?;
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
                 Ok(acc)
             }
             "each" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
-                let cb = &args[0];
+                let cb = args[0].clone();
                 let len = arr.borrow().len();
-                for i in 0..len {
-                    let item = match arr.borrow().get(i) {
-                        Some(v) => v.clone(),
-                        None => break,
-                    };
-                    self.invoke_callable_one(cb, item, span)?;
-                }
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let item = match arr.borrow().get(i) {
+                            Some(v) => v.clone(),
+                            None => break,
+                        };
+                        self.invoke_in_batch_one(&batch, &cb, item, span)?;
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
                 Ok(Value::Array(arr.clone()))
             }
             // --- Mutating methods ---

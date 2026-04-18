@@ -420,4 +420,69 @@ impl Vm {
         self.return_depth = saved_depth;
         result
     }
+
+    /// Pre-arrange `return_depth` for a batch of closure invocations.
+    /// Returns a guard struct that restores the original depth on drop.
+    /// Use the `_unguarded` invoke variants below within the scope.
+    #[inline]
+    pub fn enter_callable_batch(&mut self) -> CallableBatch {
+        let saved_depth = self.return_depth;
+        let frames_before = self.frames.len();
+        self.return_depth = frames_before;
+        CallableBatch {
+            saved_depth,
+            frames_before,
+        }
+    }
+
+    #[inline]
+    pub fn exit_callable_batch(&mut self, batch: CallableBatch) {
+        self.return_depth = batch.saved_depth;
+    }
+
+    /// Single-arg invoke that assumes `return_depth` is already set up by
+    /// `enter_callable_batch`. Saves the per-iteration save/restore writes.
+    #[inline]
+    pub fn invoke_in_batch_one(
+        &mut self,
+        batch: &CallableBatch,
+        callee: &Value,
+        arg: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.push(callee.clone());
+        self.push(arg);
+        self.call_value(1, span)?;
+        if self.frames.len() == batch.frames_before {
+            return Ok(self.pop());
+        }
+        self.run()
+    }
+
+    #[inline]
+    pub fn invoke_in_batch_two(
+        &mut self,
+        batch: &CallableBatch,
+        callee: &Value,
+        a: Value,
+        b: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.push(callee.clone());
+        self.push(a);
+        self.push(b);
+        self.call_value(2, span)?;
+        if self.frames.len() == batch.frames_before {
+            return Ok(self.pop());
+        }
+        self.run()
+    }
+}
+
+/// Snapshot of VM state for a batch of closure invocations made by a single
+/// native method (e.g. array.map's loop). Captured by `enter_callable_batch`
+/// and consumed by `exit_callable_batch`.
+pub struct CallableBatch {
+    saved_depth: usize,
+    frames_before: usize,
 }
