@@ -2643,7 +2643,9 @@ fn call_handler(
     request_data: &RequestData,
 ) -> ResponseData {
     // Expose req["all"] as global `params` so handlers/views can reference it directly.
-    let params_value = get_hash_field(&request_hash, "all").unwrap_or(Value::Null);
+    // Default to an empty hash (not Null) so callers can safely index into it.
+    let params_value = get_hash_field(&request_hash, "all")
+        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
     interpreter
         .global_env()
         .borrow_mut()
