@@ -1152,15 +1152,28 @@ impl Model {
 
                 match exec_query(&collection, sdbql) {
                     Ok(results) => {
-                        // COUNT query returns [N] - extract the integer
-                        if let Some(count) = results.first() {
-                            Ok(json_to_value(count))
-                        } else {
-                            Ok(Value::Int(0))
+                        // COUNT query returns [N] — extract the integer. Some
+                        // drivers wrap it as [{"cnt": N}] instead; handle both.
+                        match results.first() {
+                            Some(serde_json::Value::Number(n)) => {
+                                Ok(n.as_i64().map(Value::Int).unwrap_or(Value::Int(0)))
+                            }
+                            Some(serde_json::Value::Object(map)) => map
+                                .get("cnt")
+                                .or_else(|| map.get("count"))
+                                .and_then(|v| v.as_i64())
+                                .map(Value::Int)
+                                .map(Ok)
+                                .unwrap_or(Ok(Value::Int(0))),
+                            Some(other) => Ok(json_to_value(other)),
+                            None => Ok(Value::Int(0)),
                         }
                     }
-                    // Collection doesn't exist yet → count is 0
-                    Err(_) => Ok(Value::Int(0)),
+                    // `exec_with_auto_collection` auto-creates a missing
+                    // collection and retries, so any error reaching us here
+                    // is a real failure — surface it instead of silently
+                    // returning 0 (which previously masked broken counts).
+                    Err(e) => Err(format!("Model.count() failed: {}", e)),
                 }
             })),
         );
