@@ -330,11 +330,12 @@ fn get_class_rc_from_args(args: &[Value]) -> Result<Rc<Class>, String> {
     }
 }
 
-/// Parse the result of a `COLLECT WITH COUNT` query into a `Value::Int`.
+/// Parse the result of a count query into a `Value::Int`.
 ///
-/// SolidB's primary return shape is a scalar: `[N]`. Some drivers /
-/// dialects emit an object wrapper instead: `[{"cnt": N}]` or
-/// `[{"count": N}]`. Both are accepted here. Anything unrecognised
+/// SolidB's primary return shape is a scalar: `[N]` (emitted by
+/// `RETURN COLLECTION_COUNT(...)` and `RETURN LENGTH(...)`). Some
+/// drivers / dialects emit an object wrapper instead: `[{"cnt": N}]`
+/// or `[{"count": N}]`. Both are accepted here. Anything unrecognised
 /// falls through to `json_to_value` so the caller can at least see the
 /// raw payload rather than a silent zero.
 pub fn parse_count_result(results: &[serde_json::Value]) -> Value {
@@ -1216,10 +1217,7 @@ impl Model {
             Rc::new(NativeFunction::new("Model.count", Some(1), |args| {
                 let collection = get_collection_from_class(&args)?;
 
-                let sdbql = format!(
-                    "FOR doc IN {} COLLECT WITH COUNT INTO cnt RETURN cnt",
-                    collection
-                );
+                let sdbql = format!("RETURN COLLECTION_COUNT(\"{}\")", collection);
 
                 match exec_query(&collection, sdbql) {
                     Ok(results) => Ok(parse_count_result(&results)),

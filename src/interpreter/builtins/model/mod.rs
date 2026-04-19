@@ -9,7 +9,7 @@
 //! The Model system generates SDBQL (SoliDB Query Language) queries:
 //! - `User.all()` → `FOR doc IN users RETURN doc`
 //! - `User.where("doc.age >= @age", { "age": 18 })` → `FOR doc IN users FILTER doc.age >= @age RETURN doc`
-//! - `User.count()` → `FOR doc IN users COLLECT WITH COUNT INTO count RETURN count`
+//! - `User.count()` → `RETURN COLLECTION_COUNT("users")`
 //!
 //! # CRUD Operations
 //!

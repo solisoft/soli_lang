@@ -171,7 +171,7 @@ let count = User.where("role == @role", { "role": "admin" }).count</code></pre>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">User.count</code></td>
-                    <td class="py-3 px-4"><code class="text-green-300">FOR doc IN users COLLECT WITH COUNT INTO count RETURN count</code></td>
+                    <td class="py-3 px-4"><code class="text-green-300">RETURN COLLECTION_COUNT("users")</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">User.includes("posts")</code></td>

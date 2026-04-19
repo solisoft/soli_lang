@@ -729,7 +729,11 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
         query.push_str(&format!(" FILTER {}", aql_filter));
     }
 
-    query.push_str(" COLLECT WITH COUNT INTO cnt RETURN cnt");
+    let query = if qb.joins.is_empty() && qb.filter.is_none() {
+        format!("RETURN COLLECTION_COUNT(\"{}\")", collection)
+    } else {
+        format!("RETURN LENGTH({} RETURN 1)", query)
+    };
 
     let result = if bind_vars_str.is_empty() {
         exec_auto_collection(query, &collection)

@@ -642,7 +642,7 @@ Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:
 | `User.where("age >= @age", {"age": 18})` | `FOR doc IN users FILTER doc.age >= @age RETURN doc` |
 | `.order("name", "asc")` | `... SORT doc.name ASC RETURN doc` |
 | `.limit(10).offset(20)` | `... LIMIT 20, 10 RETURN doc` |
-| `User.count()` | `FOR doc IN users COLLECT WITH COUNT INTO count RETURN count` |
+| `User.count()` | `RETURN COLLECTION_COUNT("users")` |
 | `User.includes("posts")` | `FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})` |
 | `User.includes("posts", "published = @p", {"p": true})` | `... FILTER rel.user_id == doc._key AND rel.published == @p RETURN rel ...` |
 | `User.includes({"posts": ["title"]})` | `... RETURN {title: rel.title} ...` |
