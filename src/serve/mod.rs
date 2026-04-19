@@ -3029,6 +3029,62 @@ fn call_oop_controller_action(
     Some(response)
 }
 
+/// Extract `(name, source_path, span)` metadata for a middleware handler.
+///
+/// If the handler is a `Value::Function`, its declared name/source/span are
+/// used; otherwise we fall back to `preferred_name` (the registered name for
+/// global middleware) or `"middleware"`.
+fn middleware_source_info(
+    handler: &Value,
+    preferred_name: Option<&str>,
+) -> (String, Option<String>, Span) {
+    if let Value::Function(ref func) = handler {
+        let name = if !func.name.is_empty() {
+            func.name.clone()
+        } else {
+            preferred_name.unwrap_or("middleware").to_string()
+        };
+        let source = func.source_path.clone();
+        let span = func.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
+        (name, source, span)
+    } else {
+        (
+            preferred_name.unwrap_or("middleware").to_string(),
+            None,
+            Span::new(0, 0, 1, 1),
+        )
+    }
+}
+
+/// Synthesize a single-frame stack trace for a middleware that failed before
+/// (or while returning) a RuntimeError could be captured. Lets the dev error
+/// page pick up the source file via its regex-based frame parser.
+fn middleware_fallback_stack(name: &str, source_path: Option<&str>) -> Vec<String> {
+    match source_path {
+        Some(path) => vec![format!("{} at {}:1", name, path)],
+        None => vec![format!("{} at unknown:1", name)],
+    }
+}
+
+/// Invoke a middleware handler with an interpreter frame set up so errors
+/// carry the middleware's source path in their captured stack trace.
+fn invoke_middleware_with_frame(
+    interpreter: &mut Interpreter,
+    name: &str,
+    source_path: Option<&str>,
+    span: Span,
+    handler: Value,
+    request_hash: Value,
+) -> Result<Value, RuntimeError> {
+    interpreter.push_frame(name, span, source_path.map(|s| s.to_string()));
+    if let Some(path) = source_path {
+        interpreter.set_source_path(PathBuf::from(path));
+    }
+    let result = interpreter.call_value(handler, vec![request_hash], span);
+    interpreter.pop_frame();
+    result
+}
+
 /// Call a method on a class instance.
 fn call_class_method(
     interpreter: &mut Interpreter,
@@ -3659,7 +3715,16 @@ fn handle_request(
 
     // Execute scoped (route-specific) middleware
     for mw in &scoped_middleware {
-        match interpreter.call_value(mw.clone(), vec![request_hash.clone()], Span::default()) {
+        let (mw_name, mw_source, mw_span) = middleware_source_info(mw, None);
+        let call_result = invoke_middleware_with_frame(
+            interpreter,
+            &mw_name,
+            mw_source.as_deref(),
+            mw_span,
+            mw.clone(),
+            request_hash.clone(),
+        );
+        match call_result {
             Ok(result) => match extract_middleware_result(&result) {
                 MiddlewareResult::Continue(modified_request) => {
                     request_hash = modified_request;
@@ -3674,9 +3739,9 @@ fn handle_request(
                 }
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
-                        let stack_trace = interpreter.get_stack_trace();
+                        let stack_trace = middleware_fallback_stack(&mw_name, mw_source.as_deref());
                         let error_html = error_pages::render_error_page(
-                            &err.to_string(),
+                            &err,
                             interpreter,
                             data,
                             &stack_trace,
@@ -3692,13 +3757,12 @@ fn handle_request(
                         });
                     }
                     let request_id = Uuid::new_v4().to_string();
-                    let error_msg = err.to_string();
                     eprintln!(
                         "[ERROR] request_id={} {} {} - {}",
-                        request_id, method, path, error_msg
+                        request_id, method, path, err
                     );
                     let error_html =
-                        error_pages::render_production_error_page(500, &error_msg, &request_id);
+                        error_pages::render_production_error_page(500, &err, &request_id);
                     return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![(
@@ -3711,11 +3775,14 @@ fn handle_request(
             },
             Err(e) => {
                 if dev_mode {
-                    // Use captured stack trace from error if available
-                    let stack_trace: Vec<String> = e
-                        .breakpoint_stack_trace()
-                        .map(|st| st.to_vec())
-                        .unwrap_or_else(|| interpreter.get_stack_trace());
+                    // Prefer the captured stack trace (populated by the inner
+                    // call_function) over interpreter.get_stack_trace(), then
+                    // fall back to a synthetic middleware frame so the error
+                    // page can still show the source file.
+                    let captured = e.breakpoint_stack_trace().map(|st| st.to_vec());
+                    let stack_trace = captured.unwrap_or_else(|| {
+                        middleware_fallback_stack(&mw_name, mw_source.as_deref())
+                    });
                     let breakpoint_env = e.breakpoint_env_json();
                     let error_html = error_pages::render_error_page(
                         &e.to_string(),
@@ -3763,11 +3830,17 @@ fn handle_request(
             continue;
         }
 
-        match interpreter.call_value(
+        let (mw_name, mw_source, mw_span) =
+            middleware_source_info(&mw.handler, Some(mw.name.as_str()));
+        let call_result = invoke_middleware_with_frame(
+            interpreter,
+            &mw_name,
+            mw_source.as_deref(),
+            mw_span,
             mw.handler.clone(),
-            vec![request_hash.clone()],
-            Span::default(),
-        ) {
+            request_hash.clone(),
+        );
+        match call_result {
             Ok(result) => match extract_middleware_result(&result) {
                 MiddlewareResult::Continue(modified_request) => {
                     request_hash = modified_request;
@@ -3782,9 +3855,9 @@ fn handle_request(
                 }
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
-                        let stack_trace = interpreter.get_stack_trace();
+                        let stack_trace = middleware_fallback_stack(&mw_name, mw_source.as_deref());
                         let error_html = error_pages::render_error_page(
-                            &err.to_string(),
+                            &err,
                             interpreter,
                             data,
                             &stack_trace,
@@ -3800,13 +3873,12 @@ fn handle_request(
                         });
                     }
                     let request_id = Uuid::new_v4().to_string();
-                    let error_msg = err.to_string();
                     eprintln!(
                         "[ERROR] request_id={} {} {} - {}",
-                        request_id, method, path, error_msg
+                        request_id, method, path, err
                     );
                     let error_html =
-                        error_pages::render_production_error_page(500, &error_msg, &request_id);
+                        error_pages::render_production_error_page(500, &err, &request_id);
                     return finalize_response(ResponseData {
                         status: 500,
                         headers: vec![(
@@ -3819,11 +3891,10 @@ fn handle_request(
             },
             Err(e) => {
                 if dev_mode {
-                    // Use captured stack trace from error if available
-                    let stack_trace: Vec<String> = e
-                        .breakpoint_stack_trace()
-                        .map(|st| st.to_vec())
-                        .unwrap_or_else(|| interpreter.get_stack_trace());
+                    let captured = e.breakpoint_stack_trace().map(|st| st.to_vec());
+                    let stack_trace = captured.unwrap_or_else(|| {
+                        middleware_fallback_stack(&mw_name, mw_source.as_deref())
+                    });
                     let breakpoint_env = e.breakpoint_env_json();
                     let error_html = error_pages::render_error_page(
                         &e.to_string(),
@@ -4439,5 +4510,72 @@ mod tests {
         .expect("call_class_method should succeed when this is bound (VM)");
 
         assert_eq!(result, Value::Int(99));
+    }
+
+    /// Regression test: a middleware that throws must produce an error whose
+    /// captured stack trace includes the middleware's source path, so the dev
+    /// error page can show the right file.
+    #[test]
+    fn test_middleware_error_carries_source_path() {
+        use crate::interpreter::value::Function as ValueFunction;
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+
+        let source = r#"
+            fn failing_middleware(req) {
+                let x = undefined_variable
+                return req
+            }
+        "#;
+
+        let tokens = Scanner::new(source).scan_tokens().unwrap();
+        let program = Parser::new(tokens).parse().unwrap();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).unwrap();
+
+        // Mark the parsed function as coming from a concrete middleware file
+        // (the real server sets source_path when it loads middleware files).
+        let handler_val = interpreter
+            .environment
+            .borrow()
+            .get("failing_middleware")
+            .unwrap();
+        let handler_with_source = match handler_val {
+            Value::Function(ref f) => {
+                let mut cloned: ValueFunction = (**f).clone();
+                cloned.source_path = Some("app/middleware/failing.sl".to_string());
+                Value::Function(Rc::new(cloned))
+            }
+            _ => panic!("failing_middleware did not resolve to a function"),
+        };
+
+        let (name, source_path, span) = middleware_source_info(&handler_with_source, None);
+        assert_eq!(name, "failing_middleware");
+        assert_eq!(source_path.as_deref(), Some("app/middleware/failing.sl"));
+
+        let request_hash = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+        let err = invoke_middleware_with_frame(
+            &mut interpreter,
+            &name,
+            source_path.as_deref(),
+            span,
+            handler_with_source,
+            request_hash,
+        )
+        .expect_err("middleware should raise a runtime error");
+
+        // The dispatch-time frame PLUS the inner call_function frame both
+        // reference the middleware source path, so the captured trace is
+        // guaranteed to expose it to render_error_page.
+        let captured = err
+            .breakpoint_stack_trace()
+            .expect("thrown error should carry a captured stack trace");
+        assert!(
+            captured
+                .iter()
+                .any(|frame| frame.contains("app/middleware/failing.sl")),
+            "captured stack trace should include the middleware source path; got {:?}",
+            captured
+        );
     }
 }
