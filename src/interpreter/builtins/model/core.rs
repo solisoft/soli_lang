@@ -246,6 +246,56 @@ mod tests {
             "billing_customers"
         );
     }
+
+    #[test]
+    fn test_parse_count_result_scalar() {
+        // Primary shape: [N]
+        let results = vec![serde_json::json!(5)];
+        assert_eq!(parse_count_result(&results), Value::Int(5));
+    }
+
+    #[test]
+    fn test_parse_count_result_scalar_zero() {
+        let results = vec![serde_json::json!(0)];
+        assert_eq!(parse_count_result(&results), Value::Int(0));
+    }
+
+    #[test]
+    fn test_parse_count_result_object_cnt() {
+        // Alt shape: [{"cnt": N}]
+        let results = vec![serde_json::json!({ "cnt": 42 })];
+        assert_eq!(parse_count_result(&results), Value::Int(42));
+    }
+
+    #[test]
+    fn test_parse_count_result_object_count() {
+        // Alt shape: [{"count": N}]
+        let results = vec![serde_json::json!({ "count": 7 })];
+        assert_eq!(parse_count_result(&results), Value::Int(7));
+    }
+
+    #[test]
+    fn test_parse_count_result_empty_is_zero() {
+        // An empty result array means "no rows" — genuine zero.
+        let results: Vec<serde_json::Value> = vec![];
+        assert_eq!(parse_count_result(&results), Value::Int(0));
+    }
+
+    #[test]
+    fn test_parse_count_result_object_without_known_key() {
+        // Unknown object shape falls back to Value::Int(0) rather than
+        // leaking a Value::Hash into callers expecting a number.
+        let results = vec![serde_json::json!({ "total": 9 })];
+        assert_eq!(parse_count_result(&results), Value::Int(0));
+    }
+
+    #[test]
+    fn test_parse_count_result_large_number() {
+        // Ensure i64 path handles values > i32::MAX.
+        let big = (i32::MAX as i64) + 1;
+        let results = vec![serde_json::json!(big)];
+        assert_eq!(parse_count_result(&results), Value::Int(big));
+    }
 }
 
 /// Extract collection name from the first argument (the Class).
@@ -277,6 +327,27 @@ fn get_class_rc_from_args(args: &[Value]) -> Result<Rc<Class>, String> {
     match args.first() {
         Some(Value::Class(class)) => Ok(class.clone()),
         _ => Err("Expected class as first argument".to_string()),
+    }
+}
+
+/// Parse the result of a `COLLECT WITH COUNT` query into a `Value::Int`.
+///
+/// SolidB's primary return shape is a scalar: `[N]`. Some drivers /
+/// dialects emit an object wrapper instead: `[{"cnt": N}]` or
+/// `[{"count": N}]`. Both are accepted here. Anything unrecognised
+/// falls through to `json_to_value` so the caller can at least see the
+/// raw payload rather than a silent zero.
+pub fn parse_count_result(results: &[serde_json::Value]) -> Value {
+    match results.first() {
+        Some(serde_json::Value::Number(n)) => n.as_i64().map(Value::Int).unwrap_or(Value::Int(0)),
+        Some(serde_json::Value::Object(map)) => map
+            .get("cnt")
+            .or_else(|| map.get("count"))
+            .and_then(|v| v.as_i64())
+            .map(Value::Int)
+            .unwrap_or(Value::Int(0)),
+        Some(other) => super::crud::json_to_value(other),
+        None => Value::Int(0),
     }
 }
 
@@ -1151,24 +1222,7 @@ impl Model {
                 );
 
                 match exec_query(&collection, sdbql) {
-                    Ok(results) => {
-                        // COUNT query returns [N] — extract the integer. Some
-                        // drivers wrap it as [{"cnt": N}] instead; handle both.
-                        match results.first() {
-                            Some(serde_json::Value::Number(n)) => {
-                                Ok(n.as_i64().map(Value::Int).unwrap_or(Value::Int(0)))
-                            }
-                            Some(serde_json::Value::Object(map)) => map
-                                .get("cnt")
-                                .or_else(|| map.get("count"))
-                                .and_then(|v| v.as_i64())
-                                .map(Value::Int)
-                                .map(Ok)
-                                .unwrap_or(Ok(Value::Int(0))),
-                            Some(other) => Ok(json_to_value(other)),
-                            None => Ok(Value::Int(0)),
-                        }
-                    }
+                    Ok(results) => Ok(parse_count_result(&results)),
                     // `exec_with_auto_collection` auto-creates a missing
                     // collection and retries, so any error reaching us here
                     // is a real failure — surface it instead of silently
