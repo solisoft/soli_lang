@@ -753,35 +753,39 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         })),
     );
 
+    let render_partial_fn = NativeFunction::new("render_partial", None, |args| {
+        if args.is_empty() {
+            return Err("render_partial() requires at least 1 argument (partial name)".to_string());
+        }
+        let partial_name = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => {
+                return Err(format!(
+                    "render_partial() expects string partial name, got {}",
+                    other.type_name()
+                ))
+            }
+        };
+        let data = if args.len() > 1 {
+            args[1].clone()
+        } else {
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+        };
+        let data = resolve_futures_in_value(data);
+        let cache = get_template_cache()?;
+        inject_template_helpers(&data);
+        cache
+            .render_partial(&partial_name, &data)
+            .map(Value::String)
+    });
     env.define(
         "render_partial".to_string(),
-        Value::NativeFunction(NativeFunction::new("render_partial", None, |args| {
-            if args.is_empty() {
-                return Err(
-                    "render_partial() requires at least 1 argument (partial name)".to_string(),
-                );
-            }
-            let partial_name = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "render_partial() expects string partial name, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-            let data = if args.len() > 1 {
-                args[1].clone()
-            } else {
-                Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
-            };
-            let data = resolve_futures_in_value(data);
-            let cache = get_template_cache()?;
-            inject_template_helpers(&data);
-            cache
-                .render_partial(&partial_name, &data)
-                .map(Value::String)
-        })),
+        Value::NativeFunction(render_partial_fn.clone()),
+    );
+    // Alias: `partial(name, data?)` — shorter form used in views.
+    env.define(
+        "partial".to_string(),
+        Value::NativeFunction(render_partial_fn),
     );
 }
 
@@ -911,48 +915,52 @@ pub fn register_template_builtins(env: &mut Environment) {
         })),
     );
 
-    // render_partial(name, data?) - Render a partial template (no layout)
+    // render_partial(name, data?) - Render a partial template (no layout).
+    // Also exposed as the shorter alias `partial(...)`.
+    let render_partial_fn = NativeFunction::new("render_partial", None, |args| {
+        if args.is_empty() {
+            return Err("render_partial() requires at least 1 argument (partial name)".to_string());
+        }
+
+        // Get partial name
+        let partial_name = match &args[0] {
+            Value::String(s) => s.clone(),
+            other => {
+                return Err(format!(
+                    "render_partial() name must be a string, got {}",
+                    other.type_name()
+                ))
+            }
+        };
+
+        // Get data (default to empty hash)
+        let data = if args.len() > 1 {
+            args[1].clone()
+        } else {
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+        };
+
+        // Resolve any futures in the data before rendering
+        let data = resolve_futures_in_value(data);
+
+        // Get template cache and render
+        let cache = get_template_cache()?;
+
+        // Inject template helper functions into data context (in-place)
+        inject_template_helpers(&data);
+
+        let rendered = cache.render_partial(&partial_name, &data)?;
+
+        // Return just the string for partials (they're typically embedded)
+        Ok(Value::String(rendered))
+    });
     env.define(
         "render_partial".to_string(),
-        Value::NativeFunction(NativeFunction::new("render_partial", None, |args| {
-            if args.is_empty() {
-                return Err(
-                    "render_partial() requires at least 1 argument (partial name)".to_string(),
-                );
-            }
-
-            // Get partial name
-            let partial_name = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "render_partial() name must be a string, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            // Get data (default to empty hash)
-            let data = if args.len() > 1 {
-                args[1].clone()
-            } else {
-                Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
-            };
-
-            // Resolve any futures in the data before rendering
-            let data = resolve_futures_in_value(data);
-
-            // Get template cache and render
-            let cache = get_template_cache()?;
-
-            // Inject template helper functions into data context (in-place)
-            inject_template_helpers(&data);
-
-            let rendered = cache.render_partial(&partial_name, &data)?;
-
-            // Return just the string for partials (they're typically embedded)
-            Ok(Value::String(rendered))
-        })),
+        Value::NativeFunction(render_partial_fn.clone()),
+    );
+    env.define(
+        "partial".to_string(),
+        Value::NativeFunction(render_partial_fn),
     );
 
     // html_escape(string) - Escape HTML special characters

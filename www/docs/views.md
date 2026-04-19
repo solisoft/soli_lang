@@ -621,14 +621,17 @@ Reuse template fragments:
 </div>
 ```
 
-Include partials:
+Include partials — use `partial(...)` as the short alias for `render_partial(...)`:
 
 ```erb
-<%= render_partial("partials/user_card", {"user": current_user}) %>
+<%= partial("partials/user_card", {"user": current_user}) %>
 
 <% for user in users %>
-    <%= render_partial("partials/user_card", {"user": user}) %>
+    <%= partial("partials/user_card", {"user": user}) %>
 <% end %>
+
+<!-- render_partial(...) still works and is identical -->
+<%= render_partial("partials/user_card", {"user": current_user}) %>
 ```
 
 ## Passing Data
