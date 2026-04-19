@@ -9,7 +9,7 @@ SoliLang uses ERB-style templates. Tag types:
 | Tag | Output | When to use |
 |-----|--------|-------------|
 | `<%= expr %>` | HTML-escaped | **Default.** Anything that came from user input, the database, params, etc. |
-| `<%- expr %>` | Raw, unescaped | Trusted HTML you've already produced — partials, rendered Markdown, `render_partial(...)` results. |
+| `<%- expr %>` | Raw, unescaped | Trusted HTML you've already produced — partials, rendered Markdown, `partial(...)` results. |
 | `<%== expr %>` | HTML-unescaped (calls `html_unescape`) | Rare: output a value that was previously escape-encoded. |
 | `<% stmt %>` | No output | Statements, control flow, `let` bindings. |
 | `<%= yield %>` | Layout insertion | Only valid inside a layout — marks where rendered content is spliced in. |
@@ -25,7 +25,7 @@ SoliLang uses ERB-style templates. Tag types:
 ```erb
 <!-- Raw output: skip escaping (only for HTML you trust) -->
 <article><%- rendered_markdown %></article>
-<%- render_partial("shared/nav") %>
+<%- partial("shared/nav") %>
 ```
 
 ### Control Flow

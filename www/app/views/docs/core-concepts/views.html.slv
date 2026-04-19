@@ -82,7 +82,7 @@
 
 &lt;!-- Raw output: skip escaping (only for HTML you trust) --&gt
 &lt;article&gt;&lt;%- rendered_markdown %&gt;&lt;/article&gt
-&lt;%- render_partial("shared/nav") %&gt;</code></pre>
+&lt;%- partial("shared/nav") %&gt;</code></pre>
         </div>
     </div>
 
@@ -772,7 +772,7 @@ soli serve
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Rendering a markdown partial</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- In an .slv template, include a markdown partial --&gt
-&lt;%= render_partial("docs/intro") %&gt
+&lt;%= partial("docs/intro") %&gt
 
 &lt;!-- This renders app/views/docs/_intro.md (or _intro.html.md) --&gt;</code></pre>
         </div>
