@@ -2185,6 +2185,10 @@ video {
   border-bottom-width: calc(1px * var(--tw-divide-y-reverse));
 }
 
+.divide-white\/10 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(255 255 255 / 0.1);
+}
+
 .divide-white\/5 > :not([hidden]) ~ :not([hidden]) {
   border-color: rgb(255 255 255 / 0.05);
 }
