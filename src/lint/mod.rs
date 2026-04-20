@@ -28,6 +28,7 @@ pub struct LintDiagnostic {
 
 pub struct Linter {
     source: String,
+    pub(crate) file_path: Option<String>,
     diagnostics: Vec<LintDiagnostic>,
     depth: usize,
 }
@@ -36,9 +37,15 @@ impl Linter {
     pub fn new(source: &str) -> Self {
         Self {
             source: source.to_string(),
+            file_path: None,
             diagnostics: Vec::new(),
             depth: 0,
         }
+    }
+
+    pub fn with_file_path(mut self, path: impl Into<String>) -> Self {
+        self.file_path = Some(path.into());
+        self
     }
 
     pub fn lint(mut self, program: &Program) -> Vec<LintDiagnostic> {

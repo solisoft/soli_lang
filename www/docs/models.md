@@ -30,6 +30,21 @@ end
 
 That's it! No need to manually specify collection names or field definitions.
 
+## Auto-Loading
+
+Every `.sl` file under `app/models/` is loaded automatically at startup — by `soli serve` (in each worker) and by the REPL. Model classes are therefore available everywhere (controllers, views, other models, the REPL) without an `import` statement.
+
+```soli
+# app/controllers/users_controller.sl — no import needed
+class UsersController extends Controller
+    fn index(req)
+        render("users/index", { "users": User.all() })
+    end
+end
+```
+
+If you run a model or controller file directly with `soli run path/to/file.sl`, the auto-loader does **not** run — in that case you still need explicit imports.
+
 ## CRUD Operations
 
 > **Auto-creation**: All Model operations automatically create the collection if it doesn't exist. This only happens on the first call that encounters a missing collection.

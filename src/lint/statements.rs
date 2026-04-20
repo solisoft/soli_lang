@@ -128,7 +128,14 @@ impl Linter {
                 );
             }
 
-            StmtKind::Import(_) => {}
+            StmtKind::Import(decl) => {
+                rules::style::check_redundant_model_import(
+                    &decl.path,
+                    self.file_path.as_deref(),
+                    decl.span,
+                    &mut self.diagnostics,
+                );
+            }
 
             StmtKind::Export(inner) => self.lint_stmt(inner),
         }

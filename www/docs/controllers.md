@@ -26,6 +26,8 @@ class UsersController extends Controller
 end
 ```
 
+> **No imports needed for models.** Files under `app/models/` are auto-loaded by `soli serve` and the REPL, so classes like `User`, `Post`, etc. are available inside controller actions without `import`. (If you run a controller file standalone via `soli run`, add the imports back.) The linter warns about redundant imports via `style/redundant-model-import`.
+
 ## OOP Controller Architecture
 
 ### Class-Based Controllers

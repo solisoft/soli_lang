@@ -39,6 +39,26 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
         </p>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Auto-Loading</h2>
+    <p class="text-gray-400 mb-4">
+        Every <code>.sl</code> file under <code>app/models/</code> is loaded automatically at startup &mdash; by <code>soli serve</code> (in each worker) and by the REPL. Model classes are therefore available everywhere (controllers, views, other models, the REPL) without an <code>import</code> statement.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl &mdash; no import needed</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class UsersController extends Controller
+    fn index(req)
+        render("users/index", { "users": User.all() })
+    end
+end</code></pre>
+        </div>
+    </div>
+    <div class="my-6 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <p class="text-yellow-200/80 text-sm">
+            If you run a file directly with <code>soli run path/to/file.sl</code>, the auto-loader does <strong>not</strong> run &mdash; in that case you still need explicit imports. The linter flags redundant controller-side imports via <code>style/redundant-model-import</code>.
+        </p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">CRUD Operations</h2>
 
     <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">

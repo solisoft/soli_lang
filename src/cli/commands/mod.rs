@@ -253,7 +253,7 @@ pub fn run_lint(path: Option<&str>) {
             }
         };
 
-        let diagnostics = match solilang::lint(&source) {
+        let diagnostics = match solilang::lint_file(&source, &file.display().to_string()) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("{}: parse error: {}", file.display(), e);

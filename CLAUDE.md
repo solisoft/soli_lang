@@ -219,6 +219,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `naming/pascal-case` - classes/interfaces use `PascalCase`
 - `style/empty-block` - avoid empty blocks
 - `style/line-length` - max 120 chars per line
+- `style/redundant-model-import` - no `import "../models/*.sl"` inside `app/controllers/` (models are auto-loaded)
 - `smell/unreachable-code` - no code after return
 - `smell/empty-catch` - catch blocks shouldn't be empty
 - `smell/duplicate-methods` - no duplicate methods

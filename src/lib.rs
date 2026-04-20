@@ -639,6 +639,15 @@ pub fn lint(source: &str) -> Result<Vec<lint::LintDiagnostic>, SolilangError> {
     Ok(lint::Linter::new(source).lint(&program))
 }
 
+/// Lint source with the file path available to path-sensitive rules.
+pub fn lint_file(source: &str, path: &str) -> Result<Vec<lint::LintDiagnostic>, SolilangError> {
+    let tokens = lexer::Scanner::new(source).scan_tokens()?;
+    let program = parser::Parser::new(tokens).parse()?;
+    Ok(lint::Linter::new(source)
+        .with_file_path(path)
+        .lint(&program))
+}
+
 /// Type check a program without executing.
 pub fn type_check(source: &str) -> Result<(), Vec<error::TypeError>> {
     let tokens = lexer::Scanner::new(source)

@@ -91,6 +91,12 @@ end</code></pre>
     # ... actions ...
 end</code></pre>
 
+    <div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <p class="text-indigo-200/80 text-sm">
+            <strong>No imports needed for models.</strong> Files under <code>app/models/</code> are auto-loaded by <code>soli serve</code> and the REPL, so classes like <code>User</code>, <code>Post</code>, etc. are available inside controller actions without <code>import</code>. (If you run a controller file standalone via <code>soli run</code>, add the imports back.) The linter warns via <code>style/redundant-model-import</code>.
+        </p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Controller Inheritance</h2>
     <p class="text-gray-400 mb-4">
         Controllers support multi-level inheritance. Create a base controller to share logic across multiple controllers.
