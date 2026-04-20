@@ -21,48 +21,72 @@
 * **regex:** replace regex cache full-clear with LRU eviction ([a5d50f1](https://github.com/solisoft/soli_lang/commit/a5d50f1))
 * **vm:** cache compiled bytecode in CompiledModule cache for run_vm() ([ed58e3c](https://github.com/solisoft/soli_lang/commit/ed58e3c))
 * **vm:** cache JIT-compiled bytecode in Function struct ([f0b3e95](https://github.com/solisoft/soli_lang/commit/f0b3e95))
+* **views:** expose req and params in templates ([9354eb5](https://github.com/solisoft/soli_lang/commit/9354eb5))
+* **model:** add dynamic find_by_* methods for ORM ([5f11fba](https://github.com/solisoft/soli_lang/commit/5f11fba))
 
 ### Bug Fixes
 
 * **model:** fix ORM eager-loading: lazy conversion to model instances on field access ([889845b](https://github.com/solisoft/soli_lang/commit/889845b))
+* **views:** inject req/params into partials rendering ([67805a8](https://github.com/solisoft/soli_lang/commit/67805a8))
 
 ## [0.63.2](https://github.com/solisoft/soli_lang/compare/v0.63.1...v0.63.2) (2026-02-10)
 
-
 ### Features
 
-* **hash:** add Hash.from_entries method for creating hashes from key-value pairs ([7e7539a](https://github.com/solisoft/soli_lang/commit/7e7539a81f8f28dd8abf595d3fcd9fa79e234fe7))
-* **routes:** enhance route reloading by adding controller reloading in worker threads ([b3db676](https://github.com/solisoft/soli_lang/commit/b3db676f50e72750bfbf28147989a586c4296a86))
+* **model:** add dynamic find_by_* methods for ORM ([5f11fba](https://github.com/solisoft/soli_lang/commit/5f11fba))
 
 ## [0.63.1](https://github.com/solisoft/soli_lang/compare/v0.63.0...v0.63.1) (2026-02-10)
 
+### Bug Fixes
+
+* **model:** pass through AQL function calls in where() filters ([f65c5c4](https://github.com/solisoft/soli_lang/commit/f65c5c4))
+* **serve:** canonicalize folder so hot-reload classifies events correctly ([3eeb467](https://github.com/solisoft/soli_lang/commit/3eeb467))
+
+## [0.63.0](https://github.com/solisoft/soli_lang/compare/v0.62.0...v0.63.0) (2026-02-10)
 
 ### Features
 
-* **system:** add System.run() and System.run_sync() for command execution
-* **system:** add backtick command substitution syntax (`echo hello`)
-* **model:** auto-create collections when Model operations are called on non-existent collections
+* **lint:** add style/redundant-model-import rule ([dc40819](https://github.com/solisoft/soli_lang/commit/dc40819))
 
-## [0.20.0](https://github.com/solisoft/soli_lang/compare/v0.19.0...v0.20.0) (2026-02-09)
-
-
-### Features
-
-* **ci:** update CI workflow for improved packaging and Docker integration ([a7b008b](https://github.com/solisoft/soli_lang/commit/a7b008b859349867b14aee995d5b47a01f31822f))
-* **ci:** update permissions in CI workflow ([9a3effc](https://github.com/solisoft/soli_lang/commit/9a3effc5aba9f862068b855b9c97821225520a07))
-* **parser:** add support for optional parentheses in function declarations ([567f301](https://github.com/solisoft/soli_lang/commit/567f3011337230c7ed3564f18ed849c3c5c3c2f5))
-
+## [0.62.0](https://github.com/solisoft/soli_lang/compare/v0.61.0...v0.62.0) (2026-02-09)
 
 ### Bug Fixes
 
-* **ci:** allow auto-merge step to continue on error ([afa4f76](https://github.com/solisoft/soli_lang/commit/afa4f76b952a8ccf927df81f50fd838b0e82050f))
+* **model:** use COLLECTION_COUNT/LENGTH for counts ([67e9f5c](https://github.com/solisoft/soli_lang/commit/67e9f5c))
 
-## [0.19.0](https://github.com/solisoft/soli_lang/compare/v0.18.0...v0.19.0) (2026-02-08)
-
+## [0.61.0](https://github.com/solisoft/soli_lang/compare/v0.60.0...v0.61.0) (2026-02-08)
 
 ### Features
 
-* **ci:** add Docker build and push step to CI workflow ([63d9f93](https://github.com/solisoft/soli_lang/commit/63d9f932010d643177f8dd486ce93adcf115f9f0))
+* **template:** add `partial(...)` alias for `render_partial(...)` ([406c81d](https://github.com/solisoft/soli_lang/commit/406c81d))
+* **serve:** default global `params` to {} instead of null ([a333b1a](https://github.com/solisoft/soli_lang/commit/a333b1a))
+
+### Bug Fixes
+
+* **model:** stop masking Model.count errors as 0 ([9a8f5c6](https://github.com/solisoft/soli_lang/commit/9a8f5c6))
+* **serve:** middleware dev error pages show the middleware's file ([40d628b](https://github.com/solisoft/soli_lang/commit/40d628b))
+
+## [0.60.0](https://github.com/solisoft/soli_lang/compare/v0.59.0...v0.60.0) (2026-02-05)
+
+### Bug Fixes
+
+* **serve:** bind `this` when dispatching class-based controller actions ([492df8f](https://github.com/solisoft/soli_lang/commit/492df8f))
+
+## [0.59.0](https://github.com/solisoft/soli_lang/compare/v0.58.2...v0.59.0) (2026-02-05)
+
+### Features
+
+* **session:** add pluggable storage backends (disk, solidb, solikv) ([3c821e0](https://github.com/solisoft/soli_lang/commit/3c821e0))
+
+### Bug Fixes
+
+* **serve:** bind `this` when dispatching class-based controller actions ([492df8f](https://github.com/solisoft/soli_lang/commit/492df8f))
+
+## [0.58.2](https://github.com/solisoft/soli_lang/compare/v0.58.1...v0.58.2) (2026-02-04)
+
+### Features
+
+* **ci:** add Docker build and push step to CI workflow ([63d9f93](https://github.com/solisoft/soli_lang/commit/63d9f93))
 * **ci:** enhance CI workflow for multi-platform builds ([3068075](https://github.com/solisoft/soli_lang/commit/30680751f8a4d2cc3ba5ff8e5f59bab3ac862f75))
 
 ## [0.18.0](https://github.com/solisoft/soli_lang/compare/v0.17.0...v0.18.0) (2026-02-08)
