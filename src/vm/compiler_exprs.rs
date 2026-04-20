@@ -1,6 +1,6 @@
 //! Expression compilation — AST expressions to bytecode.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast::expr::{Argument, BinaryOp, ExprKind, InterpolatedPart, UnaryOp};
 use crate::ast::stmt::StmtKind;
@@ -611,7 +611,7 @@ impl Compiler {
         // and store it as a constant. The runtime then only needs values on
         // the stack — no key push/convert per element.
         if let Some(keys) = self.literal_hash_keys(pairs) {
-            let keys_idx = self.add_constant(Constant::HashKeys(std::rc::Rc::new(keys)));
+            let keys_idx = self.add_constant(Constant::HashKeys(std::sync::Arc::new(keys)));
             for (_, value) in pairs {
                 self.compile_expr(value)?;
             }
@@ -740,7 +740,7 @@ impl Compiler {
 
         let proto = self.finish_function(line);
         let upvalue_count = proto.upvalue_descriptors.len();
-        let idx = self.add_constant(Constant::Function(Rc::new(proto)));
+        let idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(idx), line);
         // Upvalue descriptors are read by the VM from the proto
         let _ = upvalue_count;

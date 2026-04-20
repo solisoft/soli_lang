@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
@@ -363,7 +364,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let proto = Compiler::compile_method_standalone(method)
             .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
-        let closure = Rc::new(VmClosure::new(Rc::new(proto), Vec::new()));
+        let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
 
         // Stack layout after these pushes: [..., instance, arg]. call_closure
         // derives stack_base = len - total_params - 1, placing `instance` at

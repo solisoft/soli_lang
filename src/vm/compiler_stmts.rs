@@ -1,6 +1,6 @@
 //! Statement compilation — AST statements to bytecode.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast::stmt::{CatchClause, FunctionDecl, ImportDecl, StmtKind};
 use crate::ast::Stmt;
@@ -350,7 +350,7 @@ impl Compiler {
         self.end_scope(line);
 
         let proto = self.finish_function(line);
-        let idx = self.add_constant(Constant::Function(Rc::new(proto)));
+        let idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(idx), line);
 
         // Bind the function name

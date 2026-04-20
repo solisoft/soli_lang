@@ -4,6 +4,7 @@ use ahash::AHashMap as HashMap;
 use ahash::RandomState as AHasher;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::error::RuntimeError;
 use crate::interpreter::value::{Class, HashKey, HashPairs, StrKey, Value};
@@ -99,7 +100,7 @@ impl Vm {
     }
 
     /// Execute a compiled module (top-level script).
-    pub fn execute(&mut self, proto: &Rc<FunctionProto>) -> Result<Value, RuntimeError> {
+    pub fn execute(&mut self, proto: &Arc<FunctionProto>) -> Result<Value, RuntimeError> {
         let closure = Rc::new(VmClosure::new(proto.clone(), Vec::new()));
         self.push(Value::VmClosure(closure.clone()));
 

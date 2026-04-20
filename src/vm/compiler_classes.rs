@@ -1,6 +1,6 @@
 //! Class declaration compilation.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast::stmt::{ClassDecl, ConstructorDecl, FieldDecl, MethodDecl};
 
@@ -116,7 +116,7 @@ impl Compiler {
         self.end_scope(line);
 
         let proto = self.finish_function(line);
-        let fn_idx = self.add_constant(Constant::Function(Rc::new(proto)));
+        let fn_idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(fn_idx), line);
 
         let name_idx = self.add_string_constant(&method.name);
@@ -159,7 +159,7 @@ impl Compiler {
 
         // Constructor always returns `this`
         let proto = self.finish_constructor(line);
-        let fn_idx = self.add_constant(Constant::Function(Rc::new(proto)));
+        let fn_idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(fn_idx), line);
 
         let name_idx = self.add_string_constant("init");

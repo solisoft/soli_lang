@@ -8,6 +8,7 @@
 
 pub mod ast;
 pub mod coverage;
+pub mod compiled_cache;
 pub mod error;
 pub mod interpreter;
 pub mod lexer;
@@ -113,39 +114,8 @@ pub fn run_vm(
     source_path: Option<&std::path::Path>,
     type_check: bool,
 ) -> Result<(), SolilangError> {
-    // Lexing
-    let tokens = lexer::Scanner::new(source).scan_tokens()?;
+    let module = compiled_cache::get_or_compile(source, source_path, type_check)?;
 
-    // Parsing
-    let mut program = parser::Parser::new(tokens).parse()?;
-
-    // Module resolution
-    if let Some(path) = source_path.filter(|_| has_imports(&program)) {
-        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
-        let mut resolver = module::ModuleResolver::new(base_dir);
-        program = resolver
-            .resolve(program, path)
-            .map_err(|e| error::RuntimeError::General {
-                message: format!("Module resolution error: {}", e),
-                span: span::Span::new(0, 0, 1, 1),
-            })?;
-    }
-
-    // Type checking
-    if type_check {
-        let mut checker = types::TypeChecker::new();
-        if let Err(errors) = checker.check(&program) {
-            return Err(errors.into_iter().next().unwrap().into());
-        }
-    }
-
-    // Compile to bytecode
-    let module = vm::Compiler::compile(&program).map_err(|e| error::RuntimeError::General {
-        message: format!("Compile error: {}", e),
-        span: span::Span::new(0, 0, 1, 1),
-    })?;
-
-    // Execute in VM
     let mut vm_instance = vm::Vm::new();
 
     // Register builtins

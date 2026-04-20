@@ -1,6 +1,6 @@
 //! Bytecode chunk and function prototype types.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use super::opcode::Op;
 use super::upvalue::UpvalueDescriptor;
@@ -16,11 +16,11 @@ pub enum Constant {
     /// Decimal value stored as string (parsed at runtime)
     Decimal(String),
     /// A compiled function prototype.
-    Function(Rc<FunctionProto>),
+    Function(Arc<FunctionProto>),
     /// Pre-computed HashKey list — used for hash literals with all-literal keys
     /// so we don't push each key onto the value stack just to convert it back to
     /// a HashKey at insertion time.
-    HashKeys(Rc<Vec<crate::interpreter::value::HashKey>>),
+    HashKeys(Arc<Vec<crate::interpreter::value::HashKey>>),
 }
 
 /// A compiled function (or top-level script).
@@ -142,5 +142,5 @@ impl Default for Chunk {
 /// A compiled module: the top-level script function.
 #[derive(Debug, Clone)]
 pub struct CompiledModule {
-    pub main: Rc<FunctionProto>,
+    pub main: Arc<FunctionProto>,
 }

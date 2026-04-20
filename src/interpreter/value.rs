@@ -800,9 +800,8 @@ pub struct Function {
     /// the outer call's restore wins, which is fine (re-caching is a hint).
     pub cached_env: RefCell<Option<Rc<RefCell<Environment>>>>,
     /// Cached JIT-compiled FunctionProto — compiled once on first call,
-    /// reused on subsequent calls. Uses RefCell<Option<...>> because
-    /// Rc<FunctionProto> cannot be stored in an OnceCell (not Send/Sync).
-    pub jit_cache: RefCell<Option<Rc<crate::vm::chunk::FunctionProto>>>,
+    /// reused on subsequent calls.
+    pub jit_cache: RefCell<Option<std::sync::Arc<crate::vm::chunk::FunctionProto>>>,
 }
 
 impl Default for Function {

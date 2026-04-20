@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::interpreter::value::Value;
 
@@ -11,12 +12,12 @@ use super::chunk::FunctionProto;
 /// A VM closure: a function prototype paired with captured upvalues.
 #[derive(Clone)]
 pub struct VmClosure {
-    pub proto: Rc<FunctionProto>,
+    pub proto: Arc<FunctionProto>,
     pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
 }
 
 impl VmClosure {
-    pub fn new(proto: Rc<FunctionProto>, upvalues: Vec<Rc<RefCell<Upvalue>>>) -> Self {
+    pub fn new(proto: Arc<FunctionProto>, upvalues: Vec<Rc<RefCell<Upvalue>>>) -> Self {
         Self { proto, upvalues }
     }
 }

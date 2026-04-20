@@ -3,7 +3,7 @@
 //! Single-pass compilation: walks the AST once, emitting bytecode into a `Chunk`.
 //! Variable resolution happens at compile time — locals become stack slot indices.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast::stmt::{Parameter, Program};
 use crate::error::CompileError;
@@ -115,7 +115,7 @@ impl Compiler {
         peephole_optimize_proto(&mut proto);
 
         Ok(CompiledModule {
-            main: Rc::new(proto),
+            main: Arc::new(proto),
         })
     }
 
@@ -398,8 +398,8 @@ pub enum VariableAccess {
 fn peephole_optimize_proto(proto: &mut FunctionProto) {
     // First, optimize nested function protos in the constant pool
     for constant in &mut proto.chunk.constants {
-        if let Constant::Function(func_rc) = constant {
-            if let Some(func) = Rc::get_mut(func_rc) {
+        if let Constant::Function(func_arc) = constant {
+            if let Some(func) = Arc::get_mut(func_arc) {
                 peephole_optimize_proto(func);
             }
         }
