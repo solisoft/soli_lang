@@ -999,6 +999,9 @@ pub fn register_template_builtins(env: &mut Environment) {
         // Get template cache and render
         let cache = get_template_cache()?;
 
+        // Inject req and params from current request context into data
+        inject_request_context(&data);
+
         // Inject template helper functions into data context (in-place)
         inject_template_helpers(&data);
 
