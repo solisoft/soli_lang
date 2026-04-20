@@ -68,6 +68,27 @@ thread_local! {
     static VIEW_HELPERS: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
 }
 
+// Thread-local current request context for views
+thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
+    static CURRENT_REQUEST: RefCell<Option<Value>> = const { RefCell::new(None) };
+}
+
+/// Set the current request context (called before template rendering).
+pub fn set_current_request(req: Value) {
+    CURRENT_REQUEST.with(|ctx| *ctx.borrow_mut() = Some(req));
+}
+
+/// Clear the current request context (called after template rendering).
+pub fn clear_current_request() {
+    CURRENT_REQUEST.with(|ctx| *ctx.borrow_mut() = None);
+}
+
+/// Get the current request context if set.
+pub fn get_current_request() -> Option<Value> {
+    CURRENT_REQUEST.with(|ctx| ctx.borrow().clone())
+}
+
 /// Register a view helper function (only accessible in templates, not controllers).
 pub fn register_view_helper(name: String, value: Value) {
     VIEW_HELPERS.with(|helpers| {
@@ -343,9 +364,9 @@ fn get_file_mtime_cached(path: &PathBuf) -> Result<String, String> {
     })
 }
 
-/// Inject template helper functions into the data context
-/// Inject only user-defined view helpers from app/helpers/*.sl into data.
+/// Inject template helper functions into the data context.
 /// Static helpers (range, html_escape, etc.) are in the thread-local builtins.
+/// User-defined view helpers from app/helpers/*.sl are injected via VIEW_HELPERS.
 pub fn inject_template_helpers(data: &Value) {
     if let Value::Hash(hash) = data {
         VIEW_HELPERS.with(|helpers| {
@@ -360,6 +381,32 @@ pub fn inject_template_helpers(data: &Value) {
                 }
             }
         });
+    }
+}
+
+/// Inject req and params from current request context into data hash.
+fn inject_request_context(data: &Value) {
+    if let Value::Hash(hash) = data {
+        if let Some(req) = get_current_request() {
+            let mut h = hash.borrow_mut();
+            let req_key = HashKey::String("req".to_string());
+            if !h.contains_key(&req_key) {
+                h.insert(req_key, req.clone());
+            }
+
+            // Extract params from req and inject as top-level "params"
+            if let Value::Hash(req_hash) = &req {
+                if let Some(params) = req_hash
+                    .borrow()
+                    .get(&HashKey::String("params".to_string()))
+                {
+                    let params_key = HashKey::String("params".to_string());
+                    if !h.contains_key(&params_key) {
+                        h.insert(params_key, params.clone());
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -886,6 +933,10 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Get template cache and render
             let cache = get_template_cache()?;
 
+            // Inject req from current thread context into data (before helpers)
+            // This allows views to access req.params, req.query, etc.
+            inject_request_context(&data);
+
             // Inject template helper functions into data context (in-place, no clone)
             inject_template_helpers(&data);
 
@@ -904,11 +955,13 @@ pub fn register_template_builtins(env: &mut Environment) {
             match result {
                 Ok(rendered) => {
                     // Clear context on success
+                    clear_current_request();
                     set_view_debug_context(None);
                     Ok(html_response(rendered, status))
                 }
                 Err(e) => {
                     // Keep context set for debugging
+                    clear_current_request();
                     Err(e)
                 }
             }

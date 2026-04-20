@@ -13,6 +13,7 @@ use std::rc::Rc;
 use std::sync::RwLock;
 
 use super::controller::{AfterAction, BeforeAction, ControllerAction, ControllerInfo};
+use crate::interpreter::builtins::template as template_module;
 use crate::interpreter::value::{Instance, Value};
 use crate::interpreter::Interpreter;
 
@@ -706,6 +707,9 @@ pub fn setup_controller_context(
         inst.fields.insert("session".to_string(), session.clone());
         inst.fields.insert("headers".to_string(), headers.clone());
     }
+
+    // Also set the current request context for view rendering
+    template_module::set_current_request(req.clone());
 }
 
 /// Get a field from a controller instance.

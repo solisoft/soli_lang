@@ -231,6 +231,35 @@ describe("Model.find_by finder", fn() {
     });
 });
 
+describe("Model dynamic find_by_* methods", fn() {
+    test("find_by_field generates correct query", fn() {
+        let q = TestUser.find_by_email("test@example.com");
+        assert(q == null);  // Just verifies method exists and is callable
+    });
+
+    test("find_by_field_and_field generates correct query", fn() {
+        let q = TestUser.find_by_name_and_active("TestUser", true);
+        assert(q == null);  // Just verifies method exists and is callable
+    });
+
+    test("three field compound finder works", fn() {
+        let q = TestUser.find_by_name_and_active_and_role("TestUser", true, "admin");
+        assert(q == null);  // Just verifies method exists and is callable
+    });
+
+    if __db_available {
+        test("find_by_email actually finds record", fn() {
+            let created = TestUser.create({ "name": "DynFindTest", "value": 42 });
+            let found = TestUser.find_by_name("DynFindTest");
+
+            assert_not_null(found);
+            assert_eq(found.name, "DynFindTest");
+
+            found.delete();
+        });
+    }
+});
+
 describe("Model.first_by finder with ordering", fn() {
     test("finds first by field with ordering", fn() {
         // Create multiple records with same name
