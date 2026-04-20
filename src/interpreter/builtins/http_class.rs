@@ -34,6 +34,26 @@ use crate::serve::get_tokio_handle;
 
 const BLOCKED_SCHEMES: &[&str] = &["javascript", "file", "ftp", "ssh", "telnet", "gopher"];
 
+/// Run an async future safely, avoiding blocking the I/O driver if already in async context.
+/// If called from within an async runtime, spawns a dedicated single-thread runtime to avoid
+/// blocking the worker thread. Otherwise uses the runtime handle directly.
+fn http_block_on<F>(rt: &tokio::runtime::Handle, future: F) -> F::Output
+where
+    F: std::future::Future + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        // Already inside async runtime — create a dedicated single-thread runtime
+        // so we don't block the caller's I/O driver thread
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(future)
+    } else {
+        rt.block_on(future)
+    }
+}
+
 pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
     let url = url.trim();
 
@@ -224,7 +244,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
                         let status = resp.status();
@@ -291,7 +311,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client
                             .post(&url)
                             .header("Content-Type", content_type)
@@ -367,7 +387,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client
                             .put(&url)
                             .header("Content-Type", content_type)
@@ -443,7 +463,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client
                             .patch(&url)
                             .header("Content-Type", content_type)
@@ -502,7 +522,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client
                             .delete(&url)
                             .send()
@@ -556,7 +576,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client.head(&url).send().await.map_err(|e| e.to_string())?;
                         let status = resp.status().as_u16();
                         Ok(format!(
@@ -601,7 +621,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client
                             .get(&url)
                             .header("Accept", "application/json")
@@ -662,7 +682,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client
                             .post(&url)
                             .header("Content-Type", "application/json")
@@ -727,7 +747,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client
                             .put(&url)
                             .header("Content-Type", "application/json")
@@ -792,7 +812,7 @@ pub fn register_http_class(env: &mut Environment) {
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_http_client().clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let resp = client
                             .patch(&url)
                             .header("Content-Type", "application/json")
@@ -900,7 +920,7 @@ pub fn register_http_class(env: &mut Environment) {
                     let method_clone = method.clone();
                     let body_opt_clone = body_opt.clone();
                     let headers_vec_clone = headers_vec.clone();
-                    match rt.block_on(async move {
+                    match http_block_on(&rt, async move {
                         let mut request = match method_clone.as_str() {
                             "GET" => client.get(&url),
                             "POST" => client.post(&url),

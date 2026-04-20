@@ -35,12 +35,26 @@ thread_local! {
 
 /// Run a future using the worker's thread-local tokio handle,
 /// falling back to a lightweight per-thread runtime (e.g. from the REPL).
+///
+/// If called from within an async runtime context, creates a dedicated single-thread
+/// runtime to avoid blocking the I/O driver and causing potential deadlocks.
 fn run_db_future<F, T>(future: F) -> Result<T, String>
 where
-    F: std::future::Future<Output = Result<T, String>>,
+    F: std::future::Future<Output = Result<T, String>> + 'static,
 {
     if let Some(rt) = get_tokio_handle() {
-        rt.block_on(future)
+        if tokio::runtime::Handle::try_current().is_ok() {
+            // Already inside async runtime — create a dedicated single-thread runtime
+            // so we don't block the caller's I/O driver thread
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(future)
+        } else {
+            // Outside async context — safe to block
+            rt.block_on(future)
+        }
     } else {
         FALLBACK_RT.with(|rt| rt.block_on(future))
     }
