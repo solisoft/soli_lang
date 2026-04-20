@@ -3719,7 +3719,7 @@ dependencies = [
 
 [[package]]
 name = "solilang"
-version = "0.63.2"
+version = "0.64.0"
 dependencies = [
  "ahash 0.8.12",
  "argon2",
@@ -3749,6 +3749,7 @@ dependencies = [
  "itoa",
  "jsonwebtoken",
  "lazy_static",
+ "lru",
  "md-5 0.10.6",
  "mimalloc",
  "multer",
