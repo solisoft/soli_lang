@@ -1973,46 +1973,42 @@ impl Vm {
                 Op::GetAndIncrLocal(slot) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let idx = base + slot as usize;
-                    let old_val = self.stack[idx].clone();
-                    if let Value::Int(n) = self.stack[idx] {
-                        self.stack[idx] = Value::Int(n + 1);
-                    } else {
-                        let val = self.stack[idx].clone();
-                        let result = match val {
-                            Value::Float(n) => Value::Float(n + 1.0),
-                            _ => {
-                                let span = self.current_span();
-                                let result = self.op_add(val, Value::Int(1), span).unwrap();
-                                self.stack[idx] = result;
-                                self.stack.push(old_val.clone());
-                                return Ok(Value::Null);
-                            }
-                        };
-                        self.stack[idx] = result;
+                    let old_val = std::mem::replace(&mut self.stack[idx], Value::Null);
+                    match old_val {
+                        Value::Int(n) => {
+                            self.stack[idx] = Value::Int(n + 1);
+                            self.stack.push(old_val);
+                        }
+                        Value::Float(n) => {
+                            self.stack[idx] = Value::Float(n + 1.0);
+                            self.stack.push(old_val);
+                        }
+                        _ => {
+                            let span = self.current_span();
+                            let result = self.op_add(old_val, Value::Int(1), span).unwrap();
+                            self.stack[idx] = result;
+                        }
                     }
-                    self.stack.push(old_val);
                 }
                 Op::GetAndDecrLocal(slot) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let idx = base + slot as usize;
-                    let old_val = self.stack[idx].clone();
-                    if let Value::Int(n) = self.stack[idx] {
-                        self.stack[idx] = Value::Int(n - 1);
-                    } else {
-                        let val = self.stack[idx].clone();
-                        let result = match val {
-                            Value::Float(n) => Value::Float(n - 1.0),
-                            _ => {
-                                let span = self.current_span();
-                                let result = self.op_subtract(val, Value::Int(1), span).unwrap();
-                                self.stack[idx] = result;
-                                self.stack.push(old_val.clone());
-                                return Ok(Value::Null);
-                            }
-                        };
-                        self.stack[idx] = result;
+                    let old_val = std::mem::replace(&mut self.stack[idx], Value::Null);
+                    match old_val {
+                        Value::Int(n) => {
+                            self.stack[idx] = Value::Int(n - 1);
+                            self.stack.push(old_val);
+                        }
+                        Value::Float(n) => {
+                            self.stack[idx] = Value::Float(n - 1.0);
+                            self.stack.push(old_val);
+                        }
+                        _ => {
+                            let span = self.current_span();
+                            let result = self.op_subtract(old_val, Value::Int(1), span).unwrap();
+                            self.stack[idx] = result;
+                        }
                     }
-                    self.stack.push(old_val);
                 }
                 Op::SwapSetLocal(slot) => {
                     let new_val = self.pop();
