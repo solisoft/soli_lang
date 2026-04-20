@@ -799,6 +799,10 @@ pub struct Function {
     /// Recursive calls observe `None` and transparently allocate a fresh env;
     /// the outer call's restore wins, which is fine (re-caching is a hint).
     pub cached_env: RefCell<Option<Rc<RefCell<Environment>>>>,
+    /// Cached JIT-compiled FunctionProto — compiled once on first call,
+    /// reused on subsequent calls. Uses RefCell<Option<...>> because
+    /// Rc<FunctionProto> cannot be stored in an OnceCell (not Send/Sync).
+    pub jit_cache: RefCell<Option<Rc<crate::vm::chunk::FunctionProto>>>,
 }
 
 impl Default for Function {
@@ -814,6 +818,7 @@ impl Default for Function {
             defining_superclass: None,
             return_type: None,
             cached_env: RefCell::new(None),
+            jit_cache: RefCell::new(None),
         }
     }
 }
@@ -835,6 +840,7 @@ impl Function {
             defining_superclass: None,
             return_type: decl.return_type.clone(),
             cached_env: RefCell::new(None),
+            jit_cache: RefCell::new(None),
         }
     }
 
@@ -854,6 +860,7 @@ impl Function {
             defining_superclass: None,
             return_type: decl.return_type.clone(),
             cached_env: RefCell::new(None),
+            jit_cache: RefCell::new(None),
         }
     }
 

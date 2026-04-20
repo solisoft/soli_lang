@@ -423,6 +423,7 @@ impl Interpreter {
                 defining_superclass: None,
                 return_type: None,
                 cached_env: RefCell::new(None),
+                jit_cache: RefCell::new(None),
             })
         });
 

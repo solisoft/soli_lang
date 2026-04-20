@@ -110,6 +110,14 @@ impl Vm {
         argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
+        // Check if JIT-compiled bytecode is already cached
+        if let Some(proto) = func.jit_cache.borrow().clone() {
+            let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+            let callee_idx = self.stack.len() - 1 - argc;
+            self.stack[callee_idx] = Value::VmClosure(closure.clone());
+            return self.call_closure(closure, argc, span);
+        }
+
         // JIT-compile the tree-walking function to bytecode (first call only).
         let func_decl = FunctionDecl {
             name: func.name.clone(),
@@ -143,6 +151,9 @@ impl Vm {
             .ok_or_else(|| {
                 RuntimeError::new("Failed to extract compiled function from JIT", span)
             })?;
+
+        // Cache the compiled bytecode for future calls
+        *func.jit_cache.borrow_mut() = Some(proto.clone());
 
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
 

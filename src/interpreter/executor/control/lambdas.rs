@@ -32,6 +32,7 @@ impl Interpreter {
             defining_superclass: None,
             return_type: return_type.clone(),
             cached_env: std::cell::RefCell::new(None),
+            jit_cache: std::cell::RefCell::new(None),
         };
         Ok(Value::Function(Rc::new(func)))
     }
