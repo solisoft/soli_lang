@@ -37,7 +37,10 @@ pub fn get_or_compile(
 
     let compiled = compile(source, source_path, type_check)?;
 
-    get_cache().lock().unwrap().insert(cache_key, compiled.clone());
+    get_cache()
+        .lock()
+        .unwrap()
+        .insert(cache_key, compiled.clone());
 
     Ok(compiled)
 }
@@ -54,12 +57,13 @@ fn compile(
     if let Some(path) = source_path.filter(|_| has_imports(&program)) {
         let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
         let mut resolver = ModuleResolver::new(base_dir);
-        program = resolver
-            .resolve(program, path)
-            .map_err(|e| crate::error::RuntimeError::General {
-                message: format!("Module resolution error: {}", e),
-                span: crate::span::Span::new(0, 0, 1, 1),
-            })?;
+        program =
+            resolver
+                .resolve(program, path)
+                .map_err(|e| crate::error::RuntimeError::General {
+                    message: format!("Module resolution error: {}", e),
+                    span: crate::span::Span::new(0, 0, 1, 1),
+                })?;
     }
 
     if type_check {

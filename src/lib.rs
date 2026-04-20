@@ -7,8 +7,8 @@
 //! Solilang uses a tree-walking interpreter for executing programs.
 
 pub mod ast;
-pub mod coverage;
 pub mod compiled_cache;
+pub mod coverage;
 pub mod error;
 pub mod interpreter;
 pub mod lexer;
