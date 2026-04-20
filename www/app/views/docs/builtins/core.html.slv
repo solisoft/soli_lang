@@ -315,13 +315,13 @@ let h = {"a": 1}; h.has_key("a")  # true</code></pre>
             <section id="def-merge" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-merge" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">merge(h1, h2)</code> / <code class="text-lg font-mono text-indigo-400">hash.merge(other)</code>
+                        <code class="text-lg font-mono text-indigo-400">hash.merge(other)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Merge two hashes together. Values from h2 take precedence.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">merge({"x": 1}, {"y": 2})     # {"x": 1, "y": 2}
+                    <p class="text-gray-400 mb-3">Merge two hashes together. Values from <code>other</code> take precedence.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">{"x": 1}.merge({"y": 2})     # {"x": 1, "y": 2}
 let h1 = {"a": 1}; let h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
                 </div>
             </section>

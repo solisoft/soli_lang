@@ -1531,7 +1531,7 @@ print(entries_list);  # [[name, Alice], [age, 30], [city, Paris], [country, Fran
 
 # Merge hashes
 let defaults = {"age": 0, "country": "Unknown", "active": true};
-let merged = merge(person, defaults);
+let merged = person.merge(defaults);
 print(merged);  # {name: Alice, age: 30, city: Paris, country: France, active: true}
 
 # Clear hash
@@ -2903,7 +2903,7 @@ print(has_key(person, "email"));  # false
 
 # Merge
 let additional = {"country": "France", "email": "alice@example.com"};
-let merged = merge(person, additional);
+let merged = person.merge(additional);
 
 # Delete
 let deleted = delete(person, "age");

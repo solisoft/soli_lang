@@ -235,13 +235,12 @@ delete(h, "age")
 println(h)  # {"name": "Alice"}
 ```
 
-#### merge(hash1, hash2)
+#### hash.merge(other)
 
 Merges two hashes into a new hash.
 
 **Parameters:**
-- `hash1` (Hash) - The first hash
-- `hash2` (Hash) - The second hash (values override hash1)
+- `other` (Hash) - The hash to merge in (values override the receiver)
 
 **Returns:** Hash - A new merged hash
 
@@ -249,7 +248,7 @@ Merges two hashes into a new hash.
 ```soli
 let a = {"x": 1, "y": 2}
 let b = {"y": 3, "z": 4}
-merge(a, b)  # {"x": 1, "y": 3, "z": 4}
+a.merge(b)  # {"x": 1, "y": 3, "z": 4}
 ```
 
 #### entries(hash)

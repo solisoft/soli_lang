@@ -231,7 +231,7 @@ let en_translations = json_decode(en_json)
 let fr_json = file_read("config/locales/fr.json")
 let fr_translations = json_decode(fr_json)
 # Merge translations
-let all_translations = hash_merge(en_translations, fr_translations)
+let all_translations = en_translations.merge(fr_translations)
 # Use in your application
 let greeting = I18n.translate("nav.home", "en", all_translations)
 print(greeting);  # "Home"</code></pre>

@@ -137,10 +137,10 @@
     },
     {
       "title": "merge",
-      "type": "function",
+      "type": "method",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-merge",
-      "signature": "merge(h1, h2)",
+      "path": "/docs/builtins/core#def-merge",
+      "signature": "hash.merge(other)",
       "description": "Merge two hashes together",
       "keywords": ["hash", "combine", "join", "object"]
     },

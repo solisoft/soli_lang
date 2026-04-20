@@ -655,7 +655,7 @@ let defaults = {
 let user_config = {port: 8080, debug: true}
 
 # Merge with defaults
-let config = merge(defaults, user_config)
+let config = defaults.merge(user_config)
 # {host: "localhost", port: 8080, debug: true, timeout: 30}
 
 # Safe access with defaults
