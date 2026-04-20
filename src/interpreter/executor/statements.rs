@@ -491,6 +491,12 @@ impl Interpreter {
             }
         }
 
+        // Register model classes for lazy relation conversion
+        if extends_model {
+            use crate::interpreter::builtins::model::register_model_class;
+            register_model_class(&class_rc.name, class_rc.clone());
+        }
+
         // Initialize static fields
         for (field_name, field_initializer) in static_field_initializers {
             let value = if let Some(init_expr) = field_initializer {

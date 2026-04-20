@@ -272,6 +272,9 @@ pub use query::{
     execute_query_builder_count, execute_query_builder_exists, execute_query_builder_first,
     execute_query_builder_group_by, AggregationFunc, IncludeClause, JoinClause, QueryBuilder,
 };
+pub use registry::{
+    clear_all_model_registries, clear_model_classes, get_model_class, register_model_class,
+};
 pub use relations::{
     build_relation, classify, get_relation, get_relations, register_relation, singularize,
     RelationDef, RelationType,

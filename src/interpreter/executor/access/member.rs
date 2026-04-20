@@ -729,6 +729,41 @@ impl Interpreter {
         // First check for field
         let inst_ref = inst.borrow();
         if let Some(value) = inst_ref.get(name) {
+            // Lazy conversion: if field is Hash and name matches a declared relation,
+            // convert to proper model instance (cached for subsequent accesses)
+            let class_name = inst_ref.class.name.clone();
+            if let Value::Hash(_) = &value {
+                // Check if this field name is a declared relation
+                if let Some(relation) =
+                    crate::interpreter::builtins::model::relations::get_relation(&class_name, name)
+                {
+                    // Get the target class for this relation
+                    if let Some(target_class) =
+                        crate::interpreter::builtins::model::get_model_class(&relation.class_name)
+                    {
+                        drop(inst_ref);
+
+                        // Convert Hash to serde_json::Value, then to instance
+                        if let Ok(json) = crate::interpreter::value::value_to_json(&value) {
+                            let converted =
+                                crate::interpreter::builtins::model::crud::json_doc_to_instance(
+                                    &target_class,
+                                    &json,
+                                );
+
+                            // Cache the converted instance in the field
+                            let mut inst_mut = inst.borrow_mut();
+                            inst_mut.set(name.to_string(), converted);
+                            return inst_mut.get(name).ok_or_else(|| {
+                                RuntimeError::new(
+                                    format!("Failed to get converted relation '{}'", name),
+                                    span,
+                                )
+                            });
+                        }
+                    }
+                }
+            }
             return Ok(value);
         }
 
