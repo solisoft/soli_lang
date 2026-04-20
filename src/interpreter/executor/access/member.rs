@@ -6,13 +6,67 @@ use std::rc::Rc;
 use crate::ast::Expr;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
+use crate::interpreter::builtins::model::class_name_to_collection;
+use crate::interpreter::builtins::model::crud::exec_with_auto_collection;
+use crate::interpreter::builtins::model::crud::json_doc_to_instance;
 use crate::interpreter::builtins::model::get_relation;
 use crate::interpreter::builtins::model::is_translated_field;
 use crate::interpreter::builtins::model::relations::RelationType;
+use crate::interpreter::builtins::model::value_to_json;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::{Function, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
+
+fn parse_dynamic_finder(name: &str) -> Result<(Vec<String>, usize), String> {
+    let prefix = "find_by_";
+    if !name.starts_with(prefix) {
+        return Err("not a dynamic finder".to_string());
+    }
+    let rest = &name[prefix.len()..];
+    if rest.is_empty() {
+        return Err("find_by_ requires at least one attribute".to_string());
+    }
+    let attributes: Vec<String> = rest.split("_and_").map(|s: &str| s.to_string()).collect();
+    if attributes.is_empty() {
+        return Err("find_by_ requires at least one attribute".to_string());
+    }
+    Ok((attributes.clone(), attributes.len()))
+}
+
+fn execute_dynamic_finder(
+    class: &Rc<crate::interpreter::value::Class>,
+    attributes: &[String],
+    values: &[Value],
+) -> Result<Value, String> {
+    if values.len() != attributes.len() {
+        return Err(format!(
+            "find_by_{} expects {} value(s), got {}",
+            attributes.join("_and_"),
+            attributes.len(),
+            values.len()
+        ));
+    }
+    let collection = class_name_to_collection(&class.name);
+    let mut filter_parts = Vec::new();
+    let mut binds = std::collections::HashMap::new();
+    for (i, attr) in attributes.iter().enumerate() {
+        filter_parts.push(format!("doc.{} == @val{}", attr, i));
+        binds.insert(
+            format!("val{}", i),
+            value_to_json(&values[i]).map_err(|e| e.to_string())?,
+        );
+    }
+    let filter = filter_parts.join(" AND ");
+    let aql = format!(
+        "FOR doc IN {} FILTER {} LIMIT 1 RETURN doc",
+        collection, filter
+    );
+    match exec_with_auto_collection(aql, Some(binds), &collection) {
+        Ok(results) if !results.is_empty() => Ok(json_doc_to_instance(class, &results[0])),
+        _ => Ok(Value::Null),
+    }
+}
 
 impl Interpreter {
     /// Evaluate safe navigation: object&.name (returns null if object is null)
@@ -985,6 +1039,19 @@ impl Interpreter {
                 return Ok(Value::Array(Rc::new(RefCell::new(method_names))));
             }
             _ => {}
+        }
+
+        if class.is_model_subclass() && name.starts_with("find_by_") {
+            if let Ok((attributes, arity)) = parse_dynamic_finder(name) {
+                let class_rc = Rc::new(class.clone());
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    name,
+                    Some(arity + 1),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        execute_dynamic_finder(&class_rc, &attributes, &args[1..])
+                    },
+                )));
+            }
         }
 
         Err(RuntimeError::NoSuchProperty {

@@ -169,7 +169,7 @@ class User extends Model
     created_at: DateTime
 
     def find_or_create_github_user(github_data)
-        let existing = User.find_by(github_id: github_data["id"])
+        let existing = User.find_by_github_id(github_data["id"])
 
         return existing if existing != nil
 

@@ -51,6 +51,27 @@ let user = User.first_by("name", "Alice")</code></pre>
 let user = User.find_or_create_by("email", "new@example.com")
 let user = User.find_or_create_by("email", "new@example.com", { "name": "New User" })</code></pre>
         </div>
+
+        <div>
+            <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-indigo-500/20 text-indigo-400 text-xs font-mono">DYNAMIC FINDERS</span>
+                Dynamic Finder Methods
+            </h3>
+            <p class="text-gray-400 mb-4">
+                Automatically generated finders for any field combination. Method name encodes the field names and conditions.
+            </p>
+            <pre><code class="language-soli text-sm"># Single field finder — find_by_fieldname(value)
+let user = User.find_by_email("alice@example.com")
+
+# Two-field finder — find_by_field1_and_field2(val1, val2)
+let user = User.find_by_email_and_active("alice@example.com", true)
+
+# Three+ field combinations
+let post = Post.find_by_title_and_published_and_author_id("Hello", true, 123)</code></pre>
+            <p class="text-gray-400 mt-4">
+                These methods return the first matching record or <code>null</code> if not found.
+            </p>
+        </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Aggregations</h2>

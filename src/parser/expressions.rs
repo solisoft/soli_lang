@@ -159,7 +159,7 @@ impl Parser {
                 Ok(Expr::new(ExprKind::Variable(name.clone()), start_span))
             }
 
-            TokenKind::This => Ok(Expr::new(ExprKind::This, start_span)),
+            TokenKind::This | TokenKind::SelfKeyword => Ok(Expr::new(ExprKind::This, start_span)),
             TokenKind::Super => Ok(Expr::new(ExprKind::Super, start_span)),
 
             TokenKind::LeftParen => {

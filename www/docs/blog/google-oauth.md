@@ -133,7 +133,7 @@ class User extends Model
     created_at: DateTime
     
     def find_or_create_google_user(google_data)
-        let existing = User.find_by(google_id: google_data["id"])
+        let existing = User.find_by_google_id(google_data["id"])
         
         return existing if existing != nil
     

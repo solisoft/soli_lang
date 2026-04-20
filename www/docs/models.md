@@ -438,6 +438,23 @@ let user = User.find_or_create_by("email", "new@example.com");
 let user = User.find_or_create_by("email", "new@example.com", { "name": "New User" });
 ```
 
+### Dynamic Finder Methods
+
+Automatically generated finders for any field combination:
+
+```soli
+# Single field finder
+let user = User.find_by_email("alice@example.com");
+
+# Two-field finder (AND logic)
+let user = User.find_by_email_and_active("alice@example.com", true);
+
+# Three+ field combinations
+let post = Post.find_by_title_and_published_and_author_id("Hello", true, 123);
+```
+
+These methods return the first matching record or `null` if not found.
+
 ## Aggregations
 
 Calculate sums, averages, min, max on query results:
