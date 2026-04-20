@@ -178,6 +178,14 @@ pub fn serve_folder_with_options_and_workers(
     dev_mode: bool,
     workers: usize,
 ) -> Result<(), RuntimeError> {
+    // Resolve to an absolute path — notify emits absolute event paths, so
+    // storing watch dirs as relative would break the `starts_with` checks
+    // that classify hot-reload events by category.
+    let folder_owned = folder
+        .canonicalize()
+        .unwrap_or_else(|_| folder.to_path_buf());
+    let folder = folder_owned.as_path();
+
     // Load .env file before anything else
     load_env_files(folder);
 
