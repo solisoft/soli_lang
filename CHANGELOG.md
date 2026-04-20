@@ -4,17 +4,44 @@
 
 ### Features
 
- * **system:** add System.run() and System.run_sync() for command execution
- * **system:** add backtick command substitution syntax (`echo hello`)
- * **model:** auto-create collections when Model operations are called on non-existent collections ([#PR](https://github.com/solisoft/soli_lang/pull/XXX))
+### Bug Fixes
 
-## [0.21.0](https://github.com/solisoft/soli_lang/compare/v0.20.0...v0.21.0) (2026-02-10)
+## [0.64.1](https://github.com/solisoft/soli_lang/compare/v0.64.0...v0.64.1) (2026-04-21)
+
+### Bug Fixes
+
+* **fmt:** fix rustfmt issues in compiled_cache.rs and lib.rs ([49a3729](https://github.com/solisoft/soli_lang/commit/49a3729))
+
+## [0.64.0](https://github.com/solisoft/soli_lang/compare/v0.63.2...v0.64.0) (2026-04-21)
+
+### Features
+
+* **vm:** optimize GetAndIncrLocal/GetAndDecrLocal to use mem::replace ([dae9cf4](https://github.com/solisoft/soli_lang/commit/dae9cf4))
+* **async:** avoid blocking async runtime by creating dedicated single-thread runtime ([f815b12](https://github.com/solisoft/soli_lang/commit/f815b12))
+* **regex:** replace regex cache full-clear with LRU eviction ([a5d50f1](https://github.com/solisoft/soli_lang/commit/a5d50f1))
+* **vm:** cache compiled bytecode in CompiledModule cache for run_vm() ([ed58e3c](https://github.com/solisoft/soli_lang/commit/ed58e3c))
+* **vm:** cache JIT-compiled bytecode in Function struct ([f0b3e95](https://github.com/solisoft/soli_lang/commit/f0b3e95))
+
+### Bug Fixes
+
+* **model:** fix ORM eager-loading: lazy conversion to model instances on field access ([889845b](https://github.com/solisoft/soli_lang/commit/889845b))
+
+## [0.63.2](https://github.com/solisoft/soli_lang/compare/v0.63.1...v0.63.2) (2026-02-10)
 
 
 ### Features
 
 * **hash:** add Hash.from_entries method for creating hashes from key-value pairs ([7e7539a](https://github.com/solisoft/soli_lang/commit/7e7539a81f8f28dd8abf595d3fcd9fa79e234fe7))
 * **routes:** enhance route reloading by adding controller reloading in worker threads ([b3db676](https://github.com/solisoft/soli_lang/commit/b3db676f50e72750bfbf28147989a586c4296a86))
+
+## [0.63.1](https://github.com/solisoft/soli_lang/compare/v0.63.0...v0.63.1) (2026-02-10)
+
+
+### Features
+
+* **system:** add System.run() and System.run_sync() for command execution
+* **system:** add backtick command substitution syntax (`echo hello`)
+* **model:** auto-create collections when Model operations are called on non-existent collections
 
 ## [0.20.0](https://github.com/solisoft/soli_lang/compare/v0.19.0...v0.20.0) (2026-02-09)
 
