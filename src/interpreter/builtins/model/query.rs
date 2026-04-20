@@ -590,11 +590,15 @@ impl QueryBuilder {
                     continue;
                 } else if aql_keywords.iter().any(|kw| kw.eq_ignore_ascii_case(&word)) {
                     result.push_str(&word);
-                } else if i < len && chars[i] == '.' {
-                    // Has a dot qualifier (e.g. `obj.field`) — pass through as-is
-                    result.push_str(&word);
+                } else if i < len {
+                    if chars[i] == '(' || chars[i] == '.' {
+                        result.push_str(&word);
+                    } else {
+                        result.push_str(alias);
+                        result.push('.');
+                        result.push_str(&word);
+                    }
                 } else {
-                    // Bare field name → prefix with alias
                     result.push_str(alias);
                     result.push('.');
                     result.push_str(&word);

@@ -78,6 +78,28 @@ describe("Model.group_by() query generation", fn() {
     });
 });
 
+describe("Model.where() with AQL functions", fn() {
+    test("LOWER() function is passed through correctly", fn() {
+        let q = TestUser.where("LOWER(doc.email) == @email", { "email": "test@example.com" }).to_query;
+        assert(q.contains("FILTER LOWER(doc.email) == @email"));
+    });
+
+    test("UPPER() function is passed through correctly", fn() {
+        let q = TestUser.where("UPPER(doc.name) == @name", { "name": "JOHN" }).to_query;
+        assert(q.contains("FILTER UPPER(doc.name) == @name"));
+    });
+
+    test("TRIM() function is passed through correctly", fn() {
+        let q = TestUser.where("TRIM(doc.field) == @val", { "val": "test" }).to_query;
+        assert(q.contains("FILTER TRIM(doc.field) == @val"));
+    });
+
+    test("nested function calls with LOWER", fn() {
+        let q = TestUser.where("LOWER(doc.email) == LOWER(@email)", { "email": "Test@Example.COM" }).to_query;
+        assert(q.contains("FILTER LOWER(doc.email) == LOWER(@email)"));
+    });
+});
+
 describe("Model.offset() method", fn() {
     test("creates query with offset", fn() {
         let q = TestUser.offset(20).to_query;
