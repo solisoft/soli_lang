@@ -74,6 +74,27 @@ type([1, 2, 3]) # "array"
 type(null)      # "null"
 ```
 
+#### value.is_a?(class_name)
+
+Returns whether a value is an instance of the specified class (or a subclass). Works on all objects including model instances.
+
+**Parameters:**
+- `class_name` (String) - The class name to check against
+
+**Returns:** Bool
+
+**Example:**
+```soli
+let user = User.find("123")
+user.is_a?("User")      # true
+user.is_a?("Model")     # true (inheritance)
+user.is_a?("String")    # false
+
+123.is_a?("Int")        # true
+"hello".is_a?("String") # true
+[1, 2].is_a?("Array")   # true
+```
+
 #### str(value)
 
 Converts a value to a string.

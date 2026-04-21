@@ -15,7 +15,7 @@ use crate::interpreter::builtins::model::relations::RelationType;
 use crate::interpreter::builtins::model::value_to_json;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
-use crate::interpreter::value::{Function, Instance, NativeFunction, Value, ValueMethod};
+use crate::interpreter::value::{Class, Function, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
 fn parse_dynamic_finder(name: &str) -> Result<(Vec<String>, usize), String> {
@@ -201,6 +201,33 @@ impl Interpreter {
             "class" => {
                 let inst_ref = inst.borrow();
                 return Ok(Value::String(inst_ref.class.name.clone()));
+            }
+            "is_a?" => {
+                let inst_clone = inst.clone();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "is_a?",
+                    Some(1),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        if args.len() != 1 {
+                            return Err("is_a? expects 1 argument".to_string());
+                        }
+                        let class_name = match &args[0] {
+                            Value::String(s) => s.as_str(),
+                            _ => {
+                                return Err("is_a? expects a string argument".to_string())
+                            }
+                        };
+                        let inst_ref = inst_clone.borrow();
+                        let mut current_class: Option<&Class> = Some(&inst_ref.class);
+                        while let Some(c) = current_class {
+                            if c.name == class_name {
+                                return Ok(Value::Bool(true));
+                            }
+                            current_class = c.superclass.as_ref().map(|rc| rc.as_ref());
+                        }
+                        Ok(Value::Bool(false))
+                    },
+                )));
             }
             "nil?" => return Ok(Value::Bool(false)),
             "blank?" => return Ok(Value::Bool(false)),
