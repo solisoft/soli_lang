@@ -115,7 +115,12 @@ impl Interpreter {
     }
 
     pub fn set_source_path(&mut self, path: PathBuf) {
-        self.current_source_path = Some(path);
+        let absolute_path = if path.is_absolute() {
+            path
+        } else {
+            std::fs::canonicalize(&path).unwrap_or(path)
+        };
+        self.current_source_path = Some(absolute_path);
     }
 
     #[inline(always)]

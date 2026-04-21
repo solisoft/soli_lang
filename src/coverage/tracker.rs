@@ -216,7 +216,7 @@ impl CoverageTracker {
         });
 
         if let Some(global) = GLOBAL_COVERAGE_TRACKER.get() {
-            if let Ok(mut tracker) = global.lock() {
+            if let Ok(mut tracker) = global.try_lock() {
                 tracker.record_line_hit_to_global(path, line);
             }
         }
@@ -407,6 +407,12 @@ where
 
 impl CoverageTracker {
     pub fn register_executable_lines_from_source(&mut self, path: &PathBuf, source: &str) {
+        let absolute_path = if path.is_absolute() {
+            path.clone()
+        } else {
+            std::fs::canonicalize(path).unwrap_or_else(|_| path.clone())
+        };
+
         let tokens = Scanner::new(source).scan_tokens();
         if tokens.is_err() {
             return;
@@ -418,7 +424,7 @@ impl CoverageTracker {
         }
 
         let program = parse_result.unwrap();
-        self.collect_lines_from_program(path, source, &program);
+        self.collect_lines_from_program(&absolute_path, source, &program);
     }
 
     fn collect_lines_from_program(

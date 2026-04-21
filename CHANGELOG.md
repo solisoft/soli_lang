@@ -12,6 +12,8 @@
 ### Bug Fixes
 
 * **coverage:** fix `soli test --coverage` - was reporting inflated percentages due to double counting hits in end_test()
+* **coverage:** fix deadlock in record_line_hit when global tracker and local tracker are same Arc
+* **coverage:** fix path inconsistency by canonicalizing paths in set_source_path and register_executable_lines_from_source
 * **expectations:** implement expect().to_*() chainable assertion methods (were previously not implemented)
 
 ### Documentation
