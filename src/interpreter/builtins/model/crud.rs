@@ -224,15 +224,42 @@ pub fn normalize_key(key: &str) -> &str {
     key.rsplit('/').next().unwrap_or(key)
 }
 
+/// Extract class name from _id field: "default:organisations/UUID" → "Organisation"
+fn class_name_from_id(id: &str) -> String {
+    let parts: Vec<&str> = id.split('/').collect();
+    if parts.len() >= 2 {
+        let collection = parts[0].split(':').nth(1).unwrap_or(parts[0]);
+        super::relations::classify(collection)
+    } else {
+        "Instance".to_string()
+    }
+}
+
 /// Convert a JSON document to a class instance with all fields set.
+/// For included relations, the correct class is derived from the _id field.
 pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Value {
-    let mut instance = Instance::new(class.clone());
+    let target_class = resolve_instance_class(class, json);
+    let mut instance = Instance::new(target_class.clone());
     if let serde_json::Value::Object(map) = json {
         for (k, v) in map {
             instance.set(k.clone(), json_to_value(v));
         }
     }
     Value::Instance(Rc::new(RefCell::new(instance)))
+}
+
+/// Resolve the correct class for a JSON document based on its _id field.
+/// Falls back to the given class if no _id or can't determine class.
+fn resolve_instance_class(default_class: &Rc<Class>, json: &serde_json::Value) -> Rc<Class> {
+    if let serde_json::Value::Object(map) = json {
+        if let Some(serde_json::Value::String(id)) = map.get("_id") {
+            let class_name = class_name_from_id(id);
+            if let Some(class) = super::registry::get_model_class(&class_name) {
+                return class;
+            }
+        }
+    }
+    default_class.clone()
 }
 
 /// Execute query returning class instances with automatic collection creation.
@@ -861,5 +888,13 @@ mod tests {
             }
             _ => panic!("Expected Value::Instance"),
         }
+    }
+
+    #[test]
+    fn test_class_name_from_id() {
+        assert_eq!(class_name_from_id("default:organisations/abc123"), "Organisation");
+        assert_eq!(class_name_from_id("default:users/xyz789"), "User");
+        assert_eq!(class_name_from_id("default:blog_posts/def456"), "BlogPost");
+        assert_eq!(class_name_from_id("no_slash"), "Instance");
     }
 }
