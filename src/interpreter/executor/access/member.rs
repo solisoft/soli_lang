@@ -883,11 +883,10 @@ impl Interpreter {
                 let class_val = class_val.clone();
                 let method_name = name.to_string();
                 let original_func = native_method.func.clone();
-                let original_arity = native_method.arity;
 
                 let bound_func = NativeFunction::new(
                     Box::leak(format!("bound_{}", method_name).into_boxed_str()),
-                    original_arity.map(|a| a - 1),
+                    None, // Variadic - don't check arity at VM level
                     move |args| {
                         let mut full_args = vec![class_val.clone()];
                         full_args.extend(args);
