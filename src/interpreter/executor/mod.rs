@@ -45,6 +45,7 @@ pub(crate) enum ControlFlow {
     Normal(Value),
     Return(Value),
     Throw(Value),
+    Continue,
 }
 
 /// The Solilang interpreter.
@@ -325,6 +326,7 @@ impl Interpreter {
             Value::Future(_) => "\"<future>\"".to_string(),
             Value::Method(_) => "\"<method>\"".to_string(),
             Value::Breakpoint => "\"<breakpoint>\"".to_string(),
+            Value::Continue => "\"<continue>\"".to_string(),
             Value::QueryBuilder(_) => "\"<query builder>\"".to_string(),
             Value::Super(c) => format!("\"<super of {}>\"", c.name),
             Value::VmClosure(c) => format!("\"<fn {}>\"", c.proto.name),
@@ -399,11 +401,12 @@ impl Interpreter {
         let mut result = Ok(ControlFlow::Normal(Value::Null));
         for stmt in statements {
             result = self.execute(stmt);
-            match &result {
+            match result {
                 Err(_) => break,
                 Ok(ControlFlow::Return(_)) => break,
                 Ok(ControlFlow::Throw(_)) => break,
                 Ok(ControlFlow::Normal(_)) => {}
+                Ok(ControlFlow::Continue) => break,
             }
         }
         self.environment = previous;
@@ -420,11 +423,12 @@ impl Interpreter {
         let mut result = Ok(ControlFlow::Normal(Value::Null));
         for stmt in statements {
             result = self.execute(stmt);
-            match &result {
+            match result {
                 Err(_) => break,
                 Ok(ControlFlow::Return(_)) => break,
                 Ok(ControlFlow::Throw(_)) => break,
                 Ok(ControlFlow::Normal(_)) => {}
+                Ok(ControlFlow::Continue) => break,
             }
         }
 
@@ -518,6 +522,7 @@ impl Interpreter {
         let result = match self.execute_block_in(&func.body, call_env_rc) {
             Ok(ControlFlow::Normal(v)) => Ok(v),
             Ok(ControlFlow::Return(return_value)) => Ok(return_value),
+            Ok(ControlFlow::Continue) => Ok(Value::Null),
             Ok(ControlFlow::Throw(e)) => Err(RuntimeError::General {
                 message: format!("Unhandled exception: {}", e),
                 span: Span::default(),

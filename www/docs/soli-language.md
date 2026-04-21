@@ -551,12 +551,12 @@ for i in range(len(arr) - 1, -1, -1)
     print(arr[i]);  # 5, 4, 3, 2, 1
 end
 
-# Break and continue
+# Break and next
 let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 let sum = 0;
 for n in numbers
     if n % 2 == 0
-        continue;  # Skip even numbers
+        next
     end
     if n > 7
         break;  # Stop at first number > 7

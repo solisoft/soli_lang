@@ -19,6 +19,7 @@ const KEYWORDS: &[&str] = &[
     "return",
     "break",
     "continue",
+    "next",
     "match",
     "case",
     "default",

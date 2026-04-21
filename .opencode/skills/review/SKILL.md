@@ -1,7 +1,7 @@
-# Code Review Skill
-
-Review code changes and provide feedback on quality, style, and potential issues.
-
+---
+name: review
+description: Review code changes and provide feedback on quality, style, and potential issues.
+---
 ## Usage
 
 ```

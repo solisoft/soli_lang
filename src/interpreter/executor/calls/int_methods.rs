@@ -58,7 +58,7 @@ impl Interpreter {
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_) | ControlFlow::Normal(_) => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in int.times", span));
                 }
@@ -102,7 +102,7 @@ impl Interpreter {
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_) | ControlFlow::Normal(_) => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in int.upto", span));
                 }
@@ -147,7 +147,7 @@ impl Interpreter {
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_) | ControlFlow::Normal(_) => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in int.downto", span));
                 }

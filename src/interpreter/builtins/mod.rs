@@ -110,6 +110,14 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         })),
     );
 
+    // next() - Alias for continue() in loops
+    env.define(
+        "next".to_string(),
+        Value::NativeFunction(NativeFunction::new("next", Some(0), |_args| {
+            Ok(Value::Continue)
+        })),
+    );
+
     // await(future) - Await a Future value and return the resolved result
     env.define(
         "await".to_string(),

@@ -24,7 +24,6 @@ impl Interpreter {
                 if matches!(value, Value::Breakpoint) {
                     let env_json = self.serialize_environment_for_debug();
                     let mut stack_trace = self.get_stack_trace();
-                    // Add the breakpoint location as the first entry
                     let file = self
                         .current_source_path
                         .as_ref()
@@ -36,6 +35,9 @@ impl Interpreter {
                         env_json,
                         stack_trace,
                     });
+                }
+                if matches!(value, Value::Continue) {
+                    return Ok(ControlFlow::Continue);
                 }
                 Ok(ControlFlow::Normal(value))
             }
@@ -101,6 +103,7 @@ impl Interpreter {
                             ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                             ControlFlow::Normal(_) => {}
                             ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
+                            ControlFlow::Continue => {}
                         }
                     }
                     return Ok(ControlFlow::Normal(Value::Null));
@@ -111,6 +114,7 @@ impl Interpreter {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                         ControlFlow::Normal(_) => {}
                         ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
+                        ControlFlow::Continue => {}
                     }
                 }
                 Ok(ControlFlow::Normal(Value::Null))
@@ -186,7 +190,7 @@ impl Interpreter {
 
                 let throw_value = match try_result {
                     Ok(control_flow) => match control_flow {
-                        ControlFlow::Normal(_) => None,
+                        ControlFlow::Normal(_) | ControlFlow::Continue => None,
                         ControlFlow::Return(v) => {
                             if let Some(finally_blk) = finally_block {
                                 self.execute(finally_blk)?;
@@ -226,7 +230,7 @@ impl Interpreter {
                         self.environment = previous;
 
                         match catch_result {
-                            Ok(ControlFlow::Normal(_)) => {}
+                            Ok(ControlFlow::Normal(_) | ControlFlow::Continue) => {}
                             Ok(ControlFlow::Return(v)) => {
                                 if let Some(finally_blk) = finally_block {
                                     self.execute(finally_blk)?;
@@ -263,7 +267,7 @@ impl Interpreter {
                     match self.execute(finally_blk)? {
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                         ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
-                        ControlFlow::Normal(_) => {}
+                        ControlFlow::Normal(_) | ControlFlow::Continue => {}
                     }
                 }
 
@@ -344,7 +348,7 @@ impl Interpreter {
                             self.environment = prev_env;
                             return Ok(ControlFlow::Throw(e));
                         }
-                        Ok(ControlFlow::Normal(_)) => {}
+                        Ok(ControlFlow::Normal(_)) | Ok(ControlFlow::Continue) => {}
                     }
                 }
 

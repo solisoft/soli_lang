@@ -346,6 +346,14 @@ fn builtins_image(req)
     render_docs("docs/builtins/image", "Image Class", "builtins", "image")
 end
 
+fn builtins_file(req)
+    render_docs("docs/builtins/file", "File Class", "builtins", "file")
+end
+
+fn builtins_spreadsheet(req)
+    render_docs("docs/builtins/spreadsheet", "Spreadsheet Functions", "builtins", "spreadsheet")
+end
+
 # ============================================================================
 # Utility
 # ============================================================================

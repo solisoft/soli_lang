@@ -58,14 +58,14 @@
 <pre><code class="language-soli text-sm">def process_user(user_id: Int) -> Hash
     let user = database.find(user_id)
     # Set a breakpoint to inspect the user object
-    break
+    break()
     if (user == null)
         return {"error": "User not found"}
     end
 
     let profile = enrich_profile(user)
     # Another breakpoint to see enriched data
-    break
+    break()
     profile
 end</code></pre></code></pre>
             </div>

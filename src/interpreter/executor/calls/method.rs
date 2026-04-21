@@ -617,6 +617,7 @@ impl Interpreter {
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => result.push(v),
                 ControlFlow::Normal(v) => result.push(v),
+                ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array method", span));
                 }
@@ -666,6 +667,7 @@ impl Interpreter {
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array filter", span));
                 }
@@ -716,7 +718,7 @@ impl Interpreter {
                 .define_or_update(&param_name, item.clone());
 
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
-                ControlFlow::Return(_) | ControlFlow::Normal(_) => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array each", span));
                 }
@@ -786,6 +788,7 @@ impl Interpreter {
             acc = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array reduce", span));
                 }
@@ -834,6 +837,7 @@ impl Interpreter {
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array find", span));
                 }
@@ -886,6 +890,7 @@ impl Interpreter {
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array any?", span));
                 }
@@ -938,6 +943,7 @@ impl Interpreter {
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array all?", span));
                 }
@@ -1607,6 +1613,7 @@ impl Interpreter {
         let call_env = Environment::with_enclosing(func.closure.clone());
         let result = match self.execute_block(&func.body, call_env)? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
+            ControlFlow::Continue => Value::Null,
             ControlFlow::Throw(_) => {
                 return Err(RuntimeError::new("Exception in Cache.fetch block", span))
             }

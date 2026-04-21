@@ -306,6 +306,8 @@ pub enum Value {
     Method(ValueMethod),
     /// Breakpoint marker - triggers debug mode when encountered
     Breakpoint,
+    /// Continue marker - used by next() alias for continue in loops
+    Continue,
     /// Query builder for chainable database queries
     QueryBuilder(Rc<RefCell<QueryBuilder>>),
     /// Super reference - used for super.method() calls, carries the superclass
@@ -382,6 +384,7 @@ impl Value {
             Value::Future(_) => "Future".to_string(),
             Value::Method(_) => "Method".to_string(),
             Value::Breakpoint => "Breakpoint".to_string(),
+            Value::Continue => "Continue".to_string(),
             Value::QueryBuilder(_) => "QueryBuilder".to_string(),
             Value::Super(_) => "Super".to_string(),
             Value::VmClosure(_) => "Function".to_string(),
@@ -560,6 +563,7 @@ impl Value {
             Value::Future(_) => 7,
             Value::Method(_) => 8,
             Value::Breakpoint => 10,
+            Value::Continue => 9,
             Value::QueryBuilder(_) => 13,
             Value::Super(_) => 7,
             Value::VmClosure(func) => func.proto.name.len() + 5,
@@ -628,6 +632,7 @@ impl Value {
             Value::Future(_) => s.push_str("<Future>"),
             Value::Method(_) => s.push_str("<Method>"),
             Value::Breakpoint => s.push_str("<Breakpoint>"),
+            Value::Continue => s.push_str("<Continue>"),
             Value::QueryBuilder(_) => s.push_str("<QueryBuilder>"),
             Value::Super(_) => s.push_str("<Super>"),
             Value::VmClosure(func) => {
@@ -761,6 +766,7 @@ impl fmt::Display for Value {
                 method.method_name
             ),
             Value::Breakpoint => write!(f, "<breakpoint>"),
+            Value::Continue => write!(f, "<continue>"),
             Value::QueryBuilder(qb) => {
                 let qb = qb.borrow();
                 if qb.filter.is_some() {

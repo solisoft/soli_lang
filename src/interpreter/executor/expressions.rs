@@ -127,6 +127,7 @@ impl Interpreter {
                         message: format!("Unhandled exception: {}", e),
                         span: expr.span,
                     }),
+                    ControlFlow::Continue => Ok(Value::Null),
                 }
             }
 

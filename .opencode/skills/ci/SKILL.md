@@ -1,7 +1,7 @@
-# CI Skill
-
-Run the full CI pipeline: clippy, fmt, and tests.
-
+---
+name: ci
+description: Run the full CI pipeline: clippy, fmt, and tests.
+---
 ## Usage
 
 ```

@@ -2665,6 +2665,21 @@ for i in range(0, 10)
 end
 ```
 
+### next
+
+Skips to the next iteration of a loop.
+
+**Example:**
+```soli
+for i in range(0, 5)
+    if i == 2
+        next
+    end
+    println(i)
+end
+# prints: 0, 1, 3, 4
+```
+
 ### await
 
 Awaits an asynchronous operation (used internally for async HTTP).

@@ -122,6 +122,7 @@ impl Interpreter {
                         }
                     }
                 }
+                ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in hash map", span));
                 }
@@ -166,6 +167,7 @@ impl Interpreter {
             let result_value = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in hash filter", span));
                 }
@@ -211,7 +213,7 @@ impl Interpreter {
             }
 
             match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_) | ControlFlow::Normal(_) => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in hash each", span));
                 }
@@ -329,6 +331,7 @@ impl Interpreter {
             let new_value = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new(
                         "Exception in hash transform_values",
@@ -375,6 +378,7 @@ impl Interpreter {
             let new_key = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in hash transform_keys", span));
                 }
@@ -424,6 +428,7 @@ impl Interpreter {
             let result_value = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in hash select", span));
                 }
@@ -472,6 +477,7 @@ impl Interpreter {
             let result_value = match self.execute_block(&func.body, call_env)? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in hash reject", span));
                 }

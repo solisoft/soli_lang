@@ -1576,13 +1576,13 @@
       "keywords": ["loop", "exit", "control flow"]
     },
     {
-      "title": "continue",
-      "type": "keyword",
-      "category": "Language",
+      "title": "next",
+      "type": "function",
+      "category": "Core",
       "path": "/docs/language/control-flow#kw-continue",
-      "signature": "continue",
+      "signature": "next()",
       "description": "Skips to the next iteration of the loop",
-      "keywords": ["loop", "skip", "control flow"]
+      "keywords": ["loop", "skip", "iteration", "continue"]
     },
     {
       "title": "unless",

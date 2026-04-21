@@ -1513,6 +1513,7 @@ impl TuiRepl {
             "let",
             "match",
             "new",
+            "next",
             "not",
             "null",
             "print",

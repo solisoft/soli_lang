@@ -1,7 +1,7 @@
-# /doc Skill
-
-Update documentation about current changes in the www/ folder (.md and .slv files).
-
+---
+name: doc
+description: Update documentation about current changes in the www/ folder (.md and .slv files).
+---
 ## Usage
 
 ```
