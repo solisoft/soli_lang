@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token};
+use super::registry::{clear_model_classes, register_model_class};
 
 /// Apply DB authentication headers.
 /// Priority: JWT (fastest) > API key > Basic auth fallback.
@@ -896,5 +897,67 @@ mod tests {
         assert_eq!(class_name_from_id("default:users/xyz789"), "User");
         assert_eq!(class_name_from_id("default:blog_posts/def456"), "BlogPost");
         assert_eq!(class_name_from_id("no_slash"), "Instance");
+    }
+
+    #[test]
+    fn test_json_doc_to_instance_with_id_derives_correct_class() {
+        clear_model_classes();
+
+        let contact_class = Rc::new(Class {
+            name: "Contact".to_string(),
+            ..Default::default()
+        });
+        let organisation_class = Rc::new(Class {
+            name: "Organisation".to_string(),
+            ..Default::default()
+        });
+
+        register_model_class("Contact", contact_class.clone());
+        register_model_class("Organisation", organisation_class.clone());
+
+        let json = serde_json::json!({
+            "_id": "default:organisations/019da674-194a-713d-94c7-47228ed73f90",
+            "_key": "019da674-194a-713d-94c7-47228ed73f90",
+            "name": "solisoft",
+            "email": "contact@solisoft.net"
+        });
+
+        let val = json_doc_to_instance(&contact_class, &json);
+        match val {
+            Value::Instance(inst) => {
+                assert_eq!(inst.borrow().class.name, "Organisation");
+                assert_eq!(inst.borrow().get("name"), Some(Value::String("solisoft".to_string())));
+                assert_eq!(inst.borrow().get("email"), Some(Value::String("contact@solisoft.net".to_string())));
+            }
+            _ => panic!("Expected Value::Instance, got {:?}", val),
+        }
+
+        clear_model_classes();
+    }
+
+    #[test]
+    fn test_json_doc_to_instance_falls_back_when_class_not_found() {
+        clear_model_classes();
+
+        let contact_class = Rc::new(Class {
+            name: "Contact".to_string(),
+            ..Default::default()
+        });
+
+        let json = serde_json::json!({
+            "_id": "default:organisations/some-uuid",
+            "_key": "some-uuid",
+            "name": "solisoft"
+        });
+
+        let val = json_doc_to_instance(&contact_class, &json);
+        match val {
+            Value::Instance(inst) => {
+                assert_eq!(inst.borrow().class.name, "Contact");
+            }
+            _ => panic!("Expected Value::Instance"),
+        }
+
+        clear_model_classes();
     }
 }
