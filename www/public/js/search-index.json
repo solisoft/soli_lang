@@ -37,6 +37,15 @@
       "keywords": ["typeof", "introspection", "reflection"]
     },
     {
+      "title": "is_a?",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-is-a",
+      "signature": "value.is_a?(class_name)",
+      "description": "Returns whether a value is of the given type. For instances, checks class hierarchy. For primitives, supports 'int', 'numeric', 'object'.",
+      "keywords": ["instanceof", "typeof", "introspection", "reflection", "class", "type check"]
+    },
+    {
       "title": "str",
       "type": "function",
       "category": "Core",

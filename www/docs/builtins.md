@@ -78,19 +78,19 @@ type(null)      # "null"
 
 Returns whether a value is an instance of the specified class (or a subclass). Works on all objects including model instances.
 
-**Parameters:**
-- `class_name` (String) - The class name to check against
-
-**Returns:** Bool
-
-**Example:**
+**For instances (including model instances):** Checks class hierarchy
 ```soli
 let user = User.find("123")
 user.is_a?("User")      # true
 user.is_a?("Model")     # true (inheritance)
 user.is_a?("String")    # false
+```
 
+**For primitives:** Supports "int", "numeric", "object" type names
+```soli
 123.is_a?("Int")        # true
+123.is_a?("numeric")    # true
+123.is_a?("string")     # false
 "hello".is_a?("String") # true
 [1, 2].is_a?("Array")   # true
 ```

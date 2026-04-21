@@ -101,13 +101,13 @@ type(null)      # "null"</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Returns whether a value is an instance of the specified class (or a subclass). Works on all objects including model instances.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let user = User.find("123")
+                    <p class="text-gray-400 mb-3">Returns whether a value is an instance of the specified class. For instances (including models), checks class hierarchy. For primitives, supports "int", "numeric", "object" type names.</p>
+                    <pre data-filename="Instance example"><code class="language-soli text-sm">let user = User.find("123")
 user.is_a?("User")      # true
 user.is_a?("Model")     # true (inheritance)
-user.is_a?("String")    # false
-
-123.is_a?("Int")         # true
+user.is_a?("String")    # false</code></pre>
+                    <pre data-filename="Primitive example"><code class="language-soli text-sm">123.is_a?("Int")         # true
+123.is_a?("numeric")    # true
 "hello".is_a?("String")  # true
 [1, 2].is_a?("Array")    # true</code></pre>
                 </div>
