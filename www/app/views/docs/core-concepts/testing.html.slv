@@ -28,6 +28,10 @@
                 <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">DB</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Database Testing</span>
             </a>
+            <a href="#section-mock-queries" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center text-purple-400 text-sm font-mono">M</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Mock DB Queries</span>
+            </a>
             <a href="#section-coverage" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">%</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Coverage & Parallel</span>
@@ -55,8 +59,8 @@
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/controller_example.sl</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">describe("HomeController", def() {
-    test("GET /up returns UP status", def() {
+<pre><code class="language-soli text-sm">describe("HomeController", fn() {
+    test("GET /up returns UP status", fn() {
         let response = get("/up")
 assert_eq(res_status(response), 200)
 assert_eq(res_body(response), "UP")    })});</code></pre>
@@ -288,10 +292,10 @@ let location = res_location(response)assert_eq(location, "/expected/path");</cod
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/posts_controller_spec.sl</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">describe("PostsController", def() {
-    before_each(def() {
+<pre><code class="language-soli text-sm">describe("PostsController", fn() {
+    before_each(fn() {
         as_guest()    })
-    test("creates post with valid data", def() {
+    test("creates post with valid data", fn() {
         login("author@example.com", "password123")        
         let response = post("/posts", {
             "title": "New Post Title",
@@ -300,10 +304,10 @@ let location = res_location(response)assert_eq(location, "/expected/path");</cod
         assert_eq(res_status(response), 201)
 let result = res_json(response)
 assert_not_null(result["id"])    })
-    test("rejects unauthenticated request", def() {
+    test("rejects unauthenticated request", fn() {
         let response = post("/posts", {"title": "Test"})
 assert_eq(res_status(response), 302)    })
-    test("shows single post", def() {
+    test("shows single post", fn() {
         let response = get("/posts/1")
 assert_eq(res_status(response), 200)
 let post = res_json(response)
@@ -489,9 +493,9 @@ to set up and clean up test state. Always reset authentication state between tes
         <h3 class="text-xl font-semibold text-white mb-4">Transaction Rollback</h3>
         <p class="text-gray-400 mb-4">Tests are isolated using database transactions:</p>
 
-        <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", def() {
-    test("creates user", def() {
-        with_transaction(def() {
+        <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", fn() {
+    test("creates user", fn() {
+        with_transaction(fn() {
             let user = Factory.create("user", hash("name": "Test"))
 expect(User.count).to_equal(1)
 expect(user.name).to_equal("Test")        })    })});</code></pre>
@@ -511,6 +515,82 @@ Factory.define("post", hash(
 let user = Factory.create("user")
 let post = Factory.create("post", hash("title": "Custom Title"))
 let users = Factory.create_list("user", 5);</code></pre>
+
+        <h3 class="text-xl font-semibold text-white mb-4" id="section-mock-queries">Mock Database Queries</h3>
+        <p class="text-gray-400 mb-4">For integration tests without a real database, use <code>Model.mock_query_result()</code> to intercept queries and return predefined data:</p>
+
+        <pre data-filename="tests/user_queries_spec.sl"><code class="language-soli text-sm">describe("User queries", fn() {
+    before_each(fn() { User.clear_mocks() })
+    after_each(fn() { User.clear_mocks() })
+    
+    test("finds user by id", fn() {
+        User.mock_query_result(
+            "FOR doc IN users FILTER doc._key == @key RETURN doc",
+            [
+                {
+                    "_key": "123",
+                    "_id": "default:users/123",
+                    "name": "Alice",
+                    "email": "alice@example.com"
+                }
+            ]
+        )
+        
+        let user = User.find("123")
+        assert_eq(user.name, "Alice")
+    })
+    
+    test("includes returns correct class for relations", fn() {
+        # Mock the parent query
+        Contact.mock_query_result(
+            "FOR doc IN contacts RETURN doc",
+            [
+                {
+                    "_key": "c1",
+                    "_id": "default:contacts/c1",
+                    "name": "Bob",
+                    "organisation_id": "default:organisations/o1"
+                }
+            ]
+        )
+        
+        # Mock the included relation query
+        Organisation.mock_query_result(
+            "FOR doc IN organisations FILTER doc._key IN @keys RETURN doc",
+            [
+                {
+                    "_key": "o1",
+                    "_id": "default:organisations/o1",
+                    "name": "Acme Corp"
+                }
+            ]
+        )
+        
+        let contact = Contact.includes("organisation").first
+        let org = contact.organisation
+        
+        # Verify the relation has the correct class (not Contact)
+        assert_eq(org.class_name, "Organisation")
+        assert_eq(org.name, "Acme Corp")
+    })
+})</code></pre>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">Model.mock_query_result(query, results)</code>
+                <p class="text-sm text-gray-400 mt-1">Register mock data for an AQL query</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">Model.clear_mocks()</code>
+                <p class="text-sm text-gray-400 mt-1">Remove all registered mocks</p>
+            </div>
+        </div>
+
+        <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
+            <p class="text-amber-300 text-sm">
+                <strong>Note:</strong> Include relations require mocking both the parent and related queries. The <code>_id</code> field (e.g., <code>"default:organisations/o1"</code>) determines the correct class for included documents.
+            </p>
+        </div>
 
         <h2 class="text-2xl font-bold text-white mb-6">Parallel Execution</h2>
         <p class="text-gray-400 mb-4">Tests run in parallel by default:</p>

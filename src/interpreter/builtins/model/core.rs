@@ -1013,6 +1013,48 @@ impl Model {
             })),
         );
 
+        // Model.mock_query_result(query, results_array) - Register mock DB response for testing
+        use super::crud::register_query_mock;
+        native_static_methods.insert(
+            "mock_query_result".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model.mock_query_result",
+                Some(2),
+                |args| {
+                    let query = match args.get(1) {
+                        Some(Value::String(s)) => s.clone(),
+                        _ => {
+                            return Err("mock_query_result expects query string as second argument"
+                                .to_string())
+                        }
+                    };
+                    let results_array = match args.get(2) {
+                        Some(Value::Array(arr)) => arr
+                            .borrow()
+                            .iter()
+                            .map(|v| value_to_json(v).map_err(|e| format!("Invalid JSON: {}", e)))
+                            .collect::<Result<Vec<_>, _>>()?,
+                        _ => {
+                            return Err("mock_query_result expects results array as third argument"
+                                .to_string())
+                        }
+                    };
+                    register_query_mock(query, results_array);
+                    Ok(Value::Null)
+                },
+            )),
+        );
+
+        // Model.clear_mocks() - Clear all registered mock responses
+        use super::crud::clear_query_mocks;
+        native_static_methods.insert(
+            "clear_mocks".to_string(),
+            Rc::new(NativeFunction::new("Model.clear_mocks", None, |_| {
+                clear_query_mocks();
+                Ok(Value::Null)
+            })),
+        );
+
         // Model.all() - Get all documents as class instances
         use super::crud::exec_auto_collection_as_instances;
         native_static_methods.insert(

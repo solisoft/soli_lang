@@ -298,6 +298,132 @@ soli test --jobs=1
 soli test --reporter=json
 ```
 
+## Mock Database Queries
+
+For integration tests that don't need a real database, use `Model.mock_query_result()` to intercept queries and return predefined data.
+
+### Registering Mocks
+
+```soli
+describe("User queries", fn()
+    before_each(fn()
+        User.clear_mocks()
+    end)
+    
+    after_each(fn()
+        User.clear_mocks()
+    end)
+    
+    test("finds user by id", fn()
+        User.mock_query_result(
+            "FOR doc IN users FILTER doc._key == @key RETURN doc",
+            [
+                {
+                    "_key": "123",
+                    "_id": "default:users/123",
+                    "name": "Alice",
+                    "email": "alice@example.com"
+                }
+            ]
+        )
+        
+        let user = User.find("123")
+        expect(user.name).to_equal("Alice")
+        expect(user.class_name).to_equal("User")
+    end)
+end)
+```
+
+### Mocking Include Queries
+
+When testing relations with `includes()`, mock both the parent and related queries:
+
+```soli
+describe("Contact with organisation", fn()
+    before_each(fn()
+        Contact.clear_mocks()
+        Organisation.clear_mocks()
+    end)
+    
+    test("returns correct class for included relations", fn()
+        # Mock Contact query
+        Contact.mock_query_result(
+            "FOR doc IN contacts RETURN doc",
+            [
+                {
+                    "_key": "c1",
+                    "_id": "default:contacts/c1",
+                    "name": "Bob",
+                    "organisation_id": "default:organisations/o1"
+                }
+            ]
+        )
+        
+        # Mock Organisation query (for includes)
+        Organisation.mock_query_result(
+            "FOR doc IN organisations FILTER doc._key IN @keys RETURN doc",
+            [
+                {
+                    "_key": "o1",
+                    "_id": "default:organisations/o1",
+                    "name": "Acme Corp"
+                }
+            ]
+        )
+        
+        let contact = Contact.includes("organisation").first
+        let org = contact.organisation
+        
+        # Verify the relation has the correct class
+        expect(org.class_name).to_equal("Organisation")
+        expect(org.name).to_equal("Acme Corp")
+    end)
+end)
+```
+
+### How It Works
+
+The mock system intercepts queries at the database layer before HTTP calls are made:
+
+1. `Model.mock_query_result(query, results)` registers mock data for a specific AQL query
+2. `Model.clear_mocks()` removes all registered mocks
+3. Mocks are stored per-model using thread-local storage
+
+### Mock Query Format
+
+The query string should match the AQL being generated. You can find the exact query by:
+- Looking at generated queries in tests
+- Using logging to capture queries
+- Inspecting the model's query builder output
+
+```soli
+# Common query patterns
+User.mock_query_result("FOR doc IN users RETURN doc", [...])
+User.mock_query_result("FOR doc IN users FILTER doc._key == @key RETURN doc", [...])
+Post.mock_query_result("FOR doc IN posts SORT doc.created_at DESC LIMIT 10 RETURN doc", [...])
+```
+
+### Best Practices
+
+```soli
+describe("Model Integration Tests", fn()
+    before_each(fn()
+        # Clear mocks before each test to avoid cross-test contamination
+        Model.clear_mocks()
+    end)
+    
+    after_each(fn()
+        # Ensure clean state
+        Model.clear_mocks()
+    end)
+    
+    test("specific scenario", fn()
+        # Register only the mocks needed for this test
+        Model.mock_query_result("FOR doc IN model RETURN doc", [...])
+    end)
+end)
+```
+
 ## Test Results
 
 ```

@@ -767,6 +767,79 @@ end
 
 See the [Testing Guide](/docs/testing) for comprehensive information on testing models.
 
+### Mock Database Queries
+
+For integration tests without a real database, use `Model.mock_query_result()`:
+
+```soli
+describe("User queries", fn()
+    before_each(fn()
+        User.clear_mocks()
+    end)
+    
+    after_each(fn()
+        User.clear_mocks()
+    end)
+    
+    test("finds user by id", fn()
+        User.mock_query_result(
+            "FOR doc IN users FILTER doc._key == @key RETURN doc",
+            [
+                {
+                    "_key": "123",
+                    "_id": "default:users/123",
+                    "name": "Alice",
+                    "email": "alice@example.com"
+                }
+            ]
+        )
+        
+        let user = User.find("123")
+        expect(user.name).to_equal("Alice")
+    end)
+    
+    test("includes returns correct class for relations", fn()
+        # Mock the parent query
+        Contact.mock_query_result(
+            "FOR doc IN contacts RETURN doc",
+            [
+                {
+                    "_key": "c1",
+                    "_id": "default:contacts/c1",
+                    "name": "Bob",
+                    "organisation_id": "default:organisations/o1"
+                }
+            ]
+        )
+        
+        # Mock the included relation query
+        Organisation.mock_query_result(
+            "FOR doc IN organisations FILTER doc._key IN @keys RETURN doc",
+            [
+                {
+                    "_key": "o1",
+                    "_id": "default:organisations/o1",
+                    "name": "Acme Corp"
+                }
+            ]
+        )
+        
+        let contact = Contact.includes("organisation").first
+        let org = contact.organisation
+        
+        # Verify the relation has the correct class (not Contact)
+        expect(org.class_name).to_equal("Organisation")
+        expect(org.name).to_equal("Acme Corp")
+    end)
+end)
+```
+
+Key points:
+- `Model.mock_query_result(query, results)` - Register mock data for an AQL query
+- `Model.clear_mocks()` - Remove all registered mocks
+- Include relations require mocking both the parent and related queries
+- The `_id` field (e.g., `"default:organisations/o1"`) determines the correct class for included documents
+
 ```soli
 describe("User model", fn()
     test("creates user with valid data", fn()

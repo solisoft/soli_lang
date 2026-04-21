@@ -350,6 +350,14 @@ user.delete()</code></pre>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.pluck(field, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Select fields only (returns QueryBuilder, chain <code>.all</code>)</td>
                 </tr>
+                <tr class="border-t border-white/10">
+                    <td class="py-3 px-4"><code class="text-purple-300">Model.mock_query_result(query, results)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Register mock data for an AQL query (for testing)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-purple-300">Model.clear_mocks()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Clear all registered mock responses</td>
+                </tr>
             </tbody>
         </table>
     </div>

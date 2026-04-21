@@ -8,7 +8,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token};
-use super::registry::{clear_model_classes, register_model_class};
+#[allow(unused_imports)]
+use super::registry::{clear_model_classes, get_model_class, register_model_class};
 
 /// Apply DB authentication headers.
 /// Priority: JWT (fastest) > API key > Basic auth fallback.
@@ -64,6 +65,28 @@ where
 // Thread-local transaction state for managing database transactions.
 thread_local! {
     static CURRENT_TX: RefCell<Option<TransactionState>> = const { RefCell::new(None) };
+}
+
+// Thread-local mock storage for testing.
+thread_local! {
+    static QUERY_MOCKS: RefCell<HashMap<String, Vec<serde_json::Value>>> = RefCell::new(HashMap::new());
+}
+
+/// Register a mock response for a specific query.
+pub fn register_query_mock(query: String, results: Vec<serde_json::Value>) {
+    QUERY_MOCKS.with(|mocks| {
+        mocks.borrow_mut().insert(query, results);
+    });
+}
+
+/// Clear all registered query mocks.
+pub fn clear_query_mocks() {
+    QUERY_MOCKS.with(|mocks| mocks.borrow_mut().clear());
+}
+
+/// Get mock response for a query if one is registered.
+pub fn get_mock_for_query(query: &str) -> Option<Vec<serde_json::Value>> {
+    QUERY_MOCKS.with(|mocks| mocks.borrow().get(query).cloned())
 }
 
 pub struct TransactionState {
@@ -474,11 +497,17 @@ fn create_collection_sync(name: &str) -> Result<(), String> {
 
 /// Execute query with automatic collection creation on collection-related error.
 /// This is used for Model operations to auto-create collections when they don't exist.
+/// Returns mock data if registered for the query.
 pub fn exec_with_auto_collection(
     sdbql: String,
     bind_vars: Option<HashMap<String, serde_json::Value>>,
     collection_name: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
+    // Check for mock response first
+    if let Some(mock_results) = get_mock_for_query(&sdbql) {
+        return Ok(mock_results);
+    }
+
     let result = exec_async_query_with_binds(sdbql.clone(), bind_vars.clone());
 
     if let Err(ref e) = result {
@@ -893,7 +922,10 @@ mod tests {
 
     #[test]
     fn test_class_name_from_id() {
-        assert_eq!(class_name_from_id("default:organisations/abc123"), "Organisation");
+        assert_eq!(
+            class_name_from_id("default:organisations/abc123"),
+            "Organisation"
+        );
         assert_eq!(class_name_from_id("default:users/xyz789"), "User");
         assert_eq!(class_name_from_id("default:blog_posts/def456"), "BlogPost");
         assert_eq!(class_name_from_id("no_slash"), "Instance");
@@ -926,8 +958,14 @@ mod tests {
         match val {
             Value::Instance(inst) => {
                 assert_eq!(inst.borrow().class.name, "Organisation");
-                assert_eq!(inst.borrow().get("name"), Some(Value::String("solisoft".to_string())));
-                assert_eq!(inst.borrow().get("email"), Some(Value::String("contact@solisoft.net".to_string())));
+                assert_eq!(
+                    inst.borrow().get("name"),
+                    Some(Value::String("solisoft".to_string()))
+                );
+                assert_eq!(
+                    inst.borrow().get("email"),
+                    Some(Value::String("contact@solisoft.net".to_string()))
+                );
             }
             _ => panic!("Expected Value::Instance, got {:?}", val),
         }
