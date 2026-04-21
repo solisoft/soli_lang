@@ -213,9 +213,7 @@ impl Interpreter {
                         }
                         let class_name = match &args[0] {
                             Value::String(s) => s.as_str(),
-                            _ => {
-                                return Err("is_a? expects a string argument".to_string())
-                            }
+                            _ => return Err("is_a? expects a string argument".to_string()),
                         };
                         let inst_ref = inst_clone.borrow();
                         let mut current_class: Option<&Class> = Some(&inst_ref.class);
