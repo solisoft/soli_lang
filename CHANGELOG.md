@@ -2,9 +2,17 @@
 
 ## [Unreleased]
 
+### Features
+
+* **coverage:** add global coverage tracker for test server HTTP request coverage tracking
+* **coverage:** exclude tests/ files from coverage report
+* **coverage:** show relative paths in coverage report
+* **expectations:** add chainable expect().to_*() assertion API (to_be, to_equal, to_be_greater_than, etc.)
+
 ### Bug Fixes
 
-* **coverage:** fix `soli test --coverage` - was reporting inflated percentages due to double counting hits in end_test() ([abc123](link))
+* **coverage:** fix `soli test --coverage` - was reporting inflated percentages due to double counting hits in end_test()
+* **expectations:** implement expect().to_*() chainable assertion methods (were previously not implemented)
 
 ### Documentation
 

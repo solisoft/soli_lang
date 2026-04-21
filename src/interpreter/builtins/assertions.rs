@@ -253,3 +253,9 @@ pub fn get_and_reset_assertion_count() -> i64 {
         result
     })
 }
+
+pub fn increment_assertion_count() {
+    ASSERTION_COUNT.with(|count| {
+        *count.borrow_mut() += 1;
+    });
+}

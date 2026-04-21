@@ -21,6 +21,7 @@ pub mod datetime;
 pub mod datetime_class;
 pub mod dotenv;
 pub mod env;
+pub mod expectations;
 pub mod factories;
 pub mod file;
 pub mod hash;
@@ -270,6 +271,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     if include_test_builtins {
         factories::register_factories(env);
         assertions::register_assertions(env);
+        expectations::register_expectation_class(env);
         test_dsl::register_test_builtins(env);
         test_server::register_test_server_builtins(env);
     }

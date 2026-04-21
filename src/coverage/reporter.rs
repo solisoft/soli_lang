@@ -86,7 +86,14 @@ impl CoverageReporter {
             let percent = file_cov.combined_coverage_percent();
             let bar = self.progress_bar(percent);
 
-            let display_path = path.to_string_lossy();
+            let display_path = if let Some(ref root) = self.config.root_dir {
+                path.strip_prefix(root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| path.to_string_lossy().to_string())
+            } else {
+                path.to_string_lossy().to_string()
+            };
+
             output.push_str(&format!(
                 "  {:<40} {} {:>6.1}%\n",
                 display_path, bar, percent
@@ -98,9 +105,18 @@ impl CoverageReporter {
             if !uncovered.is_empty() {
                 output.push_str("\nUncovered lines:\n");
                 for uncov in uncovered.iter().take(20) {
+                    let display_path = if let Some(ref root) = self.config.root_dir {
+                        uncov
+                            .path
+                            .strip_prefix(root)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| uncov.path.to_string_lossy().to_string())
+                    } else {
+                        uncov.path.to_string_lossy().to_string()
+                    };
                     output.push_str(&format!(
                         "  {}:{} ({}))\n",
-                        uncov.path.to_string_lossy(),
+                        display_path,
                         uncov.line_number,
                         uncov.source_code.trim()
                     ));

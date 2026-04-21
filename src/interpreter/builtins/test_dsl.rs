@@ -232,7 +232,14 @@ pub fn register_test_builtins(env: &mut Environment) {
     env.define(
         "expect".to_string(),
         Value::NativeFunction(NativeFunction::new("expect", Some(1), |args| {
-            Ok(args[0].clone())
+            let actual = args[0].clone();
+            let mut hash_map: crate::interpreter::value::HashPairs =
+                crate::interpreter::value::HashPairs::default();
+            hash_map.insert(
+                crate::interpreter::value::HashKey::String("actual".to_string()),
+                actual,
+            );
+            Ok(Value::Hash(Rc::new(RefCell::new(hash_map))))
         })),
     );
 }

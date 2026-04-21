@@ -5,10 +5,28 @@ use crate::parser::Parser;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 thread_local! {
     static CURRENT_COVERAGE: RefCell<Option<TestCoverage>> = const { RefCell::new(None) };
+}
+
+static GLOBAL_COVERAGE_TRACKER: OnceLock<Arc<Mutex<CoverageTracker>>> = OnceLock::new();
+
+pub fn set_global_coverage_tracker(tracker: Arc<Mutex<CoverageTracker>>) {
+    let _ = GLOBAL_COVERAGE_TRACKER.set(tracker);
+}
+
+pub fn get_global_coverage_tracker() -> Option<Arc<Mutex<CoverageTracker>>> {
+    GLOBAL_COVERAGE_TRACKER.get().cloned()
+}
+
+pub fn clear_global_coverage_tracker() {
+    if let Some(global) = GLOBAL_COVERAGE_TRACKER.get() {
+        if let Ok(mut tracker) = global.lock() {
+            tracker.reset();
+        }
+    }
 }
 
 pub struct CoverageTracker {
@@ -196,6 +214,62 @@ impl CoverageTracker {
                 line_cov.hits += 1;
             }
         });
+
+        if let Some(global) = GLOBAL_COVERAGE_TRACKER.get() {
+            if let Ok(mut tracker) = global.lock() {
+                tracker.record_line_hit_to_global(path, line);
+            }
+        }
+    }
+
+    pub fn record_line_hit_to_global(&mut self, path: &PathBuf, line: usize) {
+        let mut global = self.global_coverage.lock().unwrap();
+
+        let file_cov = global
+            .file_coverages
+            .entry(path.clone())
+            .or_insert_with(|| FileCoverage {
+                path: path.clone(),
+                lines: HashMap::new(),
+                branches: HashMap::new(),
+                total_lines: 0,
+                covered_lines: 0,
+                total_branches: 0,
+                covered_branches: 0,
+            });
+
+        let is_executable = self
+            .executable_lines
+            .get(path)
+            .and_then(|lines| lines.get(&line))
+            .is_some();
+
+        let line_cov = file_cov.lines.entry(line).or_insert_with(|| LineCoverage {
+            line_number: line,
+            hits: 0,
+            source_code: self
+                .executable_lines
+                .get(path)
+                .and_then(|lines| lines.get(&line))
+                .cloned()
+                .unwrap_or_default(),
+            is_executable,
+        });
+
+        let was_covered = line_cov.hits > 0;
+        line_cov.hits += 1;
+
+        if !was_covered && is_executable {
+            file_cov.covered_lines += 1;
+        }
+
+        if file_cov.total_lines == 0 && is_executable {
+            file_cov.total_lines = self
+                .executable_lines
+                .get(path)
+                .map(|m| m.len())
+                .unwrap_or(0) as u32;
+        }
     }
 
     pub fn record_branch(

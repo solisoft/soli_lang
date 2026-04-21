@@ -120,9 +120,13 @@ impl Interpreter {
 
     #[inline(always)]
     pub fn record_coverage(&self, line: usize) {
-        if let Some(ref tracker) = self.coverage_tracker {
-            if let Some(ref path) = self.current_source_path {
+        if let Some(ref path) = self.current_source_path {
+            if let Some(ref tracker) = self.coverage_tracker {
                 if let Ok(guard) = tracker.lock() {
+                    guard.record_line_hit(path, line);
+                }
+            } else if let Some(global) = crate::coverage::get_global_coverage_tracker() {
+                if let Ok(guard) = global.lock() {
                     guard.record_line_hit(path, line);
                 }
             }

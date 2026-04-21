@@ -196,6 +196,7 @@ pub struct CoverageConfig {
     pub exclude_lines: Vec<(PathBuf, usize)>,
     pub show_uncovered: bool,
     pub per_test: bool,
+    pub root_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,6 +218,7 @@ impl CoverageConfig {
             exclude_lines: Vec::new(),
             show_uncovered: true,
             per_test: false,
+            root_dir: None,
         }
     }
 }

@@ -5,6 +5,8 @@ use std::process;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use solilang::coverage::data::AggregatedCoverage;
+use solilang::coverage::tracker::{clear_global_coverage_tracker, set_global_coverage_tracker};
 use solilang::coverage::{CoverageConfig, CoverageReporter, CoverageTracker, OutputFormat};
 
 fn format_duration(duration: Duration) -> String {
@@ -110,14 +112,15 @@ pub fn run_test(
             exclude_lines: Vec::new(),
             show_uncovered: true,
             per_test: false,
+            root_dir: Some(app_dir.to_path_buf()),
         };
         let tracker = CoverageTracker::new(config);
         let tracker = Arc::new(Mutex::new(tracker));
         {
             let mut tracker_guard = tracker.lock().unwrap();
             register_app_source_lines(&mut tracker_guard, app_dir);
-            collect_and_register_sources(&mut tracker_guard, &test_dir);
         }
+        set_global_coverage_tracker(tracker.clone());
         Some(tracker)
     } else {
         None
@@ -324,6 +327,20 @@ pub fn run_test(
     if enable_coverage {
         if let Some(ref tracker_rc) = tracker {
             let coverage = tracker_rc.lock().unwrap().get_aggregated_coverage();
+
+            let app_coverage = AggregatedCoverage {
+                file_coverages: coverage
+                    .file_coverages
+                    .iter()
+                    .filter(|(path, _)| !path.to_string_lossy().starts_with("tests/"))
+                    .map(|(path, cov)| (path.clone(), cov.clone()))
+                    .collect(),
+                test_count: coverage.test_count,
+                passed_count: coverage.passed_count,
+                failed_count: coverage.failed_count,
+                pending_count: coverage.pending_count,
+            };
+
             let config = CoverageConfig {
                 enabled: true,
                 output_dir: PathBuf::from("coverage"),
@@ -333,15 +350,16 @@ pub fn run_test(
                 exclude_lines: Vec::new(),
                 show_uncovered: true,
                 per_test: false,
+                root_dir: Some(app_dir.to_path_buf()),
             };
             let reporter = CoverageReporter::new(config);
-            reporter.generate_reports(&coverage);
+            reporter.generate_reports(&app_coverage);
 
             if let Some(min) = coverage_min {
-                if coverage.total_line_coverage_percent() < min {
+                if app_coverage.total_line_coverage_percent() < min {
                     eprintln!(
                         "\n❌ Coverage {:.1}% is below threshold {:.0}%",
-                        coverage.total_line_coverage_percent(),
+                        app_coverage.total_line_coverage_percent(),
                         min
                     );
                     process::exit(1);
@@ -352,6 +370,10 @@ pub fn run_test(
 
     if failed > 0 {
         process::exit(1);
+    }
+
+    if enable_coverage {
+        clear_global_coverage_tracker();
     }
 
     println!();
