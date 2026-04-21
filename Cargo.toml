@@ -15,10 +15,8 @@ path = "src/main.rs"
 
 [features]
 default = []
-# Enable coverage tracking during execution (impacts performance)
-coverage = []
-# Enable all features for testing
-full = ["coverage"]
+# Coverage is now always enabled at runtime via --coverage flag
+full = []
 
 [dependencies]
 thiserror = "1.0"

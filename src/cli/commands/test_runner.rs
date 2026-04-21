@@ -2,7 +2,10 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use solilang::coverage::{CoverageConfig, CoverageReporter, CoverageTracker, OutputFormat};
 
 fn format_duration(duration: Duration) -> String {
     let micros = duration.as_micros();
@@ -18,9 +21,9 @@ fn format_duration(duration: Duration) -> String {
 pub fn run_test(
     path: Option<&str>,
     jobs: usize,
-    _coverage: bool,
-    _coverage_min: Option<f64>,
-    _no_coverage: bool,
+    coverage: bool,
+    coverage_min: Option<f64>,
+    no_coverage: bool,
 ) {
     use std::sync::mpsc;
 
@@ -90,6 +93,36 @@ pub fn run_test(
         String::new()
     };
 
+    let test_dir = if test_path.is_file() {
+        test_path.parent().unwrap_or(&test_path).to_path_buf()
+    } else {
+        test_path.clone()
+    };
+
+    let enable_coverage = coverage && !no_coverage;
+    let tracker = if enable_coverage {
+        let config = CoverageConfig {
+            enabled: true,
+            output_dir: PathBuf::from("coverage"),
+            formats: vec![OutputFormat::Console],
+            threshold: coverage_min.or(Some(80.0)),
+            exclude_patterns: Vec::new(),
+            exclude_lines: Vec::new(),
+            show_uncovered: true,
+            per_test: false,
+        };
+        let tracker = CoverageTracker::new(config);
+        let tracker = Arc::new(Mutex::new(tracker));
+        {
+            let mut tracker_guard = tracker.lock().unwrap();
+            register_app_source_lines(&mut tracker_guard, app_dir);
+            collect_and_register_sources(&mut tracker_guard, &test_dir);
+        }
+        Some(tracker)
+    } else {
+        None
+    };
+
     let num_workers = jobs.max(1);
     println!(
         "Running {} test(s) with {} worker(s)...",
@@ -97,12 +130,6 @@ pub fn run_test(
         num_workers
     );
     println!();
-
-    let test_dir = if test_path.is_file() {
-        test_path.parent().unwrap_or(&test_path).to_path_buf()
-    } else {
-        test_path.clone()
-    };
 
     let needs_test_server = test_files.iter().any(|f| {
         f.file_name()
@@ -163,6 +190,7 @@ pub fn run_test(
             let tx = tx.clone();
             let chunk: Vec<PathBuf> = chunk.to_vec();
             let preamble = model_preamble.clone();
+            let tracker_clone = tracker.clone();
 
             handles.push(s.spawn(move || {
                 let mut results: Vec<(PathBuf, bool, String, Duration, i64)> = Vec::new();
@@ -183,15 +211,25 @@ pub fn run_test(
                             } else {
                                 source
                             };
-                            let panic_result = std::panic::catch_unwind(|| {
-                                solilang::run_with_path_and_coverage(
-                                    &full_source,
-                                    Some(&file),
-                                    false,
-                                    None,
-                                    Some(&file),
-                                )
-                            });
+                            if let Some(ref tracker) = tracker_clone {
+                                let tracker_guard = tracker.lock().unwrap();
+                                tracker_guard.start_test(file.to_string_lossy().as_ref());
+                            }
+                            let tracker_for_run = tracker_clone.clone();
+                            let panic_result =
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    solilang::run_with_path_and_coverage(
+                                        &full_source,
+                                        Some(&file),
+                                        false,
+                                        tracker_for_run.as_ref(),
+                                        Some(&file),
+                                    )
+                                }));
+                            if let Some(ref tracker) = tracker_clone {
+                                let mut tracker_guard = tracker.lock().unwrap();
+                                tracker_guard.end_test();
+                            }
                             match panic_result {
                                 Ok(Ok(count)) => (true, String::new(), count),
                                 Ok(Err(e)) => (false, e.to_string(), 0),
@@ -283,6 +321,35 @@ pub fn run_test(
     );
     println!("  {} assertions", total_assertions);
 
+    if enable_coverage {
+        if let Some(ref tracker_rc) = tracker {
+            let coverage = tracker_rc.lock().unwrap().get_aggregated_coverage();
+            let config = CoverageConfig {
+                enabled: true,
+                output_dir: PathBuf::from("coverage"),
+                formats: vec![OutputFormat::Console],
+                threshold: coverage_min.or(Some(80.0)),
+                exclude_patterns: Vec::new(),
+                exclude_lines: Vec::new(),
+                show_uncovered: true,
+                per_test: false,
+            };
+            let reporter = CoverageReporter::new(config);
+            reporter.generate_reports(&coverage);
+
+            if let Some(min) = coverage_min {
+                if coverage.total_line_coverage_percent() < min {
+                    eprintln!(
+                        "\n❌ Coverage {:.1}% is below threshold {:.0}%",
+                        coverage.total_line_coverage_percent(),
+                        min
+                    );
+                    process::exit(1);
+                }
+            }
+        }
+    }
+
     if failed > 0 {
         process::exit(1);
     }
@@ -342,4 +409,33 @@ pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {
     }
 
     files
+}
+
+fn register_app_source_lines(tracker: &mut CoverageTracker, app_dir: &Path) {
+    let source_dirs = [
+        app_dir.join("app"),
+        app_dir.join("config"),
+        app_dir.join("lib"),
+    ];
+
+    for source_dir in &source_dirs {
+        if source_dir.is_dir() {
+            collect_and_register_sources(tracker, source_dir);
+        }
+    }
+}
+
+fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_and_register_sources(tracker, &path);
+            } else if path.extension().map(|e| e == "sl").unwrap_or(false) {
+                if let Ok(source) = fs::read_to_string(&path) {
+                    tracker.register_executable_lines_from_source(&path, &source);
+                }
+            }
+        }
+    }
 }

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Bug Fixes
+
+* **coverage:** fix `soli test --coverage` - was reporting inflated percentages due to double counting hits in end_test() ([abc123](link))
+
 ### Documentation
 
 * **skills:** reorganize skills from .skills/ to .opencode/skills/ structure ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))

@@ -5,14 +5,14 @@ use crate::parser::Parser;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 thread_local! {
     static CURRENT_COVERAGE: RefCell<Option<TestCoverage>> = const { RefCell::new(None) };
 }
 
 pub struct CoverageTracker {
-    global_coverage: Rc<RefCell<AggregatedCoverage>>,
+    global_coverage: Arc<Mutex<AggregatedCoverage>>,
     #[allow(dead_code)]
     config: CoverageConfig,
     executable_lines: HashMap<PathBuf, HashMap<usize, String>>,
@@ -21,7 +21,7 @@ pub struct CoverageTracker {
 impl CoverageTracker {
     pub fn new(config: CoverageConfig) -> Self {
         Self {
-            global_coverage: Rc::new(RefCell::new(AggregatedCoverage::new())),
+            global_coverage: Arc::new(Mutex::new(AggregatedCoverage::new())),
             config,
             executable_lines: HashMap::new(),
         }
@@ -45,7 +45,7 @@ impl CoverageTracker {
 
         CURRENT_COVERAGE.with(|cov| {
             if let Some(test_cov) = cov.borrow_mut().take() {
-                let mut aggregated = self.global_coverage.borrow_mut();
+                let mut aggregated = self.global_coverage.lock().unwrap();
 
                 for (path, file_cov) in &test_cov.file_coverages {
                     let aggregated_file = aggregated
@@ -61,12 +61,31 @@ impl CoverageTracker {
                             covered_branches: 0,
                         });
 
+                    let executable = match self.executable_lines.get(path) {
+                        Some(e) => e,
+                        None => {
+                            for (line_num, line_cov) in &file_cov.lines {
+                                let aggregated_line = aggregated_file
+                                    .lines
+                                    .entry(*line_num)
+                                    .or_insert_with(|| LineCoverage {
+                                        line_number: *line_num,
+                                        hits: line_cov.hits,
+                                        source_code: line_cov.source_code.clone(),
+                                        is_executable: false,
+                                    });
+                                aggregated_line.hits += line_cov.hits;
+                            }
+                            continue;
+                        }
+                    };
+
+                    if aggregated_file.total_lines == 0 {
+                        aggregated_file.total_lines = executable.len() as u32;
+                    }
+
                     for (line_num, line_cov) in &file_cov.lines {
-                        let is_executable = self
-                            .executable_lines
-                            .get(&file_cov.path)
-                            .and_then(|lines| lines.get(line_num))
-                            .is_some();
+                        let is_executable = executable.get(line_num).is_some();
 
                         let aggregated_line = aggregated_file
                             .lines
@@ -78,7 +97,12 @@ impl CoverageTracker {
                                 is_executable,
                             });
 
+                        let was_already_covered = aggregated_line.hits > 0;
                         aggregated_line.hits += line_cov.hits;
+
+                        if line_cov.hits > 0 && !was_already_covered && is_executable {
+                            aggregated_file.covered_lines += 1;
+                        }
                     }
 
                     for (line_num, branch_cov) in &file_cov.branches {
@@ -92,21 +116,26 @@ impl CoverageTracker {
                                 hits_false: 0,
                             });
 
+                        let was_covered =
+                            aggregated_branch.hits_true > 0 || aggregated_branch.hits_false > 0;
+
                         aggregated_branch.hits_true += branch_cov.hits_true;
                         aggregated_branch.hits_false += branch_cov.hits_false;
 
-                        if (aggregated_branch.hits_true > 0 || aggregated_branch.hits_false > 0)
-                            && aggregated_branch.hits_true == branch_cov.hits_true
-                            && aggregated_branch.hits_false == branch_cov.hits_false
-                        {
+                        aggregated_file.total_branches += 1;
+
+                        let is_now_covered =
+                            aggregated_branch.hits_true > 0 || aggregated_branch.hits_false > 0;
+                        if is_now_covered && !was_covered {
                             aggregated_file.covered_branches += 1;
                         }
-
-                        aggregated_file.total_branches += 1;
                     }
                 }
 
                 for (path, executable) in &self.executable_lines {
+                    if test_cov.file_coverages.contains_key(path) {
+                        continue;
+                    }
                     let aggregated_file = aggregated
                         .file_coverages
                         .entry(path.clone())
@@ -120,26 +149,8 @@ impl CoverageTracker {
                             covered_branches: 0,
                         });
 
-                    aggregated_file.total_lines = executable.len() as u32;
-                    for (line_num, source) in executable.iter() {
-                        let hits = aggregated_file
-                            .lines
-                            .get(line_num)
-                            .map(|l| l.hits)
-                            .unwrap_or(0);
-                        let is_executable = true;
-                        aggregated_file
-                            .lines
-                            .entry(*line_num)
-                            .or_insert_with(|| LineCoverage {
-                                line_number: *line_num,
-                                hits,
-                                source_code: source.clone(),
-                                is_executable,
-                            });
-                        if hits > 0 {
-                            aggregated_file.covered_lines += 1;
-                        }
+                    if aggregated_file.total_lines == 0 {
+                        aggregated_file.total_lines = executable.len() as u32;
                     }
                 }
 
@@ -229,11 +240,11 @@ impl CoverageTracker {
     }
 
     pub fn get_aggregated_coverage(&self) -> AggregatedCoverage {
-        self.global_coverage.borrow().clone()
+        self.global_coverage.lock().unwrap().clone()
     }
 
     pub fn merge_test_coverage(&mut self, test_cov: TestCoverage) {
-        let mut aggregated = self.global_coverage.borrow_mut();
+        let mut aggregated = self.global_coverage.lock().unwrap();
 
         for (path, file_cov) in test_cov.file_coverages {
             let aggregated_file =
@@ -298,7 +309,7 @@ impl CoverageTracker {
     }
 
     pub fn reset(&mut self) {
-        self.global_coverage = Rc::new(RefCell::new(AggregatedCoverage::new()));
+        self.global_coverage = Arc::new(Mutex::new(AggregatedCoverage::new()));
     }
 }
 
