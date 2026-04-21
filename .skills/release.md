@@ -6,10 +6,11 @@ Complete development workflow: run lint (clippy + fmt), tests, commit changes, a
 
 1. **Run clippy** with warnings as errors
 2. **Run cargo fmt** to ensure consistent formatting
-3. **Run tests** (`cargo test --lib`)
-4. **Commit** all changes with an automated message
-5. **Push** to remote
-6. **Create release** via `./scripts/release.sh` (default: minor bump)
+3. **Run Rust tests** (`cargo test --lib`)
+4. **Run Soli tests** (`soli test tests/`)
+5. **Commit** all changes with an automated message
+6. **Push** to remote
+7. **Create release** via `./scripts/release.sh` (default: minor bump)
 
 ## Usage
 
@@ -26,6 +27,7 @@ Complete development workflow: run lint (clippy + fmt), tests, commit changes, a
 cargo fmt
 cargo clippy -- -D warnings
 cargo test --lib
+soli test tests/
 git add -A
 git commit -m "chore: release v[new-version]"
 git push

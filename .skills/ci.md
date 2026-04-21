@@ -14,6 +14,7 @@ Run the full CI pipeline: clippy, fmt, and tests.
 cargo fmt
 cargo clippy -- -D warnings
 cargo test --lib
+soli test tests/
 ```
 
 ## Notes
