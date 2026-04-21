@@ -318,7 +318,9 @@ impl Interpreter {
                             match interpreter.execute_block(&method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                                Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                                Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                                    Ok(Value::Null)
+                                }
                                 Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
                                     Err(format!("Exception in send: {}", e))
                                 }
@@ -349,7 +351,9 @@ impl Interpreter {
                             match interpreter.execute_block(&mm_method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                                Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                                Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                                    Ok(Value::Null)
+                                }
                                 Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
                                     Err(format!("Exception in method_missing: {}", e))
                                 }
@@ -547,7 +551,9 @@ impl Interpreter {
                         match interpreter.execute_block(&block.body, env_clone) {
                             Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                             Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                            Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                            Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                                Ok(Value::Null)
+                            }
                             Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
                                 Err(format!("Exception in instance_eval: {}", e))
                             }
@@ -1033,7 +1039,9 @@ impl Interpreter {
                             let result = match interpreter.execute_block(&method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                                Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                                Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                                    Ok(Value::Null)
+                                }
                                 Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
                                     Err(format!("Exception in send: {}", e))
                                 }
@@ -1084,7 +1092,9 @@ impl Interpreter {
                         match interpreter.execute_block(&block.body, env_clone) {
                             Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                             Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
-                            Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                            Ok(crate::interpreter::executor::ControlFlow::Continue) => {
+                                Ok(Value::Null)
+                            }
                             Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
                                 Err(format!("Exception in class_eval: {}", e))
                             }

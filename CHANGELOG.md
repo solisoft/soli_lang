@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
+### Documentation
+
+* **skills:** reorganize skills from .skills/ to .opencode/skills/ structure ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))
+* **blog:** add spreadsheet functions documentation ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))
+
 ### Features
 
-### Bug Fixes
+* **builtins:** add spreadsheet functions (SPREADSHEET, SPREADSHEET_INFO) ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))
 
 ## [0.64.1](https://github.com/solisoft/soli_lang/compare/v0.64.0...v0.64.1) (2026-04-21)
 
