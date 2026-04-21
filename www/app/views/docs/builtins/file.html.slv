@@ -1,0 +1,217 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">File</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">File Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Static methods for file operations: reading, writing, glob patterns, and file metadata.
+        </p>
+    </div>
+
+    <!-- File Class Methods -->
+    <section id="section-file-class" class="scroll-mt-20 mb-12">
+        <div class="space-y-6">
+            <section id="fn-file-read" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-read" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.read(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Read file contents as string.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let content = File.read("config.json")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-file-write" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-write" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.write(path, content)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Write content to file.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">File.write("output.txt", "Hello!")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-file-exists" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-exists" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.exists(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if file exists.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">if File.exists("config.json") {
+    # do something
+}</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-file-delete" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-delete" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.delete(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Delete a file.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">File.delete("old.txt")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-file-glob" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-glob" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.glob(pattern)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Match files using glob pattern (non-recursive).</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let files = File.glob("docs/*.md")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-file-glob-recursive" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-glob-recursive" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.glob_recursive(pattern)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Match files using glob pattern (recursive).</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let files = File.glob_recursive("docs/**/*.md")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-file-lines" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-lines" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.lines(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Read file as array of lines.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let lines = File.lines("data.txt")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-file-is-dir" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-is-dir" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.is_dir(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if path is a directory.</p>
+                </div>
+            </section>
+
+            <section id="fn-file-is-file" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-is-file" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.is_file(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if path is a file.</p>
+                </div>
+            </section>
+
+            <section id="fn-file-size" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-size" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.size(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Get file size in bytes.</p>
+                </div>
+            </section>
+
+            <section id="fn-file-modified" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-modified" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.modified(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Get file modification timestamp (Unix epoch in seconds).</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let time = File.modified("config.json")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-file-copy" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-copy" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.copy(src, dest)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Copy file from source to destination.</p>
+                </div>
+            </section>
+
+            <section id="fn-file-rename" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-rename" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.rename(old, new)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Rename/move a file.</p>
+                </div>
+            </section>
+
+            <section id="fn-file-append" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-file-append" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">File.append(path, content)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Append content to file.</p>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/core" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Core
+        </a>
+        <a href="/docs/builtins/datetime" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            DateTime
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

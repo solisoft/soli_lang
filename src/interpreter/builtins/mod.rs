@@ -52,6 +52,7 @@ pub mod session_solikv;
 pub mod soap;
 pub mod solidb;
 pub mod solikv;
+pub mod spreadsheet;
 pub mod strings;
 pub mod system;
 pub mod template;
@@ -303,6 +304,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register system builtins (System.run, System.run_sync)
     system::register_system_builtins(env);
+
+    // Register spreadsheet builtins (Spreadsheet.csv, Spreadsheet.excel, etc.)
+    spreadsheet::register_spreadsheet_builtins(env);
 }
 
 /// Register the Error class and built-in error types.

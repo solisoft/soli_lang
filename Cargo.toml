@@ -127,6 +127,11 @@ tempfile = "3"
 # Image processing (pure Rust, no system deps)
 image = "0.25"
 
+# Spreadsheet support (CSV and Excel)
+calamine = "0.26"
+csv = "1.3"
+umya-spreadsheet = "1.0"
+
 # Pinned transitive dependency to fix RUSTSEC-2026-0009
 time = ">=0.3.47"
 

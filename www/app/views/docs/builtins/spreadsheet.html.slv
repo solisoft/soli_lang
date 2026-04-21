@@ -1,0 +1,144 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Spreadsheet</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Spreadsheet Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Import and parse CSV and Excel files for data processing.
+        </p>
+    </div>
+
+    <!-- CSV Functions -->
+    <section id="section-csv" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">CSV Parsing</h2>
+
+        <div class="space-y-6">
+            <section id="fn-spreadsheet-csv" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-spreadsheet-csv" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.csv(content)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Parses a CSV string and returns an array of hashes (one hash per row).</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let csv_content = "name,email,age\nAlice,alice@example.com,30"
+let data = Spreadsheet.csv(csv_content)
+print(data[0]["name"])  # "Alice"</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-spreadsheet-csv-file" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-spreadsheet-csv-file" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.csv_file(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Reads and parses a CSV file from disk.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let data = Spreadsheet.csv_file("users.csv")
+for row in data {
+    print(row["email"])
+}</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Excel Functions -->
+    <section id="section-excel" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Excel Parsing</h2>
+
+        <div class="space-y-6">
+            <section id="fn-spreadsheet-excel" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-spreadsheet-excel" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.excel(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Reads and parses an Excel (.xlsx) file. Returns an array of hashes using the first row as headers.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let data = Spreadsheet.excel("report.xlsx")
+for row in data {
+    print(row["Name"])
+}</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Export Functions -->
+    <section id="section-export" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Export Functions</h2>
+
+        <div class="space-y-6">
+            <section id="fn-spreadsheet-to-csv" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-spreadsheet-to-csv" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.to_csv(data)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Converts an array of hashes to a CSV string.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let data = [{"name": "Alice", "age": "30"}, {"name": "Bob", "age": "25"}]
+let csv = Spreadsheet.to_csv(data)</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-spreadsheet-csv-write" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-spreadsheet-csv-write" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.csv_write(data, path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Writes an array of hashes to a CSV file.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let data = [{"name": "Alice", "score": "95"}, {"name": "Bob", "score": "87"}]
+Spreadsheet.csv_write(data, "output.csv")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-spreadsheet-excel-write" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-spreadsheet-excel-write" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.excel_write(data, path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Writes an array of hashes to an Excel (.xlsx) file.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">let data = [{"name": "Alice", "score": "95"}, {"name": "Bob", "score": "87"}]
+Spreadsheet.excel_write(data, "output.xlsx")</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/core" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Core
+        </a>
+        <a href="/docs/builtins/file" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            File
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>
