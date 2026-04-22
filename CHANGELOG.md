@@ -16,6 +16,7 @@
 
 ### Bug Fixes
 
+* **controller:** bind `this` in before_action/after_action hooks so `@sigil` writes reach the controller instance ([3be976e](https://github.com/solisoft/soli_lang/commit/3be976e))
 * **coverage:** fix `soli test --coverage` - was reporting inflated percentages due to double counting hits in end_test()
 * **coverage:** fix deadlock in record_line_hit when global tracker and local tracker are same Arc
 * **coverage:** fix path inconsistency by canonicalizing paths in set_source_path and register_executable_lines_from_source
