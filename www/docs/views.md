@@ -148,6 +148,42 @@ Read fields off the current request directly — no need to plumb them through t
 
 For prefix matches (e.g. any path under `/users`), compose with `current_path().starts_with("/users")`.
 
+### Hover Preload
+
+Soli auto-injects a small `<script>` tag into every HTML response that listens for `mouseover` on links and fires `<link rel="prefetch">` so the next page is already in the browser cache by the time the user clicks. The script is served at `/__soli/prefetch.js` — an external file, not inline, so apps with strict CSP (no `unsafe-inline`) work out of the box.
+
+**What you get for free:**
+
+- Same-origin GET links only; cross-origin, `mailto:`, `tel:`, and in-page `#fragment` links are skipped.
+- 65 ms hover debounce so fly-over hovers don't waste bandwidth.
+- Skipped on `navigator.connection.saveData` or 2G networks.
+- Each URL prefetched at most once per page load.
+- Works on touch devices: `touchstart` triggers an immediate prefetch (strong intent).
+
+**Opt out per link:**
+
+```erb
+<a href="/heavy-report" data-no-prefetch>Heavy Report</a>
+
+<!-- Or on a container to cover everything inside -->
+<section data-no-prefetch>
+    <a href="/a">A</a>
+    <a href="/b">B</a>
+</section>
+```
+
+Also skipped: `<a data-method="post">` (Rails-style non-GET link helpers).
+
+**Opt out globally:**
+
+```bash
+SOLI_PREFETCH=off soli serve .
+```
+
+`off`, `false`, `0`, and `no` all disable. Anything else (or unset) keeps it on.
+
+**Cache-header gotcha:** for the prefetched response to be reused on the subsequent click, your app must not set `Cache-Control: no-store` on those GET pages. Soli's default `render(...)` emits no `Cache-Control`, which is fine — the browser's heuristic cache covers the hover→click window. If you add `Cache-Control: no-store` in middleware for auth'd pages, the prefetch still fires but the browser will re-fetch on click.
+
 ### DateTime Functions
 
 These functions help you work with dates and times in templates.

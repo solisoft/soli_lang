@@ -397,6 +397,14 @@ pub fn html_response(body: String, status: i64) -> Value {
         body
     };
 
+    // Inject hover-prefetch script tag unless the user opted out via
+    // `SOLI_PREFETCH=off`. The JS itself is served at /__soli/prefetch.js.
+    let body = if crate::serve::prefetch::is_enabled() {
+        crate::serve::prefetch::inject_prefetch_tag(&body)
+    } else {
+        body
+    };
+
     let mut headers: HashPairs = HashPairs::with_capacity_and_hasher(1, AHasher::default());
     headers.insert(
         HashKey::String("Content-Type".to_string()),

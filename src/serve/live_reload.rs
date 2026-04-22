@@ -77,7 +77,7 @@ pub async fn handle_live_reload_sse(
 /// Does NOT allocate any intermediate strings - works directly on bytes.
 /// Only valid for ASCII needles (like HTML tags).
 #[inline]
-fn rfind_ascii_case_insensitive(haystack: &str, needle: &[u8]) -> Option<usize> {
+pub(crate) fn rfind_ascii_case_insensitive(haystack: &str, needle: &[u8]) -> Option<usize> {
     let haystack_bytes = haystack.as_bytes();
     let needle_len = needle.len();
 

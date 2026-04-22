@@ -10,6 +10,7 @@ mod hot_reload;
 pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
 mod middleware;
+pub mod prefetch;
 mod router;
 mod server_constants;
 pub mod websocket;
@@ -1786,6 +1787,12 @@ async fn handle_hyper_request(
             }
             Ok(None) => {} // Not a static file, fall through to route matching
         }
+    }
+
+    // Framework-bundled hover-prefetch script. Served at a reserved path so
+    // strict-CSP apps can use `<script src>` instead of inline JS.
+    if path == "/__soli/prefetch.js" && method == "GET" {
+        return Ok(prefetch::handle_prefetch_js());
     }
 
     // Handle live reload SSE endpoint

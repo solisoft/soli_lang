@@ -446,6 +446,45 @@
     </div>
 
     <p class="text-gray-400 mb-8 text-sm">For prefix matches (e.g. any path under <code>/users</code>), compose with <code>current_path().starts_with("/users")</code>.</p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Hover Preload</h3>
+    <p class="text-gray-400 mb-4">
+        Soli auto-injects a small <code>&lt;script&gt;</code> tag into every HTML response that listens for <code>mouseover</code> on links and fires <code>&lt;link rel="prefetch"&gt;</code>, so the next page is already in the browser cache by the time the user clicks. The script is served at <code>/__soli/prefetch.js</code> &mdash; an external file, not inline, so strict-CSP apps work out of the box.
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-sm text-gray-400"><strong class="text-white">Same-origin GET only.</strong> Cross-origin, <code>mailto:</code>, <code>tel:</code>, and in-page <code>#fragment</code> links are skipped.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-sm text-gray-400"><strong class="text-white">65 ms hover debounce.</strong> Fly-over hovers don't waste bandwidth.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-sm text-gray-400"><strong class="text-white">Respects Save-Data / 2G.</strong> Skipped on <code>navigator.connection.saveData</code> or slow networks.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-sm text-gray-400"><strong class="text-white">Works on touch.</strong> <code>touchstart</code> triggers an immediate prefetch.</p>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-2"><strong class="text-white">Opt out per link</strong> with <code>data-no-prefetch</code>:</p>
+    <pre data-filename="Example"><code class="language-erb text-sm">&lt;a href="/heavy-report" data-no-prefetch&gt;Heavy Report&lt;/a&gt;
+
+&lt;!-- Also skips everything inside the container --&gt;
+&lt;section data-no-prefetch&gt;
+    &lt;a href="/a"&gt;A&lt;/a&gt;
+    &lt;a href="/b"&gt;B&lt;/a&gt;
+&lt;/section&gt;</code></pre>
+
+    <p class="text-gray-400 mb-2 mt-6"><strong class="text-white">Opt out globally</strong> with an env var:</p>
+    <pre data-filename="shell"><code class="language-bash text-sm">SOLI_PREFETCH=off soli serve .</code></pre>
+    <p class="text-gray-400 text-sm mt-2 mb-6"><code>off</code>, <code>false</code>, <code>0</code>, and <code>no</code> all disable; anything else (or unset) keeps it on.</p>
+
+    <div class="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
+        <p class="text-amber-200/80 text-sm">
+            <strong>Cache-Control gotcha:</strong> for the prefetched response to be reused on click, your app must not set <code>Cache-Control: no-store</code> on those GET pages. Soli's default <code>render(...)</code> emits no <code>Cache-Control</code>, which is fine. If middleware adds <code>no-store</code> for auth'd pages, the prefetch still fires but the browser will re-fetch on click.
+        </p>
+    </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Application Helpers</h2>
