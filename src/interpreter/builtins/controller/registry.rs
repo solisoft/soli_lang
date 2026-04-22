@@ -644,13 +644,20 @@ pub fn execute_handler_source(
         if let Some(ctrl) = get_current_controller() {
             env.define("this".to_string(), ctrl);
         }
+        // Clear any prior `__result` so a hook that errors mid-flight doesn't
+        // silently return the previous request's result on this worker thread.
+        env.define("__result".to_string(), Value::Null);
     }
 
     // Get cached or compile the handler program
     let program = get_or_compile_handler(&wrapped_source)?;
 
-    // Execute (ignore errors for now)
-    let _ = interpreter.interpret(&program);
+    // Execute — surface errors so a broken hook 500s instead of falling through
+    // to the action with a stale/Null `__result` (which `check_for_response`
+    // can't recognize as a short-circuit).
+    interpreter
+        .interpret(&program)
+        .map_err(|e| format!("Handler execution error: {}", e))?;
 
     // Retrieve the result
     interpreter
@@ -684,13 +691,17 @@ pub fn execute_after_handler_source(
         if let Some(ctrl) = get_current_controller() {
             env.define("this".to_string(), ctrl);
         }
+        env.define("__result".to_string(), Value::Null);
     }
 
     // Get cached or compile the handler program
     let program = get_or_compile_handler(&wrapped_source)?;
 
-    // Execute (ignore errors for now)
-    let _ = interpreter.interpret(&program);
+    // Execute — surface errors rather than swallow them so a broken hook
+    // returns a proper 500 instead of silently leaving the response unchanged.
+    interpreter
+        .interpret(&program)
+        .map_err(|e| format!("After handler execution error: {}", e))?;
 
     // Retrieve the result
     interpreter
