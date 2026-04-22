@@ -741,6 +741,20 @@ impl Parser {
                             span,
                         ))
                     }
+                    // `foo(args) = value` desugars to `foo(args..., value)`. Used by the
+                    // controller DSL for filtered hooks: `this.before_action(:show) = fn(req) {...}`
+                    // becomes `this.before_action(:show, fn(req) {...})`.
+                    ExprKind::Call { .. } => {
+                        let ExprKind::Call {
+                            callee,
+                            mut arguments,
+                        } = left.kind
+                        else {
+                            unreachable!()
+                        };
+                        arguments.push(Argument::Positional(value));
+                        Ok(Expr::new(ExprKind::Call { callee, arguments }, span))
+                    }
                     _ => Err(ParserError::invalid_assignment_target(left.span)),
                 }
             }
@@ -1802,6 +1816,33 @@ mod at_sigil_tests {
                 }
                 other => panic!("expected Member callee, got {:?}", other),
             },
+            other => panic!("expected Call, got {:?}", other),
+        }
+    }
+
+    // `foo(args) = value` desugars to `foo(args..., value)`. Powers the controller
+    // filtered-hook DSL: `this.before_action(:show, :edit) = fn(req) {...}` →
+    // `this.before_action(:show, :edit, fn(req) {...})`.
+    #[test]
+    fn call_assignment_desugars_to_appended_argument() {
+        let program = parse("this.before_action(:show) = 42").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Call { callee, arguments } => {
+                match &callee.kind {
+                    ExprKind::Member { object, name } => {
+                        assert_eq!(name, "before_action");
+                        assert!(matches!(object.kind, ExprKind::This));
+                    }
+                    other => panic!("expected Member callee, got {:?}", other),
+                }
+                assert_eq!(arguments.len(), 2, "original arg + appended value");
+                match &arguments[1] {
+                    crate::ast::expr::Argument::Positional(e) => {
+                        assert!(matches!(e.kind, ExprKind::IntLiteral(42)));
+                    }
+                    other => panic!("expected Positional trailing arg, got {:?}", other),
+                }
+            }
             other => panic!("expected Call, got {:?}", other),
         }
     }

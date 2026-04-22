@@ -53,4 +53,23 @@ describe("Controller Base Class", fn() {
         }
         assert(true);
     });
+
+    test("filtered before_action DSL parses at the language level", fn() {
+        // `this.before_action(:show) = fn(req) {...}` must actually parse — the
+        // parser desugars call-assignment to `this.before_action(:show, fn(req) {...})`
+        // and Controller provides a no-op static method so the call resolves.
+        // Real hook registration happens via the registry's textual scanner at
+        // `soli serve` startup; this test just proves the DSL doesn't raise.
+        class FilteredController extends Controller {
+            static {
+                this.before_action(:show, :edit) = fn(req) {
+                    return req;
+                };
+                this.after_action(:create) = fn(req, response) {
+                    return response;
+                };
+            }
+        }
+        assert(true);
+    });
 });

@@ -56,7 +56,42 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, Value};
+use crate::interpreter::value::{Class, NativeFunction, Value};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn controller_class() -> Rc<Class> {
+        let mut env = Environment::new();
+        register_controller_class(&mut env);
+        match env.get("Controller").unwrap() {
+            Value::Class(c) => c,
+            _ => panic!("Controller should be registered as a Class"),
+        }
+    }
+
+    // `this.before_action(:show) = fn(...)` is parsed as a call to `before_action`.
+    // At class-definition time we need the static method to exist on Controller so
+    // the call doesn't blow up with "Cannot access property 'before_action'".
+    // Actual hook registration happens via the registry's textual scan.
+    #[test]
+    fn controller_exposes_noop_before_action_and_after_action() {
+        let class = controller_class();
+        assert!(
+            class.native_static_methods.contains_key("before_action"),
+            "Controller must expose a static before_action so the filtered-hook DSL call resolves"
+        );
+        assert!(
+            class.native_static_methods.contains_key("after_action"),
+            "Controller must expose a static after_action for symmetry with before_action"
+        );
+        let f = class.native_static_methods.get("before_action").unwrap();
+        // No-op: returns Null regardless of arity so `before_action(:a, :b, handler)` is safe.
+        let result = (f.func)(vec![Value::Null, Value::Int(1)]).unwrap();
+        assert!(matches!(result, Value::Null));
+    }
+}
 
 /// Register all controller built-ins in the environment.
 pub fn register_controller_builtins(env: &mut Environment) {
@@ -65,12 +100,33 @@ pub fn register_controller_builtins(env: &mut Environment) {
 
 /// Define the Controller base class.
 fn register_controller_class(env: &mut Environment) {
+    // `this.before_action(:show, :edit) = fn(req) {...}` parses as the call
+    // `this.before_action(:show, :edit, fn(req) {...})` (see parser desugar in
+    // `parse_infix`). Actual hook registration is done by the controller
+    // registry's textual scan of `app/controllers/*.sl` at `soli serve` startup,
+    // so the runtime call just needs to be a silent no-op. Same for after_action.
+    let mut native_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+    native_static_methods.insert(
+        "before_action".to_string(),
+        Rc::new(NativeFunction::new(
+            "Controller.before_action",
+            None,
+            |_| Ok(Value::Null),
+        )),
+    );
+    native_static_methods.insert(
+        "after_action".to_string(),
+        Rc::new(NativeFunction::new("Controller.after_action", None, |_| {
+            Ok(Value::Null)
+        })),
+    );
+
     let controller_class = Class {
         name: "Controller".to_string(),
         superclass: None,
         methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
-        native_static_methods: HashMap::new(),
+        native_static_methods,
         native_methods: HashMap::new(),
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
