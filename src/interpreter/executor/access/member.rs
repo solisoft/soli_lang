@@ -637,14 +637,16 @@ impl Interpreter {
                 let fk = match fk_value {
                     Some(Value::String(s)) => s,
                     Some(Value::Int(n)) => n.to_string(),
+                    // Missing or null FK: has_many/has_one return an empty
+                    // collection (no related rows possible); belongs_to
+                    // returns null (the association is simply not set).
                     _ => {
-                        return Err(RuntimeError::new(
-                            format!(
-                                "Foreign key '{}' not found or invalid on instance",
-                                relation.foreign_key
-                            ),
-                            span,
-                        ));
+                        return Ok(match relation.relation_type {
+                            RelationType::HasMany => {
+                                Value::Array(Rc::new(RefCell::new(Vec::new())))
+                            }
+                            _ => Value::Null,
+                        });
                     }
                 };
 
@@ -691,30 +693,29 @@ impl Interpreter {
                 use crate::interpreter::builtins::model::crud::exec_with_auto_collection;
                 return match exec_with_auto_collection(sdbql, Some(bind_vars), related_collection) {
                     Ok(results) => {
-                        if results.is_empty() {
-                            return Ok(Value::Null);
-                        }
                         match relation.relation_type {
                             RelationType::HasMany => {
-                                // Return array of instances
                                 let class = inst.borrow().class.clone();
                                 let values: Vec<Value> = results
-                                    .iter()
-                                    .map(|json| {
-                                        crate::interpreter::builtins::model::crud::json_doc_to_instance(&class, json)
-                                    })
-                                    .collect();
+                                .iter()
+                                .map(|json| {
+                                    crate::interpreter::builtins::model::crud::json_doc_to_instance(&class, json)
+                                })
+                                .collect();
                                 Ok(Value::Array(Rc::new(RefCell::new(values))))
                             }
                             _ => {
-                                // Return single instance
-                                let class = inst.borrow().class.clone();
-                                Ok(
+                                if results.is_empty() {
+                                    Ok(Value::Null)
+                                } else {
+                                    let class = inst.borrow().class.clone();
+                                    Ok(
                                     crate::interpreter::builtins::model::crud::json_doc_to_instance(
                                         &class,
                                         &results[0],
                                     ),
                                 )
+                                }
                             }
                         }
                     }
@@ -887,6 +888,14 @@ impl Interpreter {
                     result
                 },
             )));
+        }
+
+        // For Model subclasses, missing properties default to null rather
+        // than erroring — DB rows often lack optional columns, and views
+        // written defensively ("<% if !org.industry.nil? %>") expect null
+        // for unset attributes instead of a hard error.
+        if inst_ref.class.is_model_subclass() {
+            return Ok(Value::Null);
         }
 
         Err(RuntimeError::NoSuchProperty {
@@ -1232,7 +1241,7 @@ impl Interpreter {
             | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "flatten"
             | "first" | "last" | "empty?" | "includes?" | "contains" | "sample" | "shuffle"
             | "take" | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear"
-            | "get" | "to_string" | "to_json" | "join" | "is_a?" => {
+            | "get" | "to_string" | "to_json" | "join" | "is_a?" | "all" | "includes" | "order" => {
                 Ok(Value::Method(ValueMethod {
                     receiver: Box::new(obj_val),
                     method_name: name.to_string(),

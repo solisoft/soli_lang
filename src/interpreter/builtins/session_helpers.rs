@@ -82,6 +82,20 @@ pub fn register_session_helpers(env: &mut Environment) {
     );
 
     env.define(
+        "signed_in".to_string(),
+        Value::NativeFunction(NativeFunction::new("signed_in", Some(0), |_args| {
+            Ok(Value::Bool(is_signed_in()))
+        })),
+    );
+
+    env.define(
+        "signed_out".to_string(),
+        Value::NativeFunction(NativeFunction::new("signed_out", Some(0), |_args| {
+            Ok(Value::Bool(!is_signed_in()))
+        })),
+    );
+
+    env.define(
         "signed_out?".to_string(),
         Value::NativeFunction(NativeFunction::new("signed_out?", Some(0), |_args| {
             Ok(Value::Bool(!is_signed_in()))
@@ -140,6 +154,13 @@ fn clear_test_user() {
     });
 }
 
+/// Clear the "signed-in" test-user marker from any module. Used by the HTTP
+/// helper when a test hits `/logout` so `signed_in()` reflects the
+/// server-side state transition.
+pub fn clear_test_user_public() {
+    clear_test_user();
+}
+
 fn get_current_user_value() -> Result<Value, String> {
     TEST_USER.with(|cell| {
         let user = cell.borrow();
@@ -153,19 +174,37 @@ fn get_current_user_value() -> Result<Value, String> {
 fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     let login_data = format!(r#"{{"email":"{}","password":"{}"}}"#, email, password);
 
-    let client = reqwest::blocking::Client::new();
     let port = super::test_server::get_test_server_port().ok_or("Test server is not running")?;
     let url = format!("http://127.0.0.1:{}/login", port);
 
-    let response = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .body(login_data)
-        .send()
-        .map_err(|e| e.to_string())?;
+    // Login typically returns 302 (redirect) on success — we don't want ureq
+    // to follow the redirect because the redirect target usually requires a
+    // cookie that hasn't been installed yet. And we need the Set-Cookie
+    // header from this exact response.
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .redirects(0)
+        .build();
 
-    let status = response.status().as_u16();
-    let body = response.text().map_err(|e| e.to_string())?;
+    let response = agent
+        .post(&url)
+        .set("Content-Type", "application/json")
+        .send_string(&login_data);
+
+    let (status, set_cookies, body) = match response {
+        Ok(r) => {
+            let code = r.status();
+            let cookies: Vec<String> = r.all("Set-Cookie").iter().map(|s| s.to_string()).collect();
+            let text = r.into_string().map_err(|e| e.to_string())?;
+            (code, cookies, text)
+        }
+        Err(ureq::Error::Status(code, r)) => {
+            let cookies: Vec<String> = r.all("Set-Cookie").iter().map(|s| s.to_string()).collect();
+            let text = r.into_string().unwrap_or_default();
+            (code, cookies, text)
+        }
+        Err(e) => return Err(e.to_string()),
+    };
 
     let mut response_hash: HashPairs = HashPairs::default();
     response_hash.insert(
@@ -174,9 +213,21 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     );
     response_hash.insert(HashKey::String("body".to_string()), Value::String(body));
 
-    if status == 200 {
+    // Successful login is a redirect (typically 302 to the dashboard). A
+    // 200 means the server re-rendered the login form — usually because
+    // credentials were wrong. Don't install cookies or mark TEST_USER in
+    // that case, or subsequent requests will think they're logged in.
+    let logged_in = (300..400).contains(&status);
+    if logged_in {
+        clear_cookies_inner();
         clear_auth();
-        set_cookie_inner("session_id".to_string(), "test_session_123".to_string());
+        for raw in &set_cookies {
+            // Set-Cookie: name=value; Path=/; ...
+            let kv = raw.split(';').next().unwrap_or(raw).trim();
+            if let Some((name, value)) = kv.split_once('=') {
+                set_cookie_inner(name.trim().to_string(), value.trim().to_string());
+            }
+        }
         let mut pairs: HashPairs = HashPairs::default();
         pairs.insert(
             HashKey::String("email".to_string()),
@@ -191,7 +242,22 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
 }
 
 fn is_signed_in() -> bool {
-    TEST_USER.with(|cell| cell.borrow().is_some())
+    // Rails-style test helper: consider the session authenticated when the
+    // cookie jar contains a session_id value that we haven't cleared.
+    // Controllers set session_id on successful login and clear it on logout.
+    if TEST_USER.with(|cell| cell.borrow().is_some()) {
+        return true;
+    }
+    let jar = super::request_helpers::current_cookies();
+    for pair in jar.split(';') {
+        let pair = pair.trim();
+        if let Some((k, v)) = pair.split_once('=') {
+            if k.trim().eq_ignore_ascii_case("session_id") && !v.trim().is_empty() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn create_test_session(user_id: i64) -> Result<Value, String> {

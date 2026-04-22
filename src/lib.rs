@@ -175,17 +175,80 @@ pub fn run_vm(
 }
 
 /// Run a Solilang program with optional coverage tracking.
+///
+/// `preamble_files` is a list of `(path, source)` pairs that are loaded into the
+/// interpreter in order before running `source`. Each preamble executes with its
+/// own `current_source_path` so coverage hits are attributed back to that file.
+///
+/// Returns `(assertion_count, result)`. The assertion count reflects assertions that
+/// succeeded during this file's test run, even if some tests failed afterwards — so
+/// the caller can report meaningful totals regardless of pass/fail status.
 pub fn run_with_path_and_coverage(
     source: &str,
     source_path: Option<&std::path::Path>,
     type_check: bool,
     coverage_tracker: Option<&std::sync::Arc<std::sync::Mutex<coverage::CoverageTracker>>>,
     source_file_path: Option<&std::path::Path>,
-) -> Result<i64, SolilangError> {
+    preamble_files: &[(std::path::PathBuf, String)],
+) -> (i64, Result<(), SolilangError>) {
     interpreter::builtins::test_dsl::clear_test_suites();
+    let _ = interpreter::builtins::assertions::get_and_reset_assertion_count();
+
+    let result = run_with_path_and_coverage_inner(
+        source,
+        source_path,
+        type_check,
+        coverage_tracker,
+        source_file_path,
+        preamble_files,
+    );
+
+    let assertion_count = interpreter::builtins::assertions::get_and_reset_assertion_count();
+    (assertion_count, result)
+}
+
+fn run_with_path_and_coverage_inner(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    type_check: bool,
+    coverage_tracker: Option<&std::sync::Arc<std::sync::Mutex<coverage::CoverageTracker>>>,
+    source_file_path: Option<&std::path::Path>,
+    preamble_files: &[(std::path::PathBuf, String)],
+) -> Result<(), SolilangError> {
+    let mut interpreter = interpreter::Interpreter::new();
+    if let Some(tracker) = coverage_tracker {
+        interpreter.set_coverage_tracker(tracker.clone());
+    }
+
+    for (preamble_path, preamble_source) in preamble_files {
+        let tokens = lexer::Scanner::new(preamble_source).scan_tokens()?;
+        let mut program = parser::Parser::new(tokens).parse()?;
+
+        if has_imports(&program) {
+            let base_dir = preamble_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let mut resolver = module::ModuleResolver::new(base_dir);
+            program = resolver.resolve(program, preamble_path).map_err(|e| {
+                error::RuntimeError::General {
+                    message: format!("Module resolution error: {}", e),
+                    span: span::Span::new(0, 0, 1, 1),
+                }
+            })?;
+        }
+
+        if type_check {
+            let mut checker = types::TypeChecker::new();
+            if let Err(errors) = checker.check(&program) {
+                return Err(errors.into_iter().next().unwrap().into());
+            }
+        }
+
+        interpreter.set_source_path(preamble_path.clone());
+        interpreter.interpret(&program)?;
+    }
 
     let tokens = lexer::Scanner::new(source).scan_tokens()?;
-
     let mut program = parser::Parser::new(tokens).parse()?;
 
     let has_imports = source_path.is_some() && has_imports(&program);
@@ -209,16 +272,12 @@ pub fn run_with_path_and_coverage(
 
     let test_suites = extract_test_definitions(&program);
 
-    let mut interpreter = interpreter::Interpreter::new();
-    if let (Some(tracker), Some(path)) = (coverage_tracker, source_file_path) {
-        interpreter.set_coverage_tracker(tracker.clone());
+    if let Some(path) = source_file_path {
         interpreter.set_source_path(path.to_path_buf());
     }
     interpreter.interpret(&program)?;
 
     let (failed_count, failed_tests) = execute_test_suites(&mut interpreter, &test_suites)?;
-
-    let assertion_count = interpreter::builtins::assertions::get_and_reset_assertion_count();
 
     if failed_count > 0 {
         let error_msg = if failed_tests.len() == 1 {
@@ -236,7 +295,7 @@ pub fn run_with_path_and_coverage(
         }));
     }
 
-    Ok(assertion_count)
+    Ok(())
 }
 
 fn extract_test_definitions(

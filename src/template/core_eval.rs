@@ -101,12 +101,16 @@ pub fn evaluate_with_interpreter(
     match expr {
         // Fast path: direct variable lookup (e.g., <%= title %>)
         // Bypasses: String clone + ExprKind alloc + match dispatch
+        // Missing variables return Null rather than erroring — templates
+        // commonly reference optional locals like `flash` that a particular
+        // controller didn't pass in, and Rails/Jinja/Handlebars all treat
+        // those as null rather than a hard failure.
         Expr::Var(name) => {
-            return interpreter
+            return Ok(interpreter
                 .environment
                 .borrow()
                 .get(name)
-                .ok_or_else(|| format!("Evaluation error: undefined variable '{}'", name));
+                .unwrap_or(Value::Null));
         }
         // Fast path: hash field access (e.g., <%= user.name %>)
         // Zero-alloc StrKey lookup; returns Null for missing keys on hashes.
@@ -177,12 +181,23 @@ pub fn evaluate_with_interpreter(
         }
         _ => {}
     }
-    // Full path for complex expressions
+    // Full path for complex expressions. Undefined-variable errors here are
+    // treated as Null to match the fast-path Var handler above — this way
+    // `flash` used inside a hash literal in an ERB tag doesn't blow up when
+    // the controller forgot to pass it.
     let core_kind = translate_expr(expr);
     let core_expr = core_expr::Expr::new(core_kind, Span::default());
-    interpreter
-        .evaluate(&core_expr)
-        .map_err(|e| format!("Evaluation error: {}", e))
+    match interpreter.evaluate(&core_expr) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("Undefined variable") {
+                Ok(Value::Null)
+            } else {
+                Err(format!("Evaluation error: {}", msg))
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

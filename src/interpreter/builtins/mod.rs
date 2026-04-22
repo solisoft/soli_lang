@@ -282,8 +282,10 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register response helper builtins
     response_helpers::register_response_helpers(env);
 
-    // Register session helper builtins (disabled due to type complexity)
-    // session_helpers::register_session_helpers(env);
+    // Register session helper builtins
+    if include_test_builtins {
+        session_helpers::register_session_helpers(env);
+    }
 
     // Register assigns helper builtins (disabled due to type complexity)
     // assigns_helpers::register_assigns_helpers(env);

@@ -217,6 +217,29 @@ pub fn serve_folder_with_options_and_workers(
     // Set the app root for LiveView template resolution
     crate::live::component::set_app_root(folder.to_path_buf());
 
+    // If the parent process enabled coverage collection (via the test
+    // runner), install a global coverage tracker so every interpreter in
+    // every worker thread records line hits into it. The hits are returned
+    // to the parent via the `/__coverage__` JSON endpoint at shutdown.
+    if std::env::var("SOLI_COVERAGE_ENABLED").is_ok() {
+        use crate::coverage::tracker::set_global_coverage_tracker;
+        use crate::coverage::{CoverageConfig, CoverageTracker, OutputFormat};
+        let config = CoverageConfig {
+            enabled: true,
+            output_dir: std::path::PathBuf::from("coverage"),
+            formats: vec![OutputFormat::Console],
+            threshold: None,
+            exclude_patterns: Vec::new(),
+            exclude_lines: Vec::new(),
+            show_uncovered: false,
+            per_test: false,
+            root_dir: Some(folder.to_path_buf()),
+        };
+        let mut tracker = CoverageTracker::new(config);
+        register_app_source_lines_for_server(&mut tracker, folder);
+        set_global_coverage_tracker(std::sync::Arc::new(std::sync::Mutex::new(tracker)));
+    }
+
     // Create interpreter
     let mut interpreter = Interpreter::new();
 
@@ -1775,6 +1798,19 @@ async fn handle_hyper_request(
         if path == "/__dev/source" && method == "GET" {
             return handle_dev_source(req).await;
         }
+    }
+
+    // Coverage dump endpoint: only active when the parent process asked us
+    // to collect coverage (via SOLI_COVERAGE_ENABLED). Returns a JSON blob
+    // the test runner merges into its own aggregated report.
+    if path == "/__coverage__" && method == "GET" && std::env::var("SOLI_COVERAGE_ENABLED").is_ok()
+    {
+        let body = coverage_dump_json();
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(body)))
+            .unwrap());
     }
 
     let query_str = uri.query().unwrap_or("");
@@ -4350,6 +4386,83 @@ fn resolve_static_file(path: &str, public_dir: &Path) -> Result<Option<PathBuf>,
     }
 
     Ok(Some(file_path))
+}
+
+/// Walk the MVC app directories that the test runner also walks for coverage
+/// (`app/`, `config/`, `lib/`) and pre-register every `.sl` file's executable
+/// lines on the server-side coverage tracker. Without this, lines that are
+/// never hit would be absent from the report (the aggregator only knows about
+/// lines it has seen hit).
+fn register_app_source_lines_for_server(
+    tracker: &mut crate::coverage::CoverageTracker,
+    app_dir: &Path,
+) {
+    let source_dirs = [
+        app_dir.join("app"),
+        app_dir.join("config"),
+        app_dir.join("lib"),
+    ];
+    for source_dir in &source_dirs {
+        if source_dir.is_dir() {
+            collect_and_register_server_sources(tracker, source_dir);
+        }
+    }
+}
+
+fn collect_and_register_server_sources(tracker: &mut crate::coverage::CoverageTracker, dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_and_register_server_sources(tracker, &path);
+            } else if path.extension().is_some_and(|e| e == "sl") {
+                if let Ok(source) = std::fs::read_to_string(&path) {
+                    tracker.register_executable_lines_from_source(&path, &source);
+                }
+            }
+        }
+    }
+}
+
+/// Build a JSON response that enumerates every recorded line hit on the
+/// server-side global coverage tracker. Consumed by the test runner right
+/// before it kills the subprocess so the parent process can merge the data
+/// into its own aggregated report.
+fn coverage_dump_json() -> String {
+    let Some(tracker) = crate::coverage::tracker::get_global_coverage_tracker() else {
+        return "{}".to_string();
+    };
+    let Ok(tracker) = tracker.lock() else {
+        return "{}".to_string();
+    };
+    let coverage = tracker.get_aggregated_coverage();
+    let mut out = String::from("{\"files\":[");
+    let mut first = true;
+    for (path, file_cov) in &coverage.file_coverages {
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        let path_str = path
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        out.push_str(&format!("{{\"path\":\"{}\",\"hits\":[", path_str));
+        let mut line_first = true;
+        for (line_num, line_cov) in &file_cov.lines {
+            if line_cov.hits == 0 {
+                continue;
+            }
+            if !line_first {
+                out.push(',');
+            }
+            line_first = false;
+            out.push_str(&format!("[{},{}]", line_num, line_cov.hits));
+        }
+        out.push_str("]}");
+    }
+    out.push_str("]}");
+    out
 }
 
 #[allow(dead_code)]

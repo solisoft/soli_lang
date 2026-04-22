@@ -29,6 +29,9 @@ impl Interpreter {
             callee.kind,
             ExprKind::Member { .. } | ExprKind::SafeMember { .. }
         ) {
+            if let Some(result) = self.try_run_model_before_save(callee, arguments, span)? {
+                return Ok(result);
+            }
             if let Some(result) = self.try_evaluate_hash_string_key_call(callee, arguments, span)? {
                 return Ok(result);
             }
@@ -96,6 +99,200 @@ impl Interpreter {
         }
 
         self.call_value_with_named(callee_val, arg_values, named_args, block_arg, span)
+    }
+
+    /// Intercept `SomeModel.create(data)` / `SomeModel.update(id, data)` when
+    /// the model has before_save / before_create / before_update callbacks
+    /// registered via `before_save("normalize_email")` etc. Builds a temp
+    /// instance from the data hash, invokes each callback with `this` bound
+    /// to it, extracts the modified fields back to the hash, then delegates
+    /// to the underlying native function with the transformed data.
+    ///
+    /// Returns Ok(None) if this call is not a model create/update needing
+    /// callbacks — the caller falls through to the normal dispatch.
+    fn try_run_model_before_save(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::get_or_create_metadata;
+
+        let (object, method_name) = match &callee.kind {
+            ExprKind::Member { object, name } => (object.as_ref(), name.as_str()),
+            _ => return Ok(None),
+        };
+        if !matches!(method_name, "create" | "update") {
+            return Ok(None);
+        }
+
+        // All-positional args only (the common case).
+        let all_positional = arguments
+            .iter()
+            .all(|a| matches!(a, Argument::Positional(_)));
+        if !all_positional {
+            return Ok(None);
+        }
+
+        let obj_val = self.evaluate(object)?;
+        let class = match &obj_val {
+            Value::Class(c) if c.is_model_subclass() => c.clone(),
+            _ => return Ok(None),
+        };
+
+        let metadata = get_or_create_metadata(&class.name);
+        let callback_names: Vec<String> = if method_name == "create" {
+            metadata
+                .callbacks
+                .before_save
+                .iter()
+                .chain(metadata.callbacks.before_create.iter())
+                .cloned()
+                .collect()
+        } else {
+            metadata
+                .callbacks
+                .before_save
+                .iter()
+                .chain(metadata.callbacks.before_update.iter())
+                .cloned()
+                .collect()
+        };
+        if callback_names.is_empty() {
+            return Ok(None);
+        }
+
+        // Evaluate all arguments upfront.
+        let mut arg_values: Vec<Value> = Vec::with_capacity(arguments.len());
+        for arg in arguments {
+            if let Argument::Positional(expr) = arg {
+                arg_values.push(self.evaluate(expr)?);
+            }
+        }
+
+        // For `create(data)` the data is args[0]; for `update(id, data)` it's args[1].
+        let data_index = if method_name == "create" { 0 } else { 1 };
+        let Some(original_data) = arg_values.get(data_index).cloned() else {
+            return Ok(None);
+        };
+        let data_hash = match &original_data {
+            Value::Hash(h) => h.clone(),
+            _ => return Ok(None),
+        };
+
+        // Build a temp Instance populated with the data-hash's fields so the
+        // callback methods can read/write via `this.email = ...`.
+        let mut instance = Instance::new(class.clone());
+        for (k, v) in data_hash.borrow().iter() {
+            if let HashKey::String(name) = k {
+                instance.set(name.clone(), v.clone());
+            }
+        }
+        let inst_rc = Rc::new(RefCell::new(instance));
+
+        // Run each callback method with `this` bound to the temp instance.
+        for cb_name in &callback_names {
+            let Some(method) = class.find_method(cb_name) else {
+                continue;
+            };
+            let mut bound_env = Environment::with_enclosing(method.closure.clone());
+            bound_env.define("this".to_string(), Value::Instance(inst_rc.clone()));
+
+            let bound_method = crate::interpreter::value::Function {
+                name: method.name.clone(),
+                params: method.params.clone(),
+                body: method.body.clone(),
+                closure: Rc::new(RefCell::new(bound_env)),
+                is_method: true,
+                span: method.span,
+                source_path: method.source_path.clone(),
+                defining_superclass: None,
+                return_type: method.return_type.clone(),
+                cached_env: RefCell::new(None),
+                jit_cache: RefCell::new(None),
+            };
+            self.call_value(Value::Function(Rc::new(bound_method)), Vec::new(), span)?;
+        }
+
+        // Copy the instance's fields back into a new hash — preserving any
+        // extra fields callbacks added, and picking up the mutations.
+        let inst_ref = inst_rc.borrow();
+        let mut new_pairs = crate::interpreter::value::HashPairs::default();
+        for (k, v) in &inst_ref.fields {
+            new_pairs.insert(HashKey::String(k.clone()), v.clone());
+        }
+        drop(inst_ref);
+        arg_values[data_index] = Value::Hash(Rc::new(RefCell::new(new_pairs)));
+
+        // Dispatch to the class's native static method (Model.create / Model.update)
+        // with the transformed data. We evaluate the callee fresh so the native
+        // fn closure gets the class as `args[0]` like the normal path.
+        let callee_val = self.evaluate_callee(callee)?;
+        let result = self.call_value(callee_val, arg_values, span)?;
+
+        // Run after_save / after_create / after_update with `this` bound to
+        // the persisted record — convention: Model.create returns
+        // `{ "valid": true, "record": <Instance> }` on success.
+        let after_names: Vec<String> = if method_name == "create" {
+            metadata
+                .callbacks
+                .after_create
+                .iter()
+                .chain(metadata.callbacks.after_save.iter())
+                .cloned()
+                .collect()
+        } else {
+            metadata
+                .callbacks
+                .after_update
+                .iter()
+                .chain(metadata.callbacks.after_save.iter())
+                .cloned()
+                .collect()
+        };
+        if !after_names.is_empty() {
+            if let Value::Hash(result_hash) = &result {
+                let valid = result_hash
+                    .borrow()
+                    .get(&HashKey::String("valid".to_string()))
+                    .cloned();
+                let record = result_hash
+                    .borrow()
+                    .get(&HashKey::String("record".to_string()))
+                    .cloned();
+                if matches!(valid, Some(Value::Bool(true))) {
+                    if let Some(Value::Instance(inst)) = record {
+                        for cb_name in &after_names {
+                            let Some(method) = class.find_method(cb_name) else {
+                                continue;
+                            };
+                            let mut bound_env = Environment::with_enclosing(method.closure.clone());
+                            bound_env.define("this".to_string(), Value::Instance(inst.clone()));
+                            let bound_method = crate::interpreter::value::Function {
+                                name: method.name.clone(),
+                                params: method.params.clone(),
+                                body: method.body.clone(),
+                                closure: Rc::new(RefCell::new(bound_env)),
+                                is_method: true,
+                                span: method.span,
+                                source_path: method.source_path.clone(),
+                                defining_superclass: None,
+                                return_type: method.return_type.clone(),
+                                cached_env: RefCell::new(None),
+                                jit_cache: RefCell::new(None),
+                            };
+                            self.call_value(
+                                Value::Function(Rc::new(bound_method)),
+                                Vec::new(),
+                                span,
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(Some(result))
     }
 
     fn try_evaluate_hash_string_key_call(

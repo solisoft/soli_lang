@@ -330,6 +330,30 @@ pub fn register_expectation_class(env: &mut Environment) {
     );
 
     expectation_native_methods.insert(
+        "to_match".to_string(),
+        Rc::new(NativeFunction::new(
+            "Expectation.to_match",
+            Some(1),
+            |args| {
+                let actual = get_actual(&args)?;
+                let expected = &args[1];
+                let matches = match (&actual, expected) {
+                    (Value::String(s), Value::String(pat)) => s.contains(pat.as_str()),
+                    _ => {
+                        return Err("to_match expects string actual and string pattern".to_string())
+                    }
+                };
+                if matches {
+                    crate::interpreter::builtins::assertions::increment_assertion_count();
+                    Ok(Value::Bool(true))
+                } else {
+                    Err(format!("Expected {:?} to match {:?}", actual, expected))
+                }
+            },
+        )),
+    );
+
+    expectation_native_methods.insert(
         "to_be_valid_json".to_string(),
         Rc::new(NativeFunction::new(
             "Expectation.to_be_valid_json",

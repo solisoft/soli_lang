@@ -114,6 +114,12 @@ impl Linter {
                         &mut self.diagnostics,
                     );
                 }
+                rules::scope::check_undefined_locals(
+                    &decl.params,
+                    &decl.body,
+                    &self.program_names,
+                    &mut self.diagnostics,
+                );
                 self.lint_body(&decl.body);
             }
 
@@ -158,6 +164,12 @@ impl Linter {
             for param in &method.params {
                 rules::naming::check_variable_name(&param.name, param.span, &mut self.diagnostics);
             }
+            rules::scope::check_undefined_locals(
+                &method.params,
+                &method.body,
+                &self.program_names,
+                &mut self.diagnostics,
+            );
             self.lint_body(&method.body);
         }
 
@@ -166,6 +178,12 @@ impl Linter {
             for param in &ctor.params {
                 rules::naming::check_variable_name(&param.name, param.span, &mut self.diagnostics);
             }
+            rules::scope::check_undefined_locals(
+                &ctor.params,
+                &ctor.body,
+                &self.program_names,
+                &mut self.diagnostics,
+            );
             self.lint_body(&ctor.body);
         }
 

@@ -31,6 +31,10 @@ pub enum Command {
         path: Option<String>,
         jobs: usize,
         coverage: bool,
+        /// Additional output format(s) beyond the console summary. Accepted
+        /// via `--coverage=html`, `--coverage=json`, `--coverage=xml`.
+        /// Empty = console only.
+        coverage_formats: Vec<String>,
         coverage_min: Option<f64>,
         no_coverage: bool,
     },
@@ -109,7 +113,7 @@ pub fn print_usage() {
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
-    eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage-min N] [--no-coverage]");
+    eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--no-coverage]");
     eprintln!("       soli lint [path]");
     eprintln!("       soli deploy [--folder <path>]");
     eprintln!("       soli db:migrate <up|down|status> [folder]");
@@ -146,9 +150,10 @@ pub fn print_usage() {
     eprintln!("  --port PORT     Port for serve command (default: 5011)");
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
     eprintln!("  --jobs N        Number of parallel test workers (default: CPU cores)");
-    eprintln!("  --coverage      Generate coverage report");
-    eprintln!("  --coverage-min N  Fail if coverage is below N% (default: 80)");
-    eprintln!("  --no-coverage   Skip coverage collection");
+    eprintln!("  --coverage           Generate coverage report (console)");
+    eprintln!("  --coverage=FORMAT    Also generate FORMAT reports: html, json, xml (comma-sep)");
+    eprintln!("  --coverage-min N     Fail if coverage is below N% (default: 80)");
+    eprintln!("  --no-coverage        Skip coverage collection");
     eprintln!("  --help, -h      Show this help message");
     eprintln!();
     eprintln!("Examples:");
@@ -654,10 +659,40 @@ pub fn parse_args() -> Options {
                 let mut path: Option<String> = None;
                 let mut jobs: usize = 1;
                 let mut coverage = false;
+                let mut coverage_formats: Vec<String> = Vec::new();
                 let mut coverage_min: Option<f64> = None;
                 let mut no_coverage = false;
                 while i < args.len() {
                     if args[i].starts_with('-') {
+                        // Support `--coverage=html`, `--coverage=json,xml`,
+                        // `--coverage=html --coverage=json`, etc. Any non-empty
+                        // value implies --coverage.
+                        if let Some(rest) = args[i].strip_prefix("--coverage=") {
+                            coverage = true;
+                            no_coverage = false;
+                            for fmt in rest.split(',') {
+                                let fmt = fmt.trim();
+                                if fmt.is_empty() {
+                                    continue;
+                                }
+                                let normalized = fmt.to_ascii_lowercase();
+                                if !matches!(
+                                    normalized.as_str(),
+                                    "console" | "html" | "json" | "xml"
+                                ) {
+                                    eprintln!(
+                                        "Unknown --coverage format '{}'. Valid: console, html, json, xml",
+                                        fmt
+                                    );
+                                    process::exit(64);
+                                }
+                                if !coverage_formats.iter().any(|f| f == &normalized) {
+                                    coverage_formats.push(normalized);
+                                }
+                            }
+                            i += 1;
+                            continue;
+                        }
                         match args[i].as_str() {
                             "--jobs" => {
                                 i += 1;
@@ -707,6 +742,11 @@ pub fn parse_args() -> Options {
                     path,
                     jobs,
                     coverage: !no_coverage && coverage,
+                    coverage_formats: if no_coverage {
+                        Vec::new()
+                    } else {
+                        coverage_formats
+                    },
                     coverage_min: if no_coverage { None } else { coverage_min },
                     no_coverage,
                 };

@@ -120,8 +120,13 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
 
     let mut count = 0;
 
-    // Create a minimal environment for helper functions (they can call each other)
+    // Register the full builtin suite into the helpers' closure so helper
+    // functions can call session_get / session_set / redirect / render /
+    // JSON / HTTP / Model / argon2_hash / …  Without this, a helper that
+    // references any builtin fails with "Undefined variable" at render time.
+    // `include_test_builtins: false` — helpers never run under `soli test`.
     let helper_env = Rc::new(RefCell::new(Environment::new()));
+    crate::interpreter::builtins::register_builtins(&mut helper_env.borrow_mut(), false);
 
     for entry in std::fs::read_dir(helpers_dir)
         .map_err(|e| format!("Failed to read helpers directory: {}", e))?

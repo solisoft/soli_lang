@@ -202,9 +202,17 @@ fn render_inner(
                 } => {
                     if let Some(renderer) = partial_renderer {
                         let partial_data = if let Some(ctx_expr) = context {
-                            interpreter
-                                .evaluate(ctx_expr)
-                                .map_err(|e| format!("Evaluation error: {}", e))?
+                            match interpreter.evaluate(ctx_expr) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    let msg = e.to_string();
+                                    if msg.contains("Undefined variable") {
+                                        Value::Null
+                                    } else {
+                                        return Err(format!("Evaluation error: {}", msg));
+                                    }
+                                }
+                            }
                         } else {
                             data.clone()
                         };
@@ -234,9 +242,17 @@ fn render_inner(
                     escaped,
                     line: _,
                 } => {
-                    let value = interpreter
-                        .evaluate(expr)
-                        .map_err(|e| format!("Evaluation error: {}", e))?;
+                    let value = match interpreter.evaluate(expr) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let msg = e.to_string();
+                            if msg.contains("Undefined variable") {
+                                Value::Null
+                            } else {
+                                return Err(format!("Evaluation error: {}", msg));
+                            }
+                        }
+                    };
                     // Auto-call methods/functions with no args (parentheses optional in templates)
                     let value = auto_call_if_callable(interpreter, value)?;
                     write_value_to_output(&value, *escaped, output);

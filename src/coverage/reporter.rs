@@ -82,21 +82,40 @@ impl CoverageReporter {
                 .unwrap()
         });
 
-        for (path, file_cov) in &file_data {
+        // Pre-compute display paths and the column width so the bar and
+        // percentage align across rows, even when some filenames are longer
+        // than the default padding.
+        let rows: Vec<(String, &FileCoverage)> = file_data
+            .iter()
+            .map(|(path, file_cov)| {
+                let display_path = if let Some(ref root) = self.config.root_dir {
+                    path.strip_prefix(root)
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|_| path.to_string_lossy().to_string())
+                } else {
+                    path.to_string_lossy().to_string()
+                };
+                (display_path, *file_cov)
+            })
+            .collect();
+        let name_width = rows
+            .iter()
+            .map(|(p, _)| p.chars().count())
+            .max()
+            .unwrap_or(40)
+            .max(40);
+
+        for (display_path, file_cov) in &rows {
             let percent = file_cov.combined_coverage_percent();
             let bar = self.progress_bar(percent);
-
-            let display_path = if let Some(ref root) = self.config.root_dir {
-                path.strip_prefix(root)
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| path.to_string_lossy().to_string())
-            } else {
-                path.to_string_lossy().to_string()
-            };
+            let pad = name_width.saturating_sub(display_path.chars().count());
 
             output.push_str(&format!(
-                "  {:<40} {} {:>6.1}%\n",
-                display_path, bar, percent
+                "  {}{} {} {:>6.1}%\n",
+                display_path,
+                " ".repeat(pad),
+                bar,
+                percent
             ));
         }
 
@@ -281,6 +300,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
 header { margin-bottom: 32px; }
 h1 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
+.back-link { display: inline-block; margin-top: 8px; font-size: 14px; color: #6366f1; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
 .summary { display: flex; gap: 16px; }
 .summary-card { background: white; padding: 16px 24px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
 .summary-value { font-size: 32px; font-weight: 700; display: block; }
@@ -290,7 +311,38 @@ th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0;
 th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
 .clickable-row { cursor: pointer; transition: background 0.15s; }
 .clickable-row:hover { background: #f8fafc; }
-.coverage-pill { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; color: white; }"#;
+.coverage-pill { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; color: white; }
+
+/* Source code view */
+.source-view { background: #0f172a; color: #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.source-view table { background: transparent; box-shadow: none; border-radius: 0; }
+.source-view th, .source-view td { border-bottom: none; padding: 0; }
+.code-line td { padding: 0 0 0 0; }
+.code-line { font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', 'Liberation Mono', monospace; font-size: 13px; line-height: 20px; }
+.code-line:hover { background: #1e293b; }
+.line-num { padding: 0 12px 0 16px; color: #64748b; text-align: right; user-select: none; width: 60px; min-width: 60px; border-right: 1px solid #1e293b; background: #0b1220; }
+.line-indicator { padding: 0 8px; width: 28px; text-align: center; font-weight: 700; user-select: none; }
+.code-line.covered .line-indicator { color: #22c55e; }
+.code-line.uncovered .line-indicator { color: #ef4444; }
+.code-line.covered { background: rgba(34, 197, 94, 0.08); }
+.code-line.uncovered { background: rgba(239, 68, 68, 0.12); }
+.code-line.covered:hover { background: rgba(34, 197, 94, 0.14); }
+.code-line.uncovered:hover { background: rgba(239, 68, 68, 0.20); }
+.code-content { padding: 0 16px; width: 100%; }
+.code-content pre { white-space: pre; font-family: inherit; font-size: inherit; line-height: inherit; margin: 0; overflow-x: auto; }
+
+/* Syntax highlighting (Monokai-ish) */
+.tok-kw      { color: #f472b6; font-weight: 600; }
+.tok-type    { color: #60a5fa; }
+.tok-ident   { color: #e2e8f0; }
+.tok-num     { color: #fbbf24; }
+.tok-str     { color: #86efac; }
+.tok-bool    { color: #fbbf24; font-weight: 600; }
+.tok-null    { color: #fbbf24; font-style: italic; }
+.tok-op      { color: #f87171; }
+.tok-punct   { color: #cbd5e1; }
+.tok-comment { color: #64748b; font-style: italic; }
+"#;
 
         let _ = fs::write(assets_dir.join("style.css"), style);
 
@@ -346,10 +398,7 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
                 }
             }
 
-            let escaped_line = line
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;");
+            let highlighted_line = html_highlight_soli(line);
 
             line_rows.push_str(&format!(
                 r#"<tr class="{}">
@@ -357,7 +406,7 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
                     <td class="line-indicator">{}</td>
                     <td class="code-content"><pre>{}</pre></td>
                 </tr>"#,
-                row_class, line_num, coverage_indicator, escaped_line
+                row_class, line_num, coverage_indicator, highlighted_line
             ));
         }
 
@@ -370,7 +419,7 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{} - Coverage</title>
-    <link rel="stylesheet" href="../assets/style.css">
+    <style>{}</style>
 </head>
 <body>
     <div class="container">
@@ -388,7 +437,10 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
     </div>
 </body>
 </html>"#,
-            file_name, file_name, line_rows
+            file_name,
+            source_view_inline_css(),
+            file_name,
+            line_rows
         )
     }
 
@@ -525,5 +577,162 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
             return coverage.total_line_coverage_percent() >= threshold;
         }
         true
+    }
+}
+
+/// Inline CSS embedded directly in each per-source HTML page. Duplicates the
+/// visual parts of `assets/style.css` but avoids cache headaches — a browser
+/// that once fetched the stale pre-highlight style.css would otherwise keep
+/// serving it until the user hard-refreshes. Inlining sidesteps that entirely
+/// and makes the file standalone (copy it anywhere, it renders).
+fn source_view_inline_css() -> &'static str {
+    r#"
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; }
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+header { margin-bottom: 32px; }
+h1 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
+.back-link { display: inline-block; margin-top: 8px; font-size: 14px; color: #6366f1; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+
+.source-view { background: #0f172a; color: #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.source-view table { width: 100%; background: transparent; border-collapse: collapse; }
+.source-view th, .source-view td { border-bottom: none; padding: 0; text-align: left; }
+.code-line { font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', 'Liberation Mono', monospace; font-size: 13px; line-height: 20px; }
+.code-line:hover { background: #1e293b; }
+.line-num { padding: 0 12px 0 16px; color: #64748b; text-align: right; user-select: none; width: 60px; min-width: 60px; border-right: 1px solid #1e293b; background: #0b1220; }
+.line-indicator { padding: 0 8px; width: 28px; text-align: center; font-weight: 700; user-select: none; color: #64748b; }
+.code-line.covered .line-indicator { color: #22c55e; }
+.code-line.uncovered .line-indicator { color: #ef4444; }
+.code-line.covered { background: rgba(34, 197, 94, 0.08); }
+.code-line.uncovered { background: rgba(239, 68, 68, 0.12); }
+.code-line.covered:hover { background: rgba(34, 197, 94, 0.14); }
+.code-line.uncovered:hover { background: rgba(239, 68, 68, 0.20); }
+.code-content { padding: 0 16px; width: 100%; }
+.code-content pre { white-space: pre; font-family: inherit; font-size: inherit; line-height: inherit; margin: 0; overflow-x: auto; }
+
+/* Syntax token palette */
+.tok-kw      { color: #f472b6; font-weight: 600; }
+.tok-type    { color: #60a5fa; }
+.tok-ident   { color: #e2e8f0; }
+.tok-num     { color: #fbbf24; }
+.tok-str     { color: #86efac; }
+.tok-bool    { color: #fbbf24; font-weight: 600; }
+.tok-null    { color: #fbbf24; font-style: italic; }
+.tok-op      { color: #f87171; }
+.tok-punct   { color: #cbd5e1; }
+.tok-comment { color: #64748b; font-style: italic; }
+"#
+}
+
+/// Tokenise a line of Soli source and wrap each token in a `<span class="tok-*">`
+/// so the HTML coverage view can style it. Keeps leading whitespace intact and
+/// HTML-escapes everything that's passed through to the output.
+pub(crate) fn html_highlight_soli(line: &str) -> String {
+    use crate::lexer::token::TokenKind;
+    use crate::lexer::Scanner;
+
+    let tokens = match Scanner::new(line).scan_tokens() {
+        Ok(t) => t,
+        Err(_) => return escape_html(line),
+    };
+
+    let mut out = String::with_capacity(line.len() * 2);
+    let mut cursor = 0usize;
+    for tok in tokens {
+        if matches!(tok.kind, TokenKind::Eof) {
+            break;
+        }
+        let start = tok.span.start.min(line.len());
+        let end = tok.span.end.min(line.len());
+        if start < cursor || start > line.len() {
+            continue;
+        }
+        // Emit any inter-token whitespace/comments unchanged (escaped).
+        if start > cursor {
+            let gap = &line[cursor..start];
+            out.push_str(&wrap_inter_token(gap));
+        }
+        if end <= start {
+            cursor = start;
+            continue;
+        }
+        let text = &line[start..end];
+        let class = token_class(&tok.kind);
+        if class.is_empty() {
+            out.push_str(&escape_html(text));
+        } else {
+            out.push_str(&format!(
+                "<span class=\"{}\">{}</span>",
+                class,
+                escape_html(text)
+            ));
+        }
+        cursor = end;
+    }
+    if cursor < line.len() {
+        out.push_str(&wrap_inter_token(&line[cursor..]));
+    }
+    out
+}
+
+/// The lexer skips comments, so anything between tokens that contains `#` is
+/// almost certainly a line-comment. Style it differently.
+fn wrap_inter_token(s: &str) -> String {
+    if let Some(idx) = s.find('#') {
+        let (before, comment) = s.split_at(idx);
+        format!(
+            "{}<span class=\"tok-comment\">{}</span>",
+            escape_html(before),
+            escape_html(comment)
+        )
+    } else {
+        escape_html(s)
+    }
+}
+
+fn escape_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn token_class(kind: &crate::lexer::token::TokenKind) -> &'static str {
+    use crate::lexer::token::TokenKind::*;
+    match kind {
+        IntLiteral(_) | FloatLiteral(_) | DecimalLiteral(_) => "tok-num",
+        StringLiteral(_) | InterpolatedString(_) | BacktickString(_) => "tok-str",
+        BoolLiteral(_) => "tok-bool",
+        Null => "tok-null",
+        Let | Const | Fn | Return | If | Else | Elsif | While | For | In | Class | Extends
+        | Implements | Interface | New | This | SelfKeyword | Super | Public | Private
+        | Protected | Static | Try | Catch | Finally | Throw | Not | Async | Await | Match
+        | Case | When | Do | End | Unless | Then | Import | Export | From | As | Int | Float
+        | Bool | String | Void | Decimal => "tok-kw",
+        Plus | Minus | Star | Slash | Percent | Equal | EqualEqual | BangEqual | Less
+        | LessEqual | Greater | GreaterEqual | Bang | And | Or | Pipeline | Pipe
+        | NullishCoalescing | SafeNavigation | DoubleColon | Arrow | FatArrow | Spread | Range
+        | PlusPlus | MinusMinus | PlusEqual | MinusEqual | StarEqual | SlashEqual
+        | PercentEqual => "tok-op",
+        LeftParen | RightParen | LeftBrace | RightBrace | LeftBracket | RightBracket | Comma
+        | Dot | Colon | Semicolon | Question => "tok-punct",
+        Identifier(name) => {
+            // PascalCase names are conventionally classes/types.
+            if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+                "tok-type"
+            } else {
+                "tok-ident"
+            }
+        }
+        _ => "",
     }
 }

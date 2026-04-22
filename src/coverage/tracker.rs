@@ -215,10 +215,58 @@ impl CoverageTracker {
             }
         });
 
-        if let Some(global) = GLOBAL_COVERAGE_TRACKER.get() {
-            if let Ok(mut tracker) = global.try_lock() {
-                tracker.record_line_hit_to_global(path, line);
-            }
+        // Important: callers in the interpreter hold the tracker's Mutex via
+        // `.lock()` before invoking this method, so a re-entrant `try_lock()`
+        // on GLOBAL_COVERAGE_TRACKER (which IS this same Mutex) always fails
+        // — silently dropping the hit. Update the aggregated coverage
+        // through &self using interior mutability via the Arc<Mutex<...>>
+        // on `global_coverage` instead.
+        self.update_global_coverage(path, line);
+    }
+
+    fn update_global_coverage(&self, path: &PathBuf, line: usize) {
+        let Ok(mut global) = self.global_coverage.lock() else {
+            return;
+        };
+        let file_cov = global
+            .file_coverages
+            .entry(path.clone())
+            .or_insert_with(|| FileCoverage {
+                path: path.clone(),
+                lines: HashMap::new(),
+                branches: HashMap::new(),
+                total_lines: 0,
+                covered_lines: 0,
+                total_branches: 0,
+                covered_branches: 0,
+            });
+        let is_executable = self
+            .executable_lines
+            .get(path)
+            .and_then(|lines| lines.get(&line))
+            .is_some();
+        let line_cov = file_cov.lines.entry(line).or_insert_with(|| LineCoverage {
+            line_number: line,
+            hits: 0,
+            source_code: self
+                .executable_lines
+                .get(path)
+                .and_then(|lines| lines.get(&line))
+                .cloned()
+                .unwrap_or_default(),
+            is_executable,
+        });
+        let was_covered = line_cov.hits > 0;
+        line_cov.hits += 1;
+        if !was_covered && is_executable {
+            file_cov.covered_lines += 1;
+        }
+        if file_cov.total_lines == 0 && is_executable {
+            file_cov.total_lines = self
+                .executable_lines
+                .get(path)
+                .map(|m| m.len())
+                .unwrap_or(0) as u32;
         }
     }
 

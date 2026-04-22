@@ -79,6 +79,11 @@ impl TemplateCache {
         data: &Value,
         layout: Option<Option<&str>>,
     ) -> Result<String, String> {
+        // Treat undefined variable lookups as Null throughout template
+        // rendering — controllers commonly omit optional locals like
+        // `flash`, and the scaffolded layout references them directly.
+        let _guard = crate::interpreter::executor::enter_template_lenient_vars();
+
         // Get the template file path
         let template_path = self.resolve_template_path(template_name)?;
 

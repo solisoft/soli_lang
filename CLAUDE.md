@@ -224,6 +224,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `smell/empty-catch` - catch blocks shouldn't be empty
 - `smell/duplicate-methods` - no duplicate methods
 - `smell/deep-nesting` - nesting ≤4 levels
+- `smell/undefined-local` - reads of a bare name never assigned in the function scope (catches typos that bypass `let` because `let` is optional)
 
 ## MVC Pattern
 

@@ -1218,6 +1218,30 @@ impl Model {
             })),
         );
 
+        // Model.delete_all() - Remove every document in the collection.
+        // Primarily intended for test setup/teardown. Fetches all keys
+        // then deletes each individually — a single `FOR doc IN … REMOVE`
+        // query isn't actually applied in SolidB, so iterate.
+        native_static_methods.insert(
+            "delete_all".to_string(),
+            Rc::new(NativeFunction::new("Model.delete_all", Some(1), |args| {
+                let collection = get_collection_from_class(&args)?;
+                let sdbql = format!("FOR doc IN {} RETURN doc._key", collection);
+                let results = match super::crud::exec_query(&collection, sdbql) {
+                    Ok(r) => r,
+                    Err(e) => return Err(format!("Model.delete_all() failed: {}", e)),
+                };
+                for key_json in &results {
+                    let key = match key_json {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    let _ = super::crud::exec_delete(&collection, &key);
+                }
+                Ok(Value::Null)
+            })),
+        );
+
         // Model.transaction - Execute SDBQL or get transaction handle
         // Usage:
         //   Model.transaction(sdbql_string) - Execute SDBQL in transaction

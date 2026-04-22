@@ -903,6 +903,14 @@ pub const STRING_METHODS: &[MethodDef] = &[
 ];
 
 pub const ARRAY_METHODS: &[MethodDef] = &[
+    // `arr.all` (no parens) returns the array itself — convenience for
+    // controllers that treat a preloaded has_many accessor like a Rails
+    // Relation and call `.all` at the end of a chain.
+    MethodDef {
+        name: "all",
+        zero_arg: true,
+        ret: "array",
+    },
     MethodDef {
         name: "all?",
         zero_arg: false,
@@ -912,6 +920,16 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         name: "any?",
         zero_arg: false,
         ret: "bool",
+    },
+    MethodDef {
+        name: "includes",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
+        name: "order",
+        zero_arg: false,
+        ret: "array",
     },
     MethodDef {
         name: "blank?",

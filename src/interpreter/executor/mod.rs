@@ -7,6 +7,8 @@ mod pattern_matching;
 mod statements;
 mod variables;
 
+pub use variables::{enter_template_lenient_vars, TemplateLenientVarsGuard};
+
 pub mod access;
 pub mod calls;
 pub mod control;

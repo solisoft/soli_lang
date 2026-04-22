@@ -24,6 +24,7 @@ pub fn run_test(
     path: Option<&str>,
     jobs: usize,
     coverage: bool,
+    coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,
 ) {
@@ -74,26 +75,39 @@ pub fn run_test(
         return;
     }
 
-    let models_dir = app_dir.join("app").join("models");
-    let model_preamble = if models_dir.is_dir() {
-        let mut preamble = String::new();
-        if let Ok(entries) = fs::read_dir(&models_dir) {
-            let mut model_files: Vec<_> = entries
-                .flatten()
-                .filter(|e| e.path().extension().is_some_and(|ext| ext == "sl"))
-                .collect();
-            model_files.sort_by_key(|e| e.path());
-            for entry in model_files {
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    preamble.push_str(&content);
-                    preamble.push('\n');
-                }
+    let mut model_preamble_files: Vec<(PathBuf, String)> = Vec::new();
+
+    // Test helpers expected to exist by scaffold-generated tests but not shipped
+    // as builtins. Defined at Soli level so they can call user lambdas.
+    let helpers_src = "fn with_transaction(block) { block() }\n".to_string();
+    model_preamble_files.push((PathBuf::from("<test-helpers>"), helpers_src));
+
+    // Load every `.sl` in app/models, app/helpers, app/middleware into the
+    // test interpreter. Models define classes used in tests; helpers and
+    // middleware define top-level `def` functions that unit tests can call
+    // directly (without going through an HTTP request) — e.g.
+    // `authorize_admin(req)` or `active_link(path, current)`.
+    for sub in ["models", "helpers", "middleware"] {
+        let dir = app_dir.join("app").join(sub);
+        if !dir.is_dir() {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut sorted: Vec<_> = entries
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "sl"))
+            .collect();
+        sorted.sort_by_key(|e| e.path());
+        for entry in sorted {
+            let path = entry.path();
+            if let Ok(content) = fs::read_to_string(&path) {
+                let absolute = path.canonicalize().unwrap_or(path);
+                model_preamble_files.push((absolute, content));
             }
         }
-        preamble
-    } else {
-        String::new()
-    };
+    }
 
     let test_dir = if test_path.is_file() {
         test_path.parent().unwrap_or(&test_path).to_path_buf()
@@ -102,11 +116,31 @@ pub fn run_test(
     };
 
     let enable_coverage = coverage && !no_coverage;
+    // Console is always present; every other accepted name adds its format.
+    let output_formats = {
+        let mut formats = vec![OutputFormat::Console];
+        for name in coverage_formats {
+            let variant = match name.as_str() {
+                "console" => continue, // already added
+                "html" => OutputFormat::Html,
+                "json" => OutputFormat::Json,
+                "xml" => OutputFormat::Xml,
+                other => {
+                    eprintln!("Unknown --coverage format '{}'.", other);
+                    process::exit(64);
+                }
+            };
+            if !formats.contains(&variant) {
+                formats.push(variant);
+            }
+        }
+        formats
+    };
     let tracker = if enable_coverage {
         let config = CoverageConfig {
             enabled: true,
             output_dir: PathBuf::from("coverage"),
-            formats: vec![OutputFormat::Console],
+            formats: output_formats.clone(),
             threshold: coverage_min.or(Some(80.0)),
             exclude_patterns: Vec::new(),
             exclude_lines: Vec::new(),
@@ -134,12 +168,20 @@ pub fn run_test(
     );
     println!();
 
-    let needs_test_server = test_files.iter().any(|f| {
-        f.file_name()
-            .map(|n| n.to_string_lossy().contains("integration"))
-            .unwrap_or(false)
-    });
+    // Start the test server whenever the app has controllers — any test that
+    // calls get()/post()/login()/etc needs it, not just files named *integration*.
+    let needs_test_server = app_dir.join("app").join("controllers").is_dir();
 
+    struct ChildGuard(Option<std::process::Child>);
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            if let Some(mut c) = self.0.take() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+    }
+    let mut test_server_child = ChildGuard(None);
     if needs_test_server {
         println!("Starting test server...");
 
@@ -151,14 +193,61 @@ pub fn run_test(
 
         solilang::interpreter::builtins::test_server::start_test_server_on_port(port);
 
-        let app_dir_owned = app_dir.to_path_buf();
-        std::thread::spawn(move || {
-            if let Err(e) =
-                solilang::serve::serve_folder_with_options(&app_dir_owned, port, false, 1)
-            {
-                eprintln!("Test server error: {}", e);
-            }
-        });
+        // Run the test server in a separate process. When it lives in the
+        // same process as the test runner, the server's tokio runtime and
+        // the test runner's thread-local runtimes deadlock against each other
+        // on the shared reqwest HTTP_CLIENT — requests hang even though the
+        // OS socket is fine. A subprocess has its own address space and
+        // runtime, so HTTP calls always go over a real TCP connection.
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("soli"));
+        // Run the test server in dev mode so request handlers execute in the
+        // tree-walking interpreter. Class-based controllers (e.g. `class
+        // SessionsController extends Controller`) don't currently work through
+        // the VM/production path and return JSON `null` instead of rendering.
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.arg("serve")
+            .arg(app_dir)
+            .arg("--dev")
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--workers")
+            .arg("4")
+            .env("APP_ENV", "test")
+            .env(
+                "SOLIDB_HOST",
+                std::env::var("SOLIDB_HOST")
+                    .unwrap_or_else(|_| "http://localhost:6745".to_string()),
+            )
+            .env(
+                "SOLIDB_DATABASE",
+                std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "test".to_string()),
+            )
+            .env(
+                "SOLIDB_USERNAME",
+                std::env::var("SOLIDB_USERNAME").unwrap_or_default(),
+            )
+            .env(
+                "SOLIDB_PASSWORD",
+                std::env::var("SOLIDB_PASSWORD").unwrap_or_default(),
+            )
+            .stdout(
+                std::fs::File::create("/tmp/soli_test_server.log")
+                    .map(std::process::Stdio::from)
+                    .unwrap_or(std::process::Stdio::null()),
+            )
+            .stderr(
+                std::fs::File::options()
+                    .append(true)
+                    .create(true)
+                    .open("/tmp/soli_test_server.log")
+                    .map(std::process::Stdio::from)
+                    .unwrap_or(std::process::Stdio::null()),
+            );
+        if enable_coverage {
+            cmd.env("SOLI_COVERAGE_ENABLED", "1");
+        }
+        let child = cmd.spawn().expect("Failed to spawn test server subprocess");
+        test_server_child.0 = Some(child);
 
         let base_url = format!("http://127.0.0.1:{}", port);
         let client = reqwest::blocking::Client::builder()
@@ -168,7 +257,7 @@ pub fn run_test(
         let max_attempts = 50;
         let mut ready = false;
         for _ in 0..max_attempts {
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(200));
             if client.get(format!("{}/health", base_url)).send().is_ok() {
                 ready = true;
                 break;
@@ -176,6 +265,7 @@ pub fn run_test(
         }
         if !ready {
             eprintln!("Error: Test server failed to start on port {}", port);
+            drop(test_server_child);
             process::exit(1);
         }
 
@@ -192,7 +282,7 @@ pub fn run_test(
         for chunk in test_files.chunks(chunk_size) {
             let tx = tx.clone();
             let chunk: Vec<PathBuf> = chunk.to_vec();
-            let preamble = model_preamble.clone();
+            let preamble_files = model_preamble_files.clone();
             let tracker_clone = tracker.clone();
 
             handles.push(s.spawn(move || {
@@ -204,16 +294,12 @@ pub fn run_test(
 
                     let (passed, error, assertions) = match result {
                         Ok(source) => {
-                            let full_source = if !preamble.is_empty()
-                                && !file
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().contains("integration"))
-                                    .unwrap_or(false)
-                            {
-                                format!("{}\n{}", preamble, source)
-                            } else {
-                                source
-                            };
+                            let is_integration = file
+                                .file_name()
+                                .map(|n| n.to_string_lossy().contains("integration"))
+                                .unwrap_or(false);
+                            let preamble_slice: &[(PathBuf, String)] =
+                                if is_integration { &[] } else { &preamble_files };
                             if let Some(ref tracker) = tracker_clone {
                                 let tracker_guard = tracker.lock().unwrap();
                                 tracker_guard.start_test(file.to_string_lossy().as_ref());
@@ -222,11 +308,12 @@ pub fn run_test(
                             let panic_result =
                                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                     solilang::run_with_path_and_coverage(
-                                        &full_source,
+                                        &source,
                                         Some(&file),
                                         false,
                                         tracker_for_run.as_ref(),
                                         Some(&file),
+                                        preamble_slice,
                                     )
                                 }));
                             if let Some(ref tracker) = tracker_clone {
@@ -234,8 +321,8 @@ pub fn run_test(
                                 tracker_guard.end_test();
                             }
                             match panic_result {
-                                Ok(Ok(count)) => (true, String::new(), count),
-                                Ok(Err(e)) => (false, e.to_string(), 0),
+                                Ok((count, Ok(()))) => (true, String::new(), count),
+                                Ok((count, Err(e))) => (false, e.to_string(), count),
                                 Err(_) => (
                                     false,
                                     "Test panicked (may require async runtime)".to_string(),
@@ -270,8 +357,36 @@ pub fn run_test(
     let mut failed = 0;
     let mut total_assertions = 0;
 
+    // Pre-compute display path for every result so we know the longest name
+    // and can align the duration/assertion columns across rows, even when
+    // some filenames are longer than the default 40-char padding.
+    let display_rows: Vec<String> = all_results
+        .iter()
+        .map(|(path, _, _, _, _)| {
+            let relative_to_test_dir = path.strip_prefix(&test_dir).unwrap_or(path);
+            let parent_str = relative_to_test_dir
+                .parent()
+                .and_then(|p| p.to_str())
+                .unwrap_or(".");
+            let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+            if parent_str == "." {
+                file_name.to_string()
+            } else {
+                format!("{}/{}", parent_str, file_name)
+            }
+        })
+        .collect();
+    let name_width = display_rows
+        .iter()
+        .map(|s| s.chars().count())
+        .max()
+        .unwrap_or(40)
+        .max(40);
+
     let mut current_dir: Option<PathBuf> = None;
-    for (path, passed_test, error, duration, assertions) in &all_results {
+    for ((path, passed_test, error, duration, assertions), display_path) in
+        all_results.iter().zip(display_rows.iter())
+    {
         let parent = path.parent().unwrap_or(path).to_path_buf();
         let relative_to_test_dir = path.strip_prefix(&test_dir).unwrap_or(path);
         let parent_str = relative_to_test_dir
@@ -289,26 +404,27 @@ pub fn run_test(
             }
         }
 
-        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-        let display_path = if parent_str == "." {
-            file_name.to_string()
-        } else {
-            format!("{}/{}", parent_str, file_name)
-        };
-
+        let pad = name_width.saturating_sub(display_path.chars().count());
         let duration_str = format_duration(*duration);
+        total_assertions += *assertions;
         if *passed_test {
             passed += 1;
-            total_assertions += *assertions;
             println!(
-                "  {:40} {:>8} {:>6} ✓",
-                display_path, duration_str, assertions
+                "  {}{} {:>8} {:>6} ✓",
+                display_path,
+                " ".repeat(pad),
+                duration_str,
+                assertions
             );
         } else {
             failed += 1;
             println!(
-                "  {:40} {:>8} {:>6} ✗ {}",
-                display_path, duration_str, assertions, error
+                "  {}{} {:>8} {:>6} ✗ {}",
+                display_path,
+                " ".repeat(pad),
+                duration_str,
+                assertions,
+                error
             );
         }
         std::io::stdout().flush().unwrap();
@@ -325,6 +441,56 @@ pub fn run_test(
     println!("  {} assertions", total_assertions);
 
     if enable_coverage {
+        // Fetch coverage from the subprocess test server (controllers,
+        // middleware, helpers, routes all execute there — not in this
+        // process — so their hits are only visible to the subprocess's
+        // global tracker). Merge those hits into the parent tracker so
+        // they show up in the combined report. Do this BEFORE killing the
+        // child via ChildGuard::drop.
+        if needs_test_server {
+            if let Some(ref tracker_rc) = tracker {
+                if let Some(port) =
+                    solilang::interpreter::builtins::test_server::get_test_server_port()
+                {
+                    let url = format!("http://127.0.0.1:{}/__coverage__", port);
+                    if let Ok(resp) = ureq::get(&url).timeout(Duration::from_secs(5)).call() {
+                        if let Ok(text) = resp.into_string() {
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                if let Some(files) = json.get("files").and_then(|v| v.as_array()) {
+                                    let mut guard = tracker_rc.lock().unwrap();
+                                    for f in files {
+                                        let path = match f.get("path").and_then(|v| v.as_str()) {
+                                            Some(p) => PathBuf::from(p),
+                                            None => continue,
+                                        };
+                                        if let Some(hits) = f.get("hits").and_then(|v| v.as_array())
+                                        {
+                                            for pair in hits {
+                                                if let Some(arr) = pair.as_array() {
+                                                    let line = arr
+                                                        .first()
+                                                        .and_then(|v| v.as_u64())
+                                                        .unwrap_or(0)
+                                                        as usize;
+                                                    let count = arr
+                                                        .get(1)
+                                                        .and_then(|v| v.as_u64())
+                                                        .unwrap_or(0);
+                                                    for _ in 0..count {
+                                                        guard
+                                                            .record_line_hit_to_global(&path, line);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if let Some(ref tracker_rc) = tracker {
             let coverage = tracker_rc.lock().unwrap().get_aggregated_coverage();
 
@@ -332,7 +498,13 @@ pub fn run_test(
                 file_coverages: coverage
                     .file_coverages
                     .iter()
-                    .filter(|(path, _)| !path.to_string_lossy().starts_with("tests/"))
+                    .filter(|(path, _)| {
+                        let s = path.to_string_lossy();
+                        // Hide synthetic preamble files (e.g. "<test-helpers>")
+                        // and any file inside the tests directory, regardless of
+                        // whether the path is absolute or relative.
+                        !s.starts_with('<') && !s.contains("/tests/") && !s.starts_with("tests/")
+                    })
                     .map(|(path, cov)| (path.clone(), cov.clone()))
                     .collect(),
                 test_count: coverage.test_count,
@@ -344,7 +516,7 @@ pub fn run_test(
             let config = CoverageConfig {
                 enabled: true,
                 output_dir: PathBuf::from("coverage"),
-                formats: vec![OutputFormat::Console],
+                formats: output_formats.clone(),
                 threshold: coverage_min.or(Some(80.0)),
                 exclude_patterns: Vec::new(),
                 exclude_lines: Vec::new(),
@@ -354,6 +526,20 @@ pub fn run_test(
             };
             let reporter = CoverageReporter::new(config);
             reporter.generate_reports(&app_coverage);
+            for fmt in &output_formats {
+                match fmt {
+                    OutputFormat::Html => {
+                        println!("  HTML coverage report: coverage/index.html");
+                    }
+                    OutputFormat::Json => {
+                        println!("  JSON coverage report: coverage/coverage.json");
+                    }
+                    OutputFormat::Xml => {
+                        println!("  Cobertura XML report: coverage/cobertura.xml");
+                    }
+                    OutputFormat::Console => {}
+                }
+            }
 
             if let Some(min) = coverage_min {
                 if app_coverage.total_line_coverage_percent() < min {

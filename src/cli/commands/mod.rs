@@ -330,10 +330,18 @@ pub fn run_test(
     path: Option<&str>,
     jobs: usize,
     coverage: bool,
+    coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,
 ) {
-    test_runner::run_test(path, jobs, coverage, coverage_min, no_coverage);
+    test_runner::run_test(
+        path,
+        jobs,
+        coverage,
+        coverage_formats,
+        coverage_min,
+        no_coverage,
+    );
 }
 
 pub fn run_init() {
