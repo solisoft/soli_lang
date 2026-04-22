@@ -364,18 +364,28 @@ fn extract_test_from_call(
         _ => return None,
     };
 
-    let second_arg = match &arguments[1] {
-        Argument::Positional(expr) => expr,
+    // Try to get second argument as either Positional(lambda) or Block
+    let test_body = match &arguments[1] {
+        Argument::Positional(expr) => match &expr.kind {
+            ast::ExprKind::Lambda {
+                params,
+                return_type,
+                body,
+            } => create_function_value(params.clone(), return_type.clone(), body.clone(), span),
+            _ => return None,
+        },
+        Argument::Block(block_expr) => {
+            // Convert block expression to lambda function
+            match &block_expr.kind {
+                ast::ExprKind::Lambda {
+                    params,
+                    return_type,
+                    body,
+                } => create_function_value(params.clone(), return_type.clone(), body.clone(), span),
+                _ => return None,
+            }
+        }
         Argument::Named(_) => return None,
-        Argument::Block(_) => return None,
-    };
-    let test_body = match &second_arg.kind {
-        ast::ExprKind::Lambda {
-            params,
-            return_type,
-            body,
-        } => create_function_value(params.clone(), return_type.clone(), body.clone(), span),
-        _ => return None,
     };
 
     Some(interpreter::builtins::test_dsl::TestDefinition {

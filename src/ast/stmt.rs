@@ -1,5 +1,7 @@
 //! Statement AST nodes.
 
+use std::path::PathBuf;
+
 use crate::ast::expr::Expr;
 use crate::ast::types::TypeAnnotation;
 use crate::span::Span;
@@ -9,11 +11,16 @@ use crate::span::Span;
 pub struct Stmt {
     pub kind: StmtKind,
     pub span: Span,
+    pub source_path: Option<PathBuf>,
 }
 
 impl Stmt {
-    pub fn new(kind: StmtKind, span: Span) -> Self {
-        Self { kind, span }
+    pub fn new(kind: StmtKind, span: Span, source_path: Option<PathBuf>) -> Self {
+        Self {
+            kind,
+            span,
+            source_path,
+        }
     }
 }
 

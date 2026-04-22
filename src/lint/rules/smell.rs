@@ -76,10 +76,11 @@ mod tests {
     #[test]
     fn test_unreachable_code_detected() {
         let stmts = vec![
-            Stmt::new(StmtKind::Return(None), span()),
+            Stmt::new(StmtKind::Return(None), span(), None),
             Stmt::new(
                 StmtKind::Expression(Expr::new(ExprKind::IntLiteral(1), span())),
                 span(),
+                None,
             ),
         ];
         let mut d = Vec::new();
@@ -94,8 +95,9 @@ mod tests {
             Stmt::new(
                 StmtKind::Expression(Expr::new(ExprKind::IntLiteral(1), span())),
                 span(),
+                None,
             ),
-            Stmt::new(StmtKind::Return(None), span()),
+            Stmt::new(StmtKind::Return(None), span(), None),
         ];
         let mut d = Vec::new();
         check_unreachable_code(&stmts, &mut d);
@@ -105,14 +107,16 @@ mod tests {
     #[test]
     fn test_unreachable_reports_only_once() {
         let stmts = vec![
-            Stmt::new(StmtKind::Return(None), span()),
+            Stmt::new(StmtKind::Return(None), span(), None),
             Stmt::new(
                 StmtKind::Expression(Expr::new(ExprKind::IntLiteral(1), span())),
                 span(),
+                None,
             ),
             Stmt::new(
                 StmtKind::Expression(Expr::new(ExprKind::IntLiteral(2), span())),
                 span(),
+                None,
             ),
         ];
         let mut d = Vec::new();
@@ -122,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_empty_catch_detected() {
-        let catch = Stmt::new(StmtKind::Block(vec![]), span());
+        let catch = Stmt::new(StmtKind::Block(vec![]), span(), None);
         let mut d = Vec::new();
         check_empty_catch(&catch, &mut d);
         assert_eq!(d.len(), 1);
@@ -132,8 +136,9 @@ mod tests {
     #[test]
     fn test_non_empty_catch() {
         let catch = Stmt::new(
-            StmtKind::Block(vec![Stmt::new(StmtKind::Return(None), span())]),
+            StmtKind::Block(vec![Stmt::new(StmtKind::Return(None), span(), None)]),
             span(),
+            None,
         );
         let mut d = Vec::new();
         check_empty_catch(&catch, &mut d);

@@ -125,7 +125,7 @@ impl Interpreter {
 
     #[inline(always)]
     pub fn record_coverage(&self, line: usize) {
-        if let Some(ref path) = self.current_source_path {
+        if let Some(ref path) = self.current_file_path() {
             if let Some(ref tracker) = self.coverage_tracker {
                 if let Ok(guard) = tracker.lock() {
                     guard.record_line_hit(path, line);
@@ -357,6 +357,15 @@ impl Interpreter {
     /// Pop a frame from the call stack.
     pub(crate) fn pop_frame(&mut self) {
         self.call_stack.pop();
+    }
+
+    /// Get the current file path from the call stack (top frame) or fallback to current_source_path.
+    fn current_file_path(&self) -> Option<PathBuf> {
+        self.call_stack
+            .last()
+            .and_then(|frame| frame.file_path.as_ref())
+            .map(PathBuf::from)
+            .or_else(|| self.current_source_path.clone())
     }
 
     /// Get the current call stack as formatted strings.

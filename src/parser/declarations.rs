@@ -110,6 +110,7 @@ impl Parser {
                 span,
             }),
             span,
+            None,
         ))
     }
 
@@ -140,7 +141,7 @@ impl Parser {
         };
 
         let span = start_span.merge(&self.previous_span());
-        Ok(Stmt::new(StmtKind::Export(Box::new(inner)), span))
+        Ok(Stmt::new(StmtKind::Export(Box::new(inner)), span, None))
     }
 
     pub(crate) fn function_declaration(&mut self) -> ParseResult<Stmt> {
@@ -168,6 +169,7 @@ impl Parser {
                 span,
             }),
             span,
+            None,
         ))
     }
 
@@ -210,6 +212,7 @@ impl Parser {
                     span,
                 }),
                 span,
+                None,
             ));
         }
 
@@ -284,6 +287,7 @@ impl Parser {
                 span,
             }),
             span,
+            None,
         ))
     }
 
@@ -343,7 +347,7 @@ impl Parser {
                     },
                     span,
                 );
-                return Ok(Stmt::new(StmtKind::Expression(call), span));
+                return Ok(Stmt::new(StmtKind::Expression(call), span, None));
             }
         }
 
@@ -351,7 +355,7 @@ impl Parser {
         let expr = self.expression()?;
         self.match_token(&TokenKind::Semicolon); // Optional semicolon
         let span = start_span.merge(&self.previous_span());
-        Ok(Stmt::new(StmtKind::Expression(expr), span))
+        Ok(Stmt::new(StmtKind::Expression(expr), span, None))
     }
 
     /// Parse a static { ... } block inside a class.
@@ -530,6 +534,7 @@ impl Parser {
                 span,
             }),
             span,
+            None,
         ))
     }
 
@@ -585,6 +590,7 @@ impl Parser {
                 initializer,
             },
             span,
+            None,
         ))
     }
 
@@ -613,6 +619,7 @@ impl Parser {
                 initializer,
             },
             span,
+            None,
         ))
     }
 

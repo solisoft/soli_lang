@@ -131,6 +131,7 @@ impl Vm {
         let program = Program::new(vec![Stmt {
             kind: StmtKind::Function(func_decl),
             span: func.span.unwrap_or_default(),
+            source_path: None,
         }]);
 
         let module = Compiler::compile(&program)

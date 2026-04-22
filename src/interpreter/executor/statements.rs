@@ -16,7 +16,21 @@ use super::{ControlFlow, Interpreter, RuntimeResult};
 impl Interpreter {
     /// Execute a statement, returning control flow information.
     pub(crate) fn execute(&mut self, stmt: &Stmt) -> RuntimeResult<ControlFlow> {
-        self.record_coverage(stmt.span.line);
+        let source_path = stmt
+            .source_path
+            .clone()
+            .or_else(|| self.current_source_path.clone());
+        if let Some(ref path) = source_path {
+            if let Some(ref tracker) = self.coverage_tracker {
+                if let Ok(guard) = tracker.lock() {
+                    guard.record_line_hit(path, stmt.span.line);
+                }
+            } else if let Some(global) = crate::coverage::get_global_coverage_tracker() {
+                if let Ok(guard) = global.lock() {
+                    guard.record_line_hit(path, stmt.span.line);
+                }
+            }
+        }
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 let value = self.evaluate(expr)?;

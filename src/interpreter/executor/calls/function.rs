@@ -566,6 +566,7 @@ impl Interpreter {
                         span,
                     ));
                 }
+
                 let result = (native.func)(all_args)
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
 

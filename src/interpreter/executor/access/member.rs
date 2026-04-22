@@ -167,6 +167,8 @@ impl Interpreter {
         name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
+        let _class_name = inst.borrow().class.name.clone();
+
         // Universal methods on instances
         match name {
             "inspect" => {

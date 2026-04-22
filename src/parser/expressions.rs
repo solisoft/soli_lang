@@ -293,7 +293,7 @@ impl Parser {
                     },
                     span,
                 );
-                let body_stmt = Stmt::new(StmtKind::Expression(body_expr), span);
+                let body_stmt = Stmt::new(StmtKind::Expression(body_expr), span, None);
                 Ok(Expr::new(
                     ExprKind::Lambda {
                         params: vec![param],
@@ -998,6 +998,7 @@ impl Parser {
                         let body_stmt = crate::ast::Stmt::new(
                             crate::ast::StmtKind::Expression(body_expr),
                             span,
+                            None,
                         );
                         let lambda = Expr::new(
                             ExprKind::Lambda {
@@ -1041,6 +1042,7 @@ impl Parser {
                         let body_stmt = crate::ast::Stmt::new(
                             crate::ast::StmtKind::Expression(body_expr),
                             span,
+                            None,
                         );
                         let lambda = Expr::new(
                             ExprKind::Lambda {

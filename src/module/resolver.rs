@@ -133,8 +133,11 @@ impl ModuleResolver {
                 let module = self.resolve_import(import, &canonical)?;
 
                 // Add the imported definitions to the combined program
-                let imported_stmts = get_imported_statements(&module, import)?;
-                combined_statements.extend(imported_stmts);
+                let (imported_stmts, module_path) = get_imported_statements(&module, import)?;
+                for mut imported_stmt in imported_stmts {
+                    imported_stmt = set_stmt_source_path(&imported_stmt, module_path.clone());
+                    combined_statements.push(imported_stmt);
+                }
             }
         }
 
@@ -378,8 +381,9 @@ fn collect_exports(program: &Program) -> HashSet<String> {
 fn get_imported_statements(
     module: &ResolvedModule,
     import: &ImportDecl,
-) -> Result<Vec<Stmt>, ResolveError> {
-    match &import.specifier {
+) -> Result<(Vec<Stmt>, PathBuf), ResolveError> {
+    let module_path = module.path.clone();
+    let stmts = match &import.specifier {
         ImportSpecifier::All => {
             // Import all exported definitions
             let mut stmts = Vec::new();
@@ -388,7 +392,7 @@ fn get_imported_statements(
                     stmts.push((**inner).clone());
                 }
             }
-            Ok(stmts)
+            stmts
         }
 
         ImportSpecifier::Named(items) => {
@@ -420,7 +424,7 @@ fn get_imported_statements(
                     }
                 }
             }
-            Ok(stmts)
+            stmts
         }
 
         ImportSpecifier::Namespace(_name) => {
@@ -433,9 +437,10 @@ fn get_imported_statements(
                     stmts.push((**inner).clone());
                 }
             }
-            Ok(stmts)
+            stmts
         }
-    }
+    };
+    Ok((stmts, module_path))
 }
 
 /// Get the name declared by a statement.
@@ -465,6 +470,76 @@ fn rename_declaration(stmt: &Stmt, new_name: &str) -> Stmt {
         }
         StmtKind::Let { name, .. } => {
             *name = new_name.to_string();
+        }
+        _ => {}
+    }
+
+    new_stmt
+}
+
+/// Set source_path on a statement and all nested statements.
+fn set_stmt_source_path(stmt: &Stmt, source_path: PathBuf) -> Stmt {
+    let mut new_stmt = stmt.clone();
+    new_stmt.source_path = Some(source_path.clone());
+
+    use crate::ast::StmtKind::*;
+    match &mut new_stmt.kind {
+        Function(decl) => {
+            for s in &mut decl.body {
+                *s = set_stmt_source_path(s, source_path.clone());
+            }
+        }
+        Class(decl) => {
+            for s in &mut decl.class_statements {
+                *s = set_stmt_source_path(s, source_path.clone());
+            }
+            if let Some(ref mut ctor) = decl.constructor {
+                for s in &mut ctor.body {
+                    *s = set_stmt_source_path(s, source_path.clone());
+                }
+            }
+            for method in &mut decl.methods {
+                for s in &mut method.body {
+                    *s = set_stmt_source_path(s, source_path.clone());
+                }
+            }
+        }
+        Block(stmts) => {
+            for s in stmts {
+                *s = set_stmt_source_path(s, source_path.clone());
+            }
+        }
+        If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            **then_branch = set_stmt_source_path(then_branch, source_path.clone());
+            if let Some(else_stmt) = else_branch {
+                *else_branch = Some(Box::new(set_stmt_source_path(
+                    else_stmt,
+                    source_path.clone(),
+                )));
+            }
+        }
+        While { body, .. } => {
+            **body = set_stmt_source_path(body, source_path.clone());
+        }
+        For { body, .. } => {
+            **body = set_stmt_source_path(body, source_path.clone());
+        }
+        Try {
+            try_block,
+            catch_clauses,
+            finally_block,
+        } => {
+            **try_block = set_stmt_source_path(try_block, source_path.clone());
+            for clause in catch_clauses {
+                *clause.body = set_stmt_source_path(&clause.body, source_path.clone());
+            }
+            if let Some(finally) = finally_block {
+                *finally_block = Some(Box::new(set_stmt_source_path(finally, source_path.clone())));
+            }
         }
         _ => {}
     }

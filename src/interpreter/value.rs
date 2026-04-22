@@ -1177,6 +1177,10 @@ impl Instance {
         if let Some(value) = self.fields.get(name) {
             return Some(value.clone());
         }
+        // Then check class native methods
+        if let Some(native) = self.class.find_native_method(name) {
+            return Some(Value::NativeFunction((*native).clone()));
+        }
         // Then check class methods - convert Rc<Function> to Value::Function
         if let Some(func) = self.class.methods.borrow().get(name) {
             return Some(Value::Function(func.clone()));

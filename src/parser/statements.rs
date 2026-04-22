@@ -80,6 +80,7 @@ impl Parser {
                 else_branch,
             },
             span,
+            None,
         ))
     }
 
@@ -123,6 +124,7 @@ impl Parser {
                 else_branch,
             },
             span,
+            None,
         ))
     }
 
@@ -144,7 +146,7 @@ impl Parser {
         let body = self.parse_block_body()?;
         let span = start_span.merge(&self.previous_span());
 
-        Ok(Stmt::new(StmtKind::While { condition, body }, span))
+        Ok(Stmt::new(StmtKind::While { condition, body }, span, None))
     }
 
     fn for_statement(&mut self) -> ParseResult<Stmt> {
@@ -183,6 +185,7 @@ impl Parser {
                 body,
             },
             span,
+            None,
         ))
     }
 
@@ -203,6 +206,7 @@ impl Parser {
         let return_stmt = Stmt::new(
             StmtKind::Return(value),
             start_span.merge(&self.previous_span()),
+            None,
         );
 
         // Check for postfix if: return expr if cond
@@ -222,6 +226,7 @@ impl Parser {
                     else_branch: None,
                 },
                 span,
+                None,
             ));
         }
 
@@ -249,6 +254,7 @@ impl Parser {
                     else_branch: None,
                 },
                 span,
+                None,
             ));
         }
 
@@ -264,7 +270,7 @@ impl Parser {
         self.match_token(&TokenKind::Semicolon);
         let span = start_span.merge(&self.previous_span());
 
-        Ok(Stmt::new(StmtKind::Throw(value), span))
+        Ok(Stmt::new(StmtKind::Throw(value), span, None))
     }
 
     fn try_statement(&mut self) -> ParseResult<Stmt> {
@@ -305,6 +311,7 @@ impl Parser {
                     finally_block,
                 },
                 span,
+                None,
             ))
         } else {
             // End syntax: try ... catch TypeName e ... finally ... end
@@ -320,6 +327,7 @@ impl Parser {
             let try_block = Box::new(Stmt::new(
                 StmtKind::Block(try_stmts),
                 body_start.merge(&self.previous_span()),
+                None,
             ));
 
             let mut catch_clauses = Vec::new();
@@ -337,6 +345,7 @@ impl Parser {
                 let body = Box::new(Stmt::new(
                     StmtKind::Block(catch_stmts),
                     catch_start.merge(&self.previous_span()),
+                    None,
                 ));
                 catch_clauses.push(CatchClause {
                     type_name,
@@ -354,6 +363,7 @@ impl Parser {
                 Some(Box::new(Stmt::new(
                     StmtKind::Block(finally_stmts),
                     finally_start.merge(&self.previous_span()),
+                    None,
                 )))
             } else {
                 None
@@ -368,6 +378,7 @@ impl Parser {
                     finally_block,
                 },
                 span,
+                None,
             ))
         }
     }
@@ -453,7 +464,7 @@ impl Parser {
         let statements = self.block_statements()?;
         let span = start_span.merge(&self.previous_span());
 
-        Ok(Stmt::new(StmtKind::Block(statements), span))
+        Ok(Stmt::new(StmtKind::Block(statements), span, None))
     }
 
     pub(crate) fn block_statements(&mut self) -> ParseResult<Vec<Stmt>> {
@@ -490,6 +501,7 @@ impl Parser {
             Ok(Box::new(Stmt::new(
                 StmtKind::Block(Vec::new()),
                 self.previous_span(),
+                None,
             )))
         } else if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
             self.advance(); // consume {
@@ -501,6 +513,7 @@ impl Parser {
             Ok(Box::new(Stmt::new(
                 StmtKind::Block(statements),
                 self.previous_span(),
+                None,
             )))
         } else {
             let mut statements = Vec::new();
@@ -515,11 +528,13 @@ impl Parser {
                 Ok(Box::new(Stmt::new(
                     StmtKind::Block(Vec::new()),
                     self.previous_span(),
+                    None,
                 )))
             } else {
                 Ok(Box::new(Stmt::new(
                     StmtKind::Block(statements),
                     self.previous_span(),
+                    None,
                 )))
             }
         }
@@ -541,6 +556,7 @@ impl Parser {
             Ok(Box::new(Stmt::new(
                 StmtKind::Block(statements),
                 start_span.merge(&self.previous_span()),
+                None,
             )))
         } else {
             let start_span = self.current_span();
@@ -552,6 +568,7 @@ impl Parser {
             Ok(Box::new(Stmt::new(
                 StmtKind::Block(statements),
                 start_span.merge(&self.previous_span()),
+                None,
             )))
         }
     }
@@ -584,10 +601,15 @@ impl Parser {
             return Ok(Stmt::new(
                 StmtKind::If {
                     condition: cond,
-                    then_branch: Box::new(Stmt::new(StmtKind::Expression(expr.clone()), expr.span)),
+                    then_branch: Box::new(Stmt::new(
+                        StmtKind::Expression(expr.clone()),
+                        expr.span,
+                        None,
+                    )),
                     else_branch: None,
                 },
                 span,
+                None,
             ));
         }
 
@@ -618,16 +640,21 @@ impl Parser {
             return Ok(Stmt::new(
                 StmtKind::If {
                     condition: condition_expr,
-                    then_branch: Box::new(Stmt::new(StmtKind::Expression(expr.clone()), expr.span)),
+                    then_branch: Box::new(Stmt::new(
+                        StmtKind::Expression(expr.clone()),
+                        expr.span,
+                        None,
+                    )),
                     else_branch: None,
                 },
                 span,
+                None,
             ));
         }
 
         self.match_token(&TokenKind::Semicolon);
         let span = start_span.merge(&self.previous_span());
 
-        Ok(Stmt::new(StmtKind::Expression(expr), span))
+        Ok(Stmt::new(StmtKind::Expression(expr), span, None))
     }
 }
