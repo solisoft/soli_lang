@@ -1242,6 +1242,44 @@ pub fn register_template_builtins(env: &mut Environment) {
         })),
     );
 
+    // error(status, message) - Build a plain error response hash. Used to
+    // short-circuit before_action hooks (`return error(403, "Forbidden")`) and
+    // from actions that want a terse error page. The return value is a
+    // response hash with `status`/`headers`/`body`, so it's recognized by
+    // `check_for_response` and terminates the request immediately.
+    env.define(
+        "error".to_string(),
+        Value::NativeFunction(NativeFunction::new("error", Some(2), |args| {
+            let status = match &args[0] {
+                Value::Int(n) => *n,
+                other => {
+                    return Err(format!(
+                        "error() expects Int status as first argument, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let message = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => format!("{}", other),
+            };
+
+            let mut headers_map: HashPairs = HashPairs::default();
+            headers_map.insert(
+                HashKey::String("Content-Type".to_string()),
+                Value::String("text/plain; charset=utf-8".to_string()),
+            );
+            let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
+
+            let mut response_map: HashPairs = HashPairs::default();
+            response_map.insert(HashKey::String("status".to_string()), Value::Int(status));
+            response_map.insert(HashKey::String("headers".to_string()), headers);
+            response_map.insert(HashKey::String("body".to_string()), Value::String(message));
+
+            Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
+        })),
+    );
+
     // render_json(data, status?) - Render JSON response with automatic content type
     env.define(
         "render_json".to_string(),

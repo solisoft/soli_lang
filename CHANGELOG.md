@@ -4,6 +4,7 @@
 
 ### Features
 
+* **prefetch:** add hover-preload that injects `<link rel="prefetch">` on mouseover/touchstart for faster page loads; opt out via `SOLI_PREFETCH=off` or `data-no-prefetch` ([3e4e9a9](https://github.com/solisoft/soli_lang/commit/3e4e9a9))
 * **coverage:** add global coverage tracker for test server HTTP request coverage tracking
 * **coverage:** exclude tests/ files from coverage report
 * **coverage:** show relative paths in coverage report
