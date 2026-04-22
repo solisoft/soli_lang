@@ -12,6 +12,7 @@
 * **@sigil:** add `@foo` sugar syntax for `this.foo` instance field access
 * **views:** expose controller instance fields as view locals (e.g., `@title` in action becomes `title` local in view)
 * **repl:** fix tab completion for `@` sigil (no spurious suggestions)
+* **views:** add `current_path()`, `current_method()`, and `current_path?()` view helpers for request context
 
 ### Bug Fixes
 

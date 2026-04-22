@@ -274,6 +274,37 @@ error(403, "Forbidden")</code></pre>
         </section>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Request-Context Helpers in Views</h2>
+    <p class="text-gray-400 mb-4">
+        These helpers read the current request directly &mdash; no need to plumb <code>current_path</code> or <code>current_method</code> through the data hash. They're available in every template (views, layouts, partials).
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">current_path()</code>
+            <p class="text-sm text-gray-400 mt-1">Request pathname, e.g. <code>"/users"</code>. <code>null</code> outside a request.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">current_method()</code>
+            <p class="text-sm text-gray-400 mt-1">HTTP method, e.g. <code>"GET"</code>. <code>null</code> outside a request.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">current_path?(p)</code>
+            <p class="text-sm text-gray-400 mt-1"><code>true</code> if the current path equals <code>p</code> exactly. Use for active-link checks.</p>
+        </div>
+    </div>
+
+    <pre data-filename="app/views/layouts/_nav.html.erb"><code class="language-erb text-sm">&lt;nav&gt;
+    &lt;a href="/users" class="&lt;%= current_path?("/users") ? "active" : "" %&gt;"&gt;Users&lt;/a&gt;
+    &lt;a href="/posts" class="&lt;%= current_path?("/posts") ? "active" : "" %&gt;"&gt;Posts&lt;/a&gt;
+&lt;/nav&gt;
+
+&lt;p&gt;You are viewing &lt;%= current_path() %&gt; (&lt;%= current_method() %&gt;).&lt;/p&gt;</code></pre>
+
+    <p class="text-gray-400 mb-8 text-sm">
+        For prefix matches (e.g. any path under <code>/users</code>), compose with <code>current_path().starts_with("/users")</code>.
+    </p>
+
     <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
         <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -282,7 +313,7 @@ error(403, "Forbidden")</code></pre>
             Pro Tip: Keep Controllers Thin
         </h4>
         <p class="text-indigo-200/80">
-            Delegate complex business logic to Models or Service objects. 
+            Delegate complex business logic to Models or Service objects.
             Controllers should primarily focus on handling the HTTP request and selecting the correct response.
         </p>
     </div>

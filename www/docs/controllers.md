@@ -360,6 +360,28 @@ Rules:
 
 > **Note on `@foo`:** `@foo` is a general language shorthand for `this.foo` inside any class method, not a controller-only feature. See [Soli Language → The `@` Sigil](./soli-language.md#the--sigil--shorthand-for-this) for the full rules.
 
+### Request-Context Helpers in Views
+
+These helpers read the current request directly — no need to plumb `current_path` or `current_method` through the data hash:
+
+| Helper | Returns |
+|--------|---------|
+| `current_path()` | Request pathname, e.g. `"/users"`. `null` when called outside a request. |
+| `current_method()` | HTTP method, e.g. `"GET"`. `null` outside a request. |
+| `current_path?(p)` | `true` if the current path equals `p` exactly. Handy for active-link checks. |
+
+```erb
+<%# app/views/layouts/_nav.html.erb %>
+<nav>
+    <a href="/users" class="<%= current_path?("/users") ? "active" : "" %>">Users</a>
+    <a href="/posts" class="<%= current_path?("/posts") ? "active" : "" %>">Posts</a>
+</nav>
+
+<p>You are viewing <%= current_path() %> (<%= current_method() %>).</p>
+```
+
+For prefix matches (e.g. any path under `/users`), compose with string methods: `current_path().starts_with("/users")`.
+
 ### Render with Custom Layout
 
 Set the layout in your controller:

@@ -427,6 +427,23 @@ fn inject_request_context(data: &Value) {
     }
 }
 
+/// Read a string field off the thread-local current request. Returns `Null` when
+/// there's no active request or the field isn't a string. Used by the
+/// `current_path()` / `current_method()` view helpers.
+fn current_request_string_field(field: &str) -> Value {
+    let Some(req) = get_current_request() else {
+        return Value::Null;
+    };
+    let Value::Hash(h) = req else {
+        return Value::Null;
+    };
+    let borrowed = h.borrow();
+    match borrowed.get(&HashKey::String(field.to_string())) {
+        Some(Value::String(s)) => Value::String(s.clone()),
+        _ => Value::Null,
+    }
+}
+
 /// Expose the current controller's instance fields as view locals.
 /// Mirrors Rails' `@ivar → view local` behavior, scoped to the action currently running.
 /// Skips framework-injected fields already supplied by `inject_request_context` and
@@ -839,6 +856,40 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             Ok(Value::String(datetime_helpers::localize_date(
                 timestamp, &locale, &format,
             )))
+        })),
+    );
+
+    // Request-context helpers: read fields off the current request inside views.
+    // Return Null when called outside an active request (e.g. during tests).
+    env.define(
+        "current_path".to_string(),
+        Value::NativeFunction(NativeFunction::new("current_path", Some(0), |_args| {
+            Ok(current_request_string_field("path"))
+        })),
+    );
+    env.define(
+        "current_method".to_string(),
+        Value::NativeFunction(NativeFunction::new("current_method", Some(0), |_args| {
+            Ok(current_request_string_field("method"))
+        })),
+    );
+    env.define(
+        "current_path?".to_string(),
+        Value::NativeFunction(NativeFunction::new("current_path?", Some(1), |args| {
+            let expected = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "current_path?() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let path = match current_request_string_field("path") {
+                Value::String(s) => s,
+                _ => return Ok(Value::Bool(false)),
+            };
+            Ok(Value::Bool(path == expected))
         })),
     );
 
@@ -1380,5 +1431,46 @@ mod tests {
             unreachable!()
         };
         assert!(h.borrow().is_empty());
+    }
+
+    fn make_request(fields: &[(&str, Value)]) -> Value {
+        let mut map = HashPairs::default();
+        for (k, v) in fields {
+            map.insert(HashKey::String(k.to_string()), v.clone());
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    #[test]
+    fn current_request_string_field_reads_live_field() {
+        set_current_request(make_request(&[
+            ("path", Value::String("/users".into())),
+            ("method", Value::String("GET".into())),
+        ]));
+        assert_eq!(
+            current_request_string_field("path"),
+            Value::String("/users".into())
+        );
+        assert_eq!(
+            current_request_string_field("method"),
+            Value::String("GET".into())
+        );
+        clear_current_request();
+    }
+
+    #[test]
+    fn current_request_string_field_returns_null_when_absent() {
+        clear_current_request();
+        assert_eq!(current_request_string_field("path"), Value::Null);
+
+        // Present request, missing field.
+        set_current_request(make_request(&[("path", Value::String("/x".into()))]));
+        assert_eq!(current_request_string_field("missing"), Value::Null);
+
+        // Present field, wrong type — treated as absent rather than coerced.
+        set_current_request(make_request(&[("path", Value::Int(42))]));
+        assert_eq!(current_request_string_field("path"), Value::Null);
+
+        clear_current_request();
     }
 }

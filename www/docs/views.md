@@ -125,6 +125,29 @@ Extracts a portion of a string (useful for truncating content).
 <%= substring(post["content"], 0, 100) %>...
 ```
 
+### Request-Context Functions
+
+Read fields off the current request directly — no need to plumb them through the view data hash. Available in every template (views, layouts, partials). They return `null` when called outside an active request (e.g. from a unit test).
+
+| Helper              | Returns                                                              |
+|---------------------|----------------------------------------------------------------------|
+| `current_path()`    | Request pathname, e.g. `"/users"`. `null` outside a request.         |
+| `current_method()`  | HTTP method, e.g. `"GET"`. `null` outside a request.                 |
+| `current_path?(p)`  | `true` if the current path equals `p` exactly. Use for active links. |
+
+**Active-link pattern:**
+
+```erb
+<nav>
+    <a href="/users" class="<%= current_path?("/users") ? "active" : "" %>">Users</a>
+    <a href="/posts" class="<%= current_path?("/posts") ? "active" : "" %>">Posts</a>
+</nav>
+
+<p>You are viewing <%= current_path() %> (<%= current_method() %>).</p>
+```
+
+For prefix matches (e.g. any path under `/users`), compose with `current_path().starts_with("/users")`.
+
 ### DateTime Functions
 
 These functions help you work with dates and times in templates.
