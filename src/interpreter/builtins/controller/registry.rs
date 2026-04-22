@@ -634,11 +634,17 @@ pub fn execute_handler_source(
         handler_source
     );
 
-    // Set req in the environment
-    interpreter
-        .environment
-        .borrow_mut()
-        .define("req".to_string(), req);
+    {
+        let mut env = interpreter.environment.borrow_mut();
+        env.define("req".to_string(), req);
+        // Bind `this` to the current controller instance so `@foo = ...` inside
+        // the hook writes to the controller (and then reaches the view via the
+        // render-time auto-injection). Without this bind, the free `fn(req)`
+        // closure has no `this` in scope and `@foo = x` would fail at runtime.
+        if let Some(ctrl) = get_current_controller() {
+            env.define("this".to_string(), ctrl);
+        }
+    }
 
     // Get cached or compile the handler program
     let program = get_or_compile_handler(&wrapped_source)?;
@@ -668,15 +674,17 @@ pub fn execute_after_handler_source(
         handler_source
     );
 
-    // Set req and response in the environment
-    interpreter
-        .environment
-        .borrow_mut()
-        .define("req".to_string(), req);
-    interpreter
-        .environment
-        .borrow_mut()
-        .define("response".to_string(), response);
+    {
+        let mut env = interpreter.environment.borrow_mut();
+        env.define("req".to_string(), req);
+        env.define("response".to_string(), response);
+        // Bind `this` to the current controller instance — same reasoning as
+        // `execute_handler_source`: fields set via `@foo = ...` in the hook should
+        // reach the view and be readable as `this.foo` in subsequent code.
+        if let Some(ctrl) = get_current_controller() {
+            env.define("this".to_string(), ctrl);
+        }
+    }
 
     // Get cached or compile the handler program
     let program = get_or_compile_handler(&wrapped_source)?;
@@ -819,6 +827,53 @@ mod tests {
         assert_eq!(to_controller_name("BlogPostsController"), "blog_posts");
         // Safety: classes not ending in "Controller" still snake_case.
         assert_eq!(to_controller_name("Users"), "users");
+    }
+
+    // Regression: a before_action that does `@foo = x` must actually write to
+    // the current controller instance so the auto-view-injection at render-time
+    // can expose it. This is the end-to-end guarantee behind the
+    // `@current_user = req["current_user"]` pattern in hooks.
+    #[test]
+    fn handler_binds_this_to_current_controller() {
+        use crate::interpreter::value::{Class, HashKey, HashPairs, Instance};
+
+        let class = Rc::new(Class {
+            name: "TestController".to_string(),
+            ..Default::default()
+        });
+        let instance_rc = Rc::new(RefCell::new(Instance::new(class)));
+        let instance_val = Value::Instance(instance_rc.clone());
+        set_current_controller(instance_val);
+
+        let mut interp = crate::interpreter::Interpreter::new();
+        let req_hash = Rc::new(RefCell::new({
+            let mut h = HashPairs::default();
+            h.insert(HashKey::String("uid".to_string()), Value::Int(7));
+            h
+        }));
+        let req = Value::Hash(req_hash);
+
+        // Handler: reads from req, writes to the controller via @sigil.
+        let handler_source = "fn(req) { @uid_from_hook = req[\"uid\"]; req }";
+        let result = execute_handler_source(handler_source, &mut interp, req);
+
+        // The hook should return the req (not an error).
+        assert!(
+            result.is_ok(),
+            "handler should execute cleanly: {:?}",
+            result
+        );
+
+        // The controller instance should now hold the field set by the hook.
+        let fields = &instance_rc.borrow().fields;
+        assert_eq!(
+            fields.get("uid_from_hook"),
+            Some(&Value::Int(7)),
+            "@uid_from_hook must be written to the instance the hook's `this` is bound to. \
+             Without the bind, the free fn has no this, and the write silently fails or \
+             scribbles on some other object."
+        );
+        clear_current_controller();
     }
 
     #[test]

@@ -290,6 +290,16 @@ pub fn serve_folder_with_options_and_workers(
         load_controller(&mut interpreter, controller_path, &mut file_tracker)?;
     }
 
+    // Populate the controller metadata registry (before/after hooks, layout,
+    // inheritance) by textually scanning `app/controllers/*.sl`. Without this,
+    // `execute_before_actions`/`execute_after_actions` see no registered hooks
+    // and silently skip them.
+    if let Err(e) =
+        crate::interpreter::builtins::controller::registry::scan_controllers(&controllers_dir)
+    {
+        eprintln!("Warning: Failed to scan controller metadata: {}", e);
+    }
+
     // Load engines (if config/engines.sl exists)
     match engine_loader::load_engines_config(folder) {
         Ok(config) => {
@@ -2934,21 +2944,6 @@ fn call_oop_controller_action(
     let session = get_hash_field(request_hash, "session").unwrap_or(Value::Null);
     let headers = get_hash_field(request_hash, "headers").unwrap_or(Value::Null);
 
-    // Execute before_action hooks (if controller info exists)
-    if let Some(ref info) = controller_info {
-        if let Some(before_response) = execute_before_actions(
-            interpreter,
-            info,
-            action_name,
-            request_hash.clone(),
-            &params,
-            &session,
-            &headers,
-        ) {
-            return Some(before_response);
-        }
-    }
-
     // Instantiate the controller
     let controller_instance = match create_controller_instance(&class_name, interpreter) {
         Ok(inst) => inst,
@@ -3013,6 +3008,23 @@ fn call_oop_controller_action(
         }
     }
     let _current_controller_guard = CurrentControllerGuard;
+
+    // Execute before_action hooks AFTER the instance exists and is published as
+    // CURRENT_CONTROLLER, so `@foo = ...` inside a hook writes to the instance
+    // and is picked up by the render-time auto-injection.
+    if let Some(ref info) = controller_info {
+        if let Some(before_response) = execute_before_actions(
+            interpreter,
+            info,
+            action_name,
+            request_hash.clone(),
+            &params,
+            &session,
+            &headers,
+        ) {
+            return Some(before_response);
+        }
+    }
 
     // Call the action method on the class
     // For OOP controllers, the method is inside the class, not in the global environment
