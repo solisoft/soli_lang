@@ -662,4 +662,47 @@ mod tests {
         let result = cache.render_partial("note", &Value::Null).unwrap();
         assert!(result.contains("<strong>Important:</strong>"));
     }
+
+    #[test]
+    fn test_render_partial_with_explicit_context_sees_helper() {
+        use crate::interpreter::builtins::template::{clear_view_helpers, register_view_helper};
+        use crate::interpreter::value::NativeFunction;
+
+        // Isolate this thread's template state.
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+
+        register_view_helper(
+            "__spec_partial_shout".to_string(),
+            Value::NativeFunction(NativeFunction::new("__spec_partial_shout", None, |args| {
+                match args.first() {
+                    Some(Value::String(s)) => Ok(Value::String(format!("{}!", s.to_uppercase()))),
+                    _ => Ok(Value::Null),
+                }
+            })),
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+        fs::write(
+            views.join("_card.html.slv"),
+            "<%= __spec_partial_shout(\"hi\") %>",
+        )
+        .unwrap();
+
+        // Explicit context is a raw hash with no helper keys — mirrors the
+        // real-world `<%= render 'card', user %>` case where the partial
+        // used to lose access to user helpers.
+        let mut ctx = HashPairs::default();
+        ctx.insert(HashKey::String("item_id".to_string()), Value::Int(42));
+        let ctx = Value::Hash(Rc::new(RefCell::new(ctx)));
+
+        let cache = TemplateCache::new(&views);
+        let result = cache.render_partial("card", &ctx).unwrap();
+        assert_eq!(result.trim(), "HI!");
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+    }
 }

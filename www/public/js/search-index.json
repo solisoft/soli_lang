@@ -1783,6 +1783,15 @@
       "keywords": ["json", "response", "http", "api", "render"]
     },
     {
+      "title": "render",
+      "type": "function",
+      "category": "Controllers",
+      "path": "/docs/core-concepts/controllers#fn-render",
+      "signature": "render(template, data?)",
+      "description": "Render a view template with the provided data hash. The template engine resolves and renders the corresponding .slv file.",
+      "keywords": ["view", "template", "response", "html", "render"]
+    },
+    {
       "title": "render_text",
       "type": "function",
       "category": "Controllers",

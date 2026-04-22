@@ -14,10 +14,10 @@
         Recommended for most applications. They provide structure, inheritance, and powerful hooks like <code>before_action</code>.
     </p>
 
-    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < ApplicationController
-    static
-        this.layout = "layouts/posts"
-    end
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
+    static {
+        this.layout = "layouts/posts";
+    }
 
     def index(req)
         let posts = Post.all()
@@ -61,32 +61,32 @@ end</code></pre>
         </div>
     </div>
 
-    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < ApplicationController
-    static
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
+    static {
         # Set layout for all actions
-        this.layout = "layouts/posts"
+        this.layout = "layouts/posts";
 
         # Run before ALL actions
-        this.before_action = def(req)
-            print("Processing: " + req.path)
+        this.before_action = fn(req) {
+            print("Processing: " + req.path);
             req
-        end
+        }
 
         # Run before SPECIFIC actions only
-        this.before_action(:show, :edit) = def(req)
-            let post = Post.find(req.params["id"])
-            if post == null then return error(404, "Not Found") end
-            req["post"] = post
+        this.before_action(:show, :edit) = fn(req) {
+            let post = Post.find(req.params["id"]);
+            return error(404, "Not Found") if post == null;
+            req["post"] = post;
             req
-        end
+        }
 
         # Run after SPECIFIC actions
-        this.after_action(:create, :update) = def(req, response)
+        this.after_action(:create, :update) = fn(req, response) {
             # Log activity after create/update
-            print("Action completed")
+            print("Action completed");
             response
-        end
-    end
+        }
+    }
 
     # ... actions ...
 end</code></pre>
@@ -104,17 +104,17 @@ end</code></pre>
     </p>
 
     <pre data-filename="app/controllers/base_controller.sl"><code class="language-soli text-sm">class BaseController extends Controller
-    static
-        this.layout = "application"
+    static {
+        this.layout = "application";
 
-        this.before_action = def(req)
-            let user_id = req.session["user_id"]
-            if user_id != null
-                req["current_user"] = User.find(user_id)
-            end
+        this.before_action = fn(req) {
+            let user_id = req.session["user_id"];
+            if user_id != null {
+                req["current_user"] = User.find(user_id);
+            }
             req
-        end
-    end
+        }
+    }
 
     # Shared helper available to all child controllers
     def _current_user
@@ -124,18 +124,18 @@ end</code></pre>
 
     <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm"># Inherits layout, before_action, and _current_user from BaseController
 class PostsController extends BaseController
-    static
+    static {
         # Add controller-specific hook (runs after parent's before_action)
-        this.before_action(:show, :edit) = def(req)
-            let post = Post.find(req.params["id"])
-            if post == null then return error(404, "Not Found") end
-            req["post"] = post
+        this.before_action(:show, :edit) = fn(req) {
+            let post = Post.find(req.params["id"]);
+            return error(404, "Not Found") if post == null;
+            req["post"] = post;
             req
-        end
-    end
+        }
+    }
 
     def index(req)
-        render("posts/index", { "posts": Post.all })
+        render("posts/index", { "posts": Post.all() })
     end
 
     def show(req)
@@ -145,16 +145,14 @@ end</code></pre>
 
     <pre data-filename="app/controllers/admin_controller.sl"><code class="language-soli text-sm"># Even deeper inheritance works
 class AdminController extends BaseController
-    static
-        this.layout = "admin"  # Override parent layout
+    static {
+        this.layout = "admin";  # Override parent layout
 
-        this.before_action = def(req)
-            if req["current_user"] == null
-                return redirect("/login")
-            end
+        this.before_action = fn(req) {
+            return redirect("/login") if req["current_user"] == null;
             req
-        end
-    end
+        }
+    }
 end</code></pre>
 
     <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20">

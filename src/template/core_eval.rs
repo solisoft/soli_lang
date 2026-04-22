@@ -434,4 +434,69 @@ mod tests {
         let r = evaluate_with_interpreter(&Expr::Var("x".to_string()), &mut interp).unwrap();
         assert_eq!(r, Value::Int(1));
     }
+
+    #[test]
+    fn test_view_helpers_resolve_via_enclosing_scope() {
+        use crate::interpreter::builtins::template::{clear_view_helpers, register_view_helper};
+        use crate::interpreter::value::NativeFunction;
+
+        // Isolate this thread's template state.
+        clear_view_helpers();
+        reset_builtins_rc();
+
+        register_view_helper(
+            "__spec_helper_uppercase".to_string(),
+            Value::NativeFunction(NativeFunction::new(
+                "__spec_helper_uppercase",
+                None,
+                |args| match args.first() {
+                    Some(Value::String(s)) => Ok(Value::String(s.to_uppercase())),
+                    _ => Ok(Value::Null),
+                },
+            )),
+        );
+
+        // Data hash has no helper key — the helper must resolve via the
+        // enclosing BUILTINS_RC env seeded by inject_helpers_into_env.
+        let data = make_hash(vec![("other", Value::Int(1))]);
+        let mut interp = create_template_interpreter(&data);
+        let expr = Expr::Var("__spec_helper_uppercase".to_string());
+        let v = evaluate_with_interpreter(&expr, &mut interp).unwrap();
+        assert!(matches!(v, Value::NativeFunction(_)));
+
+        clear_view_helpers();
+        reset_builtins_rc();
+    }
+
+    #[test]
+    fn test_reset_builtins_rc_picks_up_new_helpers() {
+        use crate::interpreter::builtins::template::{clear_view_helpers, register_view_helper};
+        use crate::interpreter::value::NativeFunction;
+
+        clear_view_helpers();
+        reset_builtins_rc();
+
+        // Force BUILTINS_RC initialization with no helpers registered.
+        let data = make_hash(vec![]);
+        let mut interp_before = create_template_interpreter(&data);
+        let expr = Expr::Var("__spec_reset_helper".to_string());
+        let before = evaluate_with_interpreter(&expr, &mut interp_before).unwrap();
+        assert!(matches!(before, Value::Null));
+
+        // Register a helper and reset — the next interpreter must see it.
+        register_view_helper(
+            "__spec_reset_helper".to_string(),
+            Value::NativeFunction(NativeFunction::new("__spec_reset_helper", None, |_| {
+                Ok(Value::Int(42))
+            })),
+        );
+        reset_builtins_rc();
+
+        let mut interp_after = create_template_interpreter(&data);
+        let after = evaluate_with_interpreter(&expr, &mut interp_after).unwrap();
+        assert!(matches!(after, Value::NativeFunction(_)));
+
+        clear_view_helpers();
+        reset_builtins_rc();
+    }
 }

@@ -252,10 +252,11 @@ fn to_class_name(file_name: &str) -> String {
     result
 }
 
-/// Convert "PostsController" to "posts"
+/// Convert "PostsController" to "posts" (strips the "Controller" suffix and snake_cases).
 fn to_controller_name(class_name: &str) -> String {
+    let base = class_name.strip_suffix("Controller").unwrap_or(class_name);
     let mut result = String::new();
-    for (i, c) in class_name.chars().enumerate() {
+    for (i, c) in base.chars().enumerate() {
         if i > 0 && c.is_ascii_uppercase() {
             result.push('_');
         }
@@ -326,9 +327,9 @@ fn parse_controller_static_block(source: &str, info: &mut ControllerInfo) -> Res
         });
     }
 
-    // Parse this.before_action(:action1, :action2) = fn(req) { ... }
-    if let Some((actions, handler_source)) =
-        extract_action_specific_function_source(&static_block, "this.before_action")
+    // Parse this.before_action(:action1, :action2) = fn(req) { ... } — may appear multiple times
+    for (actions, handler_source) in
+        extract_all_action_specific_function_sources(&static_block, "this.before_action")
     {
         info.before_actions.push(BeforeAction {
             actions,
@@ -344,9 +345,9 @@ fn parse_controller_static_block(source: &str, info: &mut ControllerInfo) -> Res
         });
     }
 
-    // Parse this.after_action(:action1, :action2) = fn(req, response) { ... }
-    if let Some((actions, handler_source)) =
-        extract_action_specific_function_source(&static_block, "this.after_action")
+    // Parse this.after_action(:action1, :action2) = fn(req, response) { ... } — may appear multiple times
+    for (actions, handler_source) in
+        extract_all_action_specific_function_sources(&static_block, "this.after_action")
     {
         info.after_actions.push(AfterAction {
             actions,
@@ -357,65 +358,72 @@ fn parse_controller_static_block(source: &str, info: &mut ControllerInfo) -> Res
     Ok(())
 }
 
-/// Extract the static { ... } block from source.
+/// Extract the `static { ... }` block from source. Returns an empty string if absent.
 fn extract_static_block(source: &str) -> Result<String, String> {
-    let mut depth = 0;
-    let mut in_static = false;
-    let mut result = String::new();
-    let mut chars = source.char_indices().peekable();
+    let bytes = source.as_bytes();
+    let mut search_from = 0;
 
-    while let Some((pos, c)) = chars.next() {
-        if !in_static {
-            if c == 's' || c == 'S' {
-                let rest: String = source[pos..].chars().take(6).collect();
-                if rest.to_lowercase() == "static" {
-                    // Check if followed by {
-                    let ahead = chars.clone();
-                    for (_, c2) in ahead {
-                        if c2.is_whitespace() {
-                            continue;
-                        }
-                        if c2 == '{' {
-                            in_static = true;
-                            depth = 1;
-                            // Skip past "static" and whitespace
-                            for _ in 0..rest.len() {
-                                chars.next();
-                            }
-                            // Skip whitespace
-                            while let Some((_, c2)) = chars.peek() {
-                                if c2.is_whitespace() {
-                                    chars.next();
-                                } else {
-                                    break;
-                                }
-                            }
-                            // Skip opening brace
-                            if let Some((_, '{')) = chars.next() {
-                                // Now inside static block
-                            }
-                            break;
-                        }
-                        break;
-                    }
-                }
-            }
-        } else {
-            if c == '{' {
-                depth += 1;
-            } else if c == '}' {
-                depth -= 1;
-                if depth == 0 {
-                    break;
-                }
-            }
-            if in_static && depth > 0 {
-                result.push(c);
-            }
+    while let Some(rel) = source[search_from..].find("static") {
+        let kw_start = search_from + rel;
+        let kw_end = kw_start + "static".len();
+
+        // Require a word boundary before and after so we don't match e.g. `ecstatic`.
+        let before_ok = kw_start == 0 || !is_ident_byte(bytes[kw_start - 1]);
+        let after_ok = kw_end >= bytes.len() || !is_ident_byte(bytes[kw_end]);
+        if !(before_ok && after_ok) {
+            search_from = kw_end;
+            continue;
         }
+
+        // Find the `{` that opens the block (skipping whitespace).
+        let mut i = kw_end;
+        while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] as char != '{' {
+            search_from = kw_end;
+            continue;
+        }
+
+        // Walk the block body, tracking string literals and nested braces.
+        let body_start = i + 1;
+        let mut depth = 1;
+        let mut in_string = false;
+        let mut string_char = 0u8;
+        let mut j = body_start;
+        while j < bytes.len() {
+            let b = bytes[j];
+            if in_string {
+                if b == string_char && (j == 0 || bytes[j - 1] != b'\\') {
+                    in_string = false;
+                }
+            } else {
+                match b {
+                    b'"' | b'\'' => {
+                        in_string = true;
+                        string_char = b;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Ok(source[body_start..j].to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            j += 1;
+        }
+
+        return Err("Unclosed static block".to_string());
     }
 
-    Ok(result)
+    Ok(String::new())
+}
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
 }
 
 /// Extract a quoted string value like this.layout = "value"
@@ -453,18 +461,24 @@ fn extract_function_source(source: &str, key: &str) -> Option<String> {
     None
 }
 
-/// Extract a function source code with action list like this.before_action(:show, :edit) = fn(req) { ... }
-fn extract_action_specific_function_source(
+/// Extract every `this.before_action(:a, :b) = fn(...) { ... }` occurrence in order.
+fn extract_all_action_specific_function_sources(
     source: &str,
     key: &str,
-) -> Option<(Vec<String>, String)> {
+) -> Vec<(Vec<String>, String)> {
     let pattern = format!("{}(:", key);
-    if let Some(pos) = source.find(&pattern) {
-        let after = &source[pos + pattern.len() - 1..]; // Include the colon
+    let mut results = Vec::new();
+    let mut cursor = 0;
 
-        // Parse action list: :action1, :action2) = fn(...) {
-        let actions_end = after.find(") = ")?;
-        let actions_str = &after[1..actions_end]; // Skip leading :
+    while let Some(rel_pos) = source[cursor..].find(&pattern) {
+        let pos = cursor + rel_pos;
+        // Include the colon at the start so action parsing below sees `:name, :name) = ...`.
+        let after = &source[pos + pattern.len() - 1..];
+
+        let Some(actions_end) = after.find(") = ") else {
+            break;
+        };
+        let actions_str = &after[1..actions_end]; // Skip leading ':'
 
         let actions: Vec<String> = actions_str
             .split(',')
@@ -474,16 +488,32 @@ fn extract_action_specific_function_source(
 
         let after_fn = &after[actions_end + 4..]; // Skip ") = "
 
-        if after_fn.starts_with("fn") {
-            let fn_start = after_fn.find('(')?;
-            let fn_end = find_matching_brace(&after_fn[fn_start..])?;
-            // Include "fn" prefix in the result (index 0 to matching brace)
-            let fn_source = &after_fn[..fn_start + fn_end + 1];
-
-            return Some((actions, fn_source.to_string()));
+        if !after_fn.starts_with("fn") {
+            // Not a function definition — skip this occurrence and keep looking.
+            cursor = pos + pattern.len();
+            continue;
         }
+
+        let Some(fn_start) = after_fn.find('(') else {
+            break;
+        };
+        let Some(fn_end) = find_matching_brace(&after_fn[fn_start..]) else {
+            break;
+        };
+
+        let fn_source = &after_fn[..fn_start + fn_end + 1];
+        let consumed_end = (after.as_ptr() as usize - source.as_ptr() as usize)
+            + actions_end
+            + 4
+            + fn_start
+            + fn_end
+            + 1;
+
+        results.push((actions, fn_source.to_string()));
+        cursor = consumed_end;
     }
-    None
+
+    results
 }
 
 /// Find matching brace position (assumes starting at opening brace)
@@ -775,5 +805,49 @@ fn call_function_value(
         }
         Value::NativeFunction(native_func) => (native_func.func)(args.to_vec()),
         _ => Err("Cannot call non-function value".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_controller_name_strips_controller_suffix() {
+        assert_eq!(to_controller_name("UsersController"), "users");
+        assert_eq!(to_controller_name("HomeController"), "home");
+        assert_eq!(to_controller_name("BlogPostsController"), "blog_posts");
+        // Safety: classes not ending in "Controller" still snake_case.
+        assert_eq!(to_controller_name("Users"), "users");
+    }
+
+    #[test]
+    fn registers_all_action_specific_before_actions() {
+        let source = r#"
+class UsersController extends Controller {
+    static {
+        this.layout = "application";
+
+        this.before_action(:index) = fn(req) {
+            return { "status": 403, "body": "Forbidden" };
+            req
+        }
+
+        this.before_action(:new, :create, :edit, :update, :destroy) = fn(req) {
+            return { "status": 401, "body": "Unauthorized" };
+            req
+        }
+    }
+}
+"#;
+        let mut info = ControllerInfo::new("UsersController", "users");
+        parse_controller_static_block(source, &mut info).unwrap();
+
+        assert_eq!(info.before_actions.len(), 2, "both hooks must register");
+        assert_eq!(info.before_actions[0].actions, vec!["index"]);
+        assert_eq!(
+            info.before_actions[1].actions,
+            vec!["new", "create", "edit", "update", "destroy"]
+        );
     }
 }

@@ -44,23 +44,23 @@ end
 
 ### Static Configuration Block
 
-Configure controllers using a `static { ... }` block:
+Configure controllers using a `static { ... }` block. The `static { ... }` block and the hook function bodies require brace syntax (the controller registry parses them textually):
 
 ```soli
 class ApplicationController extends Controller
-    static
+    static {
         # Set the layout for all actions
         this.layout = "application";
 
         # Before action that runs for all actions
-        this.before_action = fn(req)
+        this.before_action = fn(req) {
             let user_id = req.session["user_id"];
             if user_id != null {
                 req["current_user"] = User.find(user_id);
             }
             req
-        end
-    end
+        }
+    }
 end
 ```
 
@@ -98,11 +98,11 @@ Create an `ApplicationController` with shared configuration:
 ```soli
 # app/controllers/application_controller.sl
 class ApplicationController extends Controller
-    static
+    static {
         this.layout = "application";
 
         # Run for all actions
-        this.before_action = fn(req)
+        this.before_action = fn(req) {
             # Authentication check
             let user_id = req.session["user_id"];
             if user_id == null {
@@ -110,8 +110,8 @@ class ApplicationController extends Controller
             }
             req["current_user"] = User.find(user_id);
             req
-        end
-    end
+        }
+    }
 
     # Shared helper method available to all subclasses
     fn _current_user(req)
@@ -125,20 +125,20 @@ Subclasses inherit the configuration and can override it:
 ```soli
 # app/controllers/posts_controller.sl
 class PostsController extends ApplicationController
-    static
+    static {
         # Override layout for this controller
         this.layout = "posts";
 
         # Run before_action only for specific actions
-        this.before_action(:show, :edit, :update, :delete) = fn(req)
+        this.before_action(:show, :edit, :update, :delete) = fn(req) {
             let post = Post.find(req.params["id"]);
             if post == null {
                 return error(404, "Post not found");
             }
             req["post"] = post;
             req
-        end
-    end
+        }
+    }
 
     fn index(req)
         # Can use inherited _current_user helper
@@ -165,17 +165,17 @@ You can create deeper hierarchies. Each level inherits hooks and methods from it
 # app/controllers/admin_controller.sl
 # Extends ApplicationController, which extends Controller
 class AdminController extends ApplicationController
-    static
+    static {
         this.layout = "admin";
 
-        this.before_action = fn(req)
+        this.before_action = fn(req) {
             # Parent's before_action already ran (authentication)
             if req["current_user"]["role"] != "admin" {
                 return error(403, "Forbidden");
             }
             req
-        end
-    end
+        }
+    }
 end
 
 # app/controllers/admin_users_controller.sl
@@ -203,35 +203,35 @@ Run code before an action executes. Can filter to specific actions:
 
 ```soli
 class PostsController extends Controller
-    static
+    static {
         # Run for all actions
-        this.before_action = fn(req)
+        this.before_action = fn(req) {
             println("Before any action: " + req.path);
             req
-        end
+        }
 
         # Run only for specific actions
-        this.before_action(:show, :edit, :delete) = fn(req)
+        this.before_action(:show, :edit, :delete) = fn(req) {
             let post = Post.find(req.params["id"]);
             if post == null {
                 return error(404, "Post not found");
             }
             req["post"] = post;
             req
-        end
-    end
+        }
+    }
 end
 ```
 
-**Short-circuiting:** Return a response from a before action to skip the action:
+**Short-circuiting:** Return a response hash (with a `"status"` field) from a before action to skip the action:
 
 ```soli
-this.before_action = fn(req)
+this.before_action = fn(req) {
     if req.session["user_id"] == null {
         return redirect("/login");
     }
     req  # Continue to action
-end
+}
 ```
 
 ### After Actions
@@ -240,24 +240,24 @@ Run code after an action executes:
 
 ```soli
 class PostsController extends Controller
-    static
-        this.after_action = fn(req, response)
+    static {
+        this.after_action = fn(req, response) {
             # Log the action
             println("Completed: " + req.path);
             response  # Return modified or original response
-        end
-    end
+        }
+    }
 end
 ```
 
 Filter after actions to specific actions:
 
 ```soli
-this.after_action(:create, :update) = fn(req, response)
+this.after_action(:create, :update) = fn(req, response) {
     # Log changes after create/update
     println("Data modified");
     response
-end
+}
 ```
 
 ## Request Object
@@ -332,9 +332,9 @@ Set the layout in your controller:
 
 ```soli
 class PostsController extends Controller
-    static
+    static {
         this.layout = "posts";  # Uses layouts/posts.html.slv
-    end
+    }
 
     fn show(req)
         render("posts/show", { "post": req["post"] })
@@ -407,14 +407,14 @@ Controllers have access to context through `this`:
 
 ```soli
 class PostsController extends Controller
-    static
+    static {
         this.layout = "posts";
-        this.before_action = fn(req)
+        this.before_action = fn(req) {
             # Store data on request for later use
             req["post"] = Post.find(req.params["id"]);
             req
-        end
-    end
+        }
+    }
 
     fn show(req)
         # Access the post set by before_action

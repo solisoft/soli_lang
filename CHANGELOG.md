@@ -17,6 +17,8 @@
 * **coverage:** fix path inconsistency by canonicalizing paths in set_source_path and register_executable_lines_from_source
 * **expectations:** implement expect().to_*() chainable assertion methods (were previously not implemented)
 * **view helpers:** fix view helpers not being available in templates after hot reload - now properly injected into builtins env
+* **controller registry:** refactor controller registry to support action-specific before_action filters
+* **render:** add `render` function to search index for documentation search
 
 ### Documentation
 
