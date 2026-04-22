@@ -36,10 +36,19 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             let mut env = Environment::with_builtins_capacity();
             crate::interpreter::builtins::register_builtins(&mut env, true);
             crate::interpreter::builtins::template::register_static_template_helpers(&mut env);
+            crate::interpreter::builtins::template::inject_helpers_into_env(&mut env);
             *opt = Some(Rc::new(RefCell::new(env)));
         }
         opt.as_ref().unwrap().clone()
     })
+}
+
+/// Drop the cached builtins env so the next template render rebuilds it.
+/// Called on helper hot reload so updated `app/helpers/*.sl` definitions
+/// take effect. Active renders keep their existing `Rc<Environment>` and
+/// finish cleanly — only the thread-local cache slot is cleared.
+pub fn reset_builtins_rc() {
+    BUILTINS_RC.with(|cell| *cell.borrow_mut() = None);
 }
 
 // ---------------------------------------------------------------------------

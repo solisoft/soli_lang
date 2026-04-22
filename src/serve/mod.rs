@@ -1180,6 +1180,9 @@ fn worker_loop(
             {
                 eprintln!("Worker {}: Error reloading view helpers: {}", worker_id, e);
             }
+            // Drop the template builtins env so the next render rebuilds it
+            // with the updated helpers seeded into the enclosing scope.
+            crate::template::core_eval::reset_builtins_rc();
         }
 
         if current_models != last_models_version {

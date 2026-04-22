@@ -111,6 +111,18 @@ pub fn get_view_helpers() -> HashMap<String, Value> {
     VIEW_HELPERS.with(|helpers| helpers.borrow().clone())
 }
 
+/// Define all registered view helpers into the given environment.
+/// Used to seed the template builtins env so helpers resolve via the
+/// normal scope chain — available in views, partials, and live-view renders
+/// without having to mutate the per-render data hash.
+pub fn inject_helpers_into_env(env: &mut Environment) {
+    VIEW_HELPERS.with(|helpers| {
+        for (name, value) in helpers.borrow().iter() {
+            env.define(name.clone(), value.clone());
+        }
+    });
+}
+
 /// Load view helpers from a directory (app/helpers/*.sl).
 /// Parses each file and extracts function definitions without executing in interpreter.
 pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {

@@ -8,6 +8,7 @@
 * **coverage:** exclude tests/ files from coverage report
 * **coverage:** show relative paths in coverage report
 * **expectations:** add chainable expect().to_*() assertion API (to_be, to_equal, to_be_greater_than, etc.)
+* **view helpers:** inject view helpers into template builtins env on hot reload
 
 ### Bug Fixes
 
@@ -15,6 +16,7 @@
 * **coverage:** fix deadlock in record_line_hit when global tracker and local tracker are same Arc
 * **coverage:** fix path inconsistency by canonicalizing paths in set_source_path and register_executable_lines_from_source
 * **expectations:** implement expect().to_*() chainable assertion methods (were previously not implemented)
+* **view helpers:** fix view helpers not being available in templates after hot reload - now properly injected into builtins env
 
 ### Documentation
 
